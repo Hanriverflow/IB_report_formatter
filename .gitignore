@@ -1,0 +1,35 @@
+nul
+NUL
+
+# Virtual environments
+.venv/
+venv/
+
+# Python cache/artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local agent/tool state
+.claude/
+.sisyphus/
+
+# Build and test outputs
+*.docx
+*_Report_Pro.docx
+out_*.docx
+smoke_output*.docx
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+
+# Local-only docs/data (can contain internal notes)
+docs/.bkit-memory.json
+docs/.pdca-status.json
