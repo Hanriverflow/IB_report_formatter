@@ -1,3 +1,8 @@
+<p align="right">
+  <a href="./README.md"><img alt="lang English" src="https://img.shields.io/badge/lang-English-blue"></a>
+  <a href="./README.ko.md"><img alt="lang 한국어" src="https://img.shields.io/badge/lang-한국어-orange"></a>
+</p>
+
 # IB Report Formatter
 
 Markdown 문서를 IB(투자은행) 스타일의 전문 Word 보고서(`.docx`)로 변환하는 도구입니다.

@@ -1,3 +1,8 @@
+<p align="right">
+  <a href="./README.md"><img alt="lang English" src="https://img.shields.io/badge/lang-English-blue"></a>
+  <a href="./README.ko.md"><img alt="lang 한국어" src="https://img.shields.io/badge/lang-한국어-orange"></a>
+</p>
+
 # IB Report Formatter
 
 Markdown to professional IB-style Word reports (`.docx`).
