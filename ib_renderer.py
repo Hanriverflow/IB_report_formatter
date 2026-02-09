@@ -550,6 +550,16 @@ class TextRenderer:
 class CoverRenderer:
     """Renders the cover page"""
 
+    _COVER_DISCLAIMER_TEXT = (
+        "당행은 해당 문서에 최대한 정확하고 완전한 정보를 담고자 노력하였으나, 오류와 중요정보의 "
+        "누락이 있을 수 있으며, 정보의 정확성, 완전성 및 적정성을 보장하지 않습니다. 이 문서는 "
+        "고객의 이해를 돕기 위하여 작성된 설명자료에 불과하므로, 고객은 각자의 책임으로 개별 계약서나 "
+        "공시된 정보를 통하여 거래의 내용을 숙지하여야 합니다. 이 문서는 확정적인 거래조건을 "
+        "구성하지 않으며 법적인 책임을 위한 근거자료로 사용될 수 없습니다. 본 자료는 당행의 "
+        "저작물로서 모든 저작권은 당행에게 있으며, 당행의 동의 없이 어떠한 경우에도 어떠한 형태로든 "
+        "복제, 배포, 전송, 변경, 대여할 수 없으며, 당행의 요청 시에 즉시 반환, 파기하여 주시기 바랍니다."
+    )
+
     def __init__(self, doc: DocxDocument):
         self.doc = doc
 
@@ -647,7 +657,59 @@ class CoverRenderer:
             recipient=recipient,
         )
 
+        self._add_spacer(1)
+        self._render_cover_disclaimer_table()
+
         self.doc.add_page_break()
+
+    def _render_cover_disclaimer_table(self):
+        """Render cover disclaimer table."""
+        table = self.doc.add_table(rows=1, cols=1)
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.style = STYLE.STYLE_TABLE_GRID
+
+        cell = table.rows[0].cells[0]
+        TableStyler.set_cell_background(cell, STYLE.LIGHT_GRAY_HEX)
+
+        paragraph = cell.paragraphs[0]
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        paragraph.clear()
+        paragraph.paragraph_format.line_spacing = 1.15
+        paragraph.paragraph_format.space_before = Pt(2)
+        paragraph.paragraph_format.space_after = Pt(2)
+
+        run = paragraph.add_run(self._COVER_DISCLAIMER_TEXT)
+        FontStyler.apply_run_style(
+            run,
+            font_name=STYLE.BODY_FONT,
+            font_size=Pt(8.5),
+            color=STYLE.DARK_GRAY,
+        )
+
+        self._apply_cover_disclaimer_border(table)
+
+    @staticmethod
+    def _apply_cover_disclaimer_border(table):
+        """Apply thin border around cover disclaimer table."""
+        tbl = table._tbl
+        tblPr = tbl.tblPr if tbl.tblPr is not None else OxmlElement("w:tblPr")
+        tblBorders = OxmlElement("w:tblBorders")
+
+        for border_name in ("top", "left", "bottom", "right"):
+            border = OxmlElement(f"w:{border_name}")
+            border.set(qn("w:val"), "single")
+            border.set(qn("w:sz"), "4")
+            border.set(qn("w:color"), STYLE.GRAY_BORDER_HEX)
+            tblBorders.append(border)
+
+        for border_name in ("insideH", "insideV"):
+            border = OxmlElement(f"w:{border_name}")
+            border.set(qn("w:val"), "nil")
+            tblBorders.append(border)
+
+        tblPr.append(tblBorders)
+        if tbl.tblPr is None:
+            tbl.insert(0, tblPr)
 
     def _render_metadata_panel(
         self,

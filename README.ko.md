@@ -5,13 +5,14 @@
 
 # IB Report Formatter
 
-Markdown 문서를 IB(투자은행) 스타일의 전문 Word 보고서(`.docx`)로 변환하는 도구입니다.
+Markdown ↔ Word 양방향 변환기로, IB(투자은행) 스타일의 전문 Word 보고서(`.docx`)를 생성합니다.
 
-이 프로젝트는 리서치/내부 메모 형태의 markdown을 구조화된 제목, 표 스타일링, 콜아웃 박스, 이미지, 수식, 헤더/푸터가 포함된 보고서 형태로 출력합니다.
+이 프로젝트는 리서치/내부 메모 형태의 markdown을 구조화된 제목, 표 스타일링, 콜아웃 박스, 이미지, 수식, 헤더/푸터가 포함된 보고서 형태로 출력합니다. 또한 역방향으로 Word 문서에서 깔끔한 Markdown을 추출하여 LLM에 활용할 수 있습니다.
 
 ## 주요 기능
 
-- IB 스타일 기반 Markdown -> Word 변환
+- **Markdown → Word** 변환 (IB 스타일 문서 생성)
+- **Word → Markdown** 변환 (LLM 활용용, 신규!)
 - 단일 라인(클립보드) markdown 자동 구조화 포맷팅
 - YAML frontmatter 파싱 (`title`, `date`, `recipient`, `analyst` 등)
 - 금융 표 렌더링(천 단위 콤마, 조건부 스타일)
@@ -24,10 +25,13 @@ Markdown 문서를 IB(투자은행) 스타일의 전문 Word 보고서(`.docx`)�
 
 ```text
 IB_report_formatter/
-├── md_to_word.py      # 메인 변환 CLI
+├── md_to_word.py      # Markdown → Word 변환 CLI
 ├── md_parser.py       # Markdown/frontmatter/요소 파서
 ├── md_formatter.py    # 단일 라인 markdown 전처리기
 ├── ib_renderer.py     # Word 렌더러 및 스타일 시스템
+├── word_to_md.py      # Word → Markdown 변환 CLI (신규!)
+├── word_parser.py     # Word 문서 파서
+├── md_renderer.py     # Markdown 텍스트 렌더러
 ├── tests/             # Pytest 테스트
 └── pyproject.toml     # 의존성/도구 설정
 ```
@@ -120,6 +124,9 @@ uv run md_to_word.py --list
 - `md_parser.py`
 - `md_formatter.py`
 - `ib_renderer.py`
+- `word_to_md.py`
+- `word_parser.py`
+- `md_renderer.py`
 - `tests/`
 - `pyproject.toml`
 - `uv.lock`
@@ -254,6 +261,41 @@ uv run md_formatter.py --check input.md
 ```bash
 uv run md-format --check input.md
 ```
+
+## Word → Markdown 변환기 CLI (`word_to_md.py`)
+
+Word 문서를 LLM 활용에 적합한 깔끔한 Markdown으로 변환합니다:
+
+```bash
+uv run word_to_md.py [input_file] [output_file] [options]
+```
+
+옵션:
+
+- `-l, --list`: 상위 폴더의 Word 파일 목록 표시
+- `-i, --interactive`: 목록에서 대화형 선택 (`--list`와 함께 사용)
+- `-s, --strip`: 서식 제거 (볼드/이탤릭 없음) - LLM 최적화
+- `--no-frontmatter`: YAML 메타데이터 헤더 생략
+- `--extract-images`: 포함된 이미지를 폴더로 추출
+- `-v, --verbose`: 디버그 로그 출력
+
+예시:
+
+```bash
+uv run word_to_md.py --list
+uv run word_to_md.py --list -i
+uv run word_to_md.py report.docx
+uv run word_to_md.py report.docx output.md
+uv run word_to_md.py report.docx --strip              # LLM 최적화 출력
+uv run word_to_md.py report.docx --strip --no-frontmatter
+uv run word_to_md.py report.docx --extract-images     # 이미지 폴더로 저장
+```
+
+`--strip` 옵션은 언제 쓰나요?
+
+- 볼드/이탤릭 마커가 필요 없는 LLM에 넣을 때
+- 더 깔끔하고 간결한 텍스트가 필요할 때
+- RAG/임베딩 파이프라인에서 서식이 노이즈일 때
 
 ## 지원 Markdown 패턴
 

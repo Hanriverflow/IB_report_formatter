@@ -5,13 +5,14 @@
 
 # IB Report Formatter
 
-Markdown to professional IB-style Word reports (`.docx`).
+Bidirectional Markdown ↔ Word document converter for professional IB-style reports (`.docx`).
 
-This project converts research and internal memo markdown into bank-style documents with structured headings, styled tables, callout boxes, images, equations, and footer/header formatting.
+This project converts research and internal memo markdown into bank-style documents with structured headings, styled tables, callout boxes, images, equations, and footer/header formatting. It also supports the reverse: extracting clean Markdown from Word documents for LLM consumption.
 
 ## Features
 
-- Markdown to Word conversion with IB-oriented document styling
+- **Markdown → Word** conversion with IB-oriented document styling
+- **Word → Markdown** conversion for LLM consumption (new!)
 - Auto-format pass for single-line clipboard markdown (Deep Research output)
 - YAML frontmatter parsing (`title`, `date`, `recipient`, `analyst`, etc.)
 - Financial table rendering with number formatting and conditional styling
@@ -24,10 +25,13 @@ This project converts research and internal memo markdown into bank-style docume
 
 ```text
 IB_report_formatter/
-├── md_to_word.py      # Main CLI converter
+├── md_to_word.py      # Markdown → Word CLI converter
 ├── md_parser.py       # Markdown/frontmatter/elements parser
 ├── md_formatter.py    # Single-line markdown pre-formatter
 ├── ib_renderer.py     # Word renderer and style system
+├── word_to_md.py      # Word → Markdown CLI converter (new!)
+├── word_parser.py     # Word document parser
+├── md_renderer.py     # Markdown text renderer
 ├── tests/             # Pytest test suite
 └── pyproject.toml     # Dependencies and tool config
 ```
@@ -120,6 +124,9 @@ Include:
 - `md_parser.py`
 - `md_formatter.py`
 - `ib_renderer.py`
+- `word_to_md.py`
+- `word_parser.py`
+- `md_renderer.py`
 - `tests/`
 - `pyproject.toml`
 - `uv.lock`
@@ -254,6 +261,41 @@ Or use the script entrypoint:
 ```bash
 uv run md-format --check input.md
 ```
+
+## Word to Markdown CLI (`word_to_md.py`)
+
+Convert Word documents to clean Markdown for LLM consumption:
+
+```bash
+uv run word_to_md.py [input_file] [output_file] [options]
+```
+
+Options:
+
+- `-l, --list`: list Word files in parent folder
+- `-i, --interactive`: interactive selection mode (with `--list`)
+- `-s, --strip`: strip formatting (no bold/italic) for LLM optimization
+- `--no-frontmatter`: skip YAML metadata header
+- `--extract-images`: extract embedded images to folder
+- `-v, --verbose`: debug logs
+
+Examples:
+
+```bash
+uv run word_to_md.py --list
+uv run word_to_md.py --list -i
+uv run word_to_md.py report.docx
+uv run word_to_md.py report.docx output.md
+uv run word_to_md.py report.docx --strip              # LLM-optimized output
+uv run word_to_md.py report.docx --strip --no-frontmatter
+uv run word_to_md.py report.docx --extract-images     # Save images to folder
+```
+
+When to use `--strip`?
+
+- When feeding the output to an LLM that doesn't benefit from bold/italic markers
+- When you want cleaner, more compact text
+- For RAG/embedding pipelines where formatting is noise
 
 ## Supported Markdown Patterns
 

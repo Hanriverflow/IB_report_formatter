@@ -1,15 +1,23 @@
 # AGENTS.md - IB Report Formatter
 
-> Markdown to Professional IB-Style Word Document Converter
+> Bidirectional Markdown ↔ Word Document Converter for IB-Style Reports
 
 ## Quick Reference
 
 ```bash
-# Run the converter
+# Markdown → Word conversion
 uv run md_to_word.py input.md [output.docx]
 uv run md_to_word.py --list                    # List available .md files
 uv run md_to_word.py --list -i                 # Interactive file selection
 uv run md_to_word.py input.md --format         # Pre-format single-line markdown
+
+# Word → Markdown conversion (for LLM consumption)
+uv run word_to_md.py input.docx [output.md]
+uv run word_to_md.py --list                    # List available .docx files
+uv run word_to_md.py --list -i                 # Interactive file selection
+uv run word_to_md.py input.docx --strip        # LLM-optimized (no bold/italic)
+uv run word_to_md.py input.docx --no-frontmatter  # Skip YAML metadata header
+uv run word_to_md.py input.docx --extract-images  # Extract images to folder
 
 # Pre-format only (Gemini Deep Research clipboard output)
 uv run md_formatter.py input.md [output.md]
@@ -26,19 +34,27 @@ IB_report_formatter/
 ├── md_parser.py       # Markdown parsing, frontmatter, elements, LaTeX, Base64 images
 ├── md_formatter.py    # Pre-processor for single-line clipboard markdown
 ├── ib_renderer.py     # Word document rendering with IB bank styling
+├── word_to_md.py      # Word → Markdown CLI entry point
+├── word_parser.py     # Word document parsing into DocumentModel
+├── md_renderer.py     # DocumentModel → Markdown text rendering
 └── docs/              # Documentation/memory files
 ```
 
 ## Architecture
 
-**Pipeline:** `Markdown → Parser → DocumentModel → Renderer → Word Document`
+**MD → Word Pipeline:** `Markdown → Parser → DocumentModel → Renderer → Word Document`
+
+**Word → MD Pipeline:** `Word Document → Parser → DocumentModel → Renderer → Markdown`
 
 | Module           | Responsibility                                          |
 |------------------|---------------------------------------------------------|
-| `md_to_word.py`  | CLI, path resolution, conversion orchestration          |
+| `md_to_word.py`  | CLI, path resolution, MD→Word conversion orchestration  |
 | `md_parser.py`   | Parse frontmatter, headings, tables, LaTeX, images      |
 | `md_formatter.py`| Convert single-line text to structured markdown         |
 | `ib_renderer.py` | Apply IB styling, generate Word via python-docx         |
+| `word_to_md.py`  | CLI, path resolution, Word→MD conversion orchestration  |
+| `word_parser.py` | Parse Word doc properties, paragraphs, tables, images   |
+| `md_renderer.py` | Render DocumentModel to clean Markdown text             |
 
 ## Dependencies
 

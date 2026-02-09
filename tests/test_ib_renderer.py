@@ -237,3 +237,41 @@ class TestDisclaimerRendererFormatting:
             paragraph = next((p for p in doc.paragraphs if line in p.text), None)
             assert paragraph is not None
             assert "\n" not in paragraph.text
+
+
+class TestCoverRendererDisclaimerTable:
+    """Tests for cover disclaimer table rendering behavior."""
+
+    def test_cover_includes_single_cell_disclaimer_table(self):
+        """Cover page should include a disclaimer table with requested legal sentence."""
+        from docx import Document
+        from md_parser import DocumentMetadata
+        from ib_renderer import CoverRenderer, DocumentStyler
+
+        doc = Document()
+        DocumentStyler(doc).create_styles()
+
+        metadata = DocumentMetadata(
+            title="테스트 보고서",
+            subtitle="테스트 부제",
+            company="Korea Development Bank",
+            ticker="TEST",
+            sector="SECTOR",
+            analyst="DCM Team 1",
+        )
+
+        CoverRenderer(doc).render(metadata)
+
+        one_cell_tables = [
+            table for table in doc.tables if len(table.rows) == 1 and len(table.rows[0].cells) == 1
+        ]
+        assert one_cell_tables
+
+        disclaimer_table = None
+        for table in one_cell_tables:
+            text = table.rows[0].cells[0].text
+            if "당행은 해당 문서에 최대한 정확하고 완전한 정보를 담고자 노력하였으나" in text:
+                disclaimer_table = table
+                break
+
+        assert disclaimer_table is not None
