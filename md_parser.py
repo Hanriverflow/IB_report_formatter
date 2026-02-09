@@ -462,7 +462,7 @@ class TextParser:
                         if content:
                             runs.append(TextRun(text=content, bold=True))
                     else:
-                        cleaned = cls.cleanup_text(part)
+                        cleaned = cls.cleanup_text_preserve_spacing(part)
                         if cleaned:
                             runs.append(TextRun(text=cleaned, bold=False))
 
@@ -519,7 +519,7 @@ class TextParser:
                 if content:
                     runs.append(TextRun(text=content, bold=True))
             else:
-                cleaned = cls.cleanup_text(part)
+                cleaned = cls.cleanup_text_preserve_spacing(part)
                 if cleaned:
                     runs.append(TextRun(text=cleaned, bold=False))
 
@@ -534,6 +534,11 @@ class TextParser:
     def cleanup_text(text: str) -> str:
         """Remove markdown artifacts and escape characters (single-pass regex)"""
         return TextParser._ESCAPE_RE.sub(r"\1", text).strip()
+
+    @staticmethod
+    def cleanup_text_preserve_spacing(text: str) -> str:
+        """Remove markdown escape characters while preserving surrounding spacing."""
+        return TextParser._ESCAPE_RE.sub(r"\1", text)
 
 
 class FootnoteParser:

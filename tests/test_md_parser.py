@@ -123,12 +123,27 @@ class TestTextParser:
         runs = TextParser.parse_runs("This is **bold** text")
 
         assert len(runs) == 3
-        assert runs[0].text == "This is"
+        assert runs[0].text == "This is "
         assert runs[0].bold is False
         assert runs[1].text == "bold"
         assert runs[1].bold is True
-        assert runs[2].text == "text"
+        assert runs[2].text == " text"
         assert runs[2].bold is False
+
+    def test_parse_bold_text_preserves_korean_spacing(self):
+        """Keep spacing around bold boundaries in Korean text."""
+        source = (
+            "발행 주체 및 규제 체계에 따라 **기본자본(Tier 1)**과 "
+            "**보완자본(Tier 2)**으로 구분됩니다."
+        )
+
+        runs = TextParser.parse_runs(source)
+        reconstructed = "".join(run.text for run in runs)
+
+        assert (
+            reconstructed
+            == "발행 주체 및 규제 체계에 따라 기본자본(Tier 1)과 보완자본(Tier 2)으로 구분됩니다."
+        )
 
     def test_parse_multiple_bold(self):
         """Parse text with multiple bold sections."""
