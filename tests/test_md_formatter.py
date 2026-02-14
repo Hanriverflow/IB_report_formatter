@@ -5,6 +5,7 @@ Tests the markdown pre-processor for single-line text conversion.
 """
 
 import pytest
+from deep_md_cleaner import CleanerConfig, MARKER_END, MARKER_SEPARATOR, MARKER_START
 from md_formatter import (
     LaTeXProtector,
     BoldProtector,
@@ -256,6 +257,30 @@ Paragraph two.
         assert "C:\\temp" in result
         assert "1:1" in result
         assert "라벨: 값" in result
+
+    def test_light_format_keeps_markers_when_cleaner_off(self):
+        """Light-format path should keep markers when cleaner is not enabled."""
+        marker = (
+            f"{MARKER_START}cite{MARKER_SEPARATOR}turn1search0{MARKER_END}"
+        )
+        text = "\n".join([f"line {i}" for i in range(25)]) + f"\nreference {marker}"
+
+        result = format_markdown(text)
+        assert marker in result
+
+    def test_light_format_cleans_markers_when_cleaner_enabled(self):
+        """Light-format path should clean markers when cleaner is enabled."""
+        marker = (
+            f"{MARKER_START}cite{MARKER_SEPARATOR}turn1search0{MARKER_END}"
+        )
+        text = "\n".join([f"line {i}" for i in range(25)]) + f"\nreference {marker}"
+
+        result = format_markdown(
+            text,
+            cleaner_config=CleanerConfig(activation_mode="auto", cite_mode="strip"),
+        )
+        assert marker not in result
+        assert "turn1search0" not in result
 
 
 class TestCheckNeedsFormatting:

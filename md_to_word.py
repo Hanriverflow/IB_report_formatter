@@ -112,7 +112,13 @@ class RenderOptions:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def auto_format_markdown(input_path: Path) -> Path:
+def auto_format_markdown(
+    input_path: Path,
+    cleaner_mode: str = "off",
+    cite_mode: str = "footnote",
+    drop_unknown_markers: bool = False,
+    cleaner_report: bool = False,
+) -> Path:
     """
     Auto-format a markdown file using md_formatter before conversion.
 
@@ -127,7 +133,7 @@ def auto_format_markdown(input_path: Path) -> Path:
         Exception: If formatting fails
     """
     try:
-        from md_formatter import format_file
+        from md_formatter import format_file_with_options
     except ImportError:
         raise ImportError(
             "md_formatter.py not found. Ensure it is in the same directory as md_to_word.py."
@@ -135,11 +141,75 @@ def auto_format_markdown(input_path: Path) -> Path:
 
     logger.info("Auto-formatting: %s", input_path.name)
 
-    formatted_path_str = format_file(str(input_path))
+    formatted_path_str = format_file_with_options(
+        input_path=str(input_path),
+        cleaner_mode=cleaner_mode,
+        cite_mode=cite_mode,
+        drop_unknown_markers=drop_unknown_markers,
+        cleaner_report=cleaner_report,
+    )
     formatted_path = Path(formatted_path_str)
 
     logger.info("Formatted output: %s", formatted_path.name)
     return formatted_path
+
+
+def _read_with_encoding(file_path: Path) -> str:
+    """Read markdown text with encoding fallback."""
+    encodings = ["utf-8", "utf-8-sig", "euc-kr", "cp949"]
+    for enc in encodings:
+        try:
+            return file_path.read_text(encoding=enc)
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+    raise UnicodeDecodeError(
+        "multiple",
+        b"",
+        0,
+        1,
+        "Failed to decode {path} with encodings: {encodings}".format(
+            path=file_path,
+            encodings=encodings,
+        ),
+    )
+
+
+def clean_deepresearch_markdown_file(
+    input_path: Path,
+    cleaner_mode: str,
+    cite_mode: str,
+    drop_unknown_markers: bool,
+    cleaner_report: bool,
+) -> Path:
+    """Conditionally clean DeepResearch markers and return path to cleaned file."""
+    if cleaner_mode == "off":
+        return input_path
+
+    try:
+        from deep_md_cleaner import CleanerConfig, clean_deepresearch_markdown
+    except ImportError:
+        raise ImportError(
+            "deep_md_cleaner.py not found. Ensure it is in the same directory as md_to_word.py."
+        )
+
+    content = _read_with_encoding(input_path)
+    cleaner_config = CleanerConfig(
+        activation_mode=cleaner_mode,
+        cite_mode=cite_mode,
+        drop_unknown_markers=drop_unknown_markers,
+    )
+    cleaned, report = clean_deepresearch_markdown(content, cleaner_config)
+
+    if cleaner_report and (report.applied or report.markers_detected):
+        logger.info("DeepResearch cleaner: %s", report.summary())
+
+    if not report.was_modified:
+        return input_path
+
+    cleaned_path = input_path.with_name(input_path.stem + "_cleaned.md")
+    cleaned_path.write_text(cleaned, encoding="utf-8")
+    logger.info("Cleaner output: %s", cleaned_path.name)
+    return cleaned_path
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -548,6 +618,28 @@ Examples:
         action="store_true",
         help="Auto-format markdown (single-line → structured) before conversion",
     )
+    preprocess_group.add_argument(
+        "--deepresearch-cleaner",
+        choices=["off", "auto", "on"],
+        default="off",
+        help="Apply OpenAI DeepResearch marker cleaner",
+    )
+    preprocess_group.add_argument(
+        "--cite-mode",
+        choices=["footnote", "inline", "strip"],
+        default="footnote",
+        help="How to transform cite markers when cleaner is enabled",
+    )
+    preprocess_group.add_argument(
+        "--drop-unknown-markers",
+        action="store_true",
+        help="Drop unknown DeepResearch marker blocks instead of comment-preserving",
+    )
+    preprocess_group.add_argument(
+        "--cleaner-report",
+        action="store_true",
+        help="Print DeepResearch cleaner summary",
+    )
 
     # Section toggles
     section_group = parser.add_argument_group("section options")
@@ -598,16 +690,41 @@ def run_conversion(input_path: Path, args) -> int:
         include_disclaimer=not args.no_disclaimer,
     )
 
-    # Auto-format if requested
+    # Auto-format / cleaner if requested
     actual_input = input_path
     if args.format:
         try:
-            actual_input = auto_format_markdown(input_path)
+            actual_input = auto_format_markdown(
+                input_path,
+                cleaner_mode=args.deepresearch_cleaner,
+                cite_mode=args.cite_mode,
+                drop_unknown_markers=args.drop_unknown_markers,
+                cleaner_report=args.cleaner_report,
+            )
         except ImportError as e:
             logger.error("%s", e)
             return 1
         except Exception as e:
             logger.error("Auto-format failed: %s", e)
+            if args.verbose:
+                import traceback
+
+                traceback.print_exc()
+            return 1
+    elif args.deepresearch_cleaner != "off":
+        try:
+            actual_input = clean_deepresearch_markdown_file(
+                input_path=input_path,
+                cleaner_mode=args.deepresearch_cleaner,
+                cite_mode=args.cite_mode,
+                drop_unknown_markers=args.drop_unknown_markers,
+                cleaner_report=args.cleaner_report,
+            )
+        except ImportError as e:
+            logger.error("%s", e)
+            return 1
+        except Exception as e:
+            logger.error("DeepResearch cleaner failed: %s", e)
             if args.verbose:
                 import traceback
 

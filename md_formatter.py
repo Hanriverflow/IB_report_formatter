@@ -24,10 +24,13 @@ Changelog (v2):
     - YAML frontmatter generation
 """
 
+import argparse
 import re
 import sys
 from pathlib import Path
 from typing import List, Tuple, Optional, Dict, Match
+
+from deep_md_cleaner import CleanerConfig, clean_deepresearch_markdown
 
 # Parent folder path
 PARENT_DIR = Path(__file__).resolve().parent.parent
@@ -508,7 +511,11 @@ class ColonLabelDetector:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def format_markdown(text: str) -> str:
+def format_markdown(
+    text: str,
+    cleaner_config: Optional[CleanerConfig] = None,
+    cleaner_report: bool = False,
+) -> str:
     """
     Format single-line markdown text into properly structured markdown.
 
@@ -530,15 +537,23 @@ def format_markdown(text: str) -> str:
     Returns:
         Properly formatted markdown with structure
     """
+    result = text
+
+    # Optional DeepResearch cleanup (off/auto/on via config)
+    if cleaner_config is not None:
+        result, report = clean_deepresearch_markdown(result, cleaner_config)
+        if cleaner_report and (report.applied or report.markers_detected):
+            print("[INFO] DeepResearch cleaner: {summary}".format(summary=report.summary()))
+
     # Quick check: if already has many lines, minimal formatting needed
-    line_count = text.count("\n")
+    line_count = result.count("\n")
     if line_count > 20:
-        print(f"[INFO] Text already has {line_count} lines — applying light formatting only")
-        return _light_format(text)
+        print(f"[INFO] Text already has {line_count} lines - applying light formatting only")
+        return _light_format(result)
 
     # ── Step 1: Protect LaTeX ───────────────────────────────────────────────
     latex_protector = LaTeXProtector()
-    result = latex_protector.protect(text)
+    result = latex_protector.protect(result)
 
     # ── Step 2: Protect bold markers ────────────────────────────────────────
     bold_protector = BoldProtector()
@@ -644,6 +659,31 @@ def format_file(input_path: str, output_path: Optional[str] = None) -> str:
     Returns:
         Path to the formatted file
     """
+    return format_file_with_options(input_path=input_path, output_path=output_path)
+
+
+def _build_cleaner_config(
+    cleaner_mode: str,
+    cite_mode: str,
+    drop_unknown_markers: bool,
+) -> CleanerConfig:
+    """Build DeepResearch cleaner config."""
+    return CleanerConfig(
+        activation_mode=cleaner_mode,
+        cite_mode=cite_mode,
+        drop_unknown_markers=drop_unknown_markers,
+    )
+
+
+def format_file_with_options(
+    input_path: str,
+    output_path: Optional[str] = None,
+    cleaner_mode: str = "off",
+    cite_mode: str = "footnote",
+    drop_unknown_markers: bool = False,
+    cleaner_report: bool = False,
+) -> str:
+    """Format markdown file with optional DeepResearch cleaner controls."""
     input_file = Path(input_path)
 
     # Resolve path
@@ -655,23 +695,27 @@ def format_file(input_path: str, output_path: Optional[str] = None) -> str:
     if not input_file.exists():
         raise FileNotFoundError(f"File not found: {input_file}")
 
-    # Read content with encoding detection
     content = _read_with_encoding(input_file)
-
-    # Check line count
     line_count = content.count("\n")
     print(f"[INFO] Input: {input_file.name} ({line_count} lines, {len(content)} chars)")
 
-    # Format
-    formatted = format_markdown(content)
+    cleaner_config = _build_cleaner_config(
+        cleaner_mode=cleaner_mode,
+        cite_mode=cite_mode,
+        drop_unknown_markers=drop_unknown_markers,
+    )
 
-    # Determine output path
+    formatted = format_markdown(
+        content,
+        cleaner_config=cleaner_config,
+        cleaner_report=cleaner_report,
+    )
+
     if output_path:
         output_file = Path(output_path)
     else:
         output_file = input_file.with_name(input_file.stem + "_formatted.md")
 
-    # Write
     output_file.write_text(formatted, encoding="utf-8")
 
     new_line_count = formatted.count("\n")
@@ -718,35 +762,66 @@ def check_needs_formatting(input_path: str) -> bool:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+def build_parser() -> argparse.ArgumentParser:
+    """Build CLI parser for formatter."""
+    parser = argparse.ArgumentParser(
+        description="Format single-line markdown into structured markdown",
+    )
+    parser.add_argument("input_file", nargs="?", help="Input markdown file path")
+    parser.add_argument("output_file", nargs="?", help="Output markdown file path")
+    parser.add_argument("--check", action="store_true", help="Check if formatting is needed")
+
+    parser.add_argument(
+        "--deepresearch-cleaner",
+        choices=["off", "auto", "on"],
+        default="off",
+        help="Apply OpenAI DeepResearch marker cleaner",
+    )
+    parser.add_argument(
+        "--cite-mode",
+        choices=["footnote", "inline", "strip"],
+        default="footnote",
+        help="How to transform cite markers when cleaner is enabled",
+    )
+    parser.add_argument(
+        "--drop-unknown-markers",
+        action="store_true",
+        help="Drop unknown DeepResearch marker blocks instead of comment-preserving",
+    )
+    parser.add_argument(
+        "--cleaner-report",
+        action="store_true",
+        help="Print DeepResearch cleaner summary",
+    )
+    return parser
+
+
 def main():
     """Main entry point"""
-    if len(sys.argv) < 2:
-        print("Usage:")
-        print("  uv run md_formatter.py <input.md> [output.md]")
-        print("  uv run md_formatter.py --check <input.md>")
-        print()
-        print("Formats single-line markdown (e.g., Gemini Deep Research clipboard)")
-        print("into properly structured markdown with headings, paragraphs, and")
-        print("preserved LaTeX equations.")
+    parser = build_parser()
+    args = parser.parse_args()
+
+    if args.input_file is None:
+        parser.print_help()
         sys.exit(1)
 
-    # Check mode
-    if sys.argv[1] == "--check":
-        if len(sys.argv) < 3:
-            print("Usage: uv run md_formatter.py --check <input.md>")
-            sys.exit(1)
-        needs_fmt = check_needs_formatting(sys.argv[2])
+    if args.check:
+        needs_fmt = check_needs_formatting(args.input_file)
         if needs_fmt:
-            print(f"[NEEDS FORMATTING] {sys.argv[2]}")
+            print(f"[NEEDS FORMATTING] {args.input_file}")
         else:
-            print(f"[OK] {sys.argv[2]} appears already formatted")
+            print(f"[OK] {args.input_file} appears already formatted")
         sys.exit(0 if not needs_fmt else 1)
 
-    input_path = sys.argv[1]
-    output_path = sys.argv[2] if len(sys.argv) > 2 else None
-
     try:
-        result = format_file(input_path, output_path)
+        result = format_file_with_options(
+            input_path=args.input_file,
+            output_path=args.output_file,
+            cleaner_mode=args.deepresearch_cleaner,
+            cite_mode=args.cite_mode,
+            drop_unknown_markers=args.drop_unknown_markers,
+            cleaner_report=args.cleaner_report,
+        )
         print(f"\nFormatted file: {result}")
     except Exception as e:
         print(f"Error: {e}")
