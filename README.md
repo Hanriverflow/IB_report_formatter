@@ -14,6 +14,7 @@ This project converts research and internal memo markdown into bank-style docume
 - **Markdown → Word** conversion with IB-oriented document styling
 - **Word → Markdown** conversion for LLM consumption (new!)
 - Auto-format pass for single-line clipboard markdown (Deep Research output)
+- Optional OpenAI DeepResearch marker cleaner (`off`/`auto`/`on`)
 - YAML frontmatter parsing (`title`, `date`, `recipient`, `analyst`, etc.)
 - Financial table rendering with number formatting and conditional styling
 - Callout box rendering (`[Executive Summary]`, `[요약]`, `[시사점]`, `[주의]`, `[참고]`)
@@ -179,6 +180,12 @@ Auto-format then convert:
 uv run md_to_word.py input.md --format
 ```
 
+Clean OpenAI DeepResearch markers only when detected, then convert:
+
+```bash
+uv run md_to_word.py input.md --deepresearch-cleaner auto --cite-mode footnote --cleaner-report
+```
+
 What does `--format` (pre-formatting) do?
 
 - It restores document structure from compressed or single-line markdown.
@@ -222,6 +229,10 @@ Options:
 - `-l, --list`: list markdown files in parent folder
 - `-i, --interactive`: interactive selection mode (with `--list`)
 - `-f, --format`: run formatter before conversion
+- `--deepresearch-cleaner {off,auto,on}`: apply DeepResearch marker cleaner (`off` by default)
+- `--cite-mode {footnote,inline,strip}`: citation marker transform mode
+- `--drop-unknown-markers`: drop unknown DeepResearch marker blocks (default keeps comments)
+- `--cleaner-report`: print cleaner execution summary
 - `--no-cover`: skip cover page
 - `--no-toc`: skip table of contents
 - `--no-disclaimer` / `--no-disc`: skip disclaimer page
@@ -234,6 +245,7 @@ uv run md_to_word.py --list
 uv run md_to_word.py --list -i
 uv run md_to_word.py "네페스_기업분석2026.md"
 uv run md_to_word.py report.md --format --no-toc
+uv run md_to_word.py report.md --deepresearch-cleaner auto --cite-mode strip --cleaner-report
 ```
 
 ## Formatter CLI (`md_formatter.py`)
@@ -254,6 +266,13 @@ Check if formatting is needed:
 
 ```bash
 uv run md_formatter.py --check input.md
+```
+
+Format with optional DeepResearch cleaner controls:
+
+```bash
+uv run md_formatter.py input.md output_formatted.md --deepresearch-cleaner auto --cite-mode inline --cleaner-report
+uv run md_formatter.py input.md --deepresearch-cleaner on --cite-mode strip --drop-unknown-markers
 ```
 
 Or use the script entrypoint:
