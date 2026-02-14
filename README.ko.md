@@ -14,6 +14,7 @@ Markdown ↔ Word 양방향 변환기로, IB(투자은행) 스타일의 전문 W
 - **Markdown → Word** 변환 (IB 스타일 문서 생성)
 - **Word → Markdown** 변환 (LLM 활용용, 신규!)
 - 단일 라인(클립보드) markdown 자동 구조화 포맷팅
+- OpenAI DeepResearch 마커 정리기(선택 적용: `off`/`auto`/`on`)
 - YAML frontmatter 파싱 (`title`, `date`, `recipient`, `analyst` 등)
 - 금융 표 렌더링(천 단위 콤마, 조건부 스타일)
 - 콜아웃 박스 렌더링 (`[요약]`, `[시사점]`, `[주의]`, `[참고]` 등)
@@ -179,6 +180,12 @@ uv run md_to_word.py input.md output.docx
 uv run md_to_word.py input.md --format
 ```
 
+OpenAI DeepResearch 마커를 감지될 때만 정리 후 변환:
+
+```bash
+uv run md_to_word.py input.md --deepresearch-cleaner auto --cite-mode footnote --cleaner-report
+```
+
 `--format`(사전 포맷팅)은 무엇을 하나요?
 
 - 한 줄로 뭉친 markdown을 문서 구조로 자동 복원합니다.
@@ -222,6 +229,10 @@ uv run md_to_word.py [input_file] [output_file] [options]
 - `-l, --list`: 상위 폴더의 markdown 파일 목록 표시
 - `-i, --interactive`: 목록에서 대화형 선택 (`--list`와 함께 사용)
 - `-f, --format`: 변환 전에 formatter 실행
+- `--deepresearch-cleaner {off,auto,on}`: DeepResearch 마커 정리기 적용 (`off` 기본)
+- `--cite-mode {footnote,inline,strip}`: 인용 마커 변환 방식
+- `--drop-unknown-markers`: 알 수 없는 DeepResearch 마커 블록 제거 (기본은 주석 보존)
+- `--cleaner-report`: 정리기 실행 요약 출력
 - `--no-cover`: 표지 생략
 - `--no-toc`: 목차 생략
 - `--no-disclaimer` / `--no-disc`: 디스클레이머 생략
@@ -234,6 +245,7 @@ uv run md_to_word.py --list
 uv run md_to_word.py --list -i
 uv run md_to_word.py "네페스_기업분석2026.md"
 uv run md_to_word.py report.md --format --no-toc
+uv run md_to_word.py report.md --deepresearch-cleaner auto --cite-mode strip --cleaner-report
 ```
 
 ## 포맷터 CLI (`md_formatter.py`)
@@ -254,6 +266,13 @@ uv run md_formatter.py input.md output_formatted.md
 
 ```bash
 uv run md_formatter.py --check input.md
+```
+
+DeepResearch 정리 옵션과 함께 포맷팅:
+
+```bash
+uv run md_formatter.py input.md output_formatted.md --deepresearch-cleaner auto --cite-mode inline --cleaner-report
+uv run md_formatter.py input.md --deepresearch-cleaner on --cite-mode strip --drop-unknown-markers
 ```
 
 스크립트 엔트리포인트 사용:

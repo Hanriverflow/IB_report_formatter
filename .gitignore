@@ -33,3 +33,6 @@ Thumbs.db
 # Local-only docs/data (can contain internal notes)
 docs/.bkit-memory.json
 docs/.pdca-status.json
+
+# Local DeepResearch raw samples (do not publish)
+GPT_deep/
