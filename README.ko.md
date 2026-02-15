@@ -357,3 +357,14 @@ uv run mypy ib_renderer.py md_formatter.py md_parser.py md_to_word.py
 - 출력 파일이 Word에서 열려 잠겨 있으면 타임스탬프가 붙은 파일명으로 자동 저장됩니다.
 - LaTeX 렌더링은 `matplotlib`가 필요합니다 (`uv sync --extra full`). 없으면 fallback 처리됩니다.
 - 한글 문서 안정성을 위해 `utf-8`, `utf-8-sig`, `euc-kr`, `cp949` 인코딩 fallback을 사용합니다.
+
+## Markdown 문단 정규화 정책
+
+`md_parser.py`의 최근 동작 변경 사항:
+
+- 문단 내부의 soft wrap 줄바꿈은 공백으로 병합되어 하나의 문단으로 처리됩니다.
+- 명시적 hard break(`<br>` 또는 줄 끝 `\\`)만 줄바꿈으로 유지됩니다.
+- 줄 끝 공백 2칸 기반 hard break는 기본 비활성화이며, `MarkdownParser(preserve_trailing_double_space_break=True)`로만 활성화됩니다. (복붙/OCR 원문에서 우발적 `↵` 생성을 줄이기 위함)
+- 문단 텍스트는 과도한 연속 공백/탭을 정규화하고, 괄호 내부 불필요 공백을 정리합니다. (예: `( PFV ) -> (PFV)`)
+
+검증용 테스트는 `tests/test_md_parser.py`에 추가되어 soft wrap 병합, hard break 정책, legacy 옵션 동작, 공백 정규화를 확인합니다.

@@ -56,6 +56,17 @@ IB_report_formatter/
 | `word_parser.py` | Parse Word doc properties, paragraphs, tables, images   |
 | `md_renderer.py` | Render DocumentModel to clean Markdown text             |
 
+### Markdown Paragraph Normalization (MD -> Word)
+
+- Soft-wrapped lines inside the same markdown paragraph are merged with spaces.
+- Hard breaks are preserved only for explicit markers (`<br>` or trailing `\`).
+- Trailing-double-space hard break is **opt-in** only: `MarkdownParser(preserve_trailing_double_space_break=True)`.
+- Paragraph text normalization includes:
+  - collapse repeated spaces/tabs to a single space
+  - trim unnecessary spaces inside parentheses (e.g., `( PFV )` -> `(PFV)`)
+
+Regression coverage is in `tests/test_md_parser.py` (soft wrap merge, hard-break policy, opt-in legacy mode, spacing normalization).
+
 ## Dependencies
 
 - **pyyaml** - YAML frontmatter parsing

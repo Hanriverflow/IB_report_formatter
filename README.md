@@ -357,3 +357,14 @@ uv run mypy ib_renderer.py md_formatter.py md_parser.py md_to_word.py
 - If output file is locked (open in Word), the converter auto-saves with a timestamp suffix.
 - LaTeX rendering requires `matplotlib` (`uv sync --extra full`). Without it, equations fall back gracefully.
 - Encoding fallback includes `utf-8`, `utf-8-sig`, `euc-kr`, and `cp949` for Korean text robustness.
+
+## Markdown Paragraph Normalization Policy
+
+Recent parser behavior updates in `md_parser.py`:
+
+- Soft-wrapped paragraph lines are merged into a single paragraph with spaces.
+- Hard line breaks are preserved for explicit markers (`<br>` or trailing `\`).
+- Trailing double-space hard break behavior is now opt-in via `MarkdownParser(preserve_trailing_double_space_break=True)`; default is `False` to avoid accidental `↵` artifacts from copied/OCR text.
+- Paragraph text now normalizes excessive inline spacing (repeated spaces/tabs) and trims unnecessary spaces inside parentheses (for example `( PFV ) -> (PFV)`).
+
+Validation tests were added in `tests/test_md_parser.py` for soft-wrap merge, hard-break policy, opt-in legacy behavior, and spacing normalization.

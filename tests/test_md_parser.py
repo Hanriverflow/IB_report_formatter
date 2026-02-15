@@ -16,6 +16,7 @@ from md_parser import (
     MarkdownParser,
     DocumentMetadata,
     Blockquote,
+    Paragraph,
     ElementType,
     LaTeXEquation,
     TableType,
@@ -297,6 +298,73 @@ class TestMarkdownParser:
         assert len(latex_blocks) == 1
         assert isinstance(latex_blocks[0].content, LaTeXEquation)
         assert "E = mc^2" in latex_blocks[0].content.expression
+
+    def test_soft_wrapped_lines_merge_into_single_paragraph(self):
+        """Soft-wrapped markdown lines should remain one paragraph."""
+        content = """첫 문장입니다.
+둘째 문장입니다.
+셋째 문장입니다.
+"""
+        parser = MarkdownParser()
+        model = parser.parse(content)
+
+        paragraphs = [e for e in model.elements if e.element_type == ElementType.PARAGRAPH]
+        assert len(paragraphs) == 1
+        assert isinstance(paragraphs[0].content, Paragraph)
+        assert paragraphs[0].content.text == "첫 문장입니다. 둘째 문장입니다. 셋째 문장입니다."
+
+    def test_two_trailing_spaces_do_not_force_hard_break_by_default(self):
+        """Trailing spaces should not create hard break in default parser mode."""
+        content = """첫 줄입니다.  
+둘째 줄입니다.
+"""
+        parser = MarkdownParser()
+        model = parser.parse(content)
+
+        paragraphs = [e for e in model.elements if e.element_type == ElementType.PARAGRAPH]
+        assert len(paragraphs) == 1
+        assert isinstance(paragraphs[0].content, Paragraph)
+        assert "\n" not in paragraphs[0].content.text
+        assert paragraphs[0].content.text == "첫 줄입니다. 둘째 줄입니다."
+
+    def test_two_trailing_spaces_preserved_when_opted_in(self):
+        """Legacy markdown hard break behavior can be enabled explicitly."""
+        content = """첫 줄입니다.  
+둘째 줄입니다.
+"""
+        parser = MarkdownParser(preserve_trailing_double_space_break=True)
+        model = parser.parse(content)
+
+        paragraphs = [e for e in model.elements if e.element_type == ElementType.PARAGRAPH]
+        assert len(paragraphs) == 1
+        assert isinstance(paragraphs[0].content, Paragraph)
+        assert "\n" in paragraphs[0].content.text
+        assert paragraphs[0].content.text == "첫 줄입니다.\n둘째 줄입니다."
+
+    def test_html_br_line_break_preserved_inside_paragraph(self):
+        """Trailing <br> should become a hard line break inside paragraph."""
+        content = """첫 줄입니다.<br>
+둘째 줄입니다.
+"""
+        parser = MarkdownParser()
+        model = parser.parse(content)
+
+        paragraphs = [e for e in model.elements if e.element_type == ElementType.PARAGRAPH]
+        assert len(paragraphs) == 1
+        assert isinstance(paragraphs[0].content, Paragraph)
+        assert paragraphs[0].content.text == "첫 줄입니다.\n둘째 줄입니다."
+
+    def test_excessive_internal_spaces_are_normalized_in_paragraphs(self):
+        """Paragraph parser should normalize repeated spaces and parenthesis spacing."""
+        content = """동서울터미널   ( 신세계동서울  PFV )
+"""
+        parser = MarkdownParser()
+        model = parser.parse(content)
+
+        paragraphs = [e for e in model.elements if e.element_type == ElementType.PARAGRAPH]
+        assert len(paragraphs) == 1
+        assert isinstance(paragraphs[0].content, Paragraph)
+        assert paragraphs[0].content.text == "동서울터미널 (신세계동서울 PFV)"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

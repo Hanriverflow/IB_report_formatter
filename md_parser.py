@@ -1063,6 +1063,22 @@ class MarkdownParser:
         ]
     )
 
+    _HTML_BREAK_RE = re.compile(r"<br\s*/?>\s*$", re.IGNORECASE)
+    _MULTISPACE_RE = re.compile(r"[ \t]{2,}")
+    _OPEN_PAREN_SPACE_RE = re.compile(r"\(\s+")
+    _CLOSE_PAREN_SPACE_RE = re.compile(r"\s+\)")
+
+    def __init__(self, preserve_trailing_double_space_break: bool = False):
+        """
+        Initialize parser behavior flags.
+
+        Args:
+            preserve_trailing_double_space_break:
+                When True, treat markdown trailing 2+ spaces as hard line breaks.
+                Default False to avoid accidental Shift+Enter artifacts from noisy input.
+        """
+        self.preserve_trailing_double_space_break = preserve_trailing_double_space_break
+
     def parse(self, content: str) -> DocumentModel:
         """
         Parse markdown content into a DocumentModel.
@@ -1099,7 +1115,8 @@ class MarkdownParser:
         in_references = False
 
         while i < len(lines):
-            line = lines[i].strip()
+            raw_line = lines[i]
+            line = raw_line.strip()
 
             # ── References section gating ───────────────────────────────────
             if self._is_reference_header(line):
@@ -1289,11 +1306,90 @@ class MarkdownParser:
                 continue
 
             # ── Paragraph (with inline LaTeX detection) ─────────────────────
-            para_element = self._parse_paragraph(line)
+            paragraph_text, next_idx = self._collect_paragraph(lines, i)
+            para_element = self._parse_paragraph(paragraph_text)
             elements.append(para_element)
-            i += 1
+            i = next_idx
 
         return elements
+
+    def _collect_paragraph(self, lines: List[str], start_idx: int) -> Tuple[str, int]:
+        """
+        Collect contiguous paragraph lines and normalize Markdown line breaks.
+
+        CommonMark semantics:
+            - soft line break (single newline in paragraph) -> space
+            - hard line break (2+ trailing spaces, trailing backslash, <br>) -> newline
+        """
+        parts: List[str] = []
+        i = start_idx
+        use_hard_break = False
+
+        while i < len(lines):
+            raw_line = lines[i]
+            line = raw_line.strip()
+
+            if not line:
+                break
+
+            if i > start_idx and self._starts_new_block(line):
+                break
+
+            normalized, hard_break = self._normalize_paragraph_line(raw_line)
+            if normalized:
+                if parts:
+                    parts.append("\n" if use_hard_break else " ")
+                parts.append(normalized)
+
+            use_hard_break = hard_break
+            i += 1
+
+        paragraph_text = "".join(parts).strip()
+        return paragraph_text, i
+
+    def _starts_new_block(self, line: str) -> bool:
+        """Return True when line should start a new non-paragraph block."""
+        return bool(
+            self.SEPARATOR_PATTERN.match(line)
+            or LaTeXParser.is_block_single_line(line) is not None
+            or LaTeXParser.is_block_start(line)
+            or Base64ImageParser.is_base64_image(line)
+            or self.TABLE_START_PATTERN.match(line)
+            or self._try_parse_heading(line)
+            or self.BLOCKQUOTE_PATTERN.match(line)
+            or self.BULLET_PATTERN.match(line)
+            or self.NUMBERED_LIST_PATTERN.match(line)
+            or self.IMAGE_PATTERN.match(line)
+            or self._is_reference_header(line)
+        )
+
+    def _normalize_paragraph_line(self, raw_line: str) -> Tuple[str, bool]:
+        """Normalize one paragraph source line and detect hard line breaks."""
+        hard_break = False
+        working = raw_line
+
+        if self._HTML_BREAK_RE.search(working):
+            hard_break = True
+            working = self._HTML_BREAK_RE.sub("", working).rstrip()
+        elif re.search(r"(?<!\\)\\\s*$", working):
+            hard_break = True
+            working = re.sub(r"\\\s*$", "", working).rstrip()
+        elif self.preserve_trailing_double_space_break and re.search(r"[ \t]{2,}$", working):
+            hard_break = True
+            working = working.rstrip()
+
+        return self._normalize_inline_spacing(working.strip()), hard_break
+
+    @classmethod
+    def _normalize_inline_spacing(cls, text: str) -> str:
+        """Normalize excessive inline spacing for paragraph text."""
+        if not text:
+            return text
+
+        normalized = cls._MULTISPACE_RE.sub(" ", text)
+        normalized = cls._OPEN_PAREN_SPACE_RE.sub("(", normalized)
+        normalized = cls._CLOSE_PAREN_SPACE_RE.sub(")", normalized)
+        return normalized.strip()
 
     # ── Paragraph parsing (ENHANCED v3) ─────────────────────────────────────
 
