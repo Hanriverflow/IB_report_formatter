@@ -4,18 +4,16 @@ Tests for md_formatter module.
 Tests the markdown pre-processor for single-line text conversion.
 """
 
-import pytest
-from deep_md_cleaner import CleanerConfig, MARKER_END, MARKER_SEPARATOR, MARKER_START
+from deep_md_cleaner import MARKER_END, MARKER_SEPARATOR, MARKER_START, CleanerConfig
 from md_formatter import (
-    LaTeXProtector,
     BoldProtector,
-    MetadataExtractor,
     ColonLabelDetector,
+    LaTeXProtector,
+    MetadataExtractor,
     StructureDetector,
-    format_markdown,
     check_needs_formatting,
+    format_markdown,
 )
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # LATEX PROTECTOR TESTS

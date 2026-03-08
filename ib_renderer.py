@@ -13,38 +13,38 @@ Changelog (v2):
     - Blockquote multi-line content preserved
 """
 
+import logging
+import platform
 import re
 import time
-import logging
 from dataclasses import dataclass
-from typing import Optional, List, Tuple, cast, TYPE_CHECKING
+from typing import Dict, List, Optional, Tuple, cast
 
 from docx import Document
 from docx.document import Document as DocxDocument
-from docx.shared import Inches, Pt, RGBColor, Twips
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml.ns import qn
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Inches, Pt, RGBColor
 
 from md_parser import (
+    Blockquote,
     DocumentModel,
     Element,
     ElementType,
-    TableType,
     Heading,
+    Image,
+    LaTeXEquation,
+    ListItem,
     Paragraph,
     Table,
-    TableRow,
     TableCell,
-    ListItem,
-    Blockquote,
-    Image,
+    TableRow,
+    TableType,
     TextRun,
-    LaTeXEquation,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -133,13 +133,14 @@ class FontStyler:
     """Handles font styling including East Asian fonts"""
 
     @staticmethod
-    def set_east_asian_font(element, font_name: str = STYLE.KOREAN_FONT):
+    def set_east_asian_font(element, font_name: Optional[str] = None):
         """Set East Asian font (for Korean text) on a style or run element"""
+        resolved_font = font_name or FontPolicy.resolve_korean_font()
         elm = element._element
         rPr = elm.get_or_add_rPr()
         if rPr.rFonts is None:
             rPr.get_or_add_rFonts()
-        rPr.rFonts.set(qn("w:eastAsia"), font_name)
+        rPr.rFonts.set(qn("w:eastAsia"), resolved_font)
 
     @staticmethod
     def apply_run_style(
@@ -164,7 +165,38 @@ class FontStyler:
             run.font.color.rgb = color
         if superscript is not None:
             run.font.superscript = superscript
-        FontStyler.set_east_asian_font(run)
+        FontStyler.set_east_asian_font(run, font_name=font_name)
+
+
+class FontPolicy:
+    """Resolve platform-aware East Asian font defaults."""
+
+    _resolved_fonts: Dict[str, str] = {}
+
+    @classmethod
+    def resolve_korean_font(cls, system_name: Optional[str] = None) -> str:
+        """Return the preferred Korean font for the current platform."""
+        system = system_name or platform.system() or "Unknown"
+        cached = cls._resolved_fonts.get(system)
+        if cached:
+            return cached
+
+        if system == "Darwin":
+            candidates = ("Apple SD Gothic Neo", STYLE.KOREAN_FONT, "NanumGothic")
+        elif system == "Windows":
+            candidates = (STYLE.KOREAN_FONT, "NanumGothic", "Apple SD Gothic Neo")
+        else:
+            candidates = (STYLE.KOREAN_FONT, "NanumGothic", "Apple SD Gothic Neo")
+
+        chosen = candidates[0]
+        logger.debug(
+            "Resolved Korean font for %s: %s (fallbacks: %s)",
+            system,
+            chosen,
+            ", ".join(candidates[1:]) or "none",
+        )
+        cls._resolved_fonts[system] = chosen
+        return chosen
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1086,10 +1118,10 @@ class TableRenderer:
         """Add thousand separators to a numeric string."""
         if "." in num_str:
             integer_part, decimal_part = num_str.split(".", 1)
-            formatted_int = "{:,}".format(int(integer_part))
+            formatted_int = f"{int(integer_part):,}"
             return f"{formatted_int}.{decimal_part}"
         else:
-            return "{:,}".format(int(num_str))
+            return f"{int(num_str):,}"
 
     def _apply_type_styling(
         self,
@@ -1177,7 +1209,7 @@ class CalloutRenderer:
             border_hex = border_color
         else:
             border_hex = (
-                "{:02X}{:02X}{:02X}".format(border_color[0], border_color[1], border_color[2])
+                f"{border_color[0]:02X}{border_color[1]:02X}{border_color[2]:02X}"
                 if hasattr(border_color, "__getitem__")
                 else STYLE.NAVY_HEX
             )
@@ -1350,8 +1382,8 @@ class ImageRenderer:
         Attempts to insert actual image; falls back to placeholder on failure.
         """
         import base64
-        import tempfile
         import os
+        import tempfile
         from pathlib import Path
 
         inserted = False
@@ -1793,11 +1825,12 @@ class LaTeXRenderer:
         """Check if matplotlib is available for LaTeX rendering."""
         if cls._matplotlib_available is None:
             try:
-                import matplotlib
+                from importlib.util import find_spec
 
-                cls._matplotlib_available = True
+                cls._matplotlib_available = find_spec("matplotlib") is not None
             except ImportError:
                 cls._matplotlib_available = False
+            if not cls._matplotlib_available:
                 logger.info(
                     "matplotlib not installed — LaTeX will render as text. "
                     "Install with: pip install matplotlib"
@@ -1829,8 +1862,9 @@ class LaTeXRenderer:
             import matplotlib
 
             matplotlib.use("Agg")  # Non-interactive backend
-            import matplotlib.pyplot as plt
             import tempfile
+
+            import matplotlib.pyplot as plt
 
             # Create figure with transparent background
             fig, ax = plt.subplots(figsize=(0.01, 0.01))

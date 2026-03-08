@@ -13,8 +13,8 @@ import logging
 import re
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Optional, Tuple
-
+from typing import Match, Optional, Tuple
+from typing import OrderedDict as OrderedDictType
 
 logger = logging.getLogger(__name__)
 
@@ -66,20 +66,11 @@ class CleanerReport:
     def summary(self) -> str:
         """Return concise summary for logging."""
         return (
-            "mode={mode} detected={detected} applied={applied} modified={modified} "
-            "cite={cite} entity={entity} image_group={image_group} "
-            "unknown={unknown} footnotes={footnotes} pua_removed={pua_removed}"
-        ).format(
-            mode=self.activation_mode,
-            detected=self.markers_detected,
-            applied=self.applied,
-            modified=self.was_modified,
-            cite=self.cite_markers,
-            entity=self.entity_markers,
-            image_group=self.image_group_markers,
-            unknown=self.unknown_markers,
-            footnotes=self.footnotes_emitted,
-            pua_removed=self.leftover_pua_removed,
+            f"mode={self.activation_mode} detected={self.markers_detected} "
+            f"applied={self.applied} modified={self.was_modified} "
+            f"cite={self.cite_markers} entity={self.entity_markers} "
+            f"image_group={self.image_group_markers} unknown={self.unknown_markers} "
+            f"footnotes={self.footnotes_emitted} pua_removed={self.leftover_pua_removed}"
         )
 
 
@@ -132,9 +123,9 @@ class DeepResearchCleaner:
 
         report.applied = True
 
-        footnotes = OrderedDict()
+        footnotes: OrderedDictType[str, int] = OrderedDict()
 
-        def replace_block(match: re.Match) -> str:
+        def replace_block(match: Match[str]) -> str:
             tag = match.group(1).strip().lower()
             payload = match.group(2)
 
@@ -168,7 +159,7 @@ class DeepResearchCleaner:
         report.was_modified = cleaned != text
         return cleaned, report
 
-    def _handle_cite(self, payload: str, footnotes: "OrderedDict[str, int]") -> str:
+    def _handle_cite(self, payload: str, footnotes: "OrderedDictType[str, int]") -> str:
         ids = [token.strip() for token in payload.split(MARKER_SEPARATOR) if token.strip()]
         if not ids and payload.strip():
             ids = [payload.strip()]
@@ -179,13 +170,13 @@ class DeepResearchCleaner:
         if self.config.cite_mode == "inline":
             if not ids:
                 return ""
-            return " (sources: {sources})".format(sources=", ".join(ids))
+            return f" (sources: {', '.join(ids)})"
 
         refs = []
         for sid in ids:
             if sid not in footnotes:
                 footnotes[sid] = len(footnotes) + 1
-            refs.append("[^{num}]".format(num=footnotes[sid]))
+            refs.append(f"[^{footnotes[sid]}]")
         return "".join(refs)
 
     @staticmethod
@@ -205,7 +196,7 @@ class DeepResearchCleaner:
             queries = obj.get("query") or obj.get("queries") or []
             if isinstance(queries, list) and queries:
                 joined = ", ".join(str(item) for item in queries)
-                return "\n<!-- image_group: {joined} -->\n".format(joined=joined)
+                return f"\n<!-- image_group: {joined} -->\n"
         except Exception:
             pass
         return "\n<!-- image_group removed -->\n"
@@ -216,13 +207,13 @@ class DeepResearchCleaner:
         compact = " ".join(payload.split())
         if len(compact) > 240:
             compact = compact[:240] + "..."
-        return "<!-- {tag}: {payload} -->".format(tag=tag, payload=compact)
+        return f"<!-- {tag}: {compact} -->"
 
     @staticmethod
-    def _append_citations(text: str, footnotes: "OrderedDict[str, int]") -> str:
+    def _append_citations(text: str, footnotes: "OrderedDictType[str, int]") -> str:
         lines = ["## Citations"]
         for source_id, num in footnotes.items():
-            lines.append("[^{num}]: {source}".format(num=num, source=source_id))
+            lines.append(f"[^{num}]: {source_id}")
 
         block = "\n".join(lines)
         stripped = text.rstrip()

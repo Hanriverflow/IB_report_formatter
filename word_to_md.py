@@ -9,16 +9,33 @@ Usage:
     uv run word_to_md.py input.docx --extract-images  # Save images to folder
 """
 
-import sys
-import time
 import argparse
 import logging
+import sys
+import time
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
-# Local modules
+from cli_utils import (
+    generate_output_path as build_output_path,
+)
+from cli_utils import (
+    interactive_select as prompt_for_selection,
+)
+from cli_utils import (
+    list_files,
+)
+from cli_utils import (
+    resolve_input_path as resolve_project_input_path,
+)
+from cli_utils import (
+    safe_save as safe_save_with_fallback,
+)
+from cli_utils import (
+    setup_logging as configure_logging,
+)
+from md_renderer import render_to_markdown
 from word_parser import parse_word_file
-from md_renderer import render_to_markdown, RenderConfig, MarkdownRenderer
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONSTANTS
@@ -35,137 +52,27 @@ logger = logging.getLogger("word_to_md")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# LOGGING SETUP
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-class LogFormatter(logging.Formatter):
-    """Custom log formatter with level-based prefixes"""
-
-    PREFIXES = {
-        logging.DEBUG: "[DEBUG]",
-        logging.INFO: "[INFO]",
-        logging.WARNING: "[WARNING]",
-        logging.ERROR: "[ERROR]",
-        logging.CRITICAL: "[CRITICAL]",
-    }
-
-    def format(self, record: logging.LogRecord) -> str:
-        prefix = self.PREFIXES.get(record.levelno, "[LOG]")
-        return f"{prefix} {record.getMessage()}"
-
-
-def setup_logging(verbose: bool = False):
-    """Configure logging for the converter"""
-    level = logging.DEBUG if verbose else logging.INFO
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(LogFormatter())
-    logger.setLevel(level)
-    logger.handlers.clear()
-    logger.addHandler(handler)
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PATH RESOLUTION
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
 def resolve_input_path(input_file: str) -> Path:
-    """
-    Resolve input file path with multi-location search.
-
-    Search order:
-        1. Absolute path → use as-is
-        2. Parent directory (PARENT_DIR)
-        3. Current working directory
-        4. Script directory
-
-    Args:
-        input_file: User-provided file path or name
-
-    Returns:
-        Resolved Path (may not exist — caller should validate)
-    """
-    input_path = Path(input_file)
-
-    # 1. Absolute path
-    if input_path.is_absolute():
-        return input_path
-
-    # 2. Check parent directory
-    parent_path = PARENT_DIR / input_path.name
-    if parent_path.exists():
-        return parent_path
-
-    # 3. Try current working directory
-    cwd_path = Path.cwd() / input_file
-    if cwd_path.exists():
-        return cwd_path
-
-    # 4. Try script directory
-    script_dir = Path(__file__).resolve().parent
-    script_path = script_dir / input_file
-    if script_path.exists():
-        return script_path
-
-    # Fallback to parent path
-    return parent_path
+    """Resolve the user-provided input file path."""
+    return resolve_project_input_path(input_file, parent_dir=PARENT_DIR, script_path=Path(__file__))
 
 
 def generate_output_path(input_path: Path, output_path: Optional[str] = None) -> Path:
-    """
-    Generate output file path.
-
-    Args:
-        input_path: Resolved input Word file path
-        output_path: User-specified output path (optional)
-
-    Returns:
-        Output Path for the .md file
-    """
-    if output_path:
-        out = Path(output_path)
-        # Ensure .md extension
-        if out.suffix.lower() != ".md":
-            out = out.with_suffix(".md")
-        return out
-
-    # Python 3.8 compatible: use with_suffix instead of with_stem
-    return input_path.with_suffix(".md")
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# SAFE SAVE
-# ═══════════════════════════════════════════════════════════════════════════════
+    """Generate the markdown output path."""
+    return build_output_path(input_path, output_path, OUTPUT_SUFFIX)
 
 
 def safe_save(content: str, output_path: Path) -> Path:
-    """
-    Save the markdown content, handling permission errors.
+    """Save markdown content, falling back to a timestamped path if needed."""
+    def write_content(path: Path) -> None:
+        path.write_text(content, encoding="utf-8")
 
-    Args:
-        content: Markdown string to save
-        output_path: Target save path
-
-    Returns:
-        Actual Path where file was saved
-    """
-    # Ensure parent directory exists
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        output_path.write_text(content, encoding="utf-8")
-        logger.info("Saved: %s", output_path)
-        return output_path
-    except PermissionError:
-        logger.warning("%s is locked. Saving with timestamp suffix.", output_path.name)
-        timestamp = int(time.time())
-        # Python 3.8 compatible: use with_name instead of with_stem
-        new_name = f"{output_path.stem}_{timestamp}{output_path.suffix}"
-        new_path = output_path.with_name(new_name)
-        new_path.write_text(content, encoding="utf-8")
-        logger.info("Saved: %s", new_path)
-        return new_path
+    return safe_save_with_fallback(
+        output_path=output_path,
+        save_action=write_content,
+        logger=logger,
+        lock_message="%s is locked. Saving with timestamp suffix.",
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -204,8 +111,6 @@ class WordToMarkdownConverter:
 
     def convert(self) -> str:
         """Execute the full conversion pipeline."""
-        import time
-
         start_time = time.perf_counter()
 
         # Stage 1: Parse Word document
@@ -227,13 +132,12 @@ class WordToMarkdownConverter:
         # Stage 2: Render to Markdown
         logger.info("Rendering Markdown...")
 
-        config = RenderConfig(
+        markdown = render_to_markdown(
+            model,
             include_frontmatter=self.include_frontmatter,
             strip_formatting=self.strip_formatting,
             image_path_prefix=image_dir if image_dir else "",
         )
-        renderer = MarkdownRenderer(config)
-        markdown = renderer.render(model)
 
         # Stage 3: Save output
         output_path = generate_output_path(self.docx_file_path, self.output_path)
@@ -284,61 +188,13 @@ def run_conversion(input_path: Path, args) -> int:
 
 
 def list_docx_files() -> List[Path]:
-    """
-    List all Word documents in parent directory.
-
-    Returns:
-        Sorted list of .docx file Paths
-    """
-    docx_files = sorted(PARENT_DIR.glob("*.docx"))
-
-    if not docx_files:
-        print("No .docx files found in parent folder.")
-        print(f"  Searched: {PARENT_DIR}")
-        return []
-
-    print(f"\n{'=' * 65}")
-    print(f"  Available DOCX files in: {PARENT_DIR}")
-    print(f"{'=' * 65}")
-
-    for i, f in enumerate(docx_files, 1):
-        size_kb = f.stat().st_size / 1024
-        print(f"  [{i:2d}]  {f.name:<40s}  ({size_kb:>7.1f} KB)")
-
-    print(f"{'=' * 65}")
-    print(f"  Total: {len(docx_files)} file(s)")
-    print(f"{'=' * 65}")
-    print()
-
-    return docx_files
+    """List all Word documents in the parent directory."""
+    return list_files(PARENT_DIR, "*.docx", ".docx", "DOCX")
 
 
 def interactive_select(docx_files: List[Path]) -> Optional[Path]:
     """Prompt user to select a file by number."""
-    if not docx_files:
-        return None
-
-    print("Enter file number to convert (or 'q' to quit): ", end="")
-
-    try:
-        user_input = input().strip()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return None
-
-    if user_input.lower() in ("q", "quit", "exit", ""):
-        return None
-
-    try:
-        idx = int(user_input)
-        if 1 <= idx <= len(docx_files):
-            return docx_files[idx - 1]
-        else:
-            print(f"Invalid number. Choose between 1 and {len(docx_files)}.")
-            return None
-    except ValueError:
-        print(f"Invalid input: '{user_input}'. Enter a number.")
-        return None
+    return prompt_for_selection(docx_files, "Enter file number to convert (or 'q' to quit): ")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -429,7 +285,7 @@ def main():
     args = parser.parse_args()
 
     # Setup logging
-    setup_logging(verbose=args.verbose)
+    configure_logging(verbose=args.verbose)
 
     # List mode
     if args.list:

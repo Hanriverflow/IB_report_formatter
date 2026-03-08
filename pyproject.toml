@@ -39,7 +39,7 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "ruff>=0.1.0",
-    "mypy>=1.0",
+    "mypy>=1.0,<1.18",
     "types-PyYAML>=6.0",
 ]
 
@@ -61,6 +61,8 @@ packages = ["."]
 [tool.ruff]
 target-version = "py38"
 line-length = 100
+
+[tool.ruff.lint]
 select = [
     "E",    # pycodestyle errors
     "W",    # pycodestyle warnings
@@ -75,11 +77,21 @@ ignore = [
     "B008",   # do not perform function calls in argument defaults
 ]
 
-[tool.ruff.isort]
-known-first-party = ["md_parser", "md_formatter", "ib_renderer"]
+[tool.ruff.lint.isort]
+known-first-party = [
+    "cli_utils",
+    "deep_md_cleaner",
+    "ib_renderer",
+    "md_formatter",
+    "md_parser",
+    "md_renderer",
+    "md_to_word",
+    "word_parser",
+    "word_to_md",
+]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.8"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true

@@ -25,15 +25,20 @@ Changelog (v2):
 """
 
 import argparse
+import logging
 import re
 import sys
 from pathlib import Path
-from typing import List, Tuple, Optional, Dict, Match
+from typing import Dict, List, Match, Optional, Tuple
 
+from cli_utils import setup_logging as configure_logging
 from deep_md_cleaner import CleanerConfig, clean_deepresearch_markdown
 
 # Parent folder path
 PARENT_DIR = Path(__file__).resolve().parent.parent
+
+# Logger
+logger = logging.getLogger("md_formatter")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -458,8 +463,8 @@ class ColonLabelDetector:
             bold_spans = [(m.start(), m.end()) for m in cls._BOLD_SPAN_RE.finditer(result)]
             pattern = rf"({re.escape(label)}):\s*"
 
-            def replacer(match: Match[str]) -> str:
-                if cls._is_inside_spans(match.start(), bold_spans):
+            def replacer(match: Match[str], spans: List[Tuple[int, int]] = bold_spans) -> str:
+                if cls._is_inside_spans(match.start(), spans):
                     return match.group(0)
                 return f"{match.group(1)}: "
 
@@ -543,12 +548,12 @@ def format_markdown(
     if cleaner_config is not None:
         result, report = clean_deepresearch_markdown(result, cleaner_config)
         if cleaner_report and (report.applied or report.markers_detected):
-            print("[INFO] DeepResearch cleaner: {summary}".format(summary=report.summary()))
+            logger.info("DeepResearch cleaner: %s", report.summary())
 
     # Quick check: if already has many lines, minimal formatting needed
     line_count = result.count("\n")
     if line_count > 20:
-        print(f"[INFO] Text already has {line_count} lines - applying light formatting only")
+        logger.info("Text already has %d lines - applying light formatting only", line_count)
         return _light_format(result)
 
     # ── Step 1: Protect LaTeX ───────────────────────────────────────────────
@@ -697,7 +702,7 @@ def format_file_with_options(
 
     content = _read_with_encoding(input_file)
     line_count = content.count("\n")
-    print(f"[INFO] Input: {input_file.name} ({line_count} lines, {len(content)} chars)")
+    logger.info("Input: %s (%d lines, %d chars)", input_file.name, line_count, len(content))
 
     cleaner_config = _build_cleaner_config(
         cleaner_mode=cleaner_mode,
@@ -719,9 +724,9 @@ def format_file_with_options(
     output_file.write_text(formatted, encoding="utf-8")
 
     new_line_count = formatted.count("\n")
-    print(f"[OK] Formatted: {output_file}")
-    print(f"     Lines: {line_count} -> {new_line_count}")
-    print(f"     Size: {len(content)} -> {len(formatted)} chars")
+    logger.info("Formatted: %s", output_file)
+    logger.info("Lines: %d -> %d", line_count, new_line_count)
+    logger.info("Size: %d -> %d chars", len(content), len(formatted))
 
     return str(output_file)
 
@@ -800,6 +805,7 @@ def main():
     """Main entry point"""
     parser = build_parser()
     args = parser.parse_args()
+    configure_logging()
 
     if args.input_file is None:
         parser.print_help()
@@ -824,7 +830,7 @@ def main():
         )
         print(f"\nFormatted file: {result}")
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error("%s", e)
         sys.exit(1)
 
 

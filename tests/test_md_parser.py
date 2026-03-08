@@ -8,21 +8,18 @@ Tests core parsing functionality including:
 - Text run formatting
 """
 
-import pytest
 from md_parser import (
-    FrontmatterParser,
-    TextParser,
-    TableParser,
-    MarkdownParser,
-    DocumentMetadata,
     Blockquote,
-    Paragraph,
+    DocumentMetadata,
     ElementType,
+    FrontmatterParser,
     LaTeXEquation,
+    MarkdownParser,
+    Paragraph,
+    TableParser,
     TableType,
-    TextRun,
+    TextParser,
 )
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # FRONTMATTER TESTS
@@ -315,9 +312,7 @@ class TestMarkdownParser:
 
     def test_two_trailing_spaces_do_not_force_hard_break_by_default(self):
         """Trailing spaces should not create hard break in default parser mode."""
-        content = """첫 줄입니다.  
-둘째 줄입니다.
-"""
+        content = "첫 줄입니다.  \n둘째 줄입니다.\n"
         parser = MarkdownParser()
         model = parser.parse(content)
 
@@ -329,9 +324,7 @@ class TestMarkdownParser:
 
     def test_two_trailing_spaces_preserved_when_opted_in(self):
         """Legacy markdown hard break behavior can be enabled explicitly."""
-        content = """첫 줄입니다.  
-둘째 줄입니다.
-"""
+        content = "첫 줄입니다.  \n둘째 줄입니다.\n"
         parser = MarkdownParser(preserve_trailing_double_space_break=True)
         model = parser.parse(content)
 

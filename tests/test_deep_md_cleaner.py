@@ -1,23 +1,17 @@
 """Tests for DeepResearch marker cleaner."""
 
 from deep_md_cleaner import (
-    CleanerConfig,
-    DeepResearchCleaner,
     MARKER_END,
     MARKER_SEPARATOR,
     MARKER_START,
+    CleanerConfig,
+    DeepResearchCleaner,
     clean_deepresearch_markdown,
 )
 
 
 def _marker(tag: str, payload: str) -> str:
-    return "{start}{tag}{sep}{payload}{end}".format(
-        start=MARKER_START,
-        tag=tag,
-        sep=MARKER_SEPARATOR,
-        payload=payload,
-        end=MARKER_END,
-    )
+    return f"{MARKER_START}{tag}{MARKER_SEPARATOR}{payload}{MARKER_END}"
 
 
 def test_off_mode_keeps_text_unchanged():
@@ -51,7 +45,7 @@ def test_auto_mode_cleans_when_marker_exists():
 
 
 def test_cite_mode_inline():
-    payload = "turn5search0{sep}turn1search8".format(sep=MARKER_SEPARATOR)
+    payload = f"turn5search0{MARKER_SEPARATOR}turn1search8"
     text = "Ref{cite}".format(cite=_marker("cite", payload))
     cleaned, report = clean_deepresearch_markdown(
         text,
@@ -124,8 +118,8 @@ def test_leftover_pua_removed_after_processing():
 
 def test_citation_numbers_are_deduplicated_by_source_id():
     first = _marker("cite", "turn1search0")
-    second = _marker("cite", "turn1search0{sep}turn2search1".format(sep=MARKER_SEPARATOR))
-    text = "{a} then {b}".format(a=first, b=second)
+    second = _marker("cite", f"turn1search0{MARKER_SEPARATOR}turn2search1")
+    text = f"{first} then {second}"
     cleaned, _ = clean_deepresearch_markdown(text, CleanerConfig(activation_mode="on"))
 
     assert "[^1] then [^1][^2]" in cleaned

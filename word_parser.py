@@ -7,28 +7,32 @@ Dependencies:
     Optional: Pillow (for image processing)
 """
 
-import re
 import logging
+import re
 from pathlib import Path
-from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Tuple, Union
+from typing import Dict, Iterator, List, Optional, Set, Union
 
 from docx import Document
 from docx.document import Document as DocxDocument
+from docx.oxml.ns import qn
+from docx.oxml.table import CT_Tbl
+from docx.oxml.text.paragraph import CT_P
+from docx.table import Table as DocxTable
+from docx.text.paragraph import Paragraph as DocxParagraph
 
 from md_parser import (
-    DocumentModel,
+    Blockquote,
     DocumentMetadata,
+    DocumentModel,
     Element,
     ElementType,
     Heading,
+    Image,
+    ListItem,
     Paragraph,
     Table,
-    TableRow,
     TableCell,
-    ListItem,
-    Blockquote,
-    Image,
+    TableRow,
     TextRun,
 )
 
@@ -242,8 +246,8 @@ class TableExtractor:
                 "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}shd"
             )
             if shd is not None:
-                fill = shd.get(
-                    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fill", ""
+                fill = str(
+                    shd.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fill", "")
                 )
                 return fill.upper() == cls.NAVY_HEX.upper()
         except Exception:
@@ -359,8 +363,6 @@ class ImageExtractor:
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        import base64
-
         for rel in doc.part.rels.values():
             if "image" in rel.target_ref:
                 try:
@@ -375,7 +377,7 @@ class ImageExtractor:
 
                     # Write to file
                     output_path.write_bytes(image_bytes)
-                    self._extracted_images[rel.target_ref] = output_path
+                    self._extracted_images[rel.rId] = output_path
 
                     logger.debug("Extracted image: %s", filename)
                 except Exception as e:
@@ -388,7 +390,7 @@ class ImageExtractor:
         if rel_id in self._extracted_images:
             path = self._extracted_images[rel_id]
             return Image(
-                alt_text=f"Figure {self._image_counter}",
+                alt_text=path.stem.replace("_", " ").title(),
                 path=str(path.name),
             )
         return None
@@ -448,31 +450,39 @@ class WordParser:
     def _parse_elements(self, doc: DocxDocument) -> List[Element]:
         """Parse all document elements."""
         elements: List[Element] = []
+        processed_tables: Set[int] = set()
 
-        # Track which tables we've processed (for callout detection)
-        processed_tables = set()
+        for block in self._iter_block_items(doc):
+            if isinstance(block, DocxParagraph):
+                element = self._parse_paragraph(block)
+            else:
+                table_id = id(block._tbl)
+                if table_id in processed_tables:
+                    continue
+                processed_tables.add(table_id)
+                element = self._parse_table(block)
 
-        for para in doc.paragraphs:
-            text = para.text.strip()
-
-            if not text:
-                continue
-
-            element = self._parse_paragraph(para)
-            if element:
-                elements.append(element)
-
-        # Process tables
-        for table in doc.tables:
-            element = self._parse_table(table)
             if element:
                 elements.append(element)
 
         return elements
 
+    @staticmethod
+    def _iter_block_items(doc: DocxDocument) -> Iterator[Union[DocxParagraph, DocxTable]]:
+        """Yield document paragraphs and tables in source order."""
+        for child in doc.element.body.iterchildren():
+            if isinstance(child, CT_P):
+                yield DocxParagraph(child, doc)
+            elif isinstance(child, CT_Tbl):
+                yield DocxTable(child, doc)
+
     def _parse_paragraph(self, para) -> Optional[Element]:
         """Parse a single paragraph."""
+        image_element = self._parse_image_paragraph(para)
         text = para.text.strip()
+
+        if image_element and not text:
+            return image_element
 
         if not text:
             return None
@@ -517,6 +527,38 @@ class WordParser:
             content=Paragraph(text=text, runs=RunExtractor.extract_runs(para)),
             raw_text=text,
         )
+
+    def _parse_image_paragraph(self, para) -> Optional[Element]:
+        """Convert an image-only paragraph into an Image element."""
+        rel_ids = self._find_image_relationship_ids(para)
+        if not rel_ids:
+            return None
+
+        image = None
+        if self.image_extractor:
+            for rel_id in rel_ids:
+                image = self.image_extractor.get_image_for_rel(rel_id)
+                if image:
+                    break
+
+        if image is None:
+            image = Image(alt_text="Image", path="")
+
+        return Element(
+            element_type=ElementType.IMAGE,
+            content=image,
+            raw_text=image.path or "[IMAGE]",
+        )
+
+    @staticmethod
+    def _find_image_relationship_ids(para) -> List[str]:
+        """Extract embedded image relationship IDs from a paragraph."""
+        rel_ids: List[str] = []
+        for blip in para._p.xpath(".//*[local-name()='blip']"):
+            rel_id = blip.get(qn("r:embed"))
+            if rel_id:
+                rel_ids.append(str(rel_id))
+        return rel_ids
 
     def _parse_table(self, word_table) -> Optional[Element]:
         """Parse a Word table."""

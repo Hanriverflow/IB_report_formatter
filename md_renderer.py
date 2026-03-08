@@ -7,23 +7,21 @@ Renders clean, LLM-friendly Markdown output.
 
 import logging
 from dataclasses import dataclass
-from typing import List, Dict, Optional, Union, Tuple, cast
+from typing import List, Optional
 
 from md_parser import (
-    DocumentModel,
+    Blockquote,
     DocumentMetadata,
+    DocumentModel,
     Element,
     ElementType,
     Heading,
+    Image,
+    LaTeXEquation,
+    ListItem,
     Paragraph,
     Table,
-    TableRow,
-    TableCell,
-    ListItem,
-    Blockquote,
-    Image,
     TextRun,
-    LaTeXEquation,
 )
 
 logger = logging.getLogger(__name__)
@@ -350,6 +348,7 @@ def render_to_markdown(
     model: DocumentModel,
     include_frontmatter: bool = True,
     strip_formatting: bool = False,
+    image_path_prefix: str = "",
 ) -> str:
     """
     Render a DocumentModel to Markdown string.
@@ -364,6 +363,7 @@ def render_to_markdown(
     """
     config = RenderConfig(
         include_frontmatter=include_frontmatter,
+        image_path_prefix=image_path_prefix,
         strip_formatting=strip_formatting,
     )
     renderer = MarkdownRenderer(config)

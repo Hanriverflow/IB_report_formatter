@@ -21,17 +21,33 @@ Changelog (v2):
     - Unified output path resolution logic
 """
 
-import os
-import sys
-import time
 import argparse
 import logging
+import sys
+import time
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
-from md_parser import parse_markdown_file, DocumentModel
+from cli_utils import (
+    generate_output_path as build_output_path,
+)
+from cli_utils import (
+    interactive_select as prompt_for_selection,
+)
+from cli_utils import (
+    list_files,
+)
+from cli_utils import (
+    resolve_input_path as resolve_project_input_path,
+)
+from cli_utils import (
+    safe_save as safe_save_with_fallback,
+)
+from cli_utils import (
+    setup_logging as configure_logging,
+)
 from ib_renderer import IBDocumentRenderer
-
+from md_parser import DocumentModel, parse_markdown_file
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONSTANTS
@@ -48,41 +64,6 @@ logger = logging.getLogger("md_to_word")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# LOGGING SETUP
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-class LogFormatter(logging.Formatter):
-    """Custom log formatter with level-based prefixes"""
-
-    PREFIXES = {
-        logging.DEBUG: "[DEBUG]",
-        logging.INFO: "[INFO]",
-        logging.WARNING: "[WARNING]",
-        logging.ERROR: "[ERROR]",
-        logging.CRITICAL: "[CRITICAL]",
-    }
-
-    def format(self, record: logging.LogRecord) -> str:
-        prefix = self.PREFIXES.get(record.levelno, "[LOG]")
-        return f"{prefix} {record.getMessage()}"
-
-
-def setup_logging(verbose: bool = False):
-    """Configure logging for the converter"""
-    level = logging.DEBUG if verbose else logging.INFO
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(LogFormatter())
-    logger.setLevel(level)
-    logger.handlers.clear()
-    logger.addHandler(handler)
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# RENDER OPTIONS
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
 class RenderOptions:
     """Options that control which sections are rendered"""
 
@@ -134,10 +115,10 @@ def auto_format_markdown(
     """
     try:
         from md_formatter import format_file_with_options
-    except ImportError:
+    except ImportError as err:
         raise ImportError(
             "md_formatter.py not found. Ensure it is in the same directory as md_to_word.py."
-        )
+        ) from err
 
     logger.info("Auto-formatting: %s", input_path.name)
 
@@ -167,10 +148,7 @@ def _read_with_encoding(file_path: Path) -> str:
         b"",
         0,
         1,
-        "Failed to decode {path} with encodings: {encodings}".format(
-            path=file_path,
-            encodings=encodings,
-        ),
+        f"Failed to decode {file_path} with encodings: {encodings}",
     )
 
 
@@ -187,10 +165,10 @@ def clean_deepresearch_markdown_file(
 
     try:
         from deep_md_cleaner import CleanerConfig, clean_deepresearch_markdown
-    except ImportError:
+    except ImportError as err:
         raise ImportError(
             "deep_md_cleaner.py not found. Ensure it is in the same directory as md_to_word.py."
-        )
+        ) from err
 
     content = _read_with_encoding(input_path)
     cleaner_config = CleanerConfig(
@@ -218,68 +196,18 @@ def clean_deepresearch_markdown_file(
 
 
 def resolve_input_path(input_file: str) -> Path:
-    """
-    Resolve input file path with multi-location search.
-
-    Search order:
-        1. Absolute path → use as-is
-        2. Parent directory (PARENT_DIR) → most common for project structure
-        3. Current working directory
-        4. Script directory
-
-    Args:
-        input_file: User-provided file path or name
-
-    Returns:
-        Resolved Path (may not exist — caller should validate)
-    """
-    input_path = Path(input_file)
-
-    # 1. Absolute path
-    if input_path.is_absolute():
-        return input_path
-
-    # 2. Check parent directory first (most common case)
-    parent_path = PARENT_DIR / input_path.name
-    if parent_path.exists():
-        return parent_path
-
-    # 3. Try current working directory
-    cwd_path = Path.cwd() / input_file
-    if cwd_path.exists():
-        return cwd_path
-
-    # 4. Try script directory
-    script_dir = Path(__file__).resolve().parent
-    script_path = script_dir / input_file
-    if script_path.exists():
-        return script_path
-
-    # Return parent path for error message (most likely intended location)
-    return parent_path
+    """Resolve the user-provided input path."""
+    return resolve_project_input_path(input_file, parent_dir=PARENT_DIR, script_path=Path(__file__))
 
 
 def generate_output_path(input_path: Path, output_path: Optional[str] = None) -> Path:
-    """
-    Generate output file path.
-
-    Args:
-        input_path: Resolved input markdown file path
-        output_path: User-specified output path (optional)
-
-    Returns:
-        Output Path for the .docx file
-    """
-    if output_path:
-        out = Path(output_path)
-        # Ensure .docx extension
-        if out.suffix.lower() != ".docx":
-            out = out.with_suffix(".docx")
-        return out
-
-    base_name = input_path.stem
-    output_name = f"{base_name}{OUTPUT_SUFFIX}".replace(" ", "_")
-    return input_path.parent / output_name
+    """Generate the Word output path."""
+    return build_output_path(
+        input_path,
+        output_path,
+        ".docx",
+        default_name=lambda path: f"{path.stem}{OUTPUT_SUFFIX}".replace(" ", "_"),
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -288,39 +216,16 @@ def generate_output_path(input_path: Path, output_path: Optional[str] = None) ->
 
 
 def safe_save(doc, output_path: Path) -> Path:
-    """
-    Save the document, handling permission errors gracefully.
-
-    If the target file is locked (e.g. open in Word), saves with a
-    timestamp suffix instead.
-
-    Args:
-        doc: python-docx Document object
-        output_path: Target save path
-
-    Returns:
-        Actual Path where document was saved
-    """
-    # Ensure parent directory exists
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        doc.save(str(output_path))
-        logger.info("Saved: %s", output_path)
-        return output_path
-
-    except PermissionError:
-        logger.warning(
-            "%s is locked (possibly open in another program). Saving with timestamp suffix.",
-            output_path.name,
-        )
-        timestamp = int(time.time())
-        # Python 3.8 compatible: use with_name instead of with_stem
-        new_name = f"{output_path.stem}_{timestamp}{output_path.suffix}"
-        new_path = output_path.with_name(new_name)
-        doc.save(str(new_path))
-        logger.info("Saved: %s", new_path)
-        return new_path
+    """Save the generated Word document with permission-error fallback."""
+    return safe_save_with_fallback(
+        output_path=output_path,
+        save_action=lambda path: doc.save(str(path)),
+        logger=logger,
+        lock_message=(
+            "%s is locked (possibly open in another program). "
+            "Saving with timestamp suffix."
+        ),
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -496,69 +401,13 @@ class IBReportConverter:
 
 
 def list_md_files() -> List[Path]:
-    """
-    List all markdown files in parent directory.
-
-    Returns:
-        Sorted list of .md file Paths
-    """
-    md_files = sorted(PARENT_DIR.glob("*.md"))
-
-    if not md_files:
-        print("No .md files found in parent folder.")
-        print(f"  Searched: {PARENT_DIR}")
-        return []
-
-    print(f"\n{'=' * 65}")
-    print(f"  Available MD files in: {PARENT_DIR}")
-    print(f"{'=' * 65}")
-
-    for i, f in enumerate(md_files, 1):
-        size_kb = f.stat().st_size / 1024
-        print(f"  [{i:2d}]  {f.name:<40s}  ({size_kb:>7.1f} KB)")
-
-    print(f"{'=' * 65}")
-    print(f"  Total: {len(md_files)} file(s)")
-    print(f"{'=' * 65}")
-    print()
-
-    return md_files
+    """List all markdown files in the parent directory."""
+    return list_files(PARENT_DIR, "*.md", ".md", "MD")
 
 
 def interactive_select(md_files: List[Path]) -> Optional[Path]:
-    """
-    Prompt user to select a file by number.
-
-    Args:
-        md_files: List of available .md files
-
-    Returns:
-        Selected file Path, or None if cancelled
-    """
-    if not md_files:
-        return None
-
-    print("Enter file number to convert (or 'q' to quit): ", end="")
-
-    try:
-        user_input = input().strip()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return None
-
-    if user_input.lower() in ("q", "quit", "exit", ""):
-        return None
-
-    try:
-        idx = int(user_input)
-        if 1 <= idx <= len(md_files):
-            return md_files[idx - 1]
-        else:
-            print(f"Invalid number. Choose between 1 and {len(md_files)}.")
-            return None
-    except ValueError:
-        print(f"Invalid input: '{user_input}'. Enter a number.")
-        return None
+    """Prompt user to select a markdown file by number."""
+    return prompt_for_selection(md_files, "Enter file number to convert (or 'q' to quit): ")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -779,7 +628,7 @@ def main():
     args = parser.parse_args()
 
     # Setup logging
-    setup_logging(verbose=args.verbose)
+    configure_logging(verbose=args.verbose)
 
     # ── List mode ───────────────────────────────────────────────────────────
     if args.list:

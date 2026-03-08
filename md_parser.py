@@ -26,14 +26,13 @@ Dependencies:
     Optional: charset-normalizer (better encoding detection)
 """
 
+import logging
+import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import List, Dict, Optional, Tuple, Union
-import re
-import logging
+from typing import Dict, List, Optional, Tuple, Union
 
 import yaml
-
 
 logger = logging.getLogger(__name__)
 
@@ -680,7 +679,9 @@ class TableParser:
         table = Table()
 
         # Filter out separator lines (|---|---|)
-        data_lines = [l for l in lines if not set(l.strip()).issubset({"|", "-", " ", ":"})]
+        data_lines = [
+            line for line in lines if not set(line.strip()).issubset({"|", "-", " ", ":"})
+        ]
 
         if not data_lines:
             return table

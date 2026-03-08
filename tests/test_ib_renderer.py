@@ -9,7 +9,6 @@ Tests rendering functionality including:
 
 import pytest
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # TABLE RENDERER TESTS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -93,7 +92,7 @@ class TestCalloutStyles:
 
     def test_executive_summary_has_navy_background(self):
         """Executive Summary should have navy background."""
-        from ib_renderer import CalloutRenderer, STYLE
+        from ib_renderer import STYLE, CalloutRenderer
 
         style = CalloutRenderer._CALLOUT_STYLES["EXECUTIVE SUMMARY"]
         bg_hex, _, _, _ = style
@@ -149,8 +148,9 @@ class TestLaTeXRenderer:
     )
     def test_render_simple_equation(self):
         """Render a simple LaTeX equation."""
-        from ib_renderer import LaTeXRenderer
         import os
+
+        from ib_renderer import LaTeXRenderer
 
         if not LaTeXRenderer.is_available():
             pytest.skip("matplotlib not available")
@@ -190,6 +190,18 @@ class TestIBStyle:
         assert STYLE.BODY_FONT == "Calibri"
         assert STYLE.KOREAN_FONT == "Malgun Gothic"
 
+    def test_font_policy_prefers_macos_font(self):
+        """macOS should prefer a mac-native Korean font first."""
+        from ib_renderer import FontPolicy
+
+        assert FontPolicy.resolve_korean_font("Darwin") == "Apple SD Gothic Neo"
+
+    def test_font_policy_keeps_windows_default(self):
+        """Windows should keep the existing default Korean font."""
+        from ib_renderer import STYLE, FontPolicy
+
+        assert FontPolicy.resolve_korean_font("Windows") == STYLE.KOREAN_FONT
+
     def test_style_hex_colors(self):
         """Verify hex color strings are valid."""
         from ib_renderer import STYLE
@@ -220,6 +232,7 @@ class TestDisclaimerRendererFormatting:
     def test_disclaimer_content_uses_plain_paragraph_text(self):
         """Disclaimer content should not inject manual newline characters."""
         from docx import Document
+
         from ib_renderer import DisclaimerRenderer, DocumentStyler
 
         doc = Document()
@@ -245,8 +258,9 @@ class TestCoverRendererDisclaimerTable:
     def test_cover_includes_single_cell_disclaimer_table(self):
         """Cover page should include a disclaimer table with requested legal sentence."""
         from docx import Document
-        from md_parser import DocumentMetadata
+
         from ib_renderer import CoverRenderer, DocumentStyler
+        from md_parser import DocumentMetadata
 
         doc = Document()
         DocumentStyler(doc).create_styles()
