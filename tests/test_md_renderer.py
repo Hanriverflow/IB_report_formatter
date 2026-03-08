@@ -51,3 +51,29 @@ def test_render_to_markdown_prefixes_image_paths():
     )
 
     assert rendered.strip() == "![Chart](images/chart.png)"
+
+
+def test_render_to_markdown_normalizes_windows_image_paths():
+    """Windows-style image prefixes should be normalized for Markdown links."""
+    model = DocumentModel(
+        elements=[
+            Element(
+                element_type=ElementType.IMAGE,
+                content=Image(alt_text="Chart", path="chart.png"),
+            )
+        ]
+    )
+
+    relative_rendered = render_to_markdown(
+        model,
+        include_frontmatter=False,
+        image_path_prefix=r"images\charts",
+    )
+    absolute_rendered = render_to_markdown(
+        model,
+        include_frontmatter=False,
+        image_path_prefix=r"C:\tmp\images",
+    )
+
+    assert relative_rendered.strip() == "![Chart](images/charts/chart.png)"
+    assert absolute_rendered.strip() == "![Chart](C:/tmp/images/chart.png)"

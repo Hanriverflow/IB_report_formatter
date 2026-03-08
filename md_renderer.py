@@ -243,12 +243,24 @@ class ImageRenderer:
         # Regular path-based images
         path = image.path
         if self.config.image_path_prefix and path:
-            path = f"{self.config.image_path_prefix}/{path}"
+            path = self._join_markdown_path(self.config.image_path_prefix, path)
 
         if not path:
             return f"<!-- Image: {alt} (path not available) -->\n"
 
         return f"![{alt}]({path})\n"
+
+    @staticmethod
+    def _join_markdown_path(prefix: str, path: str) -> str:
+        """Join image path parts and normalize separators for Markdown links."""
+        normalized_prefix = prefix.replace("\\", "/").rstrip("/")
+        normalized_path = path.replace("\\", "/").lstrip("/")
+
+        if not normalized_prefix:
+            return normalized_path
+        if not normalized_path:
+            return normalized_prefix
+        return f"{normalized_prefix}/{normalized_path}"
 
 
 class MarkdownRenderer:
