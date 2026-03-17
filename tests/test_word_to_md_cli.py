@@ -70,10 +70,11 @@ def test_converter_extract_images_writes_files_and_markdown_paths(tmp_path):
 
     saved_path = converter.convert()
     rendered = output_path.read_text(encoding="utf-8")
+    normalized_image_dir = str(image_dir).replace("\\", "/")
 
     assert saved_path == str(output_path)
     assert "![Image 1]" in rendered
-    assert str(image_dir) in rendered
+    assert normalized_image_dir in rendered
     assert list(image_dir.glob("image_*"))
 
 
