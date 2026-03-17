@@ -419,8 +419,10 @@ class TextParser:
     # Compiled once — used by cleanup_text
     _ESCAPE_RE = re.compile(r'\\([~.*"\'()\[\]{}|_-])')
 
-    # Bold pattern
-    _BOLD_SPLIT_RE = re.compile(r"(\*\*.*?\*\*)")
+    # Inline formatting patterns
+    _INLINE_FORMAT_SPLIT_RE = re.compile(
+        r"(\*\*[^*\n]+?\*\*|\^[^^\n]+?\^|(?<!\*)\*[^*\n]+?\*(?!\*)|(?<!\w)_[^_\n]+?_(?!\w))"
+    )
 
     # Inline LaTeX: $...$ but not $$...$$
     _INLINE_LATEX_RE = re.compile(r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)")
@@ -451,19 +453,7 @@ class TextParser:
                     )
                 )
             else:
-                # ── Phase 2: Split non-LaTeX segments on bold markers ───────
-                bold_parts = cls._BOLD_SPLIT_RE.split(segment_text)
-                for part in bold_parts:
-                    if not part:
-                        continue
-                    if part.startswith("**") and part.endswith("**") and len(part) > 4:
-                        content = cls.cleanup_text(part[2:-2])
-                        if content:
-                            runs.append(TextRun(text=content, bold=True))
-                    else:
-                        cleaned = cls.cleanup_text_preserve_spacing(part)
-                        if cleaned:
-                            runs.append(TextRun(text=cleaned, bold=False))
+                runs.extend(cls._parse_inline_formatting(segment_text))
 
         return runs
 
@@ -506,21 +496,46 @@ class TextParser:
         Used for contexts where $ should not be interpreted as LaTeX
         (e.g., table cells with currency values).
         """
-        runs: List[TextRun] = []
         normalized = text.replace(r"\*\*", "**")
-        parts = cls._BOLD_SPLIT_RE.split(normalized)
+        return cls._parse_inline_formatting(normalized)
+
+    @classmethod
+    def _parse_inline_formatting(cls, text: str) -> List[TextRun]:
+        """Parse bold, italic, and superscript runs from plain text."""
+        runs: List[TextRun] = []
+        parts = cls._INLINE_FORMAT_SPLIT_RE.split(text)
 
         for part in parts:
             if not part:
                 continue
+
             if part.startswith("**") and part.endswith("**") and len(part) > 4:
                 content = cls.cleanup_text(part[2:-2])
                 if content:
                     runs.append(TextRun(text=content, bold=True))
-            else:
-                cleaned = cls.cleanup_text_preserve_spacing(part)
-                if cleaned:
-                    runs.append(TextRun(text=cleaned, bold=False))
+                continue
+
+            if part.startswith("^") and part.endswith("^") and len(part) > 2:
+                content = cls.cleanup_text(part[1:-1])
+                if content:
+                    runs.append(TextRun(text=content, superscript=True))
+                continue
+
+            if part.startswith("*") and part.endswith("*") and len(part) > 2:
+                content = cls.cleanup_text(part[1:-1])
+                if content:
+                    runs.append(TextRun(text=content, italic=True))
+                continue
+
+            if part.startswith("_") and part.endswith("_") and len(part) > 2:
+                content = cls.cleanup_text(part[1:-1])
+                if content:
+                    runs.append(TextRun(text=content, italic=True))
+                continue
+
+            cleaned = cls.cleanup_text_preserve_spacing(part)
+            if cleaned:
+                runs.append(TextRun(text=cleaned))
 
         return runs
 
@@ -543,8 +558,8 @@ class TextParser:
 class FootnoteParser:
     """Extracts footnotes and references from markdown"""
 
-    # Pattern for inline footnote markers like .1 or .3
-    INLINE_PATTERN = re.compile(r"\.(\d+)(?=\s|$|[,;:\-])")
+    # Pattern for inline footnote markers like .1 or superscript ^1^
+    INLINE_PATTERN = re.compile(r"(?:\.(\d+)(?=\s|$|[,;:\-])|\^(\d+)\^)")
 
     # Pattern for reference definitions like "1. Citation text"
     REFERENCE_PATTERN = re.compile(r"^(\d+)[\\.]\s+(.+)$")
@@ -600,7 +615,12 @@ class FootnoteParser:
     @staticmethod
     def find_inline_references(text: str) -> List[int]:
         """Find all inline reference numbers in text"""
-        return [int(m.group(1)) for m in FootnoteParser.INLINE_PATTERN.finditer(text)]
+        refs: List[int] = []
+        for match in FootnoteParser.INLINE_PATTERN.finditer(text):
+            group = match.group(1) or match.group(2)
+            if group:
+                refs.append(int(group))
+        return refs
 
 
 class TableParser:
@@ -1040,8 +1060,8 @@ class MarkdownParser:
     NUMBERED_HEADING_PATTERN = re.compile(r"^\*\*\d+(\.|\\.)")
 
     # ── List patterns ───────────────────────────────────────────────────────
-    BULLET_PATTERN = re.compile(r"^[-*]\s+(.+)$")
-    NUMBERED_LIST_PATTERN = re.compile(r"^(\d+)\.\s+(.+)$")
+    BULLET_PATTERN = re.compile(r"^([ \t]*)[-*]\s+(.+)$")
+    NUMBERED_LIST_PATTERN = re.compile(r"^([ \t]*)(\d+)\.\s+(.+)$")
 
     # Heuristic: numbered line that looks like a section heading
     _NUMBERED_HEADING_HEURISTIC = re.compile(r"^(\d{1,2})\.\s+([가-힣A-Za-z][\w\s가-힣]{0,40})$")
@@ -1250,31 +1270,41 @@ class MarkdownParser:
                 continue
 
             # ── Bullet list ─────────────────────────────────────────────────
-            match = self.BULLET_PATTERN.match(line)
+            match = self.BULLET_PATTERN.match(raw_line)
             if match:
-                text = match.group(1)
-                item = ListItem(text=text, runs=TextParser.parse_runs(text))
+                indent_level = self._get_indent_level(match.group(1))
+                text = match.group(2)
+                item = ListItem(
+                    text=text,
+                    runs=TextParser.parse_runs(text),
+                    indent_level=indent_level,
+                )
                 elements.append(
                     Element(
                         element_type=ElementType.BULLET_LIST,
                         content=item,
-                        raw_text=line,
+                        raw_text=raw_line,
                     )
                 )
                 i += 1
                 continue
 
             # ── Numbered list ───────────────────────────────────────────────
-            match = self.NUMBERED_LIST_PATTERN.match(line)
+            match = self.NUMBERED_LIST_PATTERN.match(raw_line)
             if match and not self._is_numbered_heading(line):
-                number = match.group(1)
-                text = match.group(2)
-                item = ListItem(text=text, runs=TextParser.parse_runs(text))
+                indent_level = self._get_indent_level(match.group(1))
+                number = match.group(2)
+                text = match.group(3)
+                item = ListItem(
+                    text=text,
+                    runs=TextParser.parse_runs(text),
+                    indent_level=indent_level,
+                )
                 elements.append(
                     Element(
                         element_type=ElementType.NUMBERED_LIST,
                         content=(number, item),
-                        raw_text=line,
+                        raw_text=raw_line,
                     )
                 )
                 i += 1
@@ -1391,6 +1421,14 @@ class MarkdownParser:
         normalized = cls._OPEN_PAREN_SPACE_RE.sub("(", normalized)
         normalized = cls._CLOSE_PAREN_SPACE_RE.sub(")", normalized)
         return normalized.strip()
+
+    @staticmethod
+    def _get_indent_level(prefix: str) -> int:
+        """Convert leading markdown indentation to a list nesting level."""
+        expanded = prefix.replace("\t", "    ")
+        if not expanded:
+            return 0
+        return max(0, len(expanded) // 2)
 
     # ── Paragraph parsing (ENHANCED v3) ─────────────────────────────────────
 

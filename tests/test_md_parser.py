@@ -164,6 +164,23 @@ class TestTextParser:
         assert not TextParser.has_inline_latex("Price is $100")
         assert not TextParser.has_inline_latex("No latex here")
 
+    def test_parse_italic_text(self):
+        """Parse italic markers conservatively."""
+        runs = TextParser.parse_runs("This is *italic* and _also italic_")
+
+        italic_runs = [run for run in runs if run.italic]
+        assert len(italic_runs) == 2
+        assert italic_runs[0].text == "italic"
+        assert italic_runs[1].text == "also italic"
+
+    def test_parse_superscript_runs(self):
+        """Parse superscript markers into TextRun metadata."""
+        runs = TextParser.parse_runs("Value^1^ adjusted")
+
+        superscript_runs = [run for run in runs if run.superscript]
+        assert len(superscript_runs) == 1
+        assert superscript_runs[0].text == "1"
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TABLE PARSER TESTS
@@ -271,6 +288,18 @@ class TestMarkdownParser:
 
         bullet_elements = [e for e in model.elements if e.element_type == ElementType.BULLET_LIST]
         assert len(bullet_elements) == 3
+
+    def test_parse_nested_bullet_list_indent(self):
+        """Nested bullet indentation should map to indent levels."""
+        content = """- Parent
+  - Child
+"""
+        parser = MarkdownParser()
+        model = parser.parse(content)
+
+        bullet_elements = [e for e in model.elements if e.element_type == ElementType.BULLET_LIST]
+        assert bullet_elements[0].content.indent_level == 0
+        assert bullet_elements[1].content.indent_level == 1
 
     def test_parse_blockquote(self):
         """Parse blockquote as callout."""

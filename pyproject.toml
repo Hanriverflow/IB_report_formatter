@@ -46,6 +46,7 @@ dev = [
 [project.scripts]
 ib-report = "md_to_word:main"
 md-format = "md_formatter:main"
+roundtrip-audit = "roundtrip_audit:main"
 
 [project.urls]
 Homepage = "https://github.com/example/ib-report-formatter"

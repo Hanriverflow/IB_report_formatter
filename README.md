@@ -13,6 +13,8 @@ This project converts research and internal memo markdown into bank-style docume
 
 - **Markdown → Word** conversion with IB-oriented document styling
 - **Word → Markdown** conversion for LLM consumption (new!)
+- Batch directory conversion for both pipelines
+- Round-trip audit helper for semantic preservation checks
 - Auto-format pass for single-line clipboard markdown (Deep Research output)
 - Optional OpenAI DeepResearch marker cleaner (`off`/`auto`/`on`)
 - YAML frontmatter parsing (`title`, `date`, `recipient`, `analyst`, etc.)
@@ -33,6 +35,7 @@ IB_report_formatter/
 ├── word_to_md.py      # Word → Markdown CLI converter (new!)
 ├── word_parser.py     # Word document parser
 ├── md_renderer.py     # Markdown text renderer
+├── roundtrip_audit.py # Round-trip audit CLI
 ├── tests/             # Pytest test suite
 └── pyproject.toml     # Dependencies and tool config
 ```
@@ -186,6 +189,20 @@ Clean OpenAI DeepResearch markers only when detected, then convert:
 uv run md_to_word.py input.md --deepresearch-cleaner auto --cite-mode footnote --cleaner-report
 ```
 
+Batch-convert an entire folder:
+
+```bash
+uv run md_to_word.py reports/ --batch
+uv run word_to_md.py reports/ --batch
+```
+
+Audit round-trip preservation:
+
+```bash
+uv run roundtrip-audit report.md
+uv run roundtrip-audit report.docx --json
+```
+
 What does `--format` (pre-formatting) do?
 
 - It restores document structure from compressed or single-line markdown.
@@ -228,6 +245,7 @@ Options:
 
 - `-l, --list`: list markdown files in parent folder
 - `-i, --interactive`: interactive selection mode (with `--list`)
+- `--batch`: convert every `.md` file in the given directory
 - `-f, --format`: run formatter before conversion
 - `--deepresearch-cleaner {off,auto,on}`: apply DeepResearch marker cleaner (`off` by default)
 - `--cite-mode {footnote,inline,strip}`: citation marker transform mode
@@ -246,6 +264,7 @@ uv run md_to_word.py --list -i
 uv run md_to_word.py "네페스_기업분석2026.md"
 uv run md_to_word.py report.md --format --no-toc
 uv run md_to_word.py report.md --deepresearch-cleaner auto --cite-mode strip --cleaner-report
+uv run md_to_word.py reports/ --batch
 ```
 
 ## Formatter CLI (`md_formatter.py`)
@@ -293,6 +312,7 @@ Options:
 
 - `-l, --list`: list Word files in parent folder
 - `-i, --interactive`: interactive selection mode (with `--list`)
+- `--batch`: convert every `.docx` file in the given directory
 - `-s, --strip`: strip formatting (no bold/italic) for LLM optimization
 - `--no-frontmatter`: skip YAML metadata header
 - `--extract-images`: extract embedded images to folder
@@ -308,6 +328,22 @@ uv run word_to_md.py report.docx output.md
 uv run word_to_md.py report.docx --strip              # LLM-optimized output
 uv run word_to_md.py report.docx --strip --no-frontmatter
 uv run word_to_md.py report.docx --extract-images     # Save images to folder
+uv run word_to_md.py reports/ --batch
+```
+
+## Round-trip Audit CLI (`roundtrip_audit.py`)
+
+Audit semantic preservation after one conversion round-trip:
+
+```bash
+uv run roundtrip-audit [input_file] [options]
+```
+
+Examples:
+
+```bash
+uv run roundtrip-audit report.md
+uv run roundtrip-audit report.docx --json
 ```
 
 When to use `--strip`?

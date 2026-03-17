@@ -64,6 +64,24 @@ class TextRunRenderer:
         return "".join(result)
 
 
+class EndnoteRenderer:
+    """Renders parser-compatible endnotes blocks."""
+
+    _TITLE = "## Citations"
+
+    @classmethod
+    def render(cls, footnotes: dict) -> str:
+        """Render endnotes in a format md_parser can read back."""
+        if not footnotes:
+            return ""
+
+        lines = [cls._TITLE]
+        for number, text in sorted(footnotes.items()):
+            lines.append(f"{number}. {text}")
+        lines.append("")
+        return "\n".join(lines)
+
+
 class FrontmatterRenderer:
     """Renders YAML frontmatter from document metadata."""
 
@@ -277,6 +295,7 @@ class MarkdownRenderer:
         self.list_renderer = ListRenderer(self.config)
         self.blockquote_renderer = BlockquoteRenderer()
         self.image_renderer = ImageRenderer(self.config)
+        self.endnote_renderer = EndnoteRenderer()
 
     def render(self, model: DocumentModel) -> str:
         """Render DocumentModel to Markdown string."""
@@ -297,6 +316,9 @@ class MarkdownRenderer:
             except Exception as e:
                 logger.warning("Failed to render element %s: %s", element.element_type, e)
                 output_parts.append(f"<!-- Render error: {element.element_type.name} -->\n")
+
+        if model.footnotes:
+            output_parts.append(self.endnote_renderer.render(model.footnotes))
 
         return "\n".join(output_parts)
 

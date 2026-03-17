@@ -428,6 +428,7 @@ Examples:
     uv run md_to_word.py 보고서.md --format             # Auto-format then convert
     uv run md_to_word.py 보고서.md --no-cover           # Skip cover page
     uv run md_to_word.py 보고서.md --no-toc --no-disc   # Minimal output
+    uv run md_to_word.py reports/ --batch              # Convert all md files in a directory
     uv run md_to_word.py C:/path/to/report.md          # Absolute path
         """,
     )
@@ -457,6 +458,11 @@ Examples:
         "--interactive",
         action="store_true",
         help="Interactive file selection (use with --list)",
+    )
+    mode_group.add_argument(
+        "--batch",
+        action="store_true",
+        help="Convert all .md files in the given input directory",
     )
 
     # Pre-processing
@@ -622,6 +628,32 @@ def run_conversion(input_path: Path, args) -> int:
         return 1
 
 
+def run_batch_conversion(input_dir: Path, args) -> int:
+    """Execute conversion for every .md file in a directory."""
+    input_files = sorted(input_dir.glob("*.md"))
+    if not input_files:
+        logger.error("No .md files found in: %s", input_dir)
+        return 1
+
+    output_dir = Path(args.output_file) if args.output_file else input_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    success_count = 0
+    failure_count = 0
+
+    for input_file in input_files:
+        batch_args = argparse.Namespace(**vars(args))
+        batch_args.output_file = str(output_dir / generate_output_path(input_file).name)
+        exit_code = run_conversion(input_file, batch_args)
+        if exit_code == 0:
+            success_count += 1
+        else:
+            failure_count += 1
+
+    print(f"[BATCH] Completed: {success_count} succeeded, {failure_count} failed")
+    return 0 if failure_count == 0 else 1
+
+
 def main():
     """Main entry point with CLI argument parsing"""
     parser = build_parser()
@@ -661,6 +693,16 @@ def main():
 
     # ── Resolve input path ──────────────────────────────────────────────────
     input_path = resolve_input_path(args.input_file)
+    if not input_path.exists():
+        logger.error("File not found: %s", input_path)
+        sys.exit(1)
+
+    if input_path.is_dir() or args.batch:
+        if not input_path.is_dir():
+            logger.error("Batch mode requires a directory input: %s", input_path)
+            sys.exit(1)
+        sys.exit(run_batch_conversion(input_path, args))
+
     sys.exit(run_conversion(input_path, args))
 
 

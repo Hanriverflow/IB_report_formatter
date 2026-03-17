@@ -13,6 +13,8 @@ Markdown ↔ Word 양방향 변환기로, IB(투자은행) 스타일의 전문 W
 
 - **Markdown → Word** 변환 (IB 스타일 문서 생성)
 - **Word → Markdown** 변환 (LLM 활용용, 신규!)
+- 양방향 폴더 batch 변환 지원
+- semantic 보존 점검용 round-trip audit 도구
 - 단일 라인(클립보드) markdown 자동 구조화 포맷팅
 - OpenAI DeepResearch 마커 정리기(선택 적용: `off`/`auto`/`on`)
 - YAML frontmatter 파싱 (`title`, `date`, `recipient`, `analyst` 등)
@@ -33,6 +35,7 @@ IB_report_formatter/
 ├── word_to_md.py      # Word → Markdown 변환 CLI (신규!)
 ├── word_parser.py     # Word 문서 파서
 ├── md_renderer.py     # Markdown 텍스트 렌더러
+├── roundtrip_audit.py # round-trip audit CLI
 ├── tests/             # Pytest 테스트
 └── pyproject.toml     # 의존성/도구 설정
 ```
@@ -186,6 +189,20 @@ OpenAI DeepResearch 마커를 감지될 때만 정리 후 변환:
 uv run md_to_word.py input.md --deepresearch-cleaner auto --cite-mode footnote --cleaner-report
 ```
 
+폴더 단위 batch 변환:
+
+```bash
+uv run md_to_word.py reports/ --batch
+uv run word_to_md.py reports/ --batch
+```
+
+round-trip 보존 점검:
+
+```bash
+uv run roundtrip-audit report.md
+uv run roundtrip-audit report.docx --json
+```
+
 `--format`(사전 포맷팅)은 무엇을 하나요?
 
 - 한 줄로 뭉친 markdown을 문서 구조로 자동 복원합니다.
@@ -228,6 +245,7 @@ uv run md_to_word.py [input_file] [output_file] [options]
 
 - `-l, --list`: 상위 폴더의 markdown 파일 목록 표시
 - `-i, --interactive`: 목록에서 대화형 선택 (`--list`와 함께 사용)
+- `--batch`: 지정한 디렉터리의 `.md` 파일 전체 변환
 - `-f, --format`: 변환 전에 formatter 실행
 - `--deepresearch-cleaner {off,auto,on}`: DeepResearch 마커 정리기 적용 (`off` 기본)
 - `--cite-mode {footnote,inline,strip}`: 인용 마커 변환 방식
@@ -246,6 +264,7 @@ uv run md_to_word.py --list -i
 uv run md_to_word.py "네페스_기업분석2026.md"
 uv run md_to_word.py report.md --format --no-toc
 uv run md_to_word.py report.md --deepresearch-cleaner auto --cite-mode strip --cleaner-report
+uv run md_to_word.py reports/ --batch
 ```
 
 ## 포맷터 CLI (`md_formatter.py`)
@@ -293,6 +312,7 @@ uv run word_to_md.py [input_file] [output_file] [options]
 
 - `-l, --list`: 상위 폴더의 Word 파일 목록 표시
 - `-i, --interactive`: 목록에서 대화형 선택 (`--list`와 함께 사용)
+- `--batch`: 지정한 디렉터리의 `.docx` 파일 전체 변환
 - `-s, --strip`: 서식 제거 (볼드/이탤릭 없음) - LLM 최적화
 - `--no-frontmatter`: YAML 메타데이터 헤더 생략
 - `--extract-images`: 포함된 이미지를 폴더로 추출
@@ -308,6 +328,22 @@ uv run word_to_md.py report.docx output.md
 uv run word_to_md.py report.docx --strip              # LLM 최적화 출력
 uv run word_to_md.py report.docx --strip --no-frontmatter
 uv run word_to_md.py report.docx --extract-images     # 이미지 폴더로 저장
+uv run word_to_md.py reports/ --batch
+```
+
+## Round-trip Audit CLI (`roundtrip_audit.py`)
+
+한 번의 왕복 변환 후 semantic 보존 상태를 점검합니다:
+
+```bash
+uv run roundtrip-audit [input_file] [options]
+```
+
+예시:
+
+```bash
+uv run roundtrip-audit report.md
+uv run roundtrip-audit report.docx --json
 ```
 
 `--strip` 옵션은 언제 쓰나요?

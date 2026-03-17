@@ -920,6 +920,9 @@ class ListRenderer:
     def render_bullet(self, item: ListItem):
         """Render a bullet list item"""
         p = self.doc.add_paragraph(style=STYLE.STYLE_IB_BULLET)
+        indent = Inches(STYLE.BULLET_INDENT.inches * (item.indent_level + 1))
+        p.paragraph_format.left_indent = indent
+        p.paragraph_format.first_line_indent = -STYLE.BULLET_INDENT
 
         # Bullet character
         bullet_run = p.add_run(f"{STYLE.BULLET_CHAR}  ")
@@ -939,6 +942,9 @@ class ListRenderer:
     def render_numbered(self, number: str, item: ListItem):
         """Render a numbered list item"""
         p = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
+        indent = Inches(STYLE.BULLET_INDENT.inches * (item.indent_level + 1))
+        p.paragraph_format.left_indent = indent
+        p.paragraph_format.first_line_indent = -STYLE.BULLET_INDENT
 
         # Number
         num_run = p.add_run(f"{number}. ")

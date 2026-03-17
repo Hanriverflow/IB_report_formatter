@@ -77,3 +77,22 @@ def test_render_to_markdown_normalizes_windows_image_paths():
 
     assert relative_rendered.strip() == "![Chart](images/charts/chart.png)"
     assert absolute_rendered.strip() == "![Chart](C:/tmp/images/chart.png)"
+
+
+def test_render_to_markdown_appends_endnotes_block():
+    """Footnotes should be rendered in parser-compatible endnotes form."""
+    model = DocumentModel(
+        elements=[
+            Element(
+                element_type=ElementType.PARAGRAPH,
+                content=Paragraph(text="본문", runs=[TextRun(text="본문"), TextRun(text="1", superscript=True)]),
+            )
+        ],
+        footnotes={1: "Source A"},
+    )
+
+    rendered = render_to_markdown(model, include_frontmatter=False)
+
+    assert "^1^" in rendered
+    assert "## Citations" in rendered
+    assert "1. Source A" in rendered
