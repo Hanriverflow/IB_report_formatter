@@ -36,3 +36,7 @@ docs/.pdca-status.json
 
 # Local DeepResearch raw samples (do not publish)
 GPT_deep/
+
+# Batch processing directories
+batch_docx/
+batch_docx_output/
