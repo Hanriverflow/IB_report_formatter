@@ -105,3 +105,32 @@ def test_run_conversion_preserves_word_native_numbering(tmp_path):
     assert "1. First item" in rendered
     assert "2. Second item" in rendered
     assert "3. Third item" in rendered
+
+
+def test_run_conversion_keeps_continued_numbering_after_body_paragraph(tmp_path):
+    """Numbered lists should not restart at 1 after an intervening paragraph."""
+    doc = Document()
+    doc.add_paragraph("First item", style="List Number")
+    doc.add_paragraph("Body explanation")
+    doc.add_paragraph("Second item", style="List Number")
+
+    docx_path = tmp_path / "continued_numbering.docx"
+    output_path = tmp_path / "continued_numbering.md"
+    doc.save(str(docx_path))
+
+    args = SimpleNamespace(
+        output_file=str(output_path),
+        strip=False,
+        no_frontmatter=True,
+        extract_images=False,
+        image_dir=None,
+        verbose=False,
+        batch=False,
+    )
+
+    exit_code = run_conversion(docx_path, args)
+    rendered = output_path.read_text(encoding="utf-8")
+
+    assert exit_code == 0
+    assert "1. First item" in rendered
+    assert "2. Second item" in rendered

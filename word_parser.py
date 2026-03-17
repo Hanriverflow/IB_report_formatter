@@ -81,11 +81,68 @@ class NumberingTracker:
                 del counters[level]
 
         counters[indent_level] = counters.get(indent_level, 0) + 1
-        return ".".join(str(counters[level]) for level in sorted(counters) if level <= indent_level)
+        num_fmt = StyleDetector.resolve_numbering_format(para) or "decimal"
+        return ".".join(
+            self._format_value(counters[level], num_fmt)
+            for level in sorted(counters)
+            if level <= indent_level
+        )
 
     def break_sequence(self) -> None:
         """Reset inferred numbering between disconnected list blocks."""
         self._counters.clear()
+
+    @staticmethod
+    def _format_value(value: int, num_fmt: str) -> str:
+        """Format a list counter using Word numbering semantics."""
+        if num_fmt == "decimal":
+            return str(value)
+        if num_fmt == "upperLetter":
+            return NumberingTracker._to_alpha(value).upper()
+        if num_fmt == "lowerLetter":
+            return NumberingTracker._to_alpha(value).lower()
+        if num_fmt == "upperRoman":
+            return NumberingTracker._to_roman(value).upper()
+        if num_fmt == "lowerRoman":
+            return NumberingTracker._to_roman(value).lower()
+        return str(value)
+
+    @staticmethod
+    def _to_alpha(value: int) -> str:
+        """Convert 1-based integer to alphabetic sequence."""
+        result = []
+        current = value
+        while current > 0:
+            current -= 1
+            result.append(chr(ord("A") + (current % 26)))
+            current //= 26
+        return "".join(reversed(result)) or "A"
+
+    @staticmethod
+    def _to_roman(value: int) -> str:
+        """Convert 1-based integer to Roman numeral sequence."""
+        numerals = [
+            (1000, "M"),
+            (900, "CM"),
+            (500, "D"),
+            (400, "CD"),
+            (100, "C"),
+            (90, "XC"),
+            (50, "L"),
+            (40, "XL"),
+            (10, "X"),
+            (9, "IX"),
+            (5, "V"),
+            (4, "IV"),
+            (1, "I"),
+        ]
+        remaining = value
+        result = []
+        for number, symbol in numerals:
+            while remaining >= number:
+                result.append(symbol)
+                remaining -= number
+        return "".join(result) or "I"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -285,6 +342,14 @@ class StyleDetector:
         re.compile(r"^List\s*Paragraph", re.I),
     ]
 
+    LIST_BULLET_STYLE_IDS = {"ListBullet", "ListBullet2", "ListBullet3"}
+    LIST_NUMBER_STYLE_IDS = {
+        "ListNumber",
+        "ListNumber2",
+        "ListNumber3",
+        "ListParagraph",
+    }
+
     BULLET_TEXT_PATTERN = re.compile(r"^[•●■◦▪\-*]\s+(.+)$")
     NUMBERED_TEXT_PATTERN = re.compile(r"^(\d+)[\.\)]\s+(.+)$")
     LIST_LEVEL_STYLE_PATTERN = re.compile(r".*?(\d+)$")
@@ -304,7 +369,17 @@ class StyleDetector:
     @classmethod
     def detect_list_type(cls, para) -> Optional[str]:
         """Detect if paragraph is a list. Returns 'bullet' or 'number'."""
+        num_fmt = cls.resolve_numbering_format(para)
+        if num_fmt:
+            return "bullet" if num_fmt == "bullet" else "number"
+
         style_name = para.style.name if para.style else ""
+        style_id = para.style.style_id if para.style else ""
+
+        if style_id in cls.LIST_BULLET_STYLE_IDS:
+            return "bullet"
+        if style_id in cls.LIST_NUMBER_STYLE_IDS:
+            return "number"
 
         for pattern in cls.LIST_BULLET_PATTERNS:
             if pattern.match(style_name):
@@ -384,8 +459,79 @@ class StyleDetector:
             if value:
                 return f"num:{value}"
 
+        style_id = para.style.style_id if para.style else ""
+        if style_id:
+            return f"style-id:{style_id}"
+
         style_name = para.style.name if para.style else "generic"
-        return f"style:{style_name}:level:{indent_level}"
+        return f"style-name:{style_name}:level:{indent_level}"
+
+    @classmethod
+    def resolve_numbering_format(cls, para) -> Optional[str]:
+        """Resolve the Word numbering format for a paragraph if available."""
+        numbering_info = cls._extract_numbering_info(para)
+        if numbering_info is None:
+            return None
+
+        num_id, ilvl = numbering_info
+        numbering_part = getattr(para.part, "numbering_part", None)
+        if numbering_part is None:
+            return None
+
+        numbering_root = numbering_part._element
+        abstract_num_id = None
+        for num in numbering_root.xpath(".//*[local-name()='num']"):
+            current_num_id = num.get(qn("w:numId")) or num.get("numId")
+            if str(current_num_id) != num_id:
+                continue
+            abstract = next(
+                (child for child in num if child.tag.endswith("abstractNumId")),
+                None,
+            )
+            if abstract is not None:
+                abstract_num_id = abstract.get(qn("w:val")) or abstract.get("val")
+                break
+
+        if abstract_num_id is None:
+            return None
+
+        for abstract in numbering_root.xpath(".//*[local-name()='abstractNum']"):
+            current_id = abstract.get(qn("w:abstractNumId")) or abstract.get("abstractNumId")
+            if str(current_id) != str(abstract_num_id):
+                continue
+            for level in abstract.xpath(".//*[local-name()='lvl']"):
+                current_level = level.get(qn("w:ilvl")) or level.get("ilvl")
+                if str(current_level) != str(ilvl):
+                    continue
+                num_fmt = next(
+                    (child for child in level if child.tag.endswith("numFmt")),
+                    None,
+                )
+                if num_fmt is not None:
+                    value = num_fmt.get(qn("w:val")) or num_fmt.get("val")
+                    if value:
+                        return str(value)
+        return None
+
+    @staticmethod
+    def _extract_numbering_info(para) -> Optional[Tuple[str, int]]:
+        """Extract numId and ilvl from paragraph XML."""
+        num_id = None
+        ilvl = 0
+        for element in para._p.xpath(".//*[local-name()='numId']"):
+            value = element.get(qn("w:val")) or element.get("val")
+            if value:
+                num_id = str(value)
+                break
+        if num_id is None:
+            return None
+
+        for element in para._p.xpath(".//*[local-name()='ilvl']"):
+            value = element.get(qn("w:val")) or element.get("val")
+            if value and str(value).isdigit():
+                ilvl = int(value)
+                break
+        return num_id, ilvl
 
     @classmethod
     def _is_heading_by_formatting(cls, para) -> bool:
@@ -768,9 +914,6 @@ class WordParser:
 
             if element:
                 elements.append(element)
-
-            if not element or element.element_type != ElementType.NUMBERED_LIST:
-                numbering_tracker.break_sequence()
 
         return elements
 

@@ -50,13 +50,13 @@ def resolve_input_path(input_file: str, parent_dir: Path, script_path: Path) -> 
     if input_path.is_absolute():
         return input_path
 
-    parent_path = parent_dir / input_path.name
-    if parent_path.exists():
-        return parent_path
-
     cwd_path = Path.cwd() / input_file
     if cwd_path.exists():
         return cwd_path
+
+    parent_path = parent_dir / input_path.name
+    if parent_path.exists():
+        return parent_path
 
     script_dir = script_path.resolve().parent
     script_candidate = script_dir / input_file

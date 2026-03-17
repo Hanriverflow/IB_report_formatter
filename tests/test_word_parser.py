@@ -9,7 +9,7 @@ from docx.shared import Inches
 
 from md_parser import ElementType
 from md_to_word import IBReportConverter
-from word_parser import parse_word_file
+from word_parser import NumberingTracker, StyleDetector, parse_word_file
 
 PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z8eQAAAAASUVORK5CYII="
@@ -154,6 +154,45 @@ def test_parse_word_native_numbered_list_values(tmp_path):
         if element.element_type == ElementType.NUMBERED_LIST
     ]
     assert numbers == ["1", "2", "3"]
+
+
+def test_parse_word_native_numbering_continues_across_paragraphs(tmp_path):
+    """A numbered list should continue across an intervening body paragraph."""
+    doc = Document()
+    doc.add_paragraph("First item", style="List Number")
+    doc.add_paragraph("Body explanation")
+    doc.add_paragraph("Second item", style="List Number")
+    docx_path = _save_doc(doc, tmp_path / "numbering_continues.docx")
+
+    model = parse_word_file(str(docx_path), extract_images=False)
+
+    numbered = [
+        element.content[0]
+        for element in model.elements
+        if element.element_type == ElementType.NUMBERED_LIST
+    ]
+    assert numbered == ["1", "2"]
+
+
+def test_detect_list_type_uses_style_id_for_localized_word_styles():
+    """Localized Office can keep English style IDs even when the name is translated."""
+
+    class DummyStyle:
+        name = "목록 번호"
+        style_id = "ListNumber"
+
+    class DummyParagraph:
+        style = DummyStyle()
+        text = "항목"
+        _p = type("P", (), {"xpath": staticmethod(lambda _expr: [])})()
+
+    assert StyleDetector.detect_list_type(DummyParagraph()) == "number"
+
+
+def test_numbering_tracker_formats_non_decimal_values():
+    """Numbering tracker should support non-decimal Word numbering formats."""
+    assert NumberingTracker._format_value(3, "upperRoman") == "III"
+    assert NumberingTracker._format_value(4, "lowerLetter") == "d"
 
 
 def test_parse_ib_generated_doc_recovers_metadata_and_footnotes(tmp_path):
