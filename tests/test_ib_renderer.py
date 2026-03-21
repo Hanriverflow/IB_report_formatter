@@ -5,9 +5,39 @@ Tests rendering functionality including:
 - Table number formatting
 - Callout box styling
 - Image rendering
+- Text formatting (bold, italic, superscript)
+- Separator rendering
+- Callout content formatting
 """
 
+import base64
+
 import pytest
+
+from docx import Document
+
+from md_parser import (
+    Blockquote,
+    CodeBlock,
+    DocumentMetadata,
+    DocumentModel,
+    Element,
+    ElementType,
+    Heading,
+    Image,
+    ListItem,
+    Paragraph,
+    Table,
+    TableCell,
+    TableRow,
+    TableType,
+    TextRun,
+)
+from word_parser import parse_word_file
+
+PNG_BYTES = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z8eQAAAAASUVORK5CYII="
+)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TABLE RENDERER TESTS
@@ -125,6 +155,38 @@ class TestImageRendererMimeTypes:
         assert ImageRenderer._mime_to_extension("image/unknown") == ".png"
         assert ImageRenderer._mime_to_extension("application/pdf") == ".png"
 
+    def test_inserted_image_sets_word_alt_text(self, tmp_path):
+        """Inserted images should carry alt text in Word metadata and round-trip back out."""
+        from ib_renderer import IBDocumentRenderer
+
+        image_path = tmp_path / "tiny.png"
+        image_path.write_bytes(PNG_BYTES)
+
+        model = DocumentModel(
+            elements=[
+                Element(
+                    element_type=ElementType.IMAGE,
+                    content=Image(alt_text="Revenue bridge", path=str(image_path)),
+                )
+            ]
+        )
+
+        renderer = IBDocumentRenderer()
+        doc = renderer.render(model)
+
+        assert len(doc.inline_shapes) >= 1
+        inline_shape = doc.inline_shapes[0]
+        assert inline_shape._inline.docPr.get("descr") == "Revenue bridge"
+        assert inline_shape._inline.docPr.get("title") == "Revenue bridge"
+
+        output_path = tmp_path / "roundtrip_image.docx"
+        doc.save(str(output_path))
+        parsed = parse_word_file(str(output_path), extract_images=False)
+        image_element = next(
+            element for element in parsed.elements if element.element_type == ElementType.IMAGE
+        )
+        assert image_element.content.alt_text == "Revenue bridge"
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # LATEX RENDERER TESTS
@@ -163,6 +225,66 @@ class TestLaTeXRenderer:
 
         # Cleanup
         os.unlink(path)
+
+    def test_inline_latex_runs_render_as_inline_images(self, tmp_path, monkeypatch):
+        """Inline LaTeX runs should render as inline pictures rather than fallback text."""
+        from ib_renderer import DocumentStyler, TextRenderer
+
+        image_path = tmp_path / "latex-inline.png"
+        image_path.write_bytes(PNG_BYTES)
+        monkeypatch.setattr(
+            "ib_renderer.LaTeXRenderer.render_to_image",
+            lambda expression, fontsize=14, dpi=150: str(image_path),
+        )
+
+        doc = Document()
+        DocumentStyler(doc).create_styles()
+        paragraph = doc.add_paragraph()
+        TextRenderer.render_runs(
+            paragraph,
+            [
+                TextRun(text="Formula "),
+                TextRun(text="x^2", is_latex=True),
+                TextRun(text=" end"),
+            ],
+        )
+
+        assert len(doc.inline_shapes) == 1
+        assert "Formula " in paragraph.text
+        assert " end" in paragraph.text
+        assert "[x^2]" not in paragraph.text
+
+    def test_inline_latex_paragraph_renders_picture(self, tmp_path, monkeypatch):
+        """Paragraph inline LaTeX should become an inline picture in the rendered document."""
+        from ib_renderer import IBDocumentRenderer
+
+        image_path = tmp_path / "latex-paragraph.png"
+        image_path.write_bytes(PNG_BYTES)
+        monkeypatch.setattr(
+            "ib_renderer.LaTeXRenderer.render_to_image",
+            lambda expression, fontsize=14, dpi=150: str(image_path),
+        )
+
+        model = DocumentModel(
+            elements=[
+                Element(
+                    element_type=ElementType.PARAGRAPH,
+                    content=Paragraph(
+                        text="Formula $x^2$ end",
+                        runs=[
+                            TextRun(text="Formula "),
+                            TextRun(text="x^2", is_latex=True),
+                            TextRun(text=" end"),
+                        ],
+                        has_inline_latex=True,
+                    ),
+                )
+            ]
+        )
+
+        doc = IBDocumentRenderer().render(model)
+
+        assert len(doc.inline_shapes) >= 1
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -289,3 +411,578 @@ class TestCoverRendererDisclaimerTable:
                 break
 
         assert disclaimer_table is not None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TEXT FORMATTING RENDERING TESTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestTextRendererFormatting:
+    """Tests for TextRenderer.render_text_with_formatting."""
+
+    @pytest.fixture
+    def doc(self):
+        from ib_renderer import DocumentStyler
+
+        d = Document()
+        DocumentStyler(d).create_styles()
+        return d
+
+    def test_bold_markers_rendered(self, doc):
+        from ib_renderer import TextRenderer
+
+        p = doc.add_paragraph()
+        TextRenderer.render_text_with_formatting(p, "Normal **Bold** text")
+        runs = p.runs
+        # Should have 3 runs: "Normal", "Bold", "text"
+        assert len(runs) >= 2
+        bold_runs = [r for r in runs if r.font.bold]
+        assert len(bold_runs) >= 1
+        assert "Bold" in bold_runs[0].text
+
+    def test_italic_markers_rendered(self, doc):
+        from ib_renderer import TextRenderer
+
+        p = doc.add_paragraph()
+        TextRenderer.render_text_with_formatting(p, "Normal *italic* text")
+        runs = p.runs
+        italic_runs = [r for r in runs if r.font.italic]
+        assert len(italic_runs) >= 1
+        assert "italic" in italic_runs[0].text
+
+    def test_superscript_markers_rendered(self, doc):
+        from ib_renderer import TextRenderer
+
+        p = doc.add_paragraph()
+        TextRenderer.render_text_with_formatting(p, "footnote^1^")
+        runs = p.runs
+        super_runs = [r for r in runs if r.font.superscript]
+        assert len(super_runs) >= 1
+        assert "1" in super_runs[0].text
+
+    def test_subscript_markers_rendered(self, doc):
+        from ib_renderer import TextRenderer
+
+        p = doc.add_paragraph()
+        TextRenderer.render_text_with_formatting(p, "H~2~O")
+        sub_runs = [r for r in p.runs if r.font.subscript]
+        assert len(sub_runs) >= 1
+        assert "2" in sub_runs[0].text
+
+    def test_bold_and_italic_combined(self, doc):
+        from ib_renderer import TextRenderer
+
+        p = doc.add_paragraph()
+        TextRenderer.render_text_with_formatting(p, "**Bold** and *italic* mixed")
+        bold_runs = [r for r in p.runs if r.font.bold]
+        italic_runs = [r for r in p.runs if r.font.italic]
+        assert len(bold_runs) >= 1
+        assert len(italic_runs) >= 1
+
+    def test_plain_text_no_extra_runs(self, doc):
+        from ib_renderer import TextRenderer
+
+        p = doc.add_paragraph()
+        TextRenderer.render_text_with_formatting(p, "Plain text only")
+        assert len(p.runs) == 1
+        assert p.runs[0].text.strip() == "Plain text only"
+
+    def test_default_color_applied(self, doc):
+        from docx.shared import RGBColor
+
+        from ib_renderer import TextRenderer
+
+        p = doc.add_paragraph()
+        white = RGBColor(255, 255, 255)
+        TextRenderer.render_text_with_formatting(
+            p, "White text", default_color=white
+        )
+        assert p.runs[0].font.color.rgb == white
+
+    def test_color_span_rendered(self, doc):
+        from docx.shared import RGBColor
+
+        from ib_renderer import TextRenderer
+
+        p = doc.add_paragraph()
+        TextRenderer.render_text_with_formatting(
+            p, '<span style="color:#C00000">Loss</span>'
+        )
+        assert p.runs[0].font.color.rgb == RGBColor(192, 0, 0)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TABLE CELL RUNS RENDERING TESTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestTableCellRunsRendering:
+    """Tests that table cells use TextRun formatting when available."""
+
+    def _build_model_with_table(self, cell_runs=None, cell_text="Content"):
+        """Helper to build a DocumentModel with a single table."""
+        cells = [TableCell(content=cell_text, runs=cell_runs or [])]
+        header = TableRow(cells=[TableCell(content="Header")])
+        data = TableRow(cells=cells)
+        table = Table(rows=[header, data], col_count=1)
+        return DocumentModel(
+            elements=[Element(element_type=ElementType.TABLE, content=table)]
+        )
+
+    def test_cell_with_runs_uses_runs(self):
+        from ib_renderer import DocumentStyler, IBDocumentRenderer
+
+        runs = [
+            TextRun(text="Bold", bold=True),
+            TextRun(text=" normal"),
+        ]
+        model = self._build_model_with_table(cell_runs=runs)
+
+        renderer = IBDocumentRenderer()
+        doc = renderer.render(model)
+
+        table = self._find_content_table(doc, "Bold")
+        assert table is not None, "Table with 'Bold' not found"
+        data_cell = table.rows[1].cells[0]
+        cell_runs = data_cell.paragraphs[0].runs
+
+        bold_found = any(r.font.bold for r in cell_runs)
+        assert bold_found, "Cell runs should preserve bold formatting"
+
+    def _find_content_table(self, doc, search_text):
+        """Find the table containing search_text (skip cover/disclaimer tables)."""
+        for t in doc.tables:
+            for row in t.rows:
+                for cell in row.cells:
+                    if search_text in cell.text:
+                        return t
+        return None
+
+    def test_cell_without_runs_falls_back_to_text(self):
+        from ib_renderer import DocumentStyler, IBDocumentRenderer
+
+        model = self._build_model_with_table(cell_text="**Important** value")
+
+        renderer = IBDocumentRenderer()
+        doc = renderer.render(model)
+
+        table = self._find_content_table(doc, "Important")
+        assert table is not None, "Table with 'Important' not found"
+        data_cell = table.rows[1].cells[0]
+        text = data_cell.text
+        assert "Important" in text
+        assert "**" not in text  # Markers should be parsed, not literal
+
+    def test_header_cell_with_runs_uses_runs(self):
+        from ib_renderer import DocumentStyler, IBDocumentRenderer
+
+        runs = [TextRun(text="Revenue"), TextRun(text=" (M)", italic=True)]
+        header = TableRow(cells=[TableCell(content="Revenue (M)", runs=runs)])
+        data = TableRow(cells=[TableCell(content="100")])
+        table = Table(rows=[header, data], col_count=1)
+        model = DocumentModel(
+            elements=[Element(element_type=ElementType.TABLE, content=table)]
+        )
+
+        renderer = IBDocumentRenderer()
+        doc = renderer.render(model)
+
+        content_table = self._find_content_table(doc, "Revenue")
+        assert content_table is not None, "Table with 'Revenue' not found"
+        header_cell = content_table.rows[0].cells[0]
+        header_runs = header_cell.paragraphs[0].runs
+        italic_found = any(r.font.italic for r in header_runs)
+        assert italic_found, "Header runs should preserve italic"
+
+    def test_table_cells_use_compact_paragraph_spacing_and_center_vertical_align(self):
+        from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+
+        from ib_renderer import IBDocumentRenderer
+
+        model = self._build_model_with_table(
+            cell_runs=[TextRun(text="100")],
+            cell_text="100",
+        )
+
+        doc = IBDocumentRenderer().render(model)
+        table = self._find_content_table(doc, "100")
+        assert table is not None, "Table with '100' not found"
+
+        header_cell = table.rows[0].cells[0]
+        data_cell = table.rows[1].cells[0]
+
+        assert header_cell.vertical_alignment == WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        assert data_cell.vertical_alignment == WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        assert header_cell.paragraphs[0].paragraph_format.space_after.pt == 0
+        assert data_cell.paragraphs[0].paragraph_format.space_after.pt == 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LIST INDENT TESTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestListIndentRendering:
+    """Tests that deep list nesting stays within a bounded indentation range."""
+
+    def test_deep_bullet_indent_is_compressed(self):
+        from ib_renderer import IBDocumentRenderer, STYLE
+
+        model = DocumentModel(
+            elements=[
+                Element(
+                    element_type=ElementType.BULLET_LIST,
+                    content=ListItem(text="Deep bullet", indent_level=5),
+                )
+            ]
+        )
+
+        doc = IBDocumentRenderer().render(model)
+        paragraph = next(p for p in doc.paragraphs if "Deep bullet" in p.text)
+
+        assert paragraph.paragraph_format.left_indent is not None
+        assert paragraph.paragraph_format.left_indent.inches < 1.5
+        assert paragraph.paragraph_format.left_indent.inches > 1.0
+        assert paragraph.paragraph_format.first_line_indent == -STYLE.BULLET_INDENT
+
+    def test_numbered_indent_keeps_depth_without_linear_growth(self):
+        from ib_renderer import ListRenderer
+
+        level_three = ListRenderer._resolve_indent(3).inches
+        level_five = ListRenderer._resolve_indent(5).inches
+        level_six = ListRenderer._resolve_indent(6).inches
+
+        assert level_three == 1.0
+        assert level_five > level_three
+        assert level_five < 1.5
+        assert level_six > level_five
+        assert (level_six - level_five) < 0.25
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SEPARATOR RENDERING TESTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestSeparatorRendering:
+    """Tests that SEPARATOR elements produce a visible horizontal rule."""
+
+    def test_separator_creates_paragraph(self):
+        from ib_renderer import IBDocumentRenderer
+
+        model = DocumentModel(
+            elements=[
+                Element(element_type=ElementType.PARAGRAPH, content=Paragraph(text="Before")),
+                Element(element_type=ElementType.SEPARATOR, content=None),
+                Element(element_type=ElementType.PARAGRAPH, content=Paragraph(text="After")),
+            ]
+        )
+        renderer = IBDocumentRenderer()
+        doc = renderer.render(model)
+
+        # Should have paragraphs for: cover, TOC, "Before", separator, "After", disclaimer
+        all_text = [p.text for p in doc.paragraphs]
+        assert "Before" in all_text
+        assert "After" in all_text
+
+    def test_separator_has_border(self):
+        from lxml import etree
+
+        from ib_renderer import IBDocumentRenderer
+
+        model = DocumentModel(
+            elements=[Element(element_type=ElementType.SEPARATOR, content=None)]
+        )
+        renderer = IBDocumentRenderer()
+        doc = renderer.render(model)
+
+        # Find a paragraph with bottom border
+        ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+        found_border = False
+        for p in doc.paragraphs:
+            borders = p._p.findall(".//w:pBdr/w:bottom", ns)
+            if borders:
+                found_border = True
+                break
+        assert found_border, "SEPARATOR should produce a paragraph with bottom border"
+
+    def test_explicit_separator_marker_becomes_page_break_in_auto_mode(self):
+        from ib_renderer import IBDocumentRenderer
+
+        baseline_doc = IBDocumentRenderer().render(DocumentModel())
+        model = DocumentModel(
+            elements=[
+                Element(
+                    element_type=ElementType.SEPARATOR,
+                    content=None,
+                    raw_text="## ---",
+                )
+            ]
+        )
+        renderer = IBDocumentRenderer()
+        doc = renderer.render(model)
+
+        baseline_page_breaks = baseline_doc.element.xpath(
+            ".//*[local-name()='br' and @*[local-name()='type']='page']"
+        )
+        doc_page_breaks = doc.element.xpath(".//*[local-name()='br' and @*[local-name()='type']='page']")
+
+        baseline_borders = [
+            paragraph for paragraph in baseline_doc.paragraphs if paragraph._p.xpath(".//*[local-name()='pBdr']")
+        ]
+        doc_borders = [paragraph for paragraph in doc.paragraphs if paragraph._p.xpath(".//*[local-name()='pBdr']")]
+
+        assert len(doc_page_breaks) == len(baseline_page_breaks) + 1
+        assert len(doc_borders) == len(baseline_borders)
+
+    def test_separator_mode_page_break_overrides_plain_separator(self):
+        from ib_renderer import IBDocumentRenderer
+
+        model = DocumentModel(
+            elements=[Element(element_type=ElementType.SEPARATOR, content=None, raw_text="---")]
+        )
+        renderer = IBDocumentRenderer(separator_mode="page-break")
+        doc = renderer.render(model)
+
+        page_breaks = doc.element.xpath(".//*[local-name()='br' and @*[local-name()='type']='page']")
+        assert len(page_breaks) >= 1
+
+    def test_empty_element_no_crash(self):
+        from ib_renderer import IBDocumentRenderer
+
+        model = DocumentModel(
+            elements=[Element(element_type=ElementType.EMPTY, content=None)]
+        )
+        renderer = IBDocumentRenderer()
+        doc = renderer.render(model)
+        # Should not crash — that's the test
+        assert doc is not None
+
+
+class TestTOCPreviewRendering:
+    """Tests that TOC preview entries are visible before field update."""
+
+    def test_toc_preview_contains_heading_entries(self):
+        from ib_renderer import IBDocumentRenderer
+
+        model = DocumentModel(
+            metadata=DocumentMetadata(title="샘플 보고서"),
+            elements=[
+                Element(
+                    element_type=ElementType.HEADING_1,
+                    content=Heading(level=1, text="샘플 보고서"),
+                ),
+                Element(
+                    element_type=ElementType.HEADING_2,
+                    content=Heading(level=2, text="I. 개요"),
+                ),
+                Element(
+                    element_type=ElementType.HEADING_3,
+                    content=Heading(level=3, text="1. 세부 항목"),
+                ),
+            ],
+        )
+
+        doc = IBDocumentRenderer().render(model)
+        texts = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+
+        assert "TABLE OF CONTENTS" in texts
+        assert "샘플 보고서" in texts
+        assert "I. 개요" in texts
+        assert "1. 세부 항목" in texts
+        assert not any("Update Field" in text for text in texts)
+
+    def test_code_block_renders_as_shaded_monospace_block(self):
+        from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+
+        from ib_renderer import IBDocumentRenderer
+
+        model = DocumentModel(
+            elements=[
+                Element(
+                    element_type=ElementType.CODE_BLOCK,
+                    content=CodeBlock(code="A\n└── B", language="text"),
+                )
+            ]
+        )
+
+        doc = IBDocumentRenderer().render(model)
+        code_table = next((table for table in doc.tables if "└── B" in table.cell(0, 0).text), None)
+
+        assert code_table is not None
+        cell = code_table.cell(0, 0)
+        run = cell.paragraphs[0].runs[0]
+        assert run.font.name == "Consolas"
+        assert cell.vertical_alignment == WD_CELL_VERTICAL_ALIGNMENT.TOP
+        assert not cell._tc.xpath(".//*[local-name()='tblBorders']/*[@*[local-name()='val']='single']")
+
+
+class TestCoverMetadataInference:
+    """Tests that inferred analysis metadata appears on the cover panel."""
+
+    def test_cover_metadata_panel_renders_inferred_analysis_rows(self):
+        from ib_renderer import IBDocumentRenderer
+
+        model = DocumentModel(
+            metadata=DocumentMetadata(
+                title="일동제약 주식회사 수익성 변화 분석 보고서",
+                company="일동제약 주식회사",
+                extra={
+                    "date": "2026년 3월 20일",
+                    "analysis_period": "제9기→제10기",
+                    "analysis_basis": "연결재무제표 기준",
+                },
+            )
+        )
+
+        doc = IBDocumentRenderer().render(model)
+        cover_table = doc.tables[0]
+        rows = [[cell.text.strip() for cell in row.cells] for row in cover_table.rows]
+
+        assert ["REPORT DATE", "2026년 3월 20일"] in rows
+        assert ["ANALYSIS PERIOD", "제9기→제10기"] in rows
+        assert ["ANALYSIS BASIS", "연결재무제표 기준"] in rows
+        assert ["INSTITUTION", "일동제약 주식회사"] in rows
+        assert not any(row[0] == "PREPARED BY" for row in rows)
+        assert not any(row[0] == "SECTOR" for row in rows)
+
+    def test_cover_hides_placeholder_sector_and_splits_company_from_title(self):
+        from ib_renderer import IBDocumentRenderer
+
+        model = DocumentModel(
+            metadata=DocumentMetadata(
+                title="일동제약 주식회사 수익성 변화 분석 보고서",
+                company="일동제약 주식회사",
+                sector="SECTOR",
+            )
+        )
+
+        doc = IBDocumentRenderer().render(model)
+        texts = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+
+        assert "SECTOR" not in texts
+        assert "DCM RESEARCH" not in texts
+        assert "일동제약 주식회사" in texts
+        assert "수익성 변화 분석 보고서" in texts
+        assert "일동제약 주식회사 수익성 변화 분석 보고서" not in texts
+
+    def test_subject_company_only_affects_cover_not_disclaimer_brand(self):
+        from ib_renderer import IBDocumentRenderer
+
+        model = DocumentModel(
+            metadata=DocumentMetadata(
+                title="일동제약 주식회사 수익성 변화 분석 보고서",
+                company="Korea Development Bank",
+                extra={"subject_company": "일동제약 주식회사"},
+            )
+        )
+
+        doc = IBDocumentRenderer().render(model)
+        cover_rows = [[cell.text.strip() for cell in row.cells] for row in doc.tables[0].rows]
+        texts = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+
+        assert ["INSTITUTION", "일동제약 주식회사"] in cover_rows
+        assert any("Korea Development Bank. All rights reserved." in text for text in texts)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CALLOUT CONTENT FORMATTING TESTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestCalloutContentFormatting:
+    """Tests that callout content renders with inline formatting."""
+
+    def test_callout_bold_content(self):
+        from ib_renderer import IBDocumentRenderer
+
+        model = DocumentModel(
+            elements=[
+                Element(
+                    element_type=ElementType.BLOCKQUOTE,
+                    content=Blockquote(
+                        title="KEY INSIGHT",
+                        text="This is **important** information.",
+                    ),
+                )
+            ]
+        )
+        renderer = IBDocumentRenderer()
+        doc = renderer.render(model)
+
+        # Find the callout table
+        callout_table = None
+        for t in doc.tables:
+            if len(t.rows) == 1 and len(t.rows[0].cells) == 1:
+                cell_text = t.rows[0].cells[0].text
+                if "important" in cell_text:
+                    callout_table = t
+                    break
+
+        assert callout_table is not None
+        cell = callout_table.rows[0].cells[0]
+
+        # Content paragraph should have formatted runs
+        content_paras = [p for p in cell.paragraphs if "important" in p.text]
+        assert len(content_paras) >= 1
+
+        bold_runs = [r for r in content_paras[0].runs if r.font.bold]
+        assert len(bold_runs) >= 1, "Bold markers in callout content should be rendered"
+
+    def test_callout_italic_content(self):
+        from ib_renderer import IBDocumentRenderer
+
+        model = DocumentModel(
+            elements=[
+                Element(
+                    element_type=ElementType.BLOCKQUOTE,
+                    content=Blockquote(
+                        title="NOTE",
+                        text="See *appendix* for details.",
+                    ),
+                )
+            ]
+        )
+        renderer = IBDocumentRenderer()
+        doc = renderer.render(model)
+
+        for t in doc.tables:
+            if len(t.rows) == 1 and len(t.rows[0].cells) == 1:
+                cell = t.rows[0].cells[0]
+                for p in cell.paragraphs:
+                    if "appendix" in p.text:
+                        italic_runs = [r for r in p.runs if r.font.italic]
+                        assert len(italic_runs) >= 1, "Italic in callout should render"
+                        return
+        pytest.fail("Callout with italic content not found")
+
+    def test_callout_navy_bg_white_text(self):
+        from docx.shared import RGBColor
+
+        from ib_renderer import IBDocumentRenderer
+
+        model = DocumentModel(
+            elements=[
+                Element(
+                    element_type=ElementType.BLOCKQUOTE,
+                    content=Blockquote(
+                        title="EXECUTIVE SUMMARY",
+                        text="**Key finding**: revenue up.",
+                    ),
+                )
+            ]
+        )
+        renderer = IBDocumentRenderer()
+        doc = renderer.render(model)
+
+        white = RGBColor(255, 255, 255)
+        for t in doc.tables:
+            if len(t.rows) == 1 and len(t.rows[0].cells) == 1:
+                cell = t.rows[0].cells[0]
+                for p in cell.paragraphs:
+                    if "finding" in p.text or "revenue" in p.text:
+                        for r in p.runs:
+                            if r.font.color.rgb == white:
+                                return  # Found white text — pass
+        pytest.fail("Executive summary content should have white text")

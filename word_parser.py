@@ -7,16 +7,22 @@ Dependencies:
     Optional: Pillow (for image processing)
 """
 
+import base64
+import io
 import logging
+import mimetypes
 import re
+import zipfile
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Set, Tuple, Union
+from xml.etree import ElementTree
 
 from docx import Document
 from docx.document import Document as DocxDocument
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml.ns import qn
 from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
@@ -31,6 +37,7 @@ from md_parser import (
     ElementType,
     Heading,
     Image,
+    LaTeXEquation,
     ListItem,
     Paragraph,
     Table,
@@ -61,6 +68,157 @@ class ParseContext:
     profile: DocumentProfile = DocumentProfile.GENERIC
     skip_indices: Set[int] = field(default_factory=set)
     footnotes: Dict[int, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ExtractedImageAsset:
+    """Parsed image data keyed by Word relationship ID."""
+
+    path: str = ""
+    base64_data: Optional[str] = None
+    mime_type: str = "image/png"
+    default_alt_text: str = "Image"
+
+
+@dataclass(frozen=True)
+class ThemeColorResolver:
+    """Resolves Word theme color references to concrete RGB hex strings."""
+
+    color_map: Dict[str, str] = field(default_factory=dict)
+
+    _THEME_PART_PATH = "word/theme/theme1.xml"
+    _DRAWINGML_NS = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
+    _ALIAS_MAP = {
+        "dk1": "dark1",
+        "lt1": "light1",
+        "dk2": "dark2",
+        "lt2": "light2",
+        "hlink": "hyperlink",
+        "folhlink": "followedhyperlink",
+        "text1": "dark1",
+        "background1": "light1",
+        "text2": "dark2",
+        "background2": "light2",
+        "followedhyperlink": "followedhyperlink",
+    }
+
+    @classmethod
+    def from_docx_bytes(cls, source_bytes: bytes) -> "ThemeColorResolver":
+        """Parse a DOCX theme part into a theme-color lookup table."""
+        try:
+            with zipfile.ZipFile(io.BytesIO(source_bytes)) as archive:
+                if cls._THEME_PART_PATH not in archive.namelist():
+                    return cls()
+                xml_bytes = archive.read(cls._THEME_PART_PATH)
+        except (OSError, KeyError, zipfile.BadZipFile):
+            return cls()
+
+        try:
+            root = ElementTree.fromstring(xml_bytes)
+        except ElementTree.ParseError:
+            return cls()
+
+        clr_scheme = root.find(".//a:clrScheme", cls._DRAWINGML_NS)
+        if clr_scheme is None:
+            return cls()
+
+        color_map: Dict[str, str] = {}
+        for child in list(clr_scheme):
+            local_name = cls._local_name(child.tag).lower()
+            value = cls._extract_scheme_color(child)
+            if not local_name or value is None:
+                continue
+            normalized_name = cls._normalize_theme_name(local_name)
+            color_map[normalized_name] = value
+
+        return cls(color_map=color_map)
+
+    def resolve(
+        self,
+        theme_color: str,
+        tint: Optional[str] = None,
+        shade: Optional[str] = None,
+    ) -> Optional[str]:
+        """Resolve a theme color reference, optionally applying tint/shade."""
+        if not theme_color:
+            return None
+
+        normalized_name = self._normalize_theme_name(theme_color)
+        base_hex = self.color_map.get(normalized_name)
+        if base_hex is None:
+            return None
+
+        rgb = self._hex_to_rgb(base_hex)
+        if tint:
+            rgb = self._apply_tint(rgb, tint)
+        if shade:
+            rgb = self._apply_shade(rgb, shade)
+        return self._rgb_to_hex(rgb)
+
+    @classmethod
+    def _extract_scheme_color(cls, element) -> Optional[str]:
+        """Extract a color value from a theme scheme node."""
+        for child in list(element):
+            local_name = cls._local_name(child.tag).lower()
+            if local_name == "srgbclr":
+                value = (child.attrib.get("val") or "").strip()
+                return cls._normalize_hex(value)
+            if local_name == "sysclr":
+                value = (child.attrib.get("lastClr") or child.attrib.get("val") or "").strip()
+                return cls._normalize_hex(value)
+        return None
+
+    @classmethod
+    def _normalize_theme_name(cls, value: str) -> str:
+        """Normalize theme color names and aliases to a common key."""
+        normalized = value.strip().replace("_", "").replace("-", "").lower()
+        return cls._ALIAS_MAP.get(normalized, normalized)
+
+    @staticmethod
+    def _local_name(tag: str) -> str:
+        """Strip namespace from an XML tag."""
+        return tag.split("}", 1)[-1] if "}" in tag else tag
+
+    @staticmethod
+    def _normalize_hex(value: str) -> Optional[str]:
+        """Normalize a raw hex string to #RRGGBB."""
+        candidate = value.strip().lstrip("#")
+        if len(candidate) != 6 or not re.fullmatch(r"[0-9A-Fa-f]{6}", candidate):
+            return None
+        return f"#{candidate.upper()}"
+
+    @staticmethod
+    def _hex_to_rgb(value: str) -> Tuple[int, int, int]:
+        """Convert #RRGGBB into an RGB tuple."""
+        normalized = value.lstrip("#")
+        return (
+            int(normalized[0:2], 16),
+            int(normalized[2:4], 16),
+            int(normalized[4:6], 16),
+        )
+
+    @staticmethod
+    def _rgb_to_hex(rgb: Tuple[int, int, int]) -> str:
+        """Convert an RGB tuple into #RRGGBB."""
+        return "#{:02X}{:02X}{:02X}".format(*rgb)
+
+    @staticmethod
+    def _apply_tint(rgb: Tuple[int, int, int], tint: str) -> Tuple[int, int, int]:
+        """Apply Word theme tint to an RGB tuple."""
+        tint_value = int(tint, 16) / 255.0
+        return tuple(
+            max(0, min(255, int(round(channel + (255 - channel) * tint_value))))
+            for channel in rgb
+        )
+
+    @staticmethod
+    def _apply_shade(rgb: Tuple[int, int, int], shade: str) -> Tuple[int, int, int]:
+        """Apply Word theme shade to an RGB tuple."""
+        shade_value = int(shade, 16) / 255.0
+        return tuple(
+            max(0, min(255, int(round(channel * shade_value))))
+            for channel in rgb
+        )
 
 
 class NumberingTracker:
@@ -153,6 +311,10 @@ class NumberingTracker:
 class MetadataExtractor:
     """Extracts document metadata from Word core properties and IB cover blocks."""
 
+    _CUSTOM_PROPS_PATH = "docProps/custom.xml"
+    _CUSTOM_PROPS_NS = {
+        "cp": "http://schemas.openxmlformats.org/officeDocument/2006/custom-properties",
+    }
     _IB_PANEL_FIELDS = {
         "REPORT DATE": ("extra", "date"),
         "PREPARED BY": ("analyst", None),
@@ -161,9 +323,32 @@ class MetadataExtractor:
         "PREPARED FOR": ("extra", "recipient"),
     }
     _IB_REPORT_TYPE_RE = re.compile(r"^[A-Z][A-Z0-9\s&/\-]{3,40}$")
+    _NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
+    _CUSTOM_METADATA_FIELD_MAP = {
+        "title": ("title", None),
+        "report_title": ("title", None),
+        "subtitle": ("subtitle", None),
+        "subject": ("subtitle", None),
+        "company": ("company", None),
+        "institution": ("company", None),
+        "issuer": ("company", None),
+        "ticker": ("ticker", None),
+        "sector": ("sector", None),
+        "analyst": ("analyst", None),
+        "author": ("analyst", None),
+        "date": ("extra", "date"),
+        "report_date": ("extra", "date"),
+        "recipient": ("extra", "recipient"),
+        "prepared_for": ("extra", "recipient"),
+        "report_type": ("extra", "report_type"),
+    }
 
-    @staticmethod
-    def extract(doc: DocxDocument) -> DocumentMetadata:
+    @classmethod
+    def extract(
+        cls,
+        doc: DocxDocument,
+        source_bytes: Optional[bytes] = None,
+    ) -> DocumentMetadata:
         """Extract metadata from document properties."""
         props = doc.core_properties
         metadata = DocumentMetadata()
@@ -179,7 +364,72 @@ class MetadataExtractor:
         if props.category:
             metadata.sector = props.category
 
+        if source_bytes:
+            cls._apply_custom_metadata(metadata, cls.extract_custom_properties(source_bytes))
+
         return metadata
+
+    @classmethod
+    def extract_custom_properties(cls, source_bytes: bytes) -> Dict[str, str]:
+        """Extract custom document properties from docProps/custom.xml."""
+        try:
+            with zipfile.ZipFile(io.BytesIO(source_bytes)) as archive:
+                if cls._CUSTOM_PROPS_PATH not in archive.namelist():
+                    return {}
+                xml_bytes = archive.read(cls._CUSTOM_PROPS_PATH)
+        except (OSError, KeyError, zipfile.BadZipFile):
+            return {}
+
+        try:
+            root = ElementTree.fromstring(xml_bytes)
+        except ElementTree.ParseError:
+            return {}
+
+        properties: Dict[str, str] = {}
+        prop_tag = "{%s}property" % cls._CUSTOM_PROPS_NS["cp"]
+        for prop in root.findall(prop_tag):
+            name = (prop.attrib.get("name") or "").strip()
+            value = cls._extract_custom_property_value(prop)
+            if name and value:
+                properties[name] = value
+
+        return properties
+
+    @classmethod
+    def _apply_custom_metadata(
+        cls,
+        metadata: DocumentMetadata,
+        custom_properties: Dict[str, str],
+    ) -> None:
+        """Merge custom document properties into the shared metadata model."""
+        for raw_key, value in custom_properties.items():
+            normalized_key = cls._normalize_custom_key(raw_key)
+            mapped = cls._CUSTOM_METADATA_FIELD_MAP.get(normalized_key)
+
+            if mapped:
+                field_name, extra_key = mapped
+                if field_name == "extra" and extra_key:
+                    metadata.extra[extra_key] = value
+                else:
+                    setattr(metadata, field_name, value)
+                continue
+
+            metadata.extra.setdefault(normalized_key, value)
+
+    @staticmethod
+    def _extract_custom_property_value(prop) -> str:
+        """Read the text value from a custom property element."""
+        for child in prop:
+            if isinstance(child.tag, str):
+                return "".join(child.itertext()).strip()
+        return ""
+
+    @classmethod
+    def _normalize_custom_key(cls, key: str) -> str:
+        """Normalize a custom metadata key to snake_case."""
+        lowered = key.strip().lower()
+        normalized = cls._NON_ALNUM_RE.sub("_", lowered).strip("_")
+        return normalized
 
     @classmethod
     def apply_ib_cover_metadata(
@@ -353,14 +603,18 @@ class StyleDetector:
     BULLET_TEXT_PATTERN = re.compile(r"^[•●■◦▪\-*]\s+(.+)$")
     NUMBERED_TEXT_PATTERN = re.compile(r"^(\d+)[\.\)]\s+(.+)$")
     LIST_LEVEL_STYLE_PATTERN = re.compile(r".*?(\d+)$")
+    HEADING_LEVEL_HINT_RE = re.compile(r"(?:heading|제목)\s*([1-4])", re.I)
 
     @classmethod
     def detect_heading_level(cls, para) -> Optional[int]:
         """Detect if paragraph is a heading and return level (1-4)."""
-        style_name = para.style.name if para.style else ""
-        for pattern, level in cls.HEADING_PATTERNS:
-            if pattern.match(style_name):
-                return level
+        style_level = cls._detect_heading_level_from_style(para.style if para.style else None)
+        if style_level:
+            return style_level
+
+        outline_level = cls._extract_outline_level(para)
+        if outline_level:
+            return outline_level
 
         if cls._is_heading_by_formatting(para):
             return 2
@@ -443,12 +697,94 @@ class StyleDetector:
         return bool(alignment == WD_ALIGN_PARAGRAPH.CENTER)
 
     @staticmethod
+    def has_embedded_content(para) -> bool:
+        """Return True if a paragraph contains non-text embedded content like images."""
+        return bool(
+            para._p.xpath(
+                ".//*[local-name()='drawing' or local-name()='pict' or local-name()='object']"
+            )
+        )
+
+    @staticmethod
     def _extract_numbering_level(para) -> Optional[int]:
         """Extract Word numbering level from paragraph XML."""
         for ilvl in para._p.xpath(".//*[local-name()='ilvl']"):
             value = ilvl.get(qn("w:val")) or ilvl.get("val")
             if value and str(value).isdigit():
                 return int(value)
+        return None
+
+    @classmethod
+    def _detect_heading_level_from_style(cls, style) -> Optional[int]:
+        """Detect heading level from a style or its base-style chain."""
+        for current_style in cls._iter_style_chain(style):
+            for identifier in cls._style_identifiers(current_style):
+                level = cls._match_heading_level(identifier)
+                if level:
+                    return level
+
+            outline_level = cls._extract_outline_level_from_element(current_style.element)
+            if outline_level:
+                return outline_level
+
+        return None
+
+    @staticmethod
+    def _iter_style_chain(style) -> Iterator:
+        """Yield a style and each base style once."""
+        seen: Set[int] = set()
+        current = style
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            yield current
+            current = getattr(current, "base_style", None)
+
+    @staticmethod
+    def _style_identifiers(style) -> List[str]:
+        """Return style identifiers that may encode heading semantics."""
+        identifiers = []
+        for attr in ("name", "style_id"):
+            value = getattr(style, attr, "")
+            if value:
+                identifiers.append(str(value))
+        return identifiers
+
+    @classmethod
+    def _match_heading_level(cls, identifier: str) -> Optional[int]:
+        """Match a heading level from a style identifier string."""
+        for pattern, level in cls.HEADING_PATTERNS:
+            if pattern.match(identifier):
+                return level
+
+        match = cls.HEADING_LEVEL_HINT_RE.search(identifier)
+        if match:
+            return int(match.group(1))
+        return None
+
+    @classmethod
+    def _extract_outline_level(cls, para) -> Optional[int]:
+        """Extract paragraph or style outline level (0-based in Word)."""
+        level = cls._extract_outline_level_from_element(para._p)
+        if level:
+            return level
+
+        style = para.style if para.style else None
+        for current_style in cls._iter_style_chain(style):
+            level = cls._extract_outline_level_from_element(current_style.element)
+            if level:
+                return level
+        return None
+
+    @staticmethod
+    def _extract_outline_level_from_element(element) -> Optional[int]:
+        """Extract heading level from a paragraph/style XML element."""
+        if element is None or not hasattr(element, "xpath"):
+            return None
+
+        for outline in element.xpath(".//*[local-name()='outlineLvl']"):
+            value = outline.get(qn("w:val")) or outline.get("val")
+            if value is not None and str(value).isdigit():
+                return int(value) + 1
         return None
 
     @classmethod
@@ -557,7 +893,11 @@ class TableExtractor:
     NAVY_HEX = "003366"
 
     @classmethod
-    def extract(cls, word_table) -> Table:
+    def extract(
+        cls,
+        word_table,
+        theme_color_resolver: Optional[ThemeColorResolver] = None,
+    ) -> Table:
         """Convert a Word table to our Table model."""
         table = Table()
         table.col_count = len(word_table.columns)
@@ -584,7 +924,10 @@ class TableExtractor:
                     table_type=table.table_type,
                     header_cells=header_cells,
                 )
-                parsed_cell.runs = cls._extract_cell_runs(cell)
+                parsed_cell.runs = cls._extract_cell_runs(
+                    cell,
+                    theme_color_resolver=theme_color_resolver,
+                )
                 parsed_cell.alignment = (
                     table.alignments[col_idx] if col_idx < len(table.alignments) else "left"
                 )
@@ -614,11 +957,19 @@ class TableExtractor:
         return False
 
     @staticmethod
-    def _extract_cell_runs(cell) -> List[TextRun]:
+    def _extract_cell_runs(
+        cell,
+        theme_color_resolver: Optional[ThemeColorResolver] = None,
+    ) -> List[TextRun]:
         """Extract runs from all cell paragraphs in reading order."""
         runs: List[TextRun] = []
         for paragraph in cell.paragraphs:
-            runs.extend(RunExtractor.extract_runs(paragraph))
+            runs.extend(
+                RunExtractor.extract_runs(
+                    paragraph,
+                    theme_color_resolver=theme_color_resolver,
+                )
+            )
             if runs and paragraph != cell.paragraphs[-1]:
                 runs.append(TextRun(text=" "))
         return runs
@@ -739,20 +1090,23 @@ class CalloutDetector:
 class ImageExtractor:
     """Extracts images from Word documents."""
 
-    def __init__(self, output_dir: Optional[Path] = None):
+    def __init__(
+        self,
+        output_dir: Optional[Path] = None,
+        embed_base64: bool = False,
+    ):
         self.output_dir = output_dir
+        self.embed_base64 = embed_base64
         self._image_counter = 0
-        self._extracted_images: Dict[str, Path] = {}
+        self._extracted_images: Dict[str, ExtractedImageAsset] = {}
 
-    def extract_all(self, doc: DocxDocument) -> Dict[str, Path]:
-        """Extract all images from document to output directory."""
-        if not self.output_dir:
-            return {}
-
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+    def extract_all(self, doc: DocxDocument) -> Dict[str, ExtractedImageAsset]:
+        """Extract all images from document to memory and optional output directory."""
+        if self.output_dir:
+            self.output_dir.mkdir(parents=True, exist_ok=True)
 
         for rel in doc.part.rels.values():
-            if "image" not in rel.target_ref:
+            if not self._is_image_relationship(rel):
                 continue
             try:
                 image_part = rel.target_part
@@ -761,21 +1115,64 @@ class ImageExtractor:
                 self._image_counter += 1
                 ext = Path(rel.target_ref).suffix or ".png"
                 filename = f"image_{self._image_counter}{ext}"
-                output_path = self.output_dir / filename
-                output_path.write_bytes(image_bytes)
-                self._extracted_images[rel.rId] = output_path
-                logger.debug("Extracted image: %s", filename)
+                path_name = ""
+
+                if self.output_dir:
+                    output_path = self.output_dir / filename
+                    output_path.write_bytes(image_bytes)
+                    path_name = str(output_path.name)
+                    logger.debug("Extracted image: %s", filename)
+
+                mime_type = getattr(image_part, "content_type", "") or self._guess_mime_type(
+                    rel.target_ref
+                )
+                base64_data = (
+                    base64.b64encode(image_bytes).decode("ascii")
+                    if self.embed_base64
+                    else None
+                )
+                self._extracted_images[rel.rId] = ExtractedImageAsset(
+                    path=path_name,
+                    base64_data=base64_data,
+                    mime_type=mime_type,
+                    default_alt_text=self._build_default_alt_text(rel.target_ref),
+                )
             except Exception as err:
                 logger.warning("Failed to extract image %s: %s", rel.target_ref, err)
 
         return self._extracted_images
 
-    def get_image_for_rel(self, rel_id: str) -> Optional[Image]:
+    def get_image_for_rel(self, rel_id: str, alt_text: str = "") -> Optional[Image]:
         """Get Image object for a relationship ID."""
         if rel_id in self._extracted_images:
-            path = self._extracted_images[rel_id]
-            return Image(alt_text=path.stem.replace("_", " ").title(), path=str(path.name))
+            asset = self._extracted_images[rel_id]
+            return Image(
+                alt_text=alt_text or asset.default_alt_text,
+                path=asset.path,
+                base64_data=asset.base64_data,
+                mime_type=asset.mime_type,
+            )
         return None
+
+    @staticmethod
+    def _is_image_relationship(rel) -> bool:
+        """Return True if the relationship points to an image part."""
+        reltype = getattr(rel, "reltype", "")
+        target_ref = getattr(rel, "target_ref", "")
+        return "image" in reltype or "image" in target_ref
+
+    @staticmethod
+    def _build_default_alt_text(target_ref: str) -> str:
+        """Generate a human-friendly fallback alt text from the file name."""
+        stem = Path(target_ref).stem.replace("_", " ").replace("-", " ").strip()
+        stem = re.sub(r"(?<=\D)(?=\d)|(?<=\d)(?=\D)", " ", stem)
+        return stem.title() if stem else "Image"
+
+    @staticmethod
+    def _guess_mime_type(target_ref: str) -> str:
+        """Infer MIME type from the image path extension."""
+        mime_type, _ = mimetypes.guess_type(target_ref)
+        return mime_type or "image/png"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -799,20 +1196,71 @@ class WordParser:
         self,
         extract_images: bool = True,
         image_output_dir: Optional[Path] = None,
+        embed_images_base64: bool = False,
     ):
         self.extract_images = extract_images
         self.image_output_dir = image_output_dir
+        self.embed_images_base64 = embed_images_base64
         self.image_extractor: Optional[ImageExtractor] = None
+        self.theme_color_resolver = ThemeColorResolver()
+        self._omml_available = False
+        try:
+            from omml_latex import pre_process_docx_math  # noqa: F401
 
-    def parse(self, file_path: str) -> DocumentModel:
-        """Parse a Word document into DocumentModel."""
-        doc = Document(file_path)
+            self._omml_available = True
+        except ImportError:
+            pass
+
+    def _open_document(self, source: "Union[str, BinaryIO]"):
+        """Open a DOCX file or stream, pre-processing OMML equations if possible.
+
+        Args:
+            source: File path (str) or binary stream (BinaryIO).
+        """
+        from stream_utils import ensure_seekable, is_stream
+
+        if self._omml_available:
+            try:
+                from omml_latex import pre_process_docx_math
+
+                if is_stream(source):
+                    source = ensure_seekable(source)
+                    processed = pre_process_docx_math(source)
+                else:
+                    with open(source, "rb") as f:
+                        processed = pre_process_docx_math(f)
+                logger.debug("OMML pre-processing applied for %s",
+                             "<stream>" if is_stream(source) else source)
+                return Document(processed)
+            except Exception as e:
+                logger.debug("OMML pre-processing failed, opening directly: %s", e)
+                # Reset stream position if we consumed it
+                if is_stream(source):
+                    source = ensure_seekable(source)
+                    source.seek(0)
+        return Document(source)
+
+    def parse(self, source: "Union[str, BinaryIO]") -> DocumentModel:
+        """Parse a Word document into DocumentModel.
+
+        Args:
+            source: File path (str) or binary stream (BinaryIO).
+        """
+        source_bytes = self._read_source_bytes(source)
+        doc = self._open_document(io.BytesIO(source_bytes))
+        self.theme_color_resolver = ThemeColorResolver.from_docx_bytes(source_bytes)
         blocks = list(self._iter_block_items(doc))
-        context = ParseContext(profile=self._detect_document_profile(blocks))
-        metadata = MetadataExtractor.extract(doc)
+        context = ParseContext(
+            profile=self._detect_document_profile(blocks),
+            footnotes=self._extract_native_footnotes(doc),
+        )
+        metadata = MetadataExtractor.extract(doc, source_bytes=source_bytes)
 
-        if self.extract_images and self.image_output_dir:
-            self.image_extractor = ImageExtractor(self.image_output_dir)
+        if self.extract_images or self.embed_images_base64:
+            self.image_extractor = ImageExtractor(
+                output_dir=self.image_output_dir if self.extract_images else None,
+                embed_base64=self.embed_images_base64,
+            )
             self.image_extractor.extract_all(doc)
 
         if context.profile == DocumentProfile.IB_GENERATED:
@@ -830,6 +1278,54 @@ class WordParser:
             elements=elements,
             footnotes=context.footnotes,
         )
+
+    @staticmethod
+    def _extract_native_footnotes(doc: DocxDocument) -> Dict[int, str]:
+        """Extract native Word footnotes from /word/footnotes.xml when present."""
+        namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+
+        try:
+            footnotes_part = doc.part.part_related_by(RT.FOOTNOTES)
+        except KeyError:
+            return {}
+
+        try:
+            root = ElementTree.fromstring(footnotes_part.blob)
+        except ElementTree.ParseError:
+            return {}
+
+        footnotes: Dict[int, str] = {}
+        for footnote in root.findall("w:footnote", namespace):
+            footnote_id = footnote.attrib.get("{%s}id" % namespace["w"], "")
+            footnote_type = footnote.attrib.get("{%s}type" % namespace["w"], "")
+            if not footnote_id or footnote_type:
+                continue
+            if not footnote_id.lstrip("-").isdigit() or int(footnote_id) <= 0:
+                continue
+
+            texts = [
+                text.text.strip()
+                for text in footnote.findall(".//w:t", namespace)
+                if text.text and text.text.strip()
+            ]
+            if texts:
+                footnotes[int(footnote_id)] = " ".join(texts)
+        return footnotes
+
+    @staticmethod
+    def _read_source_bytes(source: "Union[str, BinaryIO]") -> bytes:
+        """Read the raw DOCX payload for metadata extraction and stream-safe parsing."""
+        from stream_utils import ensure_seekable, is_stream
+
+        if is_stream(source):
+            stream = ensure_seekable(source)
+            stream.seek(0)
+            payload = stream.read()
+            stream.seek(0)
+            return payload
+
+        with open(source, "rb") as file_obj:
+            return file_obj.read()
 
     def _detect_document_profile(self, blocks: List[Union[DocxParagraph, DocxTable]]) -> DocumentProfile:
         """Detect whether the document matches the IB-generated output profile."""
@@ -926,6 +1422,10 @@ class WordParser:
             elif isinstance(child, CT_Tbl):
                 yield DocxTable(child, doc)
 
+    # Regex for LaTeX injected by OMML pre-processor
+    _BLOCK_LATEX_RE = re.compile(r"^\$\$(.+?)\$\$$", re.DOTALL)
+    _INLINE_LATEX_RE = re.compile(r"\$([^$]+?)\$")
+
     def _parse_paragraph(self, para, numbering_tracker: Optional[NumberingTracker] = None) -> Optional[Element]:
         """Parse a single paragraph."""
         image_element = self._parse_image_paragraph(para)
@@ -935,6 +1435,15 @@ class WordParser:
             return image_element
         if not text:
             return None
+
+        # Detect LaTeX block equations injected by OMML pre-processor
+        block_match = self._BLOCK_LATEX_RE.match(text)
+        if block_match:
+            return Element(
+                element_type=ElementType.LATEX_BLOCK,
+                content=LaTeXEquation(expression=block_match.group(1).strip(), is_block=True),
+                raw_text=text,
+            )
 
         level = StyleDetector.detect_heading_level(para)
         if level:
@@ -952,7 +1461,10 @@ class WordParser:
                 element_type=ElementType.BULLET_LIST,
                 content=ListItem(
                     text=content,
-                    runs=RunExtractor.extract_runs(para),
+                    runs=RunExtractor.extract_runs(
+                        para,
+                        theme_color_resolver=self.theme_color_resolver,
+                    ),
                     indent_level=indent_level,
                 ),
                 raw_text=text,
@@ -973,34 +1485,41 @@ class WordParser:
                     number,
                     ListItem(
                         text=content,
-                        runs=RunExtractor.extract_runs(para),
+                        runs=RunExtractor.extract_runs(
+                            para,
+                            theme_color_resolver=self.theme_color_resolver,
+                        ),
                         indent_level=indent_level,
                     ),
                 ),
                 raw_text=text,
             )
 
+        runs = RunExtractor.extract_runs(para, theme_color_resolver=self.theme_color_resolver)
+        has_inline_latex = bool(self._INLINE_LATEX_RE.search(text))
         return Element(
             element_type=ElementType.PARAGRAPH,
-            content=Paragraph(text=text, runs=RunExtractor.extract_runs(para)),
+            content=Paragraph(text=text, runs=runs, has_inline_latex=has_inline_latex),
             raw_text=text,
         )
 
     def _parse_image_paragraph(self, para) -> Optional[Element]:
         """Convert an image-only paragraph into an Image element."""
-        rel_ids = self._find_image_relationship_ids(para)
-        if not rel_ids:
+        image_refs = self._extract_image_references(para)
+        if not image_refs:
             return None
 
         image = None
-        if self.image_extractor:
-            for rel_id in rel_ids:
-                image = self.image_extractor.get_image_for_rel(rel_id)
+        for rel_id, alt_text in image_refs:
+            if self.image_extractor:
+                image = self.image_extractor.get_image_for_rel(rel_id, alt_text=alt_text)
                 if image:
                     break
+            image = Image(alt_text=alt_text or "Image", path="")
+            break
 
         if image is None:
-            image = Image(alt_text="Image", path="")
+            image = Image(alt_text=image_refs[0][1] or "Image", path="")
 
         return Element(
             element_type=ElementType.IMAGE,
@@ -1008,15 +1527,47 @@ class WordParser:
             raw_text=image.path or "[IMAGE]",
         )
 
-    @staticmethod
-    def _find_image_relationship_ids(para) -> List[str]:
-        """Extract embedded image relationship IDs from a paragraph."""
-        rel_ids: List[str] = []
+    @classmethod
+    def _extract_image_references(cls, para) -> List[Tuple[str, str]]:
+        """Extract embedded image relationship IDs and alt text from a paragraph."""
+        refs: List[Tuple[str, str]] = []
+        for drawing in para._p.xpath(".//*[local-name()='drawing']"):
+            rel_id = cls._find_rel_id(drawing)
+            if not rel_id:
+                continue
+            refs.append((rel_id, cls._extract_image_alt_text(drawing)))
+
+        if refs:
+            return refs
+
         for blip in para._p.xpath(".//*[local-name()='blip']"):
             rel_id = blip.get(qn("r:embed"))
             if rel_id:
-                rel_ids.append(str(rel_id))
-        return rel_ids
+                refs.append((str(rel_id), ""))
+        return refs
+
+    @staticmethod
+    def _find_rel_id(drawing) -> str:
+        """Find the first embedded relationship ID in a drawing node."""
+        for blip in drawing.xpath(".//*[local-name()='blip']"):
+            rel_id = blip.get(qn("r:embed"))
+            if rel_id:
+                return str(rel_id)
+        return ""
+
+    @staticmethod
+    def _extract_image_alt_text(drawing) -> str:
+        """Extract human-authored alt text from a Word drawing node."""
+        for doc_pr in drawing.xpath(".//*[local-name()='docPr']"):
+            for attr_name in ("descr", "title"):
+                value = (doc_pr.get(attr_name) or "").strip()
+                if value:
+                    return value
+
+            name = (doc_pr.get("name") or "").strip()
+            if name and not re.match(r"^Picture \d+$", name, re.I):
+                return name
+        return ""
 
     def _parse_table(self, word_table) -> Optional[Element]:
         """Parse a Word table."""
@@ -1028,7 +1579,10 @@ class WordParser:
                 raw_text=callout.text,
             )
 
-        table = TableExtractor.extract(word_table)
+        table = TableExtractor.extract(
+            word_table,
+            theme_color_resolver=self.theme_color_resolver,
+        )
         return Element(
             element_type=ElementType.TABLE,
             content=table,
@@ -1086,6 +1640,9 @@ class WordParser:
                 indices.add(idx)
                 saw_field_paragraph = True
                 continue
+
+            if not text and StyleDetector.has_embedded_content(block):
+                break
 
             if not text or is_toc_style or self._IB_TOC_NOTE_SNIPPET in text:
                 indices.add(idx)
@@ -1169,11 +1726,17 @@ class RunExtractor:
     """Extracts TextRun objects from Word paragraph runs."""
 
     @staticmethod
-    def extract_runs(para) -> List[TextRun]:
-        """Extract text runs with bold, italic, and superscript flags."""
+    def extract_runs(
+        para,
+        theme_color_resolver: Optional[ThemeColorResolver] = None,
+    ) -> List[TextRun]:
+        """Extract text runs with bold, italic, superscript, and subscript flags."""
         runs: List[TextRun] = []
         for run in para.runs:
             if not run.text:
+                refs = RunExtractor._extract_footnote_references(run)
+                for ref in refs:
+                    runs.append(TextRun(text=str(ref), superscript=True))
                 continue
 
             runs.append(
@@ -1182,9 +1745,57 @@ class RunExtractor:
                     bold=bool(run.bold),
                     italic=bool(run.italic),
                     superscript=bool(run.font.superscript),
+                    subscript=bool(run.font.subscript),
+                    color_hex=RunExtractor._extract_color_hex(
+                        run,
+                        theme_color_resolver=theme_color_resolver,
+                    ),
                 )
             )
         return runs
+
+    @staticmethod
+    def _extract_color_hex(
+        run,
+        theme_color_resolver: Optional[ThemeColorResolver] = None,
+    ) -> Optional[str]:
+        """Extract explicit RGB color from a Word run when available."""
+        color_nodes = run._r.xpath(".//*[local-name()='color']")
+        if color_nodes:
+            color_node = color_nodes[0]
+            theme_color = color_node.get(qn("w:themeColor")) or color_node.get("themeColor")
+            theme_tint = color_node.get(qn("w:themeTint")) or color_node.get("themeTint")
+            theme_shade = color_node.get(qn("w:themeShade")) or color_node.get("themeShade")
+            if theme_color and theme_color_resolver:
+                resolved = theme_color_resolver.resolve(
+                    theme_color,
+                    tint=theme_tint,
+                    shade=theme_shade,
+                )
+                if resolved:
+                    return resolved
+
+        color = getattr(run.font, "color", None)
+        rgb = getattr(color, "rgb", None)
+        if rgb is None:
+            return None
+
+        value = str(rgb).strip()
+        if not value:
+            return None
+        if not value.startswith("#"):
+            value = f"#{value}"
+        return value.upper()
+
+    @staticmethod
+    def _extract_footnote_references(run) -> List[int]:
+        """Extract native footnoteReference ids from a run XML element."""
+        refs: List[int] = []
+        for ref in run._r.xpath(".//*[local-name()='footnoteReference']"):
+            value = ref.get(qn("w:id")) or ref.get("id")
+            if value and str(value).isdigit():
+                refs.append(int(value))
+        return refs
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1193,17 +1804,19 @@ class RunExtractor:
 
 
 def parse_word_file(
-    file_path: str,
+    source: "Union[str, BinaryIO]",
     extract_images: bool = True,
     image_output_dir: Optional[str] = None,
+    embed_images_base64: bool = False,
 ) -> DocumentModel:
     """
     Parse a Word document into a DocumentModel.
 
     Args:
-        file_path: Path to the .docx file
+        source: Path to the .docx file (str) or a binary stream (BinaryIO).
         extract_images: Whether to extract embedded images
         image_output_dir: Directory to save extracted images
+        embed_images_base64: Whether to inline embedded images as Base64 data
 
     Returns:
         DocumentModel containing parsed elements
@@ -1211,5 +1824,6 @@ def parse_word_file(
     parser = WordParser(
         extract_images=extract_images,
         image_output_dir=Path(image_output_dir) if image_output_dir else None,
+        embed_images_base64=embed_images_base64,
     )
-    return parser.parse(file_path)
+    return parser.parse(source)

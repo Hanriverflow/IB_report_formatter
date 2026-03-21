@@ -14,6 +14,7 @@ Changelog (v2):
 """
 
 import logging
+import os
 import platform
 import re
 import time
@@ -23,14 +24,21 @@ from typing import Dict, List, Optional, Tuple, cast
 from docx import Document
 from docx.document import Document as DocxDocument
 from docx.enum.style import WD_STYLE_TYPE
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.opc.constants import CONTENT_TYPE as CT
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
+from docx.opc.packuri import PackURI
+from docx.opc.part import XmlPart
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from docx.oxml.parser import parse_xml
 from docx.shared import Inches, Pt, RGBColor
 
 from md_parser import (
     Blockquote,
+    CodeBlock,
     DocumentModel,
     Element,
     ElementType,
@@ -43,6 +51,7 @@ from md_parser import (
     TableCell,
     TableRow,
     TableType,
+    TextParser,
     TextRun,
 )
 
@@ -68,6 +77,7 @@ class IBStyle:
     GREEN: RGBColor = RGBColor(0, 128, 0)
     ORANGE: RGBColor = RGBColor(255, 165, 0)
     MEDIUM_GRAY: RGBColor = RGBColor(128, 128, 128)
+    CODE_BG: RGBColor = RGBColor(248, 249, 250)
 
     # ── Colors (Hex for OOXML) ──────────────────────────────────────────────
     NAVY_HEX: str = "003366"
@@ -112,6 +122,9 @@ class IBStyle:
 
     # ── Bullet ──────────────────────────────────────────────────────────────
     BULLET_INDENT: Inches = Inches(0.25)
+    DEEP_LIST_INDENT: Inches = Inches(0.125)
+    FULL_LIST_INDENT_LEVELS: int = 4
+    MAX_LIST_INDENT: Inches = Inches(1.5)
     BULLET_CHAR: str = "■"
 
     # ── Custom Style Names ──────────────────────────────────────────────────
@@ -516,6 +529,10 @@ class TextRenderer:
 
     # Compiled regex — class-level cache
     _BOLD_SPLIT_RE = re.compile(r"(\*\*.*?\*\*)")
+    _ITALIC_SPLIT_RE = re.compile(r"(?<!\*)(\*[^*]+?\*)(?!\*)")
+    _SUPERSCRIPT_RE = re.compile(r"\^([^^]+?)\^")
+    _SUBSCRIPT_PATTERN = r"(?<!~)~[A-Za-z0-9]{1,8}~(?!~)"
+    _VERTICAL_ALIGN_SPLIT_RE = re.compile(r"(\^[^^]+?\^|" + _SUBSCRIPT_PATTERN + r")")
     _ESCAPE_RE = re.compile(r'\\([~.*"\'()\[\]{}|_-])')
 
     @staticmethod
@@ -531,6 +548,14 @@ class TextRenderer:
         font_size = font_size or STYLE.BODY_SIZE
 
         for run_data in runs:
+            if run_data.is_latex:
+                TextRenderer._render_inline_latex(
+                    paragraph,
+                    run_data.text,
+                    font_size=font_size,
+                )
+                continue
+
             run = paragraph.add_run(run_data.text)
             run.font.name = font_name
             run.font.size = font_size
@@ -538,9 +563,46 @@ class TextRenderer:
             run.font.italic = run_data.italic
             if run_data.superscript:
                 run.font.superscript = True
-            if default_color:
-                run.font.color.rgb = default_color
+            if run_data.subscript:
+                run.font.subscript = True
+            run_color = TextRenderer._rgb_from_hex(run_data.color_hex) or default_color
+            if run_color:
+                run.font.color.rgb = run_color
             FontStyler.set_east_asian_font(run)
+
+    @staticmethod
+    def _render_inline_latex(paragraph, expression: str, font_size: Pt):
+        """Render inline LaTeX as an inline image when possible."""
+        image_path = LaTeXRenderer.render_to_image(
+            expression,
+            fontsize=max(int(round(font_size.pt)), 12),
+            dpi=200,
+        )
+
+        if image_path:
+            try:
+                run = paragraph.add_run()
+                run.add_picture(
+                    image_path,
+                    height=Pt(max(font_size.pt * 1.4, 14)),
+                )
+                return
+            except Exception as err:
+                logger.warning("Inline LaTeX image insertion failed: %s", err)
+            finally:
+                try:
+                    os.unlink(image_path)
+                except OSError:
+                    pass
+
+        fallback_run = paragraph.add_run(f"[{expression}]")
+        FontStyler.apply_run_style(
+            fallback_run,
+            font_name="Consolas",
+            font_size=font_size,
+            italic=True,
+            color=STYLE.DARK_GRAY,
+        )
 
     @staticmethod
     def render_text_with_bold(
@@ -549,29 +611,135 @@ class TextRenderer:
         font_name: Optional[str] = None,
         font_size: Optional[Pt] = None,
     ):
-        """Parse and render text with **bold** markers"""
+        """Parse and render text with **bold** markers (legacy, delegates to render_text_with_formatting)."""
+        TextRenderer.render_text_with_formatting(
+            paragraph, text, font_name=font_name, font_size=font_size
+        )
+
+    @staticmethod
+    def render_text_with_formatting(
+        paragraph,
+        text: str,
+        font_name: Optional[str] = None,
+        font_size: Optional[Pt] = None,
+        default_color: Optional[RGBColor] = None,
+    ):
+        """Parse and render text with **bold**, *italic*, ^superscript^, and ~subscript~ markers.
+
+        Handles nested markers in a multi-pass approach:
+            1. Split on **bold** markers
+            2. Within non-bold segments, split on *italic* markers
+            3. Within all segments, detect ^superscript^ and ~subscript~ markers
+        """
         font_name = font_name or STYLE.BODY_FONT
         font_size = font_size or STYLE.BODY_SIZE
 
-        parts = TextRenderer._BOLD_SPLIT_RE.split(text)
+        parsed_runs = TextParser.parse_runs_plain(text)
+        if any(
+            run.bold or run.italic or run.superscript or run.subscript or run.color_hex
+            for run in parsed_runs
+        ):
+            TextRenderer.render_runs(
+                paragraph,
+                parsed_runs,
+                default_color=default_color,
+                font_name=font_name,
+                font_size=font_size,
+            )
+            return
+
+        # Split on bold markers first
+        bold_parts = TextRenderer._BOLD_SPLIT_RE.split(text)
+        for bold_part in bold_parts:
+            if not bold_part:
+                continue
+
+            if bold_part.startswith("**") and bold_part.endswith("**") and len(bold_part) > 4:
+                # Bold segment — check for ^superscript^ / ~subscript~ inside
+                inner = TextRenderer._cleanup(bold_part[2:-2])
+                TextRenderer._render_with_vertical_align(
+                    paragraph, inner, font_name, font_size, bold=True, italic=False,
+                    color=default_color,
+                )
+            else:
+                # Non-bold segment — check for *italic* markers
+                italic_parts = TextRenderer._ITALIC_SPLIT_RE.split(bold_part)
+                for italic_part in italic_parts:
+                    if not italic_part:
+                        continue
+
+                    if (
+                        italic_part.startswith("*")
+                        and italic_part.endswith("*")
+                        and len(italic_part) > 2
+                        and not italic_part.startswith("**")
+                    ):
+                        inner = TextRenderer._cleanup(italic_part[1:-1])
+                        TextRenderer._render_with_vertical_align(
+                            paragraph, inner, font_name, font_size,
+                            bold=False, italic=True, color=default_color,
+                        )
+                    else:
+                        cleaned = TextRenderer._cleanup(italic_part)
+                        if cleaned:
+                            TextRenderer._render_with_vertical_align(
+                                paragraph, cleaned, font_name, font_size,
+                                bold=False, italic=False, color=default_color,
+                            )
+
+    @staticmethod
+    def _render_with_vertical_align(
+        paragraph,
+        text: str,
+        font_name: str,
+        font_size: Pt,
+        bold: bool,
+        italic: bool,
+        color: Optional[RGBColor] = None,
+    ):
+        """Render text, detecting ^superscript^ and ~subscript~ markers."""
+        if not text:
+            return
+
+        parts = TextRenderer._VERTICAL_ALIGN_SPLIT_RE.split(text)
         for part in parts:
             if not part:
                 continue
-            if part.startswith("**") and part.endswith("**") and len(part) > 4:
-                content = TextRenderer._cleanup(part[2:-2])
-                if content:
-                    run = paragraph.add_run(content)
-                    run.font.name = font_name
-                    run.font.size = font_size
-                    run.font.bold = True
-                    FontStyler.set_east_asian_font(run)
-            else:
-                cleaned = TextRenderer._cleanup(part)
-                if cleaned:
-                    run = paragraph.add_run(cleaned)
-                    run.font.name = font_name
-                    run.font.size = font_size
-                    FontStyler.set_east_asian_font(run)
+
+            is_superscript = False
+            is_subscript = False
+            content = part
+
+            if part.startswith("^") and part.endswith("^") and len(part) > 2:
+                content = part[1:-1]
+                is_superscript = True
+            elif part.startswith("~") and part.endswith("~") and len(part) > 2:
+                content = part[1:-1]
+                is_subscript = True
+
+            run = paragraph.add_run(content)
+            run.font.name = font_name
+            run.font.size = font_size
+            run.font.bold = bold
+            run.font.italic = italic
+            if is_superscript:
+                run.font.superscript = True
+            if is_subscript:
+                run.font.subscript = True
+            if color:
+                run.font.color.rgb = color
+            FontStyler.set_east_asian_font(run)
+
+    @staticmethod
+    def _rgb_from_hex(color_hex: Optional[str]) -> Optional[RGBColor]:
+        """Convert #RRGGBB strings to python-docx RGBColor."""
+        if not color_hex:
+            return None
+
+        normalized = color_hex.lstrip("#")
+        if len(normalized) != 6 or not re.fullmatch(r"[0-9A-Fa-f]{6}", normalized):
+            return None
+        return RGBColor.from_string(normalized.upper())
 
     @staticmethod
     def _cleanup(text: str) -> str:
@@ -603,27 +771,42 @@ class CoverRenderer:
         sector = metadata.sector.strip()
         analyst = metadata.analyst.strip()
         company = metadata.company.strip()
+        subject_company = metadata.extra.get("subject_company", "").strip()
         date_text = metadata.extra.get("date", "").strip()
         recipient = metadata.extra.get("recipient", "").strip()
 
-        report_type = metadata.extra.get("report_type", "DCM RESEARCH").strip().upper()
-        identity = ticker if ticker else company
+        report_type = metadata.extra.get("report_type", "").strip().upper()
+        institution = subject_company or company
+        identity = ticker if ticker else institution
+        cover_title = title
+        cover_identity = identity
+
+        if (
+            not ticker
+            and self._is_meaningful_metadata_value(institution, style_default="Korea Development Bank")
+            and title.startswith(institution)
+        ):
+            stripped_title = title[len(institution):].strip(" :-")
+            if stripped_title:
+                cover_identity = institution
+                cover_title = stripped_title.strip(" —–-:")
 
         self._add_spacer(2)
 
         # Report classification block
-        type_para = self.doc.add_paragraph()
-        type_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        type_run = type_para.add_run(report_type)
-        FontStyler.apply_run_style(
-            type_run,
-            font_name=STYLE.HEADING_FONT,
-            font_size=Pt(11),
-            bold=True,
-            color=STYLE.DARK_GRAY,
-        )
+        if report_type:
+            type_para = self.doc.add_paragraph()
+            type_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            type_run = type_para.add_run(report_type)
+            FontStyler.apply_run_style(
+                type_run,
+                font_name=STYLE.HEADING_FONT,
+                font_size=Pt(11),
+                bold=True,
+                color=STYLE.DARK_GRAY,
+            )
 
-        if sector:
+        if self._is_meaningful_metadata_value(sector, style_default="SECTOR"):
             sector_para = self.doc.add_paragraph()
             sector_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             sector_run = sector_para.add_run(sector.upper())
@@ -639,10 +822,10 @@ class CoverRenderer:
         self._add_spacer(2)
 
         # Security / company identifier
-        if identity:
+        if self._is_meaningful_metadata_value(cover_identity, style_default="Korea Development Bank"):
             id_para = self.doc.add_paragraph()
             id_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            id_run = id_para.add_run(identity)
+            id_run = id_para.add_run(cover_identity)
             FontStyler.apply_run_style(
                 id_run,
                 font_name=STYLE.HEADING_FONT,
@@ -654,7 +837,7 @@ class CoverRenderer:
         # Main title
         title_para = self.doc.add_paragraph()
         title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        title_run = title_para.add_run(title)
+        title_run = title_para.add_run(cover_title)
         FontStyler.apply_run_style(
             title_run,
             font_name=STYLE.HEADING_FONT,
@@ -684,9 +867,11 @@ class CoverRenderer:
         self._render_metadata_panel(
             report_date=date_text or time.strftime("%B %d, %Y"),
             analyst=analyst,
-            company=company,
+            company=institution,
             sector=sector,
             recipient=recipient,
+            analysis_period=metadata.extra.get("analysis_period", "").strip(),
+            analysis_basis=metadata.extra.get("analysis_basis", "").strip(),
         )
 
         self._add_spacer(1)
@@ -750,17 +935,31 @@ class CoverRenderer:
         company: str,
         sector: str,
         recipient: str,
+        analysis_period: str = "",
+        analysis_basis: str = "",
     ):
         """Render a compact two-column cover metadata panel."""
-        rows = [
-            ("Report Date", report_date),
-            ("Prepared By", analyst or "DCM Team"),
-            ("Institution", company or "Korea Development Bank"),
-            ("Sector", sector or "N/A"),
-        ]
+        rows = []
+
+        if report_date:
+            rows.append(("Report Date", report_date))
+        if analysis_period:
+            rows.append(("Analysis Period", analysis_period))
+        if analysis_basis:
+            rows.append(("Analysis Basis", analysis_basis))
+
+        if self._is_meaningful_metadata_value(analyst, style_default="DCM Team 1"):
+            rows.append(("Prepared By", analyst))
+        if self._is_meaningful_metadata_value(company, style_default="Korea Development Bank"):
+            rows.append(("Institution", company))
+        if self._is_meaningful_metadata_value(sector, style_default="SECTOR"):
+            rows.append(("Sector", sector))
 
         if recipient:
             rows.append(("Prepared For", recipient))
+
+        if not rows:
+            return
 
         table = self.doc.add_table(rows=len(rows), cols=2)
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -797,6 +996,18 @@ class CoverRenderer:
 
         TableStyler.set_table_borders(table)
 
+    @staticmethod
+    def _is_meaningful_metadata_value(value: str, style_default: str = "") -> bool:
+        """Return True when a cover metadata value is worth showing to a user."""
+        normalized = (value or "").strip()
+        if not normalized:
+            return False
+        if style_default and normalized == style_default:
+            return False
+        if normalized.upper() in {"SECTOR", "N/A", "IB REPORT"}:
+            return False
+        return True
+
     def _add_spacer(self, lines: int):
         """Add empty paragraphs as vertical spacers."""
         for _ in range(lines):
@@ -823,8 +1034,8 @@ class TOCRenderer:
     def __init__(self, doc: DocxDocument):
         self.doc = doc
 
-    def render(self):
-        """Insert auto-updating Table of Contents"""
+    def render(self, model: Optional[DocumentModel] = None):
+        """Insert an auto-updating TOC plus an immediate preview outline."""
         self.doc.add_heading("TABLE OF CONTENTS", level=1)
 
         paragraph = self.doc.add_paragraph()
@@ -849,17 +1060,49 @@ class TOCRenderer:
         run._r.append(fldChar2)
         run._r.append(fldChar3)
 
-        # User instruction
-        note = self.doc.add_paragraph()
-        note_run = note.add_run("[Right-click and select 'Update Field' to generate TOC]")
-        FontStyler.apply_run_style(
-            note_run,
-            font_size=STYLE.SMALL_SIZE,
-            italic=True,
-            color=STYLE.MEDIUM_GRAY,
-        )
+        if model is not None:
+            self._render_preview_entries(model)
 
         self.doc.add_page_break()
+
+    def _render_preview_entries(self, model: DocumentModel):
+        """Render a static preview TOC so the document is useful before field update."""
+        entries = []
+        for element in model.elements:
+            if element.element_type not in {
+                ElementType.HEADING_1,
+                ElementType.HEADING_2,
+                ElementType.HEADING_3,
+                ElementType.HEADING_4,
+                ElementType.NUMBERED_HEADING,
+            }:
+                continue
+            if not isinstance(element.content, Heading):
+                continue
+
+            level = max(1, min(element.content.level, 4))
+            text = element.content.text.strip()
+            if text:
+                entries.append((level, text))
+
+        if not entries:
+            return
+
+        for level, text in entries:
+            paragraph = self.doc.add_paragraph()
+            paragraph.style = STYLE.STYLE_IB_BODY
+            paragraph.paragraph_format.left_indent = Inches(0.2 * (level - 1))
+            paragraph.paragraph_format.space_before = Pt(0)
+            paragraph.paragraph_format.space_after = Pt(2 if level <= 2 else 0)
+
+            run = paragraph.add_run(text)
+            FontStyler.apply_run_style(
+                run,
+                font_name=STYLE.BODY_FONT,
+                font_size=STYLE.BODY_SIZE if level == 1 else (Pt(10) if level == 2 else STYLE.SMALL_SIZE),
+                bold=level == 1,
+                color=STYLE.DARK_GRAY if level <= 2 else STYLE.MEDIUM_GRAY,
+            )
 
 
 class HeadingRenderer:
@@ -920,7 +1163,7 @@ class ListRenderer:
     def render_bullet(self, item: ListItem):
         """Render a bullet list item"""
         p = self.doc.add_paragraph(style=STYLE.STYLE_IB_BULLET)
-        indent = Inches(STYLE.BULLET_INDENT.inches * (item.indent_level + 1))
+        indent = self._resolve_indent(item.indent_level)
         p.paragraph_format.left_indent = indent
         p.paragraph_format.first_line_indent = -STYLE.BULLET_INDENT
 
@@ -942,7 +1185,7 @@ class ListRenderer:
     def render_numbered(self, number: str, item: ListItem):
         """Render a numbered list item"""
         p = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
-        indent = Inches(STYLE.BULLET_INDENT.inches * (item.indent_level + 1))
+        indent = self._resolve_indent(item.indent_level)
         p.paragraph_format.left_indent = indent
         p.paragraph_format.first_line_indent = -STYLE.BULLET_INDENT
 
@@ -958,6 +1201,25 @@ class ListRenderer:
             TextRenderer.render_runs(p, item.runs)
         else:
             TextRenderer.render_text_with_bold(p, item.text)
+
+    @staticmethod
+    def _resolve_indent(indent_level: int) -> Inches:
+        """Compute a bounded hanging indent for nested lists.
+
+        Levels 0-3 use the full 0.25in step. Deeper levels compress to a
+        smaller increment so very deep lists remain readable within page
+        margins instead of drifting off the page.
+        """
+        normalized_level = max(0, indent_level)
+        full_levels = min(normalized_level + 1, STYLE.FULL_LIST_INDENT_LEVELS)
+        extra_levels = max(0, normalized_level + 1 - STYLE.FULL_LIST_INDENT_LEVELS)
+
+        indent_inches = (
+            full_levels * STYLE.BULLET_INDENT.inches
+            + extra_levels * STYLE.DEEP_LIST_INDENT.inches
+        )
+        indent_inches = min(indent_inches, STYLE.MAX_LIST_INDENT.inches)
+        return Inches(indent_inches)
 
 
 class TableRenderer:
@@ -1000,22 +1262,39 @@ class TableRenderer:
                 break
 
             cell = word_cells[c_idx]
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
             TableStyler.set_cell_background(cell, STYLE.NAVY_HEX)
 
             # Clear default paragraph and add styled run
             p = cell.paragraphs[0]
+            self._configure_cell_paragraph(p)
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             p.clear()
 
-            clean_text = cell_data.content.replace("**", "").strip()
-            run = p.add_run(clean_text)
-            FontStyler.apply_run_style(
-                run,
-                font_name=STYLE.HEADING_FONT,
-                font_size=STYLE.TABLE_HEADER_SIZE,
-                bold=True,
-                color=STYLE.WHITE,
-            )
+            # Parse header text: strip markdown markers but preserve structure
+            # Headers are always bold+white, so we parse for content only
+            if cell_data.runs:
+                # Use structured runs but override style for header
+                for run_data in cell_data.runs:
+                    run = p.add_run(run_data.text)
+                    FontStyler.apply_run_style(
+                        run,
+                        font_name=STYLE.HEADING_FONT,
+                        font_size=STYLE.TABLE_HEADER_SIZE,
+                        bold=True,
+                        italic=run_data.italic,
+                        color=STYLE.WHITE,
+                    )
+            else:
+                clean_text = cell_data.content.replace("**", "").strip()
+                run = p.add_run(clean_text)
+                FontStyler.apply_run_style(
+                    run,
+                    font_name=STYLE.HEADING_FONT,
+                    font_size=STYLE.TABLE_HEADER_SIZE,
+                    bold=True,
+                    color=STYLE.WHITE,
+                )
 
     def _render_data_row(
         self,
@@ -1033,7 +1312,9 @@ class TableRenderer:
                 break
 
             cell = word_cells[c_idx]
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
             p = cell.paragraphs[0]
+            self._configure_cell_paragraph(p)
 
             # ── Alignment ───────────────────────────────────────────────────
             if cell_data.is_numeric and c_idx > 0:
@@ -1049,12 +1330,21 @@ class TableRenderer:
                 display_content = self._format_financial_number(cell_data.content)
 
             # ── Render content ──────────────────────────────────────────────
-            TextRenderer.render_text_with_bold(
-                p,
-                display_content,
-                font_name=STYLE.BODY_FONT,
-                font_size=STYLE.TABLE_BODY_SIZE,
-            )
+            if cell_data.runs:
+                # Use structured runs for full formatting fidelity
+                TextRenderer.render_runs(
+                    p,
+                    cell_data.runs,
+                    font_name=STYLE.BODY_FONT,
+                    font_size=STYLE.TABLE_BODY_SIZE,
+                )
+            else:
+                TextRenderer.render_text_with_formatting(
+                    p,
+                    display_content,
+                    font_name=STYLE.BODY_FONT,
+                    font_size=STYLE.TABLE_BODY_SIZE,
+                )
 
             # ── Type-specific styling ───────────────────────────────────────
             self._apply_type_styling(cell, p, cell_data, row_idx, table_type)
@@ -1062,6 +1352,13 @@ class TableRenderer:
             # ── Alternating row colors (unless special styling applied) ─────
             if row_idx % 2 == 1 and not cell_data.is_base_case:
                 TableStyler.set_cell_background(cell, STYLE.LIGHT_GRAY_HEX)
+
+    @staticmethod
+    def _configure_cell_paragraph(paragraph) -> None:
+        """Normalize paragraph spacing inside table cells for a tighter, cleaner grid."""
+        paragraph.paragraph_format.space_before = Pt(0)
+        paragraph.paragraph_format.space_after = Pt(0)
+        paragraph.paragraph_format.line_spacing = 1.0
 
     @staticmethod
     def _format_financial_number(text: str) -> str:
@@ -1245,26 +1542,21 @@ class CalloutRenderer:
                 color=title_color if isinstance(title_color, RGBColor) else STYLE.NAVY,
             )
 
-        # Content
+        # Content — with inline formatting support (**bold**, *italic*, ^super^)
         content_text = blockquote.text.strip()
         if content_text:
             content_para = cell.add_paragraph()
-            content_run = content_para.add_run(content_text)
 
-            # White text on dark backgrounds
-            if bg_hex == STYLE.NAVY_HEX:
-                FontStyler.apply_run_style(
-                    content_run,
-                    font_name=STYLE.BODY_FONT,
-                    font_size=STYLE.BODY_SIZE,
-                    color=STYLE.WHITE,
-                )
-            else:
-                FontStyler.apply_run_style(
-                    content_run,
-                    font_name=STYLE.BODY_FONT,
-                    font_size=STYLE.BODY_SIZE,
-                )
+            # Determine text color based on background
+            content_color = STYLE.WHITE if bg_hex == STYLE.NAVY_HEX else None
+
+            TextRenderer.render_text_with_formatting(
+                content_para,
+                content_text,
+                font_name=STYLE.BODY_FONT,
+                font_size=STYLE.BODY_SIZE,
+                default_color=content_color,
+            )
 
         # Apply border styling
         self._apply_callout_border(
@@ -1471,7 +1763,8 @@ class ImageRenderer:
         paragraph = self.doc.add_paragraph()
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = paragraph.add_run()
-        run.add_picture(file_path, width=Inches(self.MAX_WIDTH_INCHES))
+        inline_shape = run.add_picture(file_path, width=Inches(self.MAX_WIDTH_INCHES))
+        self._apply_alt_text(inline_shape, alt_text)
 
         # Add caption below image
         if alt_text:
@@ -1487,6 +1780,16 @@ class ImageRenderer:
 
         # Spacer
         self.doc.add_paragraph()
+
+    @staticmethod
+    def _apply_alt_text(inline_shape, alt_text: str):
+        """Attach descriptive alt text to a Word inline image when available."""
+        if not alt_text:
+            return
+
+        doc_pr = inline_shape._inline.docPr
+        doc_pr.set("descr", alt_text)
+        doc_pr.set("title", alt_text)
 
     def _render_placeholder(self, alt_text: str):
         """Render a placeholder when image cannot be loaded."""
@@ -1517,10 +1820,32 @@ class FootnoteRenderer:
         self.doc = doc
 
     def render(self, footnotes: dict):
-        """Render footnotes as an endnotes section"""
+        """Render footnotes natively when possible, else fall back to an ENDNOTES section."""
         if not footnotes:
             return
 
+        if self._render_native(footnotes):
+            return
+
+        self._render_endnotes(footnotes)
+
+    def _render_native(self, footnotes: dict) -> bool:
+        """Replace superscript markers with native Word footnote references."""
+        run_refs = self._collect_reference_runs(footnotes)
+        if not run_refs:
+            return False
+
+        footnotes_part = NativeFootnotesPart.get_or_add(self.doc.part)
+        referenced_numbers = sorted({number for _, number in run_refs})
+        footnotes_part.set_footnotes({number: footnotes[number] for number in referenced_numbers})
+
+        for run, number in run_refs:
+            self._replace_with_native_reference(run, number)
+
+        return True
+
+    def _render_endnotes(self, footnotes: dict):
+        """Render footnotes as a plain ENDNOTES section when native refs are unavailable."""
         self.doc.add_page_break()
         self.doc.add_heading("ENDNOTES", level=1)
 
@@ -1540,6 +1865,128 @@ class FootnoteRenderer:
             p.add_run(" ")
             text_run = p.add_run(text)
             FontStyler.apply_run_style(text_run, font_size=STYLE.SMALL_SIZE)
+
+    def _collect_reference_runs(self, footnotes: dict) -> List[Tuple[object, int]]:
+        """Find superscript numeric runs that correspond to known footnotes."""
+        references: List[Tuple[object, int]] = []
+        for paragraph in self._iter_document_paragraphs():
+            for run in paragraph.runs:
+                text = run.text.strip()
+                if not text.isdigit():
+                    continue
+                if not run.font.superscript:
+                    continue
+                number = int(text)
+                if number in footnotes:
+                    references.append((run, number))
+        return references
+
+    def _iter_document_paragraphs(self):
+        """Yield paragraphs from the document body and all top-level tables."""
+        for paragraph in self.doc.paragraphs:
+            yield paragraph
+        for table in self.doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        yield paragraph
+
+    @staticmethod
+    def _replace_with_native_reference(run, number: int) -> None:
+        """Replace a rendered superscript number run with a native footnoteReference."""
+        run_element = run._r
+        r_pr = run_element.get_or_add_rPr()
+        for child in list(run_element):
+            if child is not r_pr:
+                run_element.remove(child)
+
+        r_style = OxmlElement("w:rStyle")
+        r_style.set(qn("w:val"), "FootnoteReference")
+        r_pr.append(r_style)
+
+        footnote_ref = OxmlElement("w:footnoteReference")
+        footnote_ref.set(qn("w:id"), str(number))
+        run_element.append(footnote_ref)
+
+
+class NativeFootnotesPart(XmlPart):
+    """Minimal native footnotes part used for MD→Word footnote rendering."""
+
+    _DEFAULT_XML = (
+        b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        b'<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        b'<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>'
+        b'<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>'
+        b'</w:footnotes>'
+    )
+
+    @classmethod
+    def default(cls, package) -> "NativeFootnotesPart":
+        """Create a new empty footnotes part with required separator entries."""
+        return cls(
+            PackURI("/word/footnotes.xml"),
+            CT.WML_FOOTNOTES,
+            parse_xml(cls._DEFAULT_XML),
+            package,
+        )
+
+    @classmethod
+    def get_or_add(cls, document_part) -> "NativeFootnotesPart":
+        """Get the existing footnotes part or create one and relate it to the document."""
+        try:
+            existing = document_part.part_related_by(RT.FOOTNOTES)
+            return cast("NativeFootnotesPart", existing)
+        except KeyError:
+            footnotes_part = cls.default(document_part.package)
+            document_part.relate_to(footnotes_part, RT.FOOTNOTES)
+            return footnotes_part
+
+    def set_footnotes(self, footnotes: Dict[int, str]) -> None:
+        """Replace dynamic footnotes with the provided note mapping."""
+        for footnote in list(self._element):
+            if not str(footnote.tag).endswith("footnote"):
+                continue
+            footnote_id = footnote.get(qn("w:id"))
+            if footnote_id not in {"-1", "0"}:
+                self._element.remove(footnote)
+
+        for number, text in sorted(footnotes.items()):
+            self._element.append(self._build_footnote(number, text))
+
+    @staticmethod
+    def _build_footnote(number: int, text: str):
+        """Build a single w:footnote element with simple paragraph content."""
+        xml_space = "{http://www.w3.org/XML/1998/namespace}space"
+
+        footnote = OxmlElement("w:footnote")
+        footnote.set(qn("w:id"), str(number))
+
+        paragraph = OxmlElement("w:p")
+        paragraph_props = OxmlElement("w:pPr")
+        paragraph_style = OxmlElement("w:pStyle")
+        paragraph_style.set(qn("w:val"), "FootnoteText")
+        paragraph_props.append(paragraph_style)
+        paragraph.append(paragraph_props)
+
+        ref_run = OxmlElement("w:r")
+        ref_run_props = OxmlElement("w:rPr")
+        ref_run_style = OxmlElement("w:rStyle")
+        ref_run_style.set(qn("w:val"), "FootnoteReference")
+        ref_run_props.append(ref_run_style)
+        ref_run.append(ref_run_props)
+        ref_marker = OxmlElement("w:footnoteRef")
+        ref_run.append(ref_marker)
+        paragraph.append(ref_run)
+
+        text_run = OxmlElement("w:r")
+        text_element = OxmlElement("w:t")
+        text_element.set(xml_space, "preserve")
+        text_element.text = f" {text}"
+        text_run.append(text_element)
+        paragraph.append(text_run)
+
+        footnote.append(paragraph)
+        return footnote
 
 
 class DisclaimerRenderer:
@@ -1635,8 +2082,12 @@ class DisclaimerRenderer:
 class IBDocumentRenderer:
     """Main renderer that orchestrates all component renderers"""
 
-    def __init__(self):
+    _TREE_PREFIX_RE = re.compile(r"^([\s│├└─]+)(.*)$")
+    _TREE_VALUE_RE = re.compile(r"^(.*?)(\d+(?:\.\d+)?%|실질지배)(\s+──\s+)(.*)$")
+
+    def __init__(self, separator_mode: str = "auto"):
         self.doc: DocxDocument = Document()
+        self.separator_mode = separator_mode
         self.styler = DocumentStyler(self.doc)
         self.cover_renderer = CoverRenderer(self.doc)
         self.toc_renderer = TOCRenderer(self.doc)
@@ -1674,7 +2125,7 @@ class IBDocumentRenderer:
         self.cover_renderer.render(model.metadata)
 
         # Table of contents
-        self.toc_renderer.render()
+        self.toc_renderer.render(model)
 
         # Render elements with error resilience
         for idx, element in enumerate(model.elements):
@@ -1741,8 +2192,181 @@ class IBDocumentRenderer:
         elif etype == ElementType.LATEX_INLINE:
             self._render_latex_inline(cast(LaTeXEquation, element.content))
 
+        elif etype == ElementType.SEPARATOR:
+            self._render_separator(element)
+
+        elif etype == ElementType.CODE_BLOCK:
+            self._render_code_block(cast(CodeBlock, element.content))
+
+        elif etype == ElementType.EMPTY:
+            pass  # Intentionally skip empty elements
+
         else:
             logger.debug("Unhandled element type: %s", etype.name)
+
+    def _render_separator(self, element: Element):
+        """Render a separator as either a horizontal rule or a page break.
+
+        Modes:
+            - rule: always render a horizontal rule
+            - page-break: always render a page break
+            - auto: `## ---` becomes a page break, plain `---` stays a rule
+        """
+        if self._resolve_separator_mode(element) == "page-break":
+            self.doc.add_page_break()
+            return
+
+        p = self.doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        # Create a horizontal rule via paragraph bottom border
+        pPr = p._p.get_or_add_pPr()
+        pBdr = OxmlElement("w:pBdr")
+        bottom = OxmlElement("w:bottom")
+        bottom.set(qn("w:val"), "single")
+        bottom.set(qn("w:sz"), "6")  # 0.75pt line
+        bottom.set(qn("w:space"), "1")
+        bottom.set(qn("w:color"), STYLE.GRAY_BORDER_HEX)
+        pBdr.append(bottom)
+        pPr.append(pBdr)
+
+        # Minimal spacing
+        pFmt = p.paragraph_format
+        pFmt.space_before = Pt(6)
+        pFmt.space_after = Pt(6)
+
+    def _resolve_separator_mode(self, element: Element) -> str:
+        """Resolve separator rendering mode for a specific element."""
+        if self.separator_mode in {"rule", "page-break"}:
+            return self.separator_mode
+
+        raw_text = (element.raw_text or "").strip()
+        if raw_text == "## ---":
+            return "page-break"
+        return "rule"
+
+    def _render_code_block(self, code_block):
+        """Render a fenced code block as a monospaced shaded block."""
+        if not isinstance(code_block, CodeBlock):
+            return
+
+        table = self.doc.add_table(rows=1, cols=1)
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+
+        cell = table.rows[0].cells[0]
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
+        TableStyler.set_cell_background(cell, "F8F9FA")
+        self._style_code_block_table(table)
+
+        lines = code_block.code.splitlines() or [""]
+        for idx, line in enumerate(lines):
+            paragraph = cell.paragraphs[0] if idx == 0 else cell.add_paragraph()
+            paragraph.clear()
+            paragraph.paragraph_format.space_before = Pt(0)
+            paragraph.paragraph_format.space_after = Pt(0)
+            paragraph.paragraph_format.line_spacing = 1.0
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            self._render_code_block_line(paragraph, line)
+
+        self.doc.add_paragraph()
+
+    @staticmethod
+    def _style_code_block_table(table) -> None:
+        """Render code blocks as clean panels rather than visible grid tables."""
+        tbl = table._tbl
+        tbl_pr = tbl.tblPr if tbl.tblPr is not None else OxmlElement("w:tblPr")
+        tbl_borders = OxmlElement("w:tblBorders")
+
+        for border_name in ("top", "left", "bottom", "right", "insideH", "insideV"):
+            border = OxmlElement(f"w:{border_name}")
+            border.set(qn("w:val"), "nil")
+            tbl_borders.append(border)
+
+        tbl_pr.append(tbl_borders)
+        if tbl.tblPr is None:
+            tbl.insert(0, tbl_pr)
+
+        cell = table.rows[0].cells[0]
+        tc_pr = cell._tc.get_or_add_tcPr()
+        tc_mar = OxmlElement("w:tcMar")
+        for edge in ("top", "left", "bottom", "right"):
+            margin = OxmlElement(f"w:{edge}")
+            margin.set(qn("w:w"), "180" if edge in {"left", "right"} else "140")
+            margin.set(qn("w:type"), "dxa")
+            tc_mar.append(margin)
+        tc_pr.append(tc_mar)
+
+    def _render_code_block_line(self, paragraph, line: str) -> None:
+        """Render one line of a code block with light semantic emphasis for tree diagrams."""
+        if not line.strip():
+            spacer = paragraph.add_run(" ")
+            FontStyler.apply_run_style(
+                spacer,
+                font_name="Consolas",
+                font_size=Pt(9.5),
+                color=STYLE.MEDIUM_GRAY,
+            )
+            return
+
+        prefix_match = self._TREE_PREFIX_RE.match(line)
+        if prefix_match:
+            prefix, remainder = prefix_match.groups()
+        else:
+            prefix, remainder = "", line
+
+        if prefix:
+            prefix_run = paragraph.add_run(prefix)
+            FontStyler.apply_run_style(
+                prefix_run,
+                font_name="Consolas",
+                font_size=Pt(9.5),
+                color=STYLE.MEDIUM_GRAY,
+            )
+
+        value_match = self._TREE_VALUE_RE.match(remainder)
+        if value_match:
+            before, value, divider, after = value_match.groups()
+            if before:
+                before_run = paragraph.add_run(before)
+                FontStyler.apply_run_style(
+                    before_run,
+                    font_name="Consolas",
+                    font_size=Pt(9.5),
+                    color=STYLE.DARK_GRAY,
+                )
+            value_run = paragraph.add_run(value)
+            FontStyler.apply_run_style(
+                value_run,
+                font_name="Consolas",
+                font_size=Pt(9.5),
+                bold=True,
+                color=STYLE.NAVY,
+            )
+            divider_run = paragraph.add_run(divider)
+            FontStyler.apply_run_style(
+                divider_run,
+                font_name="Consolas",
+                font_size=Pt(9.5),
+                color=STYLE.MEDIUM_GRAY,
+            )
+            tail_run = paragraph.add_run(after)
+            FontStyler.apply_run_style(
+                tail_run,
+                font_name="Consolas",
+                font_size=Pt(9.5),
+                color=STYLE.DARK_GRAY,
+            )
+            return
+
+        is_root = "사업지주회사" in remainder
+        main_run = paragraph.add_run(remainder)
+        FontStyler.apply_run_style(
+            main_run,
+            font_name="Consolas",
+            font_size=Pt(9.8 if is_root else 9.5),
+            bold=is_root,
+            color=STYLE.NAVY if is_root else STYLE.DARK_GRAY,
+        )
 
     def _render_latex_block(self, latex_eq):
         """

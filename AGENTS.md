@@ -23,7 +23,8 @@ uv run word_to_md.py input.docx --extract-images  # Extract images to folder
 uv run md_formatter.py input.md [output.md]
 uv run md_formatter.py --check input.md        # Check if formatting needed
 
-# No formal test suite exists - verify changes manually
+# Run test suite (156 tests)
+uv run pytest tests/ -v
 ```
 
 ## Project Structure
@@ -37,6 +38,8 @@ IB_report_formatter/
 ├── word_to_md.py      # Word → Markdown CLI entry point
 ├── word_parser.py     # Word document parsing into DocumentModel
 ├── md_renderer.py     # DocumentModel → Markdown text rendering
+├── omml_latex.py      # OMML (Word equations) → LaTeX converter
+├── converters.py      # Plugin architecture: BaseConverter, ConverterRegistry
 └── docs/              # Documentation/memory files
 ```
 
@@ -55,6 +58,38 @@ IB_report_formatter/
 | `word_to_md.py`  | CLI, path resolution, Word→MD conversion orchestration  |
 | `word_parser.py` | Parse Word doc properties, paragraphs, tables, images   |
 | `md_renderer.py` | Render DocumentModel to clean Markdown text             |
+| `omml_latex.py`  | Convert Word OMML equations to LaTeX ($, $$)            |
+| `converters.py`  | Plugin architecture: BaseConverter, ConverterRegistry   |
+
+### Converter Registry (Plugin Architecture)
+
+Extensible converter system inspired by Microsoft's markitdown. New formats can be added
+by implementing `InputConverter` or `OutputConverter` and registering with the registry.
+
+```python
+from converters import get_default_registry
+
+registry = get_default_registry()
+model = registry.convert("report.md")                              # Any input → DocumentModel
+registry.convert(model, output_format="docx", output_path="out.docx")  # DocumentModel → Any output
+
+# Adding a new format:
+class PdfOutputConverter(OutputConverter):
+    name = "pdf"
+    output_format = "pdf"
+    def convert(self, source, **kwargs): ...
+
+registry.register(PdfOutputConverter())
+```
+
+Built-in converters: `MarkdownInputConverter`, `DocxInputConverter`, `DocxOutputConverter`, `MarkdownOutputConverter`.
+Existing CLI entry points and direct API calls continue to work unchanged.
+
+### OMML Equation Support (Word → LaTeX)
+
+`omml_latex.py` converts Word equations (OMML XML) to LaTeX during DOCX parsing.
+Automatically applied when `WordParser.parse()` opens a DOCX file.
+Supports: fractions, sub/superscripts, roots, matrices, integrals, trig functions, Greek letters.
 
 ### Markdown Paragraph Normalization (MD -> Word)
 

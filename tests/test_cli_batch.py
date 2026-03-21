@@ -22,6 +22,7 @@ def test_md_to_word_batch_conversion_creates_outputs(tmp_path):
         no_cover=True,
         no_toc=True,
         no_disclaimer=True,
+        separator_mode="auto",
         format=False,
         deepresearch_cleaner="off",
         cite_mode="footnote",

@@ -17,11 +17,15 @@ This project converts research and internal memo markdown into bank-style docume
 - Round-trip audit helper for semantic preservation checks
 - Auto-format pass for single-line clipboard markdown (Deep Research output)
 - Optional OpenAI DeepResearch marker cleaner (`off`/`auto`/`on`)
+- Frontmatter-free metadata inference from real-world report markdown (title/date/analysis period/basis)
+- Static TOC preview plus updateable Word TOC field
 - YAML frontmatter parsing (`title`, `date`, `recipient`, `analyst`, etc.)
 - Financial table rendering with number formatting and conditional styling
+- Diagram/code-block rendering as monospaced shaded panels
 - Callout box rendering (`[Executive Summary]`, `[요약]`, `[시사점]`, `[주의]`, `[참고]`)
 - Image rendering (local file paths and Base64 `data:image/...`)
 - LaTeX support (`$inline$`, `$$block$$`, rendered via matplotlib when available)
+- Native Word footnotes for markdown citations when inline markers are present
 - Header/footer support (company label, `CONFIDENTIAL`, page numbers)
 
 ## Project Structure
@@ -254,6 +258,7 @@ Options:
 - `--no-cover`: skip cover page
 - `--no-toc`: skip table of contents
 - `--no-disclaimer` / `--no-disc`: skip disclaimer page
+- `--separator-mode {auto,rule,page-break}`: control whether separators become horizontal rules or page breaks
 - `-v, --verbose`: debug logs
 
 Examples:
