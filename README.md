@@ -207,6 +207,69 @@ uv run roundtrip-audit report.md
 uv run roundtrip-audit report.docx --json
 ```
 
+## Recommended Workflows
+
+### 1. Convert a normal report markdown to Word
+
+For a report that already has headings, paragraphs, and tables separated cleanly:
+
+```bash
+uv run md_to_word.py tests/웅진_계열사.md
+```
+
+If you want the output path to be explicit:
+
+```bash
+uv run md_to_word.py tests/웅진_계열사.md tests/웅진_계열사_Report_Pro.docx
+```
+
+### 2. Convert messy copied markdown
+
+If the source came from a clipboard paste or collapsed research output:
+
+```bash
+uv run md_to_word.py raw_report.md --format
+```
+
+If OpenAI DeepResearch markers may be present:
+
+```bash
+uv run md_to_word.py raw_report.md --format --deepresearch-cleaner auto --cite-mode footnote --cleaner-report
+```
+
+Recommended order:
+
+1. Run `uv run md_formatter.py --check input.md`
+2. Use `--format` if structure looks collapsed
+3. Add `--deepresearch-cleaner auto` only when marker cleanup may be needed
+4. Generate the final `.docx`
+
+### 3. Convert Word back to Markdown for LLM use
+
+Preserve formatting:
+
+```bash
+uv run word_to_md.py report.docx
+```
+
+LLM-oriented plain markdown:
+
+```bash
+uv run word_to_md.py report.docx --strip --no-frontmatter
+```
+
+Keep images embedded inside one markdown file:
+
+```bash
+uv run word_to_md.py report.docx --embed-images-base64
+```
+
+Write images into a folder:
+
+```bash
+uv run word_to_md.py report.docx --extract-images --image-dir report_images
+```
+
 What does `--format` (pre-formatting) do?
 
 - It restores document structure from compressed or single-line markdown.
@@ -272,6 +335,12 @@ uv run md_to_word.py report.md --deepresearch-cleaner auto --cite-mode strip --c
 uv run md_to_word.py reports/ --batch
 ```
 
+Practical notes:
+
+- `--separator-mode auto` keeps plain `---` as a horizontal rule, while `## ---` becomes a page break.
+- Frontmatter is optional. When absent, the converter tries to infer title/date/analysis metadata from the first heading and leading bold metadata lines.
+- The cover `INSTITUTION` can reflect the analyzed company, while disclaimer/header/footer branding continue to use the configured house company identity.
+
 ## Formatter CLI (`md_formatter.py`)
 
 Format a raw markdown file:
@@ -321,6 +390,8 @@ Options:
 - `-s, --strip`: strip formatting (no bold/italic) for LLM optimization
 - `--no-frontmatter`: skip YAML metadata header
 - `--extract-images`: extract embedded images to folder
+- `--image-dir`: choose the extraction directory explicitly
+- `--embed-images-base64`: inline image data directly into the markdown output
 - `-v, --verbose`: debug logs
 
 Examples:
@@ -333,8 +404,16 @@ uv run word_to_md.py report.docx output.md
 uv run word_to_md.py report.docx --strip              # LLM-optimized output
 uv run word_to_md.py report.docx --strip --no-frontmatter
 uv run word_to_md.py report.docx --extract-images     # Save images to folder
+uv run word_to_md.py report.docx --extract-images --image-dir report_images
+uv run word_to_md.py report.docx --embed-images-base64
 uv run word_to_md.py reports/ --batch
 ```
+
+Practical notes:
+
+- `--strip` is the safest default when the output goes directly into an LLM.
+- `--extract-images` is better for human editing workflows where separate files are easier to manage.
+- `--embed-images-base64` is better when you want one portable markdown file.
 
 ## Round-trip Audit CLI (`roundtrip_audit.py`)
 

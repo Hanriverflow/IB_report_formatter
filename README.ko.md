@@ -207,6 +207,69 @@ uv run roundtrip-audit report.md
 uv run roundtrip-audit report.docx --json
 ```
 
+## 추천 사용 흐름
+
+### 1. 일반 보고서 markdown을 바로 Word로 변환
+
+이미 제목/문단/표 구조가 잘 잡혀 있는 보고서라면:
+
+```bash
+uv run md_to_word.py tests/웅진_계열사.md
+```
+
+출력 경로를 명시적으로 고정하려면:
+
+```bash
+uv run md_to_word.py tests/웅진_계열사.md tests/웅진_계열사_Report_Pro.docx
+```
+
+### 2. 복붙된 난삽한 markdown을 정리 후 Word 변환
+
+문서 구조가 깨져 있거나 한 줄로 뭉친 원문이라면:
+
+```bash
+uv run md_to_word.py raw_report.md --format
+```
+
+OpenAI DeepResearch 마커가 섞였을 가능성이 있으면:
+
+```bash
+uv run md_to_word.py raw_report.md --format --deepresearch-cleaner auto --cite-mode footnote --cleaner-report
+```
+
+추천 순서:
+
+1. `uv run md_formatter.py --check input.md`
+2. 구조가 뭉쳐 있으면 `--format`
+3. 마커 정리가 필요할 수 있으면 `--deepresearch-cleaner auto`
+4. 최종 `.docx` 생성
+
+### 3. Word를 다시 Markdown으로 추출해 LLM에 사용
+
+서식을 유지한 일반 markdown 추출:
+
+```bash
+uv run word_to_md.py report.docx
+```
+
+LLM 입력용 평문 중심 markdown:
+
+```bash
+uv run word_to_md.py report.docx --strip --no-frontmatter
+```
+
+이미지를 하나의 markdown 파일 안에 유지하려면:
+
+```bash
+uv run word_to_md.py report.docx --embed-images-base64
+```
+
+이미지를 별도 폴더로 추출하려면:
+
+```bash
+uv run word_to_md.py report.docx --extract-images --image-dir report_images
+```
+
 `--format`(사전 포맷팅)은 무엇을 하나요?
 
 - 한 줄로 뭉친 markdown을 문서 구조로 자동 복원합니다.
@@ -272,6 +335,12 @@ uv run md_to_word.py report.md --deepresearch-cleaner auto --cite-mode strip --c
 uv run md_to_word.py reports/ --batch
 ```
 
+실무 팁:
+
+- `--separator-mode auto`에서는 plain `---`는 수평선으로 유지되고, `## ---`는 페이지 나누기로 렌더됩니다.
+- frontmatter가 없어도 첫 H1과 선행 bold 메타 문단에서 제목/날짜/분석 메타를 추론합니다.
+- cover의 `INSTITUTION`은 분석대상 회사를 반영할 수 있지만, disclaimer/header/footer 등 문서 브랜딩은 house company identity를 유지합니다.
+
 ## 포맷터 CLI (`md_formatter.py`)
 
 파일 포맷팅:
@@ -321,6 +390,8 @@ uv run word_to_md.py [input_file] [output_file] [options]
 - `-s, --strip`: 서식 제거 (볼드/이탤릭 없음) - LLM 최적화
 - `--no-frontmatter`: YAML 메타데이터 헤더 생략
 - `--extract-images`: 포함된 이미지를 폴더로 추출
+- `--image-dir`: 이미지 추출 폴더 직접 지정
+- `--embed-images-base64`: 이미지 데이터를 markdown 안에 inline 삽입
 - `-v, --verbose`: 디버그 로그 출력
 
 예시:
@@ -333,8 +404,16 @@ uv run word_to_md.py report.docx output.md
 uv run word_to_md.py report.docx --strip              # LLM 최적화 출력
 uv run word_to_md.py report.docx --strip --no-frontmatter
 uv run word_to_md.py report.docx --extract-images     # 이미지 폴더로 저장
+uv run word_to_md.py report.docx --extract-images --image-dir report_images
+uv run word_to_md.py report.docx --embed-images-base64
 uv run word_to_md.py reports/ --batch
 ```
+
+실무 팁:
+
+- LLM 입력 목적이면 기본적으로 `--strip`이 가장 무난합니다.
+- 사람이 다시 편집할 markdown이면 `--extract-images`가 더 다루기 쉽습니다.
+- 하나의 파일로 들고 다니거나 프롬프트 첨부용이면 `--embed-images-base64`가 더 편합니다.
 
 ## Round-trip Audit CLI (`roundtrip_audit.py`)
 
