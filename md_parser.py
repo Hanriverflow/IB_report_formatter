@@ -58,6 +58,7 @@ class ElementType(Enum):
     IMAGE = auto()
     SEPARATOR = auto()
     EMPTY = auto()
+    CODE_BLOCK = auto()
     # ── NEW (v3) ────────────────────────────────────────────────────────────
     LATEX_BLOCK = auto()  # $$ ... $$ (display math)
     LATEX_INLINE = auto()  # standalone inline math rendered as paragraph
@@ -86,6 +87,8 @@ class TextRun:
     bold: bool = False
     italic: bool = False
     superscript: bool = False
+    subscript: bool = False
+    color_hex: Optional[str] = None
     is_latex: bool = False  # NEW (v3): marks this run as inline LaTeX
 
 
@@ -95,6 +98,14 @@ class LaTeXEquation:
 
     expression: str
     is_block: bool = True  # True = display ($$), False = inline ($)
+
+
+@dataclass
+class CodeBlock:
+    """A fenced code block element."""
+
+    code: str
+    language: str = ""
 
 
 @dataclass
@@ -199,6 +210,7 @@ ElementContent = Union[
     Tuple[str, ListItem],  # numbered list: (number, ListItem)
     Blockquote,
     Image,
+    CodeBlock,
     LaTeXEquation,  # NEW (v3)
     None,
 ]
@@ -420,9 +432,17 @@ class TextParser:
     _ESCAPE_RE = re.compile(r'\\([~.*"\'()\[\]{}|_-])')
 
     # Inline formatting patterns
+    _SUBSCRIPT_PATTERN = r"(?<!~)~[A-Za-z0-9]{1,8}~(?!~)"
     _INLINE_FORMAT_SPLIT_RE = re.compile(
-        r"(\*\*[^*\n]+?\*\*|\^[^^\n]+?\^|(?<!\*)\*[^*\n]+?\*(?!\*)|(?<!\w)_[^_\n]+?_(?!\w))"
+        r"(\*\*[^*\n]+?\*\*|\^[^^\n]+?\^|"
+        + _SUBSCRIPT_PATTERN
+        + r"|(?<!\*)\*[^*\n]+?\*(?!\*)|(?<!\w)_[^_\n]+?_(?!\w))"
     )
+    _COLOR_SPAN_RE = re.compile(
+        r"<span\s+style=(['\"])(.*?)\1\s*>(.*?)</span>",
+        re.IGNORECASE | re.DOTALL,
+    )
+    _COLOR_STYLE_RE = re.compile(r"color\s*:\s*(#[0-9A-Fa-f]{6})", re.IGNORECASE)
 
     # Inline LaTeX: $...$ but not $$...$$
     _INLINE_LATEX_RE = re.compile(r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)")
@@ -438,22 +458,25 @@ class TextParser:
         # Normalize escaped asterisks to regular bold markers
         normalized_text = text.replace(r"\*\*", "**")
 
-        # ── Phase 1: Split on inline LaTeX boundaries ───────────────────────
-        segments = cls._split_on_inline_latex(normalized_text)
+        # ── Phase 1: Split on color spans, then inline LaTeX boundaries ─────
+        color_segments = cls._split_on_color_spans(normalized_text)
 
-        for segment_text, is_latex in segments:
-            if is_latex:
-                # Inline LaTeX run
-                runs.append(
-                    TextRun(
-                        text=segment_text,
-                        bold=False,
-                        italic=False,
-                        is_latex=True,
+        for segment_text, color_hex in color_segments:
+            inline_segments = cls._split_on_inline_latex(segment_text)
+
+            for inline_text, is_latex in inline_segments:
+                if is_latex:
+                    runs.append(
+                        TextRun(
+                            text=inline_text,
+                            bold=False,
+                            italic=False,
+                            color_hex=color_hex,
+                            is_latex=True,
+                        )
                     )
-                )
-            else:
-                runs.extend(cls._parse_inline_formatting(segment_text))
+                else:
+                    runs.extend(cls._apply_color(cls._parse_inline_formatting(inline_text), color_hex))
 
         return runs
 
@@ -497,11 +520,58 @@ class TextParser:
         (e.g., table cells with currency values).
         """
         normalized = text.replace(r"\*\*", "**")
-        return cls._parse_inline_formatting(normalized)
+        runs: List[TextRun] = []
+        for segment_text, color_hex in cls._split_on_color_spans(normalized):
+            runs.extend(cls._apply_color(cls._parse_inline_formatting(segment_text), color_hex))
+        return runs
+
+    @classmethod
+    def _split_on_color_spans(cls, text: str) -> List[Tuple[str, Optional[str]]]:
+        """Split text into color-scoped segments preserving original order."""
+        segments: List[Tuple[str, Optional[str]]] = []
+        last_end = 0
+
+        for match in cls._COLOR_SPAN_RE.finditer(text):
+            color_hex = cls._extract_color_from_style(match.group(2))
+            if color_hex is None:
+                continue
+
+            before = text[last_end : match.start()]
+            if before:
+                segments.append((before, None))
+
+            segments.append((match.group(3), color_hex))
+            last_end = match.end()
+
+        after = text[last_end:]
+        if after:
+            segments.append((after, None))
+
+        if not segments:
+            segments.append((text, None))
+
+        return segments
+
+    @classmethod
+    def _extract_color_from_style(cls, style_attr: str) -> Optional[str]:
+        """Extract a normalized #RRGGBB color from an HTML style attribute."""
+        match = cls._COLOR_STYLE_RE.search(style_attr)
+        if not match:
+            return None
+        return match.group(1).upper()
+
+    @staticmethod
+    def _apply_color(runs: List[TextRun], color_hex: Optional[str]) -> List[TextRun]:
+        """Apply a color value to each run in a parsed segment."""
+        if not color_hex:
+            return runs
+        for run in runs:
+            run.color_hex = color_hex
+        return runs
 
     @classmethod
     def _parse_inline_formatting(cls, text: str) -> List[TextRun]:
-        """Parse bold, italic, and superscript runs from plain text."""
+        """Parse bold, italic, superscript, and subscript runs from plain text."""
         runs: List[TextRun] = []
         parts = cls._INLINE_FORMAT_SPLIT_RE.split(text)
 
@@ -519,6 +589,12 @@ class TextParser:
                 content = cls.cleanup_text(part[1:-1])
                 if content:
                     runs.append(TextRun(text=content, superscript=True))
+                continue
+
+            if part.startswith("~") and part.endswith("~") and len(part) > 2:
+                content = cls.cleanup_text(part[1:-1])
+                if content:
+                    runs.append(TextRun(text=content, subscript=True))
                 continue
 
             if part.startswith("*") and part.endswith("*") and len(part) > 2:
@@ -815,8 +891,11 @@ class TableParser:
         """Parse a single table cell"""
         cell = TableCell(content=text, is_header=is_header)
 
-        # Use plain parser for table cells ($ = currency, not LaTeX)
-        cell.runs = TextParser.parse_runs_plain(text)
+        # Prefer LaTeX-aware parsing only when a balanced inline expression exists.
+        if TextParser.has_inline_latex(text):
+            cell.runs = TextParser.parse_runs(text)
+        else:
+            cell.runs = TextParser.parse_runs_plain(text)
 
         # Detect numeric content
         cell.is_numeric = any(char.isdigit() for char in text) and col_idx > 0
@@ -1071,6 +1150,7 @@ class MarkdownParser:
     IMAGE_PATTERN = re.compile(r"^!\[(.*?)\]\((.*?)\)$")
     TABLE_START_PATTERN = re.compile(r"^\|")
     SEPARATOR_PATTERN = re.compile(r"^(---|## ---)$")
+    CODE_FENCE_PATTERN = re.compile(r"^```([A-Za-z0-9_+-]*)\s*$")
 
     # Reference section keywords
     _REFERENCE_KEYWORDS = frozenset(
@@ -1163,6 +1243,28 @@ class MarkdownParser:
             # ── Separator ───────────────────────────────────────────────────
             if self.SEPARATOR_PATTERN.match(line):
                 i += 1
+                continue
+
+            # ── Fenced code block ───────────────────────────────────────────
+            code_match = self.CODE_FENCE_PATTERN.match(line)
+            if code_match:
+                language = code_match.group(1).strip()
+                code_lines: List[str] = []
+                i += 1
+                while i < len(lines):
+                    if self.CODE_FENCE_PATTERN.match(lines[i].strip()):
+                        i += 1
+                        break
+                    code_lines.append(lines[i].rstrip("\n"))
+                    i += 1
+
+                elements.append(
+                    Element(
+                        element_type=ElementType.CODE_BLOCK,
+                        content=CodeBlock(code="\n".join(code_lines).rstrip(), language=language),
+                        raw_text=raw_line,
+                    )
+                )
                 continue
 
             # ════════════════════════════════════════════════════════════════
@@ -1659,31 +1761,80 @@ def _read_with_encoding(file_path: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def parse_markdown_file(file_path: str) -> DocumentModel:
-    """
-    Parse a markdown file into a DocumentModel.
+def _decode_bytes(raw_bytes: bytes, label: str = "<stream>") -> str:
+    """Decode raw bytes with intelligent encoding detection.
 
+    Same strategy as _read_with_encoding but works on bytes directly.
+    """
+    # charset_normalizer (optional)
+    try:
+        from charset_normalizer import from_bytes  # pyright: ignore[reportMissingImports]
+
+        result = from_bytes(raw_bytes).best()
+        if result and result.encoding:
+            return str(result)
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
+    # BOM detection
+    if raw_bytes.startswith(b"\xef\xbb\xbf"):
+        return raw_bytes.decode("utf-8-sig")
+
+    # Sequential fallback
+    encodings = ["utf-8", "euc-kr", "cp949"]
+    for enc in encodings:
+        try:
+            return raw_bytes.decode(enc)
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+
+    raise UnicodeDecodeError(
+        "multiple", b"", 0, 1,
+        f"Failed to decode {label} with encodings: {encodings}",
+    )
+
+
+def parse_markdown_file(source: "Union[str, BinaryIO]") -> DocumentModel:
+    """
+    Parse a markdown file or stream into a DocumentModel.
+
+    Accepts a file path (str) or a binary stream (BinaryIO).
     Tries intelligent encoding detection, falls back through
     UTF-8 → EUC-KR → CP949.
 
     Args:
-        file_path: Path to the markdown file
+        source: Path to the markdown file, or a readable binary stream.
 
     Returns:
         A DocumentModel containing all parsed content
 
     Raises:
-        FileNotFoundError: If the file does not exist
+        FileNotFoundError: If source is a path and the file does not exist
         UnicodeDecodeError: If none of the attempted encodings work
     """
-    content = _read_with_encoding(file_path)
+    from stream_utils import is_stream
+
+    if is_stream(source):
+        raw_bytes = source.read()
+        content = _decode_bytes(raw_bytes, label="<stream>")
+        label = "<stream>"
+    else:
+        content = _read_with_encoding(source)
+        label = source
+
+    lines = content.splitlines()
+    _, remaining_lines = FrontmatterParser.parse(lines)
+    frontmatter_present = remaining_lines is not lines
 
     parser = MarkdownParser()
     model = parser.parse(content)
+    _infer_metadata_from_elements(model, allow_company_inference=not frontmatter_present)
 
     logger.info(
         "Parsed %s: %d elements, %d footnotes, latex_blocks=%d, images=%d",
-        file_path,
+        label,
         len(model.elements),
         len(model.footnotes),
         sum(1 for e in model.elements if e.element_type == ElementType.LATEX_BLOCK),
@@ -1691,3 +1842,127 @@ def parse_markdown_file(file_path: str) -> DocumentModel:
     )
 
     return model
+
+
+def _infer_metadata_from_elements(
+    model: DocumentModel,
+    allow_company_inference: bool = True,
+) -> None:
+    """Backfill metadata from document content when frontmatter is absent or partial."""
+    metadata = model.metadata
+
+    if metadata.title == "IB Report":
+        first_heading = next(
+            (
+                element.content.text.strip()
+                for element in model.elements
+                if element.element_type == ElementType.HEADING_1
+                and isinstance(element.content, Heading)
+                and element.content.text.strip()
+            ),
+            "",
+        )
+        if first_heading:
+            metadata.title = first_heading
+
+    if allow_company_inference and metadata.company == "Korea Development Bank":
+        inferred_company = _infer_company_from_title(metadata.title)
+        if inferred_company:
+            metadata.extra.setdefault("subject_company", inferred_company)
+
+    label_map = {
+        "기준일": ("extra", "date"),
+        "as of": ("extra", "date"),
+        "작성일": ("extra", "date"),
+        "report date": ("extra", "date"),
+        "date": ("extra", "date"),
+        "분석 대상 기간": ("extra", "analysis_period"),
+        "analysis period": ("extra", "analysis_period"),
+        "분석 기준": ("extra", "analysis_basis"),
+        "analysis basis": ("extra", "analysis_basis"),
+        "prepared by": ("analyst", None),
+        "작성자": ("analyst", None),
+        "analyst": ("analyst", None),
+        "institution": ("company", None),
+        "company": ("company", None),
+        "기관": ("company", None),
+        "sector": ("sector", None),
+        "업종": ("sector", None),
+        "prepared for": ("extra", "recipient"),
+        "recipient": ("extra", "recipient"),
+        "수신": ("extra", "recipient"),
+    }
+
+    for element in model.elements:
+        if element.element_type not in {ElementType.PARAGRAPH, ElementType.HEADING_2}:
+            continue
+        if element.element_type == ElementType.HEADING_2:
+            break
+        if not isinstance(element.content, Paragraph):
+            continue
+
+        extracted = _extract_leading_metadata_pair(element.content)
+        if extracted is None:
+            continue
+
+        label, value = extracted
+        mapped = label_map.get(label.lower())
+        if not mapped or not value:
+            continue
+
+        field_name, extra_key = mapped
+        if field_name == "extra" and extra_key:
+            metadata.extra.setdefault(extra_key, value)
+        elif field_name and getattr(metadata, field_name, "") in {"", "IB Report", "SECTOR", "DCM Team 1", "Korea Development Bank"}:
+            setattr(metadata, field_name, value)
+
+
+def _extract_leading_metadata_pair(paragraph: Paragraph) -> Optional[Tuple[str, str]]:
+    """Extract a bold-label metadata pair like '**작성일:** 2026-03-20' from a paragraph."""
+    if not paragraph.runs:
+        return None
+
+    first_run = paragraph.runs[0]
+    if not first_run.bold:
+        return None
+
+    label = first_run.text.strip().rstrip(":").rstrip("：").strip()
+    if not label:
+        return None
+
+    value = "".join(run.text for run in paragraph.runs[1:]).strip()
+    if not value and ":" in first_run.text:
+        raw_label, raw_value = first_run.text.split(":", 1)
+        label = raw_label.strip().rstrip("：").strip()
+        value = raw_value.strip()
+    if not value:
+        return None
+
+    return label, value
+
+
+def _infer_company_from_title(title: str) -> str:
+    """Infer the company/subject name from a report-style title."""
+    if not title or title == "IB Report":
+        return ""
+
+    for delimiter in (" — ", " - ", " – ", ": "):
+        if delimiter in title:
+            candidate = title.split(delimiter, 1)[0].strip()
+            if candidate:
+                return candidate
+
+    suffix_patterns = [
+        r"\s+수익성\s+변화\s+분석\s+보고서$",
+        r"\s+수익성\s+분석\s+보고서$",
+        r"\s+분석\s+보고서$",
+        r"\s+보고서$",
+        r"\s+리포트$",
+    ]
+
+    for pattern in suffix_patterns:
+        candidate = re.sub(pattern, "", title).strip()
+        if candidate and candidate != title:
+            return candidate
+
+    return ""

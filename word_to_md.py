@@ -7,6 +7,7 @@ Usage:
     uv run word_to_md.py input.docx --strip           # Remove formatting for LLM
     uv run word_to_md.py input.docx --no-frontmatter  # Skip YAML metadata
     uv run word_to_md.py input.docx --extract-images  # Save images to folder
+    uv run word_to_md.py input.docx --embed-images-base64  # Inline images as data URIs
 """
 
 import argparse
@@ -91,6 +92,7 @@ class WordToMarkdownConverter:
         include_frontmatter: bool = True,
         extract_images: bool = False,
         image_output_dir: Optional[str] = None,
+        embed_images_base64: bool = False,
     ):
         self.docx_file_path = Path(docx_file_path).resolve()
         self.output_path = output_path
@@ -98,6 +100,7 @@ class WordToMarkdownConverter:
         self.include_frontmatter = include_frontmatter
         self.extract_images = extract_images
         self.image_output_dir = image_output_dir
+        self.embed_images_base64 = embed_images_base64
         self._validate_input()
 
     def _validate_input(self):
@@ -124,6 +127,7 @@ class WordToMarkdownConverter:
             str(self.docx_file_path),
             extract_images=self.extract_images,
             image_output_dir=image_dir,
+            embed_images_base64=self.embed_images_base64,
         )
 
         logger.info("Parsed %d elements", len(model.elements))
@@ -137,6 +141,7 @@ class WordToMarkdownConverter:
             include_frontmatter=self.include_frontmatter,
             strip_formatting=self.strip_formatting,
             image_path_prefix=image_dir if image_dir else "",
+            embed_images_base64=self.embed_images_base64,
         )
 
         # Stage 3: Save output
@@ -159,6 +164,7 @@ def run_conversion(input_path: Path, args) -> int:
             include_frontmatter=not args.no_frontmatter,
             extract_images=args.extract_images,
             image_output_dir=args.image_dir,
+            embed_images_base64=getattr(args, "embed_images_base64", False),
         )
         output_path = converter.convert()
 
@@ -240,6 +246,7 @@ Examples:
     uv run word_to_md.py report.docx                   # Convert to report.md
     uv run word_to_md.py report.docx --strip           # Plain text for LLM
     uv run word_to_md.py report.docx --extract-images  # Save images
+    uv run word_to_md.py report.docx --embed-images-base64
     uv run word_to_md.py reports/ --batch              # Convert all docx in a directory
         """,
     )
@@ -299,6 +306,11 @@ Examples:
         type=str,
         help="Directory to save extracted images (default: ./images)",
     )
+    conv_group.add_argument(
+        "--embed-images-base64",
+        action="store_true",
+        help="Inline images as base64 data URIs in the Markdown output",
+    )
 
     # Verbosity
     parser.add_argument(
@@ -326,6 +338,43 @@ def main():
             selected = interactive_select(docx_files)
             if selected:
                 sys.exit(run_conversion(selected, args))
+        sys.exit(0)
+
+    # Stdin pipe mode: cat file.docx | uv run word_to_md.py -
+    if args.input_file == "-" or (args.input_file is None and not sys.stdin.isatty()):
+        import io
+
+        from stream_utils import detect_format
+
+        raw = sys.stdin.buffer.read()
+        stream = io.BytesIO(raw)
+        fmt = detect_format(stream, hint=getattr(args, "input_format", None))
+
+        if fmt == "docx":
+            model = parse_word_file(
+                stream,
+                extract_images=args.extract_images,
+                embed_images_base64=args.embed_images_base64,
+            )
+        else:
+            # Treat as markdown
+            from md_parser import parse_markdown_file
+
+            model = parse_markdown_file(stream)
+
+        markdown = render_to_markdown(
+            model,
+            include_frontmatter=not args.no_frontmatter,
+            strip_formatting=args.strip,
+            embed_images_base64=args.embed_images_base64,
+        )
+
+        if args.output_file:
+            out = Path(args.output_file)
+            out.write_text(markdown, encoding="utf-8")
+            print(f"Output: {out}", file=sys.stderr)
+        else:
+            sys.stdout.write(markdown)
         sys.exit(0)
 
     # Resolve paths

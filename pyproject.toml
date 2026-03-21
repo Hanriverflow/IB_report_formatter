@@ -87,6 +87,9 @@ known-first-party = [
     "md_parser",
     "md_renderer",
     "md_to_word",
+    "converters",
+    "omml_latex",
+    "stream_utils",
     "word_parser",
     "word_to_md",
 ]

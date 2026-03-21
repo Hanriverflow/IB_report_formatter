@@ -19,6 +19,7 @@ __pycache__/
 # Local agent/tool state
 .claude/
 .sisyphus/
+.omx/
 
 # Build and test outputs
 *.docx
@@ -40,3 +41,4 @@ GPT_deep/
 # Batch processing directories
 batch_docx/
 batch_docx_output/
+.gstack/

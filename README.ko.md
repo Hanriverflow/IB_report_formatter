@@ -17,11 +17,15 @@ Markdown ↔ Word 양방향 변환기로, IB(투자은행) 스타일의 전문 W
 - semantic 보존 점검용 round-trip audit 도구
 - 단일 라인(클립보드) markdown 자동 구조화 포맷팅
 - OpenAI DeepResearch 마커 정리기(선택 적용: `off`/`auto`/`on`)
+- frontmatter가 없는 실제 보고서에서도 제목/날짜/분석기간/분석기준 메타데이터 자동 추론
+- Word TOC field + 즉시 보이는 preview 목차 동시 생성
 - YAML frontmatter 파싱 (`title`, `date`, `recipient`, `analyst` 등)
 - 금융 표 렌더링(천 단위 콤마, 조건부 스타일)
+- 구조 도식/코드블록을 monospaced shaded panel로 렌더링
 - 콜아웃 박스 렌더링 (`[요약]`, `[시사점]`, `[주의]`, `[참고]` 등)
 - 이미지 삽입(파일 경로, Base64 `data:image/...`)
 - LaTeX 수식 지원 (`$inline$`, `$$block$$`, matplotlib 사용 시 이미지 렌더링)
+- inline citation marker가 있을 때 markdown 인용을 Word 네이티브 footnote로 렌더링
 - 헤더/푸터 구성(회사명, `CONFIDENTIAL`, 페이지 번호)
 
 ## 프로젝트 구조
@@ -254,6 +258,7 @@ uv run md_to_word.py [input_file] [output_file] [options]
 - `--no-cover`: 표지 생략
 - `--no-toc`: 목차 생략
 - `--no-disclaimer` / `--no-disc`: 디스클레이머 생략
+- `--separator-mode {auto,rule,page-break}`: separator를 수평선 또는 페이지 나누기로 렌더링
 - `-v, --verbose`: 디버그 로그 출력
 
 예시:

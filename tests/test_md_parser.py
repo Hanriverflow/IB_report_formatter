@@ -8,8 +8,11 @@ Tests core parsing functionality including:
 - Text run formatting
 """
 
+from pathlib import Path
+
 from md_parser import (
     Blockquote,
+    CodeBlock,
     DocumentMetadata,
     ElementType,
     FrontmatterParser,
@@ -19,6 +22,7 @@ from md_parser import (
     TableParser,
     TableType,
     TextParser,
+    parse_markdown_file,
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -181,6 +185,39 @@ class TestTextParser:
         assert len(superscript_runs) == 1
         assert superscript_runs[0].text == "1"
 
+    def test_parse_subscript_runs(self):
+        """Parse subscript markers into TextRun metadata."""
+        runs = TextParser.parse_runs("H~2~O")
+
+        subscript_runs = [run for run in runs if run.subscript]
+        assert len(subscript_runs) == 1
+        assert subscript_runs[0].text == "2"
+
+    def test_parse_korean_range_tilde_is_not_subscript(self):
+        """Range tildes in Korean date spans should not be consumed as subscript markers."""
+        text = "제9기(2024년 1월~12월) → 제10기(2025년 1월~12월)"
+        runs = TextParser.parse_runs(text)
+
+        assert "".join(run.text for run in runs) == text
+        assert not any(run.subscript for run in runs)
+
+    def test_parse_color_spans(self):
+        """Parse HTML color spans into TextRun color metadata."""
+        runs = TextParser.parse_runs('<span style="color:#C00000">**Loss**</span> buffer')
+
+        colored_runs = [run for run in runs if run.color_hex == "#C00000"]
+        assert len(colored_runs) == 1
+        assert colored_runs[0].text == "Loss"
+        assert colored_runs[0].bold is True
+
+    def test_parse_inline_latex_runs(self):
+        """Parse inline LaTeX into dedicated TextRun metadata."""
+        runs = TextParser.parse_runs("Formula $x^2$ done")
+
+        latex_runs = [run for run in runs if run.is_latex]
+        assert len(latex_runs) == 1
+        assert latex_runs[0].text == "x^2"
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TABLE PARSER TESTS
@@ -251,6 +288,37 @@ class TestTableParser:
 
         table = TableParser.parse(lines)
         assert table.rows[1].cells[1].is_negative is True
+
+    def test_parse_table_cell_inline_latex(self):
+        """Balanced inline LaTeX in a table cell should preserve latex run metadata."""
+        lines = [
+            "| Metric | Formula |",
+            "|--------|---------|",
+            "| Value | $x^2$ |",
+        ]
+
+        table = TableParser.parse(lines)
+        latex_runs = [run for run in table.rows[1].cells[1].runs if run.is_latex]
+
+        assert len(latex_runs) == 1
+        assert latex_runs[0].text == "x^2"
+
+    def test_parse_fenced_code_block(self):
+        """Fenced code blocks should become dedicated code block elements."""
+        content = """## Diagram
+
+```text
+A
+└── B
+```
+"""
+        parser = MarkdownParser()
+        model = parser.parse(content)
+
+        code_blocks = [e for e in model.elements if e.element_type == ElementType.CODE_BLOCK]
+        assert len(code_blocks) == 1
+        assert isinstance(code_blocks[0].content, CodeBlock)
+        assert "└── B" in code_blocks[0].content.code
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -434,3 +502,21 @@ This report analyzes **key metrics**.
         assert ElementType.TABLE in types
         assert ElementType.BLOCKQUOTE in types
         assert ElementType.BULLET_LIST in types
+
+
+def test_parse_markdown_file_infers_title_and_date_from_leading_content(tmp_path):
+    """Without frontmatter, first H1 and leading bold metadata should backfill metadata."""
+    md_path = Path(tmp_path) / "inferred_metadata.md"
+    md_path.write_text(
+        "# 일동제약 주식회사 수익성 변화 분석 보고서\n\n**분석 대상 기간:** 제9기→제10기\n\n**분석 기준:** 연결재무제표 기준\n\n**작성일:** 2026년 3월 20일\n\n## 본문\n\n내용\n",
+        encoding="utf-8",
+    )
+
+    model = parse_markdown_file(str(md_path))
+
+    assert model.metadata.title == "일동제약 주식회사 수익성 변화 분석 보고서"
+    assert model.metadata.company == "Korea Development Bank"
+    assert model.metadata.extra["subject_company"] == "일동제약 주식회사"
+    assert model.metadata.extra["analysis_period"] == "제9기→제10기"
+    assert model.metadata.extra["analysis_basis"] == "연결재무제표 기준"
+    assert model.metadata.extra["date"] == "2026년 3월 20일"

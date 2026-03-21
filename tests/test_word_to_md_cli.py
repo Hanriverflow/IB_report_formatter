@@ -36,6 +36,7 @@ def test_run_conversion_strip_and_no_frontmatter(tmp_path):
         strip=True,
         no_frontmatter=True,
         extract_images=False,
+        embed_images_base64=False,
         image_dir=None,
         verbose=False,
     )
@@ -78,6 +79,30 @@ def test_converter_extract_images_writes_files_and_markdown_paths(tmp_path):
     assert list(image_dir.glob("image_*"))
 
 
+def test_converter_embeds_images_base64_without_extraction(tmp_path):
+    """CLI converter should inline images when base64 embedding is requested."""
+    image_path = _write_png(tmp_path / "tiny.png")
+
+    doc = Document()
+    doc.add_picture(str(image_path))
+    docx_path = tmp_path / "image_input.docx"
+    output_path = tmp_path / "image_output.md"
+    doc.save(str(docx_path))
+
+    converter = WordToMarkdownConverter(
+        docx_file_path=str(docx_path),
+        output_path=str(output_path),
+        extract_images=False,
+        embed_images_base64=True,
+    )
+
+    converter.convert()
+    rendered = output_path.read_text(encoding="utf-8")
+
+    assert "data:image/png;base64," in rendered
+    assert "![Image 1]" in rendered or "![Image]" in rendered or "![Tiny]" in rendered
+
+
 def test_run_conversion_preserves_word_native_numbering(tmp_path):
     """End-to-end conversion should keep Word-native numbered list values."""
     doc = Document()
@@ -94,6 +119,7 @@ def test_run_conversion_preserves_word_native_numbering(tmp_path):
         strip=False,
         no_frontmatter=True,
         extract_images=False,
+        embed_images_base64=False,
         image_dir=None,
         verbose=False,
         batch=False,
@@ -124,6 +150,7 @@ def test_run_conversion_keeps_continued_numbering_after_body_paragraph(tmp_path)
         strip=False,
         no_frontmatter=True,
         extract_images=False,
+        embed_images_base64=False,
         image_dir=None,
         verbose=False,
         batch=False,

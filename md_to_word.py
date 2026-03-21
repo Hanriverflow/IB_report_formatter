@@ -72,10 +72,12 @@ class RenderOptions:
         include_cover: bool = True,
         include_toc: bool = True,
         include_disclaimer: bool = True,
+        separator_mode: str = "auto",
     ):
         self.include_cover = include_cover
         self.include_toc = include_toc
         self.include_disclaimer = include_disclaimer
+        self.separator_mode = separator_mode
 
     def __repr__(self) -> str:
         flags = []
@@ -85,6 +87,8 @@ class RenderOptions:
             flags.append("no-toc")
         if not self.include_disclaimer:
             flags.append("no-disclaimer")
+        if self.separator_mode != "auto":
+            flags.append(f"separator={self.separator_mode}")
         return f"RenderOptions({', '.join(flags) if flags else 'all sections'})"
 
 
@@ -332,7 +336,7 @@ class IBReportConverter:
         Returns:
             python-docx Document object
         """
-        renderer = IBDocumentRenderer()
+        renderer = IBDocumentRenderer(separator_mode=self.render_options.separator_mode)
 
         # Setup
         renderer.styler.setup_document()
@@ -346,7 +350,7 @@ class IBReportConverter:
 
         # Table of contents
         if self.render_options.include_toc:
-            renderer.toc_renderer.render()
+            renderer.toc_renderer.render(model)
         else:
             logger.info("Skipping table of contents")
 
@@ -515,6 +519,12 @@ Examples:
         dest="no_disclaimer",
         help="Skip disclaimer page",
     )
+    section_group.add_argument(
+        "--separator-mode",
+        choices=["auto", "rule", "page-break"],
+        default="auto",
+        help="Render separators as horizontal rules, page breaks, or auto (`## ---` => page break)",
+    )
 
     # Verbosity
     parser.add_argument(
@@ -543,6 +553,7 @@ def run_conversion(input_path: Path, args) -> int:
         include_cover=not args.no_cover,
         include_toc=not args.no_toc,
         include_disclaimer=not args.no_disclaimer,
+        separator_mode=getattr(args, "separator_mode", "auto"),
     )
 
     # Auto-format / cleaner if requested

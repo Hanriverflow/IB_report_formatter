@@ -2,15 +2,19 @@
 Markdown Renderer Module for Word to Markdown Converter
 Handles rendering of DocumentModel to Markdown text.
 
-Renders clean, LLM-friendly Markdown output.
+Renders clean, LLM-friendly Markdown output with post-processing
+normalization: trailing whitespace removal, blank line compression,
+consistent spacing around block elements (tables, code, math).
 """
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import List, Optional
 
 from md_parser import (
     Blockquote,
+    CodeBlock,
     DocumentMetadata,
     DocumentModel,
     Element,
@@ -60,6 +64,10 @@ class TextRunRenderer:
                 text = f"{self.config.italic_marker}{text}{self.config.italic_marker}"
             if run.superscript:
                 text = f"^{text}^"
+            elif run.subscript:
+                text = f"~{text}~"
+            if run.color_hex:
+                text = f'<span style="color:{run.color_hex}">{text}</span>'
             result.append(text)
         return "".join(result)
 
@@ -146,6 +154,7 @@ class TableRenderer:
 
     def __init__(self, config: RenderConfig):
         self.config = config
+        self.run_renderer = TextRunRenderer(config)
 
     def render(self, table: Table) -> str:
         """Render a table to Markdown format."""
@@ -157,7 +166,7 @@ class TableRenderer:
         # Header row
         if table.rows:
             header_row = table.rows[0]
-            header_cells = [self._escape_cell(c.content) for c in header_row.cells]
+            header_cells = [self._render_cell(c) for c in header_row.cells]
             lines.append("| " + " | ".join(header_cells) + " |")
 
             # Separator row with alignment
@@ -183,11 +192,16 @@ class TableRenderer:
 
         # Data rows
         for row in table.rows[1:]:
-            cells = [self._escape_cell(c.content) for c in row.cells]
+            cells = [self._render_cell(c) for c in row.cells]
             lines.append("| " + " | ".join(cells) + " |")
 
         lines.append("")
         return "\n".join(lines)
+
+    def _render_cell(self, cell) -> str:
+        """Render a table cell, preferring structured runs when available."""
+        text = self.run_renderer.render(cell.runs) if cell.runs else cell.content
+        return self._escape_cell(text)
 
     @staticmethod
     def _escape_cell(text: str) -> str:
@@ -298,7 +312,14 @@ class MarkdownRenderer:
         self.endnote_renderer = EndnoteRenderer()
 
     def render(self, model: DocumentModel) -> str:
-        """Render DocumentModel to Markdown string."""
+        """Render DocumentModel to Markdown string.
+
+        Output is normalized for LLM consumption:
+        - Trailing whitespace stripped from every line
+        - 3+ consecutive blank lines compressed to 2
+        - Consistent blank lines around block elements
+        - Clean final newline
+        """
         output_parts = []
 
         # Frontmatter
@@ -320,7 +341,8 @@ class MarkdownRenderer:
         if model.footnotes:
             output_parts.append(self.endnote_renderer.render(model.footnotes))
 
-        return "\n".join(output_parts)
+        raw = "\n".join(output_parts)
+        return _normalize_markdown(raw)
 
     def _render_element(self, element: Element) -> str:
         """Render a single element to Markdown."""
@@ -354,6 +376,11 @@ class MarkdownRenderer:
         elif element.element_type == ElementType.IMAGE and isinstance(content, Image):
             return self.image_renderer.render(content)
 
+        elif element.element_type == ElementType.CODE_BLOCK and isinstance(content, CodeBlock):
+            info = content.language.strip()
+            fence = f"```{info}" if info else "```"
+            return f"{fence}\n{content.code}\n```\n"
+
         elif element.element_type == ElementType.LATEX_BLOCK and isinstance(content, LaTeXEquation):
             return f"$$\n{content.expression}\n$$\n"
 
@@ -383,6 +410,7 @@ def render_to_markdown(
     include_frontmatter: bool = True,
     strip_formatting: bool = False,
     image_path_prefix: str = "",
+    embed_images_base64: bool = False,
 ) -> str:
     """
     Render a DocumentModel to Markdown string.
@@ -391,6 +419,7 @@ def render_to_markdown(
         model: The DocumentModel to render
         include_frontmatter: Whether to include YAML frontmatter
         strip_formatting: Remove bold/italic for cleaner LLM input
+        embed_images_base64: Inline images as data URIs instead of file paths
 
     Returns:
         Markdown string
@@ -399,6 +428,45 @@ def render_to_markdown(
         include_frontmatter=include_frontmatter,
         image_path_prefix=image_path_prefix,
         strip_formatting=strip_formatting,
+        embed_images_base64=embed_images_base64,
     )
     renderer = MarkdownRenderer(config)
     return renderer.render(model)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# OUTPUT NORMALIZATION (LLM-optimized)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Precompiled patterns for performance
+_RE_TRAILING_WHITESPACE = re.compile(r"[ \t]+$", re.MULTILINE)
+_RE_EXCESSIVE_BLANKS = re.compile(r"\n{3,}")
+_RE_TABLE_BLOCK = re.compile(r"(\|[^\n]+\|\n(?:\|[^\n]+\|\n)*)")
+_RE_MATH_BLOCK = re.compile(r"(\$\$\n.*?\n\$\$)", re.DOTALL)
+_RE_FENCE_BLOCK = re.compile(r"(```[^\n]*\n.*?\n```)", re.DOTALL)
+
+
+def _normalize_markdown(text: str) -> str:
+    """Normalize Markdown output for clean, consistent LLM consumption.
+
+    Steps:
+        1. Strip trailing whitespace from every line
+        2. Compress 3+ consecutive blank lines to exactly 2 (one blank line)
+        3. Ensure block elements (tables, math, fences) have blank lines around them
+        4. Ensure single trailing newline
+    """
+    # 1. Strip trailing whitespace per line
+    text = _RE_TRAILING_WHITESPACE.sub("", text)
+
+    # 2. Ensure blank line before/after block elements
+    #    (tables, $$ math $$, ``` fenced blocks ```)
+    for pattern in (_RE_TABLE_BLOCK, _RE_MATH_BLOCK, _RE_FENCE_BLOCK):
+        text = pattern.sub(r"\n\1\n", text)
+
+    # 3. Compress excessive blank lines (3+ newlines → 2)
+    text = _RE_EXCESSIVE_BLANKS.sub("\n\n", text)
+
+    # 4. Clean leading/trailing and ensure final newline
+    text = text.strip() + "\n"
+
+    return text
