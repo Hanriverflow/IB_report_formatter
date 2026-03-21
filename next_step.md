@@ -3,7 +3,7 @@
 > **최종 목표**: MD → 사람이 읽기에 좋은 Word / Word → LLM이 처리하기 좋은 MD
 > **Branch**: `codex/mac-parser-stability`
 > **Last updated**: 2026-03-21
-> **Tests**: 249/249 passing
+> **Tests**: 250/250 passing
 > **Python**: 3.8+ / `uv` package manager
 
 ---
