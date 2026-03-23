@@ -19,8 +19,9 @@ This project converts research and internal memo markdown into bank-style docume
 - Optional OpenAI DeepResearch marker cleaner (`off`/`auto`/`on`)
 - Frontmatter-free metadata inference from real-world report markdown (title/date/analysis period/basis)
 - Static TOC preview plus updateable Word TOC field
+- Korean-friendly cover and TOC typography with `Malgun Gothic` defaults
 - YAML frontmatter parsing (`title`, `date`, `recipient`, `analyst`, etc.)
-- Financial table rendering with number formatting and conditional styling
+- Financial table rendering with number formatting, semantic alignment, and content-aware column widths
 - Diagram/code-block rendering as monospaced shaded panels
 - Callout box rendering (`[Executive Summary]`, `[요약]`, `[시사점]`, `[주의]`, `[참고]`)
 - Image rendering (local file paths and Base64 `data:image/...`)

@@ -19,8 +19,9 @@ Markdown ↔ Word 양방향 변환기로, IB(투자은행) 스타일의 전문 W
 - OpenAI DeepResearch 마커 정리기(선택 적용: `off`/`auto`/`on`)
 - frontmatter가 없는 실제 보고서에서도 제목/날짜/분석기간/분석기준 메타데이터 자동 추론
 - Word TOC field + 즉시 보이는 preview 목차 동시 생성
+- cover / TOC에 `Malgun Gothic` 기반 한글 친화 타이포그래피 적용
 - YAML frontmatter 파싱 (`title`, `date`, `recipient`, `analyst` 등)
-- 금융 표 렌더링(천 단위 콤마, 조건부 스타일)
+- 금융 표 렌더링(천 단위 콤마, 의미 기반 정렬, 내용 기반 열 폭 조정)
 - 구조 도식/코드블록을 monospaced shaded panel로 렌더링
 - 콜아웃 박스 렌더링 (`[요약]`, `[시사점]`, `[주의]`, `[참고]` 등)
 - 이미지 삽입(파일 경로, Base64 `data:image/...`)

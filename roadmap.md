@@ -1,5 +1,8 @@
 # OpenAI DeepResearch 전용 Cleaner 구현 로드맵
 
+> **Status**: 구현 및 문서화 완료
+> **Verified on**: 2026-03-23 (`main`, `uv run pytest tests/ -q` → 250 passed)
+
 ## 1) 배경과 범위
 
 - 이 이슈는 일반 Markdown 품질 문제가 아니라, **OpenAI DeepResearch export 마커**(`cite...`, `entity...`, `image_group...`)에 한정된 문제다.
@@ -91,33 +94,33 @@ Cleaner 모드를 3단계로 제공한다.
 
 ### Phase 1. Cleaner 코어 구현
 
-- [ ] `deep_md_cleaner.py` 추가
-- [ ] detect/clean/report 구현
-- [ ] 단위 테스트 초안 작성 (`tests/test_deep_md_cleaner.py`)
+- [x] `deep_md_cleaner.py` 추가
+- [x] detect/clean/report 구현
+- [x] 단위 테스트 초안 작성 (`tests/test_deep_md_cleaner.py`)
 
 **완료 기준**: 샘플 텍스트에서 토큰 정리 + report 값 확인 가능
 
 ### Phase 2. CLI 연결
 
-- [ ] `md_to_word.py` 옵션 추가 및 전처리 단계 연결
-- [ ] `md_formatter.py` 옵션 추가 및 연결
-- [ ] 도움말/usage 문구 업데이트
+- [x] `md_to_word.py` 옵션 추가 및 전처리 단계 연결
+- [x] `md_formatter.py` 옵션 추가 및 연결
+- [x] 도움말/usage 문구 업데이트
 
 **완료 기준**: `off/auto/on` 각각 기대 동작 확인
 
 ### Phase 3. 회귀 방지 테스트
 
-- [ ] `tests/test_md_formatter.py`에 light path(20줄 초과) 케이스 추가
-- [ ] `tests/test_md_parser.py`에 잔여 특수 토큰 방어 테스트 추가
-- [ ] 일반 markdown 입력 비변경성 테스트 추가
+- [x] `tests/test_md_formatter.py`에 light path(20줄 초과) 케이스 추가
+- [x] `tests/test_md_parser.py`에 잔여 특수 토큰 방어 테스트 추가
+- [x] 일반 markdown 입력 비변경성 테스트 추가
 
 **완료 기준**: 신규/기존 테스트 모두 통과
 
 ### Phase 4. 운영 검증
 
-- [ ] 실제 샘플 파일 변환 전후 비교
-- [ ] DOCX 결과에서 인용구/본문 잔여 토큰 0건 확인
-- [ ] `--cleaner-report` 통계 검토
+- [x] 실제 샘플 파일 변환 전후 비교
+- [x] DOCX 결과에서 인용구/본문 잔여 토큰 0건 확인
+- [x] `--cleaner-report` 통계 검토
 
 **완료 기준**: 실사용 샘플에서 문제 재현 불가
 
@@ -141,3 +144,6 @@ Cleaner 모드를 3단계로 제공한다.
 - 기본 모드(`off`)에서 기존 사용자 결과가 변하지 않음
 - 옵션(`off/auto/on`, `cite-mode`)이 문서/테스트/실행 모두 일치
 - 테스트 통과 + 샘플 수동 검증 완료
+
+현재 기준으로 위 완료 조건은 충족된 상태다. CLI 옵션은 `md_to_word.py`와 `md_formatter.py`에 연결되어 있고,
+사용 예시 및 옵션 설명은 `README.md`, `README.ko.md`에도 반영되어 있다.
