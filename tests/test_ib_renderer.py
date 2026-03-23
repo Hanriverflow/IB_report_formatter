@@ -95,6 +95,141 @@ class TestTableRendererFormatting:
         assert format_number("") == ""
         assert format_number("-") == "-"
 
+    def test_content_aware_widths_give_more_space_to_text_column(self):
+        """Text-heavy columns should receive more width than compact numeric columns."""
+        from docx import Document
+
+        from ib_renderer import DocumentStyler, TableRenderer
+
+        doc = Document()
+        DocumentStyler(doc).create_styles()
+
+        table = Table(
+            rows=[
+                TableRow(
+                    cells=[
+                        TableCell(content="항목"),
+                        TableCell(content="2024"),
+                        TableCell(content="2025"),
+                    ],
+                    is_header=True,
+                ),
+                TableRow(
+                    cells=[
+                        TableCell(
+                            content="매출원가 상승과 판관비 증가가 동시에 반영된 장문 설명 열",
+                        ),
+                        TableCell(content="10.2%", is_numeric=True),
+                        TableCell(content="11.8%", is_numeric=True),
+                    ]
+                ),
+                TableRow(
+                    cells=[
+                        TableCell(
+                            content="환율 및 원재료 가격 변동의 복합 영향이 드러나는 설명 열",
+                        ),
+                        TableCell(content="9.8%", is_numeric=True),
+                        TableCell(content="10.1%", is_numeric=True),
+                    ]
+                ),
+            ],
+            col_count=3,
+        )
+
+        TableRenderer(doc).render(table)
+
+        rendered = doc.tables[0]
+        first_width = rendered.columns[0].width
+        second_width = rendered.columns[1].width
+        third_width = rendered.columns[2].width
+
+        assert rendered.autofit is False
+        assert first_width > second_width
+        assert first_width > third_width
+
+    def test_width_estimator_caps_numeric_columns_and_uses_full_table_width(self):
+        """Numeric columns should stay compact while the table still fills the line."""
+        from docx import Document
+
+        from ib_renderer import DocumentStyler, TableRenderer
+
+        doc = Document()
+        DocumentStyler(doc).create_styles()
+        renderer = TableRenderer(doc)
+        table = Table(
+            rows=[
+                TableRow(
+                    cells=[
+                        TableCell(content="구분"),
+                        TableCell(content="1Q"),
+                        TableCell(content="2Q"),
+                        TableCell(content="3Q"),
+                        TableCell(content="4Q"),
+                    ],
+                    is_header=True,
+                ),
+                TableRow(
+                    cells=[
+                        TableCell(content="설명 텍스트가 긴 핵심 지표"),
+                        TableCell(content="101", is_numeric=True),
+                        TableCell(content="102", is_numeric=True),
+                        TableCell(content="103", is_numeric=True),
+                        TableCell(content="104", is_numeric=True),
+                    ]
+                ),
+            ],
+            col_count=5,
+        )
+
+        widths = renderer._estimate_column_widths(table, renderer._get_available_table_width_inches())
+
+        assert len(widths) == 5
+        assert abs(sum(widths) - renderer._get_available_table_width_inches()) < 0.05
+        assert max(widths[1:]) <= 1.35
+        assert widths[0] == max(widths)
+
+    def test_column_kind_inference_checks_first_three_body_cells(self):
+        """Column kind should be inferred from the first few body cells, not header text."""
+        from docx import Document
+
+        from ib_renderer import DocumentStyler, TableRenderer
+
+        doc = Document()
+        DocumentStyler(doc).create_styles()
+        renderer = TableRenderer(doc)
+        table = Table(
+            rows=[
+                TableRow(
+                    cells=[TableCell(content="구분"), TableCell(content="값"), TableCell(content="코드")],
+                    is_header=True,
+                ),
+                TableRow(
+                    cells=[
+                        TableCell(content="매출"),
+                        TableCell(content="10.2%"),
+                        TableCell(content="A-101"),
+                    ]
+                ),
+                TableRow(
+                    cells=[
+                        TableCell(content="영업이익"),
+                        TableCell(content="11.8%"),
+                        TableCell(content="B-102"),
+                    ]
+                ),
+                TableRow(
+                    cells=[
+                        TableCell(content="순이익"),
+                        TableCell(content="9.7%"),
+                        TableCell(content="C-103"),
+                    ]
+                ),
+            ],
+            col_count=3,
+        )
+
+        assert renderer._infer_column_kinds(table) == ["text", "numeric", "text"]
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CALLOUT RENDERER TESTS
@@ -617,6 +752,88 @@ class TestTableCellRunsRendering:
         assert header_cell.paragraphs[0].paragraph_format.space_after.pt == 0
         assert data_cell.paragraphs[0].paragraph_format.space_after.pt == 0
 
+    def test_table_body_alignment_infers_text_left_and_numeric_right(self):
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+        from ib_renderer import IBDocumentRenderer
+
+        table = Table(
+            rows=[
+                TableRow(
+                    cells=[
+                        TableCell(content="항목"),
+                        TableCell(content="2024"),
+                        TableCell(content="비고"),
+                    ],
+                    is_header=True,
+                ),
+                TableRow(
+                    cells=[
+                        TableCell(content="매출총이익"),
+                        TableCell(content="1,250"),
+                        TableCell(content="정상화 완료"),
+                    ]
+                ),
+                TableRow(
+                    cells=[
+                        TableCell(content="영업이익"),
+                        TableCell(content="980"),
+                        TableCell(content="일회성 비용 반영"),
+                    ]
+                ),
+                TableRow(
+                    cells=[
+                        TableCell(content="순이익"),
+                        TableCell(content="815"),
+                        TableCell(content="현금흐름 안정"),
+                    ]
+                ),
+            ],
+            col_count=3,
+        )
+        model = DocumentModel(
+            elements=[Element(element_type=ElementType.TABLE, content=table)]
+        )
+
+        doc = IBDocumentRenderer().render(model)
+        content_table = self._find_content_table(doc, "매출총이익")
+        assert content_table is not None
+
+        assert content_table.rows[1].cells[0].paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.LEFT
+        assert content_table.rows[1].cells[1].paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.RIGHT
+        assert content_table.rows[1].cells[2].paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.LEFT
+
+    def test_digit_mixed_codes_stay_left_aligned_when_column_is_textual(self):
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+        from ib_renderer import IBDocumentRenderer
+
+        table = Table(
+            rows=[
+                TableRow(
+                    cells=[
+                        TableCell(content="코드"),
+                        TableCell(content="수량"),
+                    ],
+                    is_header=True,
+                ),
+                TableRow(cells=[TableCell(content="A-101"), TableCell(content="12")]),
+                TableRow(cells=[TableCell(content="B-102"), TableCell(content="15")]),
+                TableRow(cells=[TableCell(content="C-103"), TableCell(content="18")]),
+            ],
+            col_count=2,
+        )
+        model = DocumentModel(
+            elements=[Element(element_type=ElementType.TABLE, content=table)]
+        )
+
+        doc = IBDocumentRenderer().render(model)
+        content_table = self._find_content_table(doc, "A-101")
+        assert content_table is not None
+
+        assert content_table.rows[1].cells[0].paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.LEFT
+        assert content_table.rows[1].cells[1].paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.RIGHT
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # LIST INDENT TESTS
@@ -793,6 +1010,43 @@ class TestTOCPreviewRendering:
         assert "1. 세부 항목" in texts
         assert not any("Update Field" in text for text in texts)
 
+    def test_toc_title_and_preview_use_toc_font(self):
+        from ib_renderer import IBDocumentRenderer, STYLE
+
+        model = DocumentModel(
+            metadata=DocumentMetadata(title="샘플 보고서"),
+            elements=[
+                Element(
+                    element_type=ElementType.HEADING_1,
+                    content=Heading(level=1, text="샘플 보고서"),
+                ),
+                Element(
+                    element_type=ElementType.HEADING_2,
+                    content=Heading(level=2, text="I. 개요"),
+                ),
+            ],
+        )
+
+        doc = IBDocumentRenderer().render(model)
+        toc_title = next(p for p in doc.paragraphs if p.text.strip() == "TABLE OF CONTENTS")
+        preview_entry = next(p for p in doc.paragraphs if p.text.strip() == "I. 개요")
+
+        assert toc_title.runs[0].font.name == STYLE.TOC_FONT
+        assert preview_entry.runs[0].font.name == STYLE.TOC_FONT
+
+    def test_word_toc_styles_use_toc_font(self):
+        from docx import Document
+
+        from ib_renderer import DocumentStyler, STYLE
+
+        doc = Document()
+        DocumentStyler(doc).create_styles()
+
+        assert doc.styles["TOC 1"].font.name == STYLE.TOC_FONT
+        assert doc.styles["TOC 2"].font.name == STYLE.TOC_FONT
+        assert doc.styles["TOC 3"].font.name == STYLE.TOC_FONT
+        assert doc.styles["TOC 4"].font.name == STYLE.TOC_FONT
+
     def test_code_block_renders_as_shaded_monospace_block(self):
         from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 
@@ -846,6 +1100,29 @@ class TestCoverMetadataInference:
         assert ["INSTITUTION", "일동제약 주식회사"] in rows
         assert not any(row[0] == "PREPARED BY" for row in rows)
         assert not any(row[0] == "SECTOR" for row in rows)
+
+    def test_cover_uses_cover_font_for_title_and_metadata(self):
+        from ib_renderer import IBDocumentRenderer, STYLE
+
+        model = DocumentModel(
+            metadata=DocumentMetadata(
+                title="주식회사 웅진 자회사 보유구조 및 영업관계 분석",
+                company="주식회사 웅진",
+                extra={"date": "2026년 3월 23일"},
+            )
+        )
+
+        doc = IBDocumentRenderer().render(model)
+        title_paragraph = next(
+            p for p in doc.paragraphs if p.text.strip() == "자회사 보유구조 및 영업관계 분석"
+        )
+        metadata_table = doc.tables[0]
+        label_run = metadata_table.rows[0].cells[0].paragraphs[0].runs[0]
+        value_run = metadata_table.rows[0].cells[1].paragraphs[0].runs[0]
+
+        assert title_paragraph.runs[0].font.name == STYLE.COVER_FONT
+        assert label_run.font.name == STYLE.COVER_FONT
+        assert value_run.font.name == STYLE.COVER_FONT
 
     def test_cover_hides_placeholder_sector_and_splits_company_from_title(self):
         from ib_renderer import IBDocumentRenderer

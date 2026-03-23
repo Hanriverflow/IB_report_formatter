@@ -90,6 +90,8 @@ class IBStyle:
     HEADING_FONT: str = "Arial"
     BODY_FONT: str = "Calibri"
     KOREAN_FONT: str = "Malgun Gothic"
+    COVER_FONT: str = "Malgun Gothic"
+    TOC_FONT: str = "Malgun Gothic"
 
     # ── Sizes ───────────────────────────────────────────────────────────────
     H1_SIZE: Pt = Pt(14)
@@ -290,6 +292,28 @@ class DocumentStyler:
         bullet.paragraph_format.space_after = STYLE.BULLET_SPACE_AFTER
         FontStyler.set_east_asian_font(bullet)
 
+        # Built-in TOC styles used by Word field updates
+        self._setup_toc_style(
+            self._get_or_create_style("TOC 1", WD_STYLE_TYPE.PARAGRAPH),
+            STYLE.BODY_SIZE,
+            bold=True,
+        )
+        self._setup_toc_style(
+            self._get_or_create_style("TOC 2", WD_STYLE_TYPE.PARAGRAPH),
+            Pt(10),
+            left_indent=Inches(0.2),
+        )
+        self._setup_toc_style(
+            self._get_or_create_style("TOC 3", WD_STYLE_TYPE.PARAGRAPH),
+            STYLE.SMALL_SIZE,
+            left_indent=Inches(0.4),
+        )
+        self._setup_toc_style(
+            self._get_or_create_style("TOC 4", WD_STYLE_TYPE.PARAGRAPH),
+            STYLE.SMALL_SIZE,
+            left_indent=Inches(0.6),
+        )
+
     def _setup_heading_style(
         self,
         style,
@@ -316,6 +340,23 @@ class DocumentStyler:
             return self.doc.styles.add_style(name, style_type)
         except ValueError:
             return self.doc.styles[name]
+
+    def _setup_toc_style(
+        self,
+        style,
+        font_size: Pt,
+        bold: bool = False,
+        left_indent: Inches = Inches(0),
+    ) -> None:
+        """Configure built-in TOC styles so Word-generated entries match Korean cover typography."""
+        style.font.name = STYLE.TOC_FONT
+        style.font.size = font_size
+        style.font.bold = bold
+        style.font.color.rgb = STYLE.DARK_GRAY
+        style.paragraph_format.left_indent = left_indent
+        style.paragraph_format.space_before = Pt(0)
+        style.paragraph_format.space_after = Pt(2 if bold else 0)
+        FontStyler.set_east_asian_font(style, STYLE.TOC_FONT)
 
     @staticmethod
     def _add_bottom_border(style):
@@ -800,7 +841,7 @@ class CoverRenderer:
             type_run = type_para.add_run(report_type)
             FontStyler.apply_run_style(
                 type_run,
-                font_name=STYLE.HEADING_FONT,
+                font_name=STYLE.COVER_FONT,
                 font_size=Pt(11),
                 bold=True,
                 color=STYLE.DARK_GRAY,
@@ -812,7 +853,7 @@ class CoverRenderer:
             sector_run = sector_para.add_run(sector.upper())
             FontStyler.apply_run_style(
                 sector_run,
-                font_name=STYLE.HEADING_FONT,
+                font_name=STYLE.COVER_FONT,
                 font_size=Pt(10),
                 color=STYLE.MEDIUM_GRAY,
             )
@@ -828,7 +869,7 @@ class CoverRenderer:
             id_run = id_para.add_run(cover_identity)
             FontStyler.apply_run_style(
                 id_run,
-                font_name=STYLE.HEADING_FONT,
+                font_name=STYLE.COVER_FONT,
                 font_size=Pt(15),
                 bold=True,
                 color=STYLE.NAVY,
@@ -840,7 +881,7 @@ class CoverRenderer:
         title_run = title_para.add_run(cover_title)
         FontStyler.apply_run_style(
             title_run,
-            font_name=STYLE.HEADING_FONT,
+            font_name=STYLE.COVER_FONT,
             font_size=Pt(24),
             bold=True,
             color=STYLE.NAVY,
@@ -853,7 +894,7 @@ class CoverRenderer:
             subtitle_run = subtitle_para.add_run(subtitle)
             FontStyler.apply_run_style(
                 subtitle_run,
-                font_name=STYLE.HEADING_FONT,
+                font_name=STYLE.COVER_FONT,
                 font_size=Pt(12),
                 italic=True,
                 color=STYLE.DARK_GRAY,
@@ -898,7 +939,7 @@ class CoverRenderer:
         run = paragraph.add_run(self._COVER_DISCLAIMER_TEXT)
         FontStyler.apply_run_style(
             run,
-            font_name=STYLE.BODY_FONT,
+            font_name=STYLE.COVER_FONT,
             font_size=Pt(8.5),
             color=STYLE.DARK_GRAY,
         )
@@ -977,7 +1018,7 @@ class CoverRenderer:
             label_run = label_para.add_run(label.upper())
             FontStyler.apply_run_style(
                 label_run,
-                font_name=STYLE.HEADING_FONT,
+                font_name=STYLE.COVER_FONT,
                 font_size=Pt(9.5),
                 bold=True,
                 color=STYLE.DARK_GRAY,
@@ -989,7 +1030,7 @@ class CoverRenderer:
             value_run = value_para.add_run(value)
             FontStyler.apply_run_style(
                 value_run,
-                font_name=STYLE.BODY_FONT,
+                font_name=STYLE.COVER_FONT,
                 font_size=STYLE.BODY_SIZE,
                 color=STYLE.DARK_GRAY,
             )
@@ -1036,7 +1077,8 @@ class TOCRenderer:
 
     def render(self, model: Optional[DocumentModel] = None):
         """Insert an auto-updating TOC plus an immediate preview outline."""
-        self.doc.add_heading("TABLE OF CONTENTS", level=1)
+        heading = self.doc.add_heading("TABLE OF CONTENTS", level=1)
+        self._apply_toc_heading_style(heading)
 
         paragraph = self.doc.add_paragraph()
         run = paragraph.add_run()
@@ -1064,6 +1106,18 @@ class TOCRenderer:
             self._render_preview_entries(model)
 
         self.doc.add_page_break()
+
+    @staticmethod
+    def _apply_toc_heading_style(paragraph) -> None:
+        """Apply dedicated typography for the TOC title."""
+        for run in paragraph.runs:
+            FontStyler.apply_run_style(
+                run,
+                font_name=STYLE.TOC_FONT,
+                font_size=STYLE.H1_SIZE,
+                bold=True,
+                color=STYLE.NAVY,
+            )
 
     def _render_preview_entries(self, model: DocumentModel):
         """Render a static preview TOC so the document is useful before field update."""
@@ -1098,7 +1152,7 @@ class TOCRenderer:
             run = paragraph.add_run(text)
             FontStyler.apply_run_style(
                 run,
-                font_name=STYLE.BODY_FONT,
+                font_name=STYLE.TOC_FONT,
                 font_size=STYLE.BODY_SIZE if level == 1 else (Pt(10) if level == 2 else STYLE.SMALL_SIZE),
                 bold=level == 1,
                 color=STYLE.DARK_GRAY if level <= 2 else STYLE.MEDIUM_GRAY,
@@ -1225,6 +1279,19 @@ class ListRenderer:
 class TableRenderer:
     """Renders tables with type-specific styling"""
 
+    _EMUS_PER_INCH = 914400
+    _COLUMN_SAMPLE_SIZE = 3
+    _TOKEN_SPLIT_RE = re.compile(r"\s+")
+    _NUMERIC_LIKE_RE = re.compile(
+        r"^\(?[+-]?\d[\d,]*(?:\.\d+)?\)?\s*"
+        r"(?:%|bp|bps|x|배|원|천원|만원|백만원|억원|억|조|주|개|명|건)?$",
+        re.IGNORECASE,
+    )
+    _MIN_COLUMN_WIDTH_INCHES = 0.65
+    _MIN_TEXT_COLUMN_WIDTH_INCHES = 1.15
+    _MAX_NUMERIC_COLUMN_WIDTH_INCHES = 1.35
+    _MAX_TEXT_COLUMN_SHARE = 0.55
+
     def __init__(self, doc: DocxDocument):
         self.doc = doc
 
@@ -1238,6 +1305,8 @@ class TableRenderer:
 
         word_table = self.doc.add_table(rows=row_count, cols=col_count)
         word_table.style = STYLE.STYLE_TABLE_GRID
+        column_kinds = self._infer_column_kinds(table)
+        self._apply_column_widths(word_table, table, column_kinds)
 
         # Render header row
         if table.rows:
@@ -1245,13 +1314,275 @@ class TableRenderer:
 
         # Render data rows based on table type
         for r_idx, row in enumerate(table.rows[1:], 1):
-            self._render_data_row(word_table, row, r_idx, col_count, table.table_type)
+            self._render_data_row(
+                word_table,
+                row,
+                r_idx,
+                col_count,
+                table.table_type,
+                column_kinds,
+            )
 
         # Apply borders
         TableStyler.set_table_borders(word_table)
 
         # Spacer paragraph after table
         self.doc.add_paragraph()
+
+    def _apply_column_widths(self, word_table, table: Table, column_kinds: List[str]) -> None:
+        """Apply content-aware column widths for more readable report tables."""
+        widths = self._estimate_column_widths(
+            table,
+            self._get_available_table_width_inches(),
+            column_kinds=column_kinds,
+        )
+        if not widths:
+            return
+
+        word_table.autofit = False
+        word_table.alignment = WD_TABLE_ALIGNMENT.LEFT
+
+        for c_idx, width_inches in enumerate(widths):
+            width = Inches(width_inches)
+            word_table.columns[c_idx].width = width
+            for cell in word_table.columns[c_idx].cells:
+                cell.width = width
+
+    def _estimate_column_widths(
+        self,
+        table: Table,
+        available_width_inches: float,
+        column_kinds: Optional[List[str]] = None,
+    ) -> List[float]:
+        """Estimate table column widths from content density and column semantics."""
+        if table.col_count <= 0:
+            return []
+
+        resolved_column_kinds = column_kinds or self._infer_column_kinds(table)
+        column_infos = [
+            self._build_column_info(table, col_idx, resolved_column_kinds[col_idx])
+            for col_idx in range(table.col_count)
+        ]
+        min_widths = [
+            self._minimum_column_width(column_info["kind"]) for column_info in column_infos
+        ]
+        max_widths = [
+            self._maximum_column_width(column_info["kind"], available_width_inches)
+            for column_info in column_infos
+        ]
+        preferred = [column_info["score"] for column_info in column_infos]
+        widths = self._fit_widths_to_available_space(
+            preferred,
+            min_widths,
+            max_widths,
+            available_width_inches,
+        )
+
+        return widths
+
+    def _build_column_info(self, table: Table, col_idx: int, column_kind: str) -> Dict[str, float]:
+        """Summarize the content profile of a single column."""
+        texts = []
+
+        for row in table.rows:
+            if col_idx >= len(row.cells):
+                continue
+
+            cell = row.cells[col_idx]
+            text = self._cell_display_text(cell, table.table_type).strip()
+            if not text:
+                continue
+
+            texts.append(text)
+
+        representative_length = self._representative_length(texts)
+        longest_token = self._longest_token_length(texts)
+        is_numeric_column = column_kind == "numeric"
+        score = self._column_score(is_numeric_column, representative_length, longest_token)
+
+        return {
+            "kind": column_kind,
+            "score": score,
+        }
+
+    def _infer_column_kinds(self, table: Table) -> List[str]:
+        """Infer each column's semantic type from the first few data cells."""
+        return [self._infer_column_kind(table, col_idx) for col_idx in range(table.col_count)]
+
+    def _infer_column_kind(self, table: Table, col_idx: int) -> str:
+        """Classify a column as text or numeric using the first 2-3 body cells."""
+        sample_texts = []
+
+        for row in table.rows[1:]:
+            if col_idx >= len(row.cells):
+                continue
+
+            text = self._cell_display_text(row.cells[col_idx], table.table_type).strip()
+            if not text:
+                continue
+
+            sample_texts.append(text)
+            if len(sample_texts) >= self._COLUMN_SAMPLE_SIZE:
+                break
+
+        if not sample_texts:
+            return "text"
+
+        numeric_like_count = sum(1 for text in sample_texts if self._is_numeric_like(text))
+        return "numeric" if numeric_like_count >= (len(sample_texts) + 1) // 2 else "text"
+
+    @classmethod
+    def _is_numeric_like(cls, text: str) -> bool:
+        """Return True for financial/count strings that should align right."""
+        normalized = text.strip()
+        if not normalized or not any(char.isdigit() for char in normalized):
+            return False
+        return bool(cls._NUMERIC_LIKE_RE.match(normalized))
+
+    @classmethod
+    def _representative_length(cls, texts: List[str]) -> int:
+        """Return a robust content length that ignores a few extreme outliers."""
+        if not texts:
+            return 0
+
+        lengths = sorted(len(text) for text in texts)
+        percentile_index = int(round((len(lengths) - 1) * 0.75))
+        return lengths[percentile_index]
+
+    @classmethod
+    def _longest_token_length(cls, texts: List[str]) -> int:
+        """Return the length of the longest unbroken token in the sample."""
+        longest = 0
+        for text in texts:
+            tokens = [token for token in cls._TOKEN_SPLIT_RE.split(text) if token]
+            if not tokens:
+                continue
+            longest = max(longest, max(len(token) for token in tokens))
+        return longest
+
+    @classmethod
+    def _column_score(
+        cls,
+        is_numeric_column: bool,
+        representative_length: int,
+        longest_token: int,
+    ) -> float:
+        """Assign a width score to a column based on how hard it is to wrap cleanly."""
+        if is_numeric_column:
+            return 1.0 + min(representative_length, 12) * 0.05
+
+        return (
+            1.8
+            + min(representative_length, 48) * 0.06
+            + min(longest_token, 24) * 0.03
+        )
+
+    @classmethod
+    def _minimum_column_width(cls, kind_marker: str) -> float:
+        """Return a minimum readable width for a column kind."""
+        if kind_marker == "numeric":
+            return cls._MIN_COLUMN_WIDTH_INCHES
+        return cls._MIN_TEXT_COLUMN_WIDTH_INCHES
+
+    @classmethod
+    def _maximum_column_width(cls, kind_marker: str, available_width_inches: float) -> float:
+        """Return an upper width bound for a column kind."""
+        if kind_marker == "numeric":
+            return cls._MAX_NUMERIC_COLUMN_WIDTH_INCHES
+        return max(
+            cls._MIN_TEXT_COLUMN_WIDTH_INCHES,
+            available_width_inches * cls._MAX_TEXT_COLUMN_SHARE,
+        )
+
+    @classmethod
+    def _fit_widths_to_available_space(
+        cls,
+        preferred: List[float],
+        min_widths: List[float],
+        max_widths: List[float],
+        available_width_inches: float,
+    ) -> List[float]:
+        """Fit preferred widths into the available width with min/max guards."""
+        col_count = len(preferred)
+        if col_count == 0:
+            return []
+
+        min_total = sum(min_widths)
+        if min_total >= available_width_inches:
+            scale = available_width_inches / min_total
+            return [width * scale for width in min_widths]
+
+        total_preferred = sum(preferred) or float(col_count)
+        widths = [
+            max(min_widths[idx], available_width_inches * preferred[idx] / total_preferred)
+            for idx in range(col_count)
+        ]
+
+        widths = [min(widths[idx], max_widths[idx]) for idx in range(col_count)]
+        widths = cls._rebalance_widths(widths, min_widths, max_widths, preferred, available_width_inches)
+        return widths
+
+    @classmethod
+    def _rebalance_widths(
+        cls,
+        widths: List[float],
+        min_widths: List[float],
+        max_widths: List[float],
+        preferred: List[float],
+        available_width_inches: float,
+    ) -> List[float]:
+        """Rebalance widths after clamping so the table uses the full line width."""
+        for _ in range(8):
+            total_width = sum(widths)
+            gap = available_width_inches - total_width
+
+            if abs(gap) < 0.01:
+                break
+
+            if gap > 0:
+                growable = [
+                    idx for idx, width in enumerate(widths) if width < max_widths[idx] - 0.01
+                ]
+                if not growable:
+                    break
+                grow_weight = sum(preferred[idx] for idx in growable) or float(len(growable))
+                for idx in growable:
+                    share = preferred[idx] / grow_weight if grow_weight else 1.0 / len(growable)
+                    widths[idx] = min(max_widths[idx], widths[idx] + gap * share)
+            else:
+                shrinkable = [
+                    idx for idx, width in enumerate(widths) if width > min_widths[idx] + 0.01
+                ]
+                if not shrinkable:
+                    break
+                shrink_capacity = sum(widths[idx] - min_widths[idx] for idx in shrinkable)
+                if shrink_capacity <= 0:
+                    break
+                overflow = -gap
+                for idx in shrinkable:
+                    capacity = widths[idx] - min_widths[idx]
+                    share = capacity / shrink_capacity
+                    widths[idx] = max(min_widths[idx], widths[idx] - overflow * share)
+
+        return widths
+
+    def _get_available_table_width_inches(self) -> float:
+        """Return the horizontal space available for body tables."""
+        if not self.doc.sections:
+            return 6.0
+
+        section = self.doc.sections[-1]
+        available_width = int(section.page_width) - int(section.left_margin) - int(
+            section.right_margin
+        )
+        available_width = max(available_width, int(Inches(3.0)))
+        return float(available_width) / float(self._EMUS_PER_INCH)
+
+    def _cell_display_text(self, cell_data: TableCell, table_type: TableType) -> str:
+        """Return display text used for width estimation."""
+        if table_type == TableType.FINANCIAL and cell_data.is_numeric:
+            return self._format_financial_number(cell_data.content)
+        return cell_data.content
 
     def _render_header_row(self, word_table, row: TableRow, col_count: int):
         """Render header row with Navy background"""
@@ -1303,6 +1634,7 @@ class TableRenderer:
         row_idx: int,
         col_count: int,
         table_type: TableType,
+        column_kinds: List[str],
     ):
         """Render a data row with type-specific styling"""
         word_cells = word_table.rows[row_idx].cells
@@ -1317,10 +1649,8 @@ class TableRenderer:
             self._configure_cell_paragraph(p)
 
             # ── Alignment ───────────────────────────────────────────────────
-            if cell_data.is_numeric and c_idx > 0:
+            if c_idx < len(column_kinds) and column_kinds[c_idx] == "numeric":
                 p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            elif table_type == TableType.BEP_SENSITIVITY and c_idx > 0:
-                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             else:
                 p.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
