@@ -1,10 +1,12 @@
 # IB Report Formatter — 프로젝트 현황 & 다음 단계
 
 > **최종 목표**: MD → 사람이 읽기에 좋은 Word / Word → LLM이 처리하기 좋은 MD
-> **Branch**: `codex/mac-parser-stability`
-> **Last updated**: 2026-03-21
+> **Branch**: `main`
+> **Last updated**: 2026-03-23
 > **Tests**: 250/250 passing
 > **Python**: 3.8+ / `uv` package manager
+
+> **Status note**: 안정화 작업과 `codex/mac-parser-stability` 브랜치의 주요 변경사항은 현재 `main`에 반영됨.
 
 ---
 
