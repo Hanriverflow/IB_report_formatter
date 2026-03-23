@@ -559,6 +559,25 @@ class TestTableCellRunsRendering:
                         return t
         return None
 
+    @staticmethod
+    def _cell_width_twips(cell):
+        """Read the explicit table cell width from OOXML."""
+        tc_w = cell._tc.tcPr.tcW
+        assert tc_w is not None
+        return int(tc_w.w)
+
+    def _build_multi_column_table(self, headers, rows):
+        """Helper to build a document model with a multi-column table."""
+        header = TableRow(cells=[TableCell(content=header) for header in headers])
+        data_rows = [
+            TableRow(cells=[TableCell(content=value, is_numeric=isinstance(value, (int, float))) for value in row])
+            for row in rows
+        ]
+        table = Table(rows=[header] + data_rows, col_count=len(headers))
+        return DocumentModel(
+            elements=[Element(element_type=ElementType.TABLE, content=table)]
+        )
+
     def test_cell_without_runs_falls_back_to_text(self):
         from ib_renderer import DocumentStyler, IBDocumentRenderer
 
@@ -616,6 +635,135 @@ class TestTableCellRunsRendering:
         assert data_cell.vertical_alignment == WD_CELL_VERTICAL_ALIGNMENT.CENTER
         assert header_cell.paragraphs[0].paragraph_format.space_after.pt == 0
         assert data_cell.paragraphs[0].paragraph_format.space_after.pt == 0
+
+    def test_same_shape_tables_keep_same_width_profile_despite_content_length(self):
+        from ib_renderer import IBDocumentRenderer
+
+        headers = ["종속기업", "지분율", "상장여부", "주요사업", "비고"]
+        short_rows = [
+            ["A사", "62.8%", "상장", "교육", "핵심"],
+            ["B사", "80.2%", "비상장", "레저", "-"],
+        ]
+        long_rows = [
+            [
+                "WOONGJIN ASIA Sdn. Bhd (말레이시아)",
+                "100.00%",
+                "비상장",
+                "IT서비스·컨설팅 및 지역 거점 운영",
+                "2025년 4월 신규 설립, 동남아 사업 확장 목적",
+            ]
+        ]
+
+        model = DocumentModel(
+            elements=[
+                Element(
+                    element_type=ElementType.TABLE,
+                    content=Table(
+                        rows=[
+                            TableRow(cells=[TableCell(content=header) for header in headers]),
+                            *[
+                                TableRow(cells=[TableCell(content=value) for value in row])
+                                for row in short_rows
+                            ],
+                        ],
+                        col_count=len(headers),
+                    ),
+                ),
+                Element(
+                    element_type=ElementType.TABLE,
+                    content=Table(
+                        rows=[
+                            TableRow(cells=[TableCell(content=header) for header in headers]),
+                            *[
+                                TableRow(cells=[TableCell(content=value) for value in row])
+                                for row in long_rows
+                            ],
+                        ],
+                        col_count=len(headers),
+                    ),
+                ),
+            ]
+        )
+
+        doc = IBDocumentRenderer().render(model)
+        first_table = self._find_content_table(doc, "A사")
+        second_table = self._find_content_table(doc, "WOONGJIN ASIA")
+        assert first_table is not None
+        assert second_table is not None
+
+        first_widths = [self._cell_width_twips(cell) for cell in first_table.rows[0].cells]
+        second_widths = [self._cell_width_twips(cell) for cell in second_table.rows[0].cells]
+
+        assert first_widths == second_widths
+        assert first_widths[3] > first_widths[1]
+        assert first_widths[4] > first_widths[2]
+
+    def test_numeric_summary_table_gives_first_column_more_room_than_value_columns(self):
+        from ib_renderer import IBDocumentRenderer
+
+        headers = ["구분", "제10기(2025년)", "제9기(2024년)", "증감액", "증감률"]
+        rows = [
+            [
+                TableCell(content="매출액(연결)"),
+                TableCell(content="566,934", is_numeric=True),
+                TableCell(content="614,941", is_numeric=True),
+                TableCell(content="△47,807", is_numeric=True),
+                TableCell(content="△7.8%", is_numeric=True),
+            ]
+        ]
+        table = Table(
+            rows=[
+                TableRow(cells=[TableCell(content=header) for header in headers]),
+                TableRow(cells=rows[0]),
+            ],
+            col_count=len(headers),
+        )
+        model = DocumentModel(
+            elements=[Element(element_type=ElementType.TABLE, content=table)]
+        )
+
+        doc = IBDocumentRenderer().render(model)
+        rendered_table = self._find_content_table(doc, "매출액")
+        assert rendered_table is not None
+
+        widths = [self._cell_width_twips(cell) for cell in rendered_table.rows[0].cells]
+        assert widths[0] > widths[1]
+        assert widths[0] > widths[4]
+
+    def test_compact_stage_table_narrows_stage_and_widens_business_columns(self):
+        from ib_renderer import IBDocumentRenderer
+
+        headers = ["단계", "종속기업", "지분율", "주요사업"]
+        table = Table(
+            rows=[
+                TableRow(cells=[TableCell(content=header) for header in headers]),
+                TableRow(
+                    cells=[
+                        TableCell(content="2단계"),
+                        TableCell(content="㈜더블유제이라이프"),
+                        TableCell(
+                            content="100.00% (더블유제이라이프홀딩스 보유)"
+                        ),
+                        TableCell(
+                            content="경영자문·컨설팅(프리드라이프 인수 실행 법인)"
+                        ),
+                    ]
+                ),
+            ],
+            col_count=len(headers),
+        )
+        model = DocumentModel(
+            elements=[Element(element_type=ElementType.TABLE, content=table)]
+        )
+
+        doc = IBDocumentRenderer().render(model)
+        rendered_table = self._find_content_table(doc, "2단계")
+        assert rendered_table is not None
+
+        widths = [self._cell_width_twips(cell) for cell in rendered_table.rows[0].cells]
+        assert widths[0] < widths[1]
+        assert widths[0] < widths[2]
+        assert widths[3] > widths[2]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

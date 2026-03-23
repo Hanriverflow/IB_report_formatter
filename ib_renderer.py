@@ -518,6 +518,82 @@ class TableStyler:
         if tbl.tblPr is None:
             tbl.insert(0, tblPr)
 
+    @staticmethod
+    def set_fixed_layout(table) -> None:
+        """Force Word to respect explicit column widths."""
+        table.autofit = False
+        tbl = table._tbl
+        tblPr = tbl.tblPr if tbl.tblPr is not None else OxmlElement("w:tblPr")
+
+        for existing in tblPr.findall(qn("w:tblLayout")):
+            tblPr.remove(existing)
+
+        tbl_layout = OxmlElement("w:tblLayout")
+        tbl_layout.set(qn("w:type"), "fixed")
+        tblPr.append(tbl_layout)
+
+        if tbl.tblPr is None:
+            tbl.insert(0, tblPr)
+
+    @staticmethod
+    def set_table_width(table, width_inches: float) -> None:
+        """Set the preferred table width in twips."""
+        tbl = table._tbl
+        tblPr = tbl.tblPr if tbl.tblPr is not None else OxmlElement("w:tblPr")
+
+        for existing in tblPr.findall(qn("w:tblW")):
+            tblPr.remove(existing)
+
+        tbl_width = OxmlElement("w:tblW")
+        tbl_width.set(qn("w:type"), "dxa")
+        tbl_width.set(qn("w:w"), str(int(round(width_inches * 1440))))
+        tblPr.append(tbl_width)
+
+        if tbl.tblPr is None:
+            tbl.insert(0, tblPr)
+
+    @staticmethod
+    def set_column_width(cell, width_inches: float) -> None:
+        """Set a cell width explicitly so fixed-layout tables stay stable."""
+        width_twips = str(int(round(width_inches * 1440)))
+        tc_pr = cell._tc.get_or_add_tcPr()
+
+        tc_width = tc_pr.tcW
+        if tc_width is None:
+            tc_width = OxmlElement("w:tcW")
+            tc_pr.append(tc_width)
+
+        tc_width.set(qn("w:type"), "dxa")
+        tc_width.set(qn("w:w"), width_twips)
+
+    @staticmethod
+    def set_cell_margins(
+        cell,
+        top_twips: int = 80,
+        bottom_twips: int = 80,
+        left_twips: int = 80,
+        right_twips: int = 80,
+    ) -> None:
+        """Set compact but readable cell padding."""
+        tc_pr = cell._tc.get_or_add_tcPr()
+
+        for existing in tc_pr.findall(qn("w:tcMar")):
+            tc_pr.remove(existing)
+
+        tc_mar = OxmlElement("w:tcMar")
+        for edge, value in (
+            ("top", top_twips),
+            ("bottom", bottom_twips),
+            ("left", left_twips),
+            ("right", right_twips),
+        ):
+            margin = OxmlElement(f"w:{edge}")
+            margin.set(qn("w:w"), str(value))
+            margin.set(qn("w:type"), "dxa")
+            tc_mar.append(margin)
+
+        tc_pr.append(tc_mar)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ELEMENT RENDERERS
@@ -1225,6 +1301,46 @@ class ListRenderer:
 class TableRenderer:
     """Renders tables with type-specific styling"""
 
+    _WIDE_TEXT_HEADERS = {
+        "내용",
+        "주요 내용",
+        "주요내용",
+        "주요사업",
+        "비고",
+        "설명",
+        "description",
+        "comment",
+        "remarks",
+    }
+    _MEDIUM_TEXT_HEADERS = {
+        "구분",
+        "항목",
+        "품목",
+        "종속기업",
+        "비교 항목",
+        "회사명",
+        "프로젝트",
+        "자산",
+    }
+    _COMPACT_HEADERS = {
+        "지분율",
+        "상장여부",
+        "단계",
+        "시점",
+        "구조",
+        "구분코드",
+    }
+    _LABEL_HEADERS = {
+        "구분",
+        "항목",
+        "품목",
+        "종속기업",
+        "시점",
+        "단계",
+        "주주",
+        "비교 항목",
+    }
+
     def __init__(self, doc: DocxDocument):
         self.doc = doc
 
@@ -1238,6 +1354,7 @@ class TableRenderer:
 
         word_table = self.doc.add_table(rows=row_count, cols=col_count)
         word_table.style = STYLE.STYLE_TABLE_GRID
+        self._apply_column_layout(word_table, table)
 
         # Render header row
         if table.rows:
@@ -1263,6 +1380,7 @@ class TableRenderer:
 
             cell = word_cells[c_idx]
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            TableStyler.set_cell_margins(cell)
             TableStyler.set_cell_background(cell, STYLE.NAVY_HEX)
 
             # Clear default paragraph and add styled run
@@ -1313,6 +1431,7 @@ class TableRenderer:
 
             cell = word_cells[c_idx]
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            TableStyler.set_cell_margins(cell)
             p = cell.paragraphs[0]
             self._configure_cell_paragraph(p)
 
@@ -1359,6 +1478,179 @@ class TableRenderer:
         paragraph.paragraph_format.space_before = Pt(0)
         paragraph.paragraph_format.space_after = Pt(0)
         paragraph.paragraph_format.line_spacing = 1.0
+
+    def _apply_column_layout(self, word_table, table: Table) -> None:
+        """Keep table width stable while allocating more room to explanatory columns."""
+        widths = self._calculate_column_widths(table)
+        if not widths:
+            return
+
+        TableStyler.set_fixed_layout(word_table)
+        TableStyler.set_table_width(word_table, sum(widths))
+
+        for col_idx, width_inches in enumerate(widths):
+            for row in word_table.rows:
+                TableStyler.set_column_width(row.cells[col_idx], width_inches)
+
+    def _calculate_column_widths(self, table: Table) -> List[float]:
+        """Compute stable widths from table shape and header meaning, not raw cell length."""
+        col_count = table.col_count
+        if col_count <= 0:
+            return []
+
+        usable_width = self._get_available_table_width_inches()
+        if col_count == 1:
+            return [usable_width]
+
+        shares = self._get_column_shares(table)
+        return [usable_width * share for share in shares]
+
+    def _get_column_shares(self, table: Table) -> List[float]:
+        """Assign wrap-friendly but consistent shares for each column."""
+        col_count = table.col_count
+        headers = self._extract_header_labels(table)
+        numeric_columns = self._detect_numeric_columns(table)
+        template_weights = self._match_semantic_template(headers, numeric_columns)
+        if template_weights:
+            total_weight = sum(template_weights)
+            return [weight / total_weight for weight in template_weights]
+
+        weights = [1.0] * col_count
+        wide_indexes = []
+        normalized_headers = [self._normalize_header_label(header) for header in headers]
+
+        for idx in range(col_count):
+            normalized = normalized_headers[idx] if idx < len(normalized_headers) else ""
+            if normalized in self._WIDE_TEXT_HEADERS:
+                weights[idx] = 2.15
+                wide_indexes.append(idx)
+            elif normalized in self._MEDIUM_TEXT_HEADERS:
+                weights[idx] = 1.45
+            elif normalized in self._COMPACT_HEADERS:
+                weights[idx] = 0.9
+            elif normalized in self._LABEL_HEADERS:
+                weights[idx] = 1.3
+
+            if numeric_columns[idx]:
+                weights[idx] = min(weights[idx], 0.9 if col_count >= 4 else 0.95)
+
+        if (
+            col_count >= 3
+            and not numeric_columns[0]
+            and (not normalized_headers or normalized_headers[0] not in self._COMPACT_HEADERS)
+        ):
+            weights[0] = max(weights[0], 1.35)
+
+        if col_count == 2:
+            weights = [1.15, 1.85]
+        elif col_count == 3 and sum(1 for is_numeric in numeric_columns if is_numeric) >= 2:
+            weights = [2.2, 1.0, 1.0]
+        elif wide_indexes and col_count >= 4:
+            for idx in wide_indexes:
+                weights[idx] = max(weights[idx], 1.75 if len(wide_indexes) > 1 else 2.2)
+
+        total_weight = sum(weights)
+        return [weight / total_weight for weight in weights]
+
+    def _match_semantic_template(
+        self, headers: List[str], numeric_columns: List[bool]
+    ) -> Optional[List[float]]:
+        """Return a stable width template for common financial-table shapes."""
+        normalized_headers = [self._normalize_header_label(header) for header in headers]
+        col_count = len(normalized_headers)
+
+        if col_count == 4 and normalized_headers == [
+            "단계",
+            "종속기업",
+            "지분율",
+            "주요사업",
+        ]:
+            return [0.58, 1.42, 1.02, 1.98]
+
+        if col_count == 5 and normalized_headers == [
+            "종속기업",
+            "지분율",
+            "상장여부",
+            "주요사업",
+            "비고",
+        ]:
+            return [1.48, 0.92, 0.70, 1.60, 1.40]
+
+        if col_count == 4:
+            roles = [
+                self._classify_column_role(header, numeric_columns[idx])
+                for idx, header in enumerate(normalized_headers)
+            ]
+            if roles == ["compact", "medium", "compact", "wide"]:
+                return [0.62, 1.40, 1.04, 1.94]
+
+        if col_count == 5:
+            roles = [
+                self._classify_column_role(header, numeric_columns[idx])
+                for idx, header in enumerate(normalized_headers)
+            ]
+            if roles == ["medium", "compact", "compact", "wide", "wide"]:
+                return [1.46, 0.92, 0.72, 1.56, 1.34]
+            if roles == ["medium", "numeric", "numeric", "numeric", "wide"]:
+                return [1.45, 1.00, 1.00, 0.92, 1.63]
+
+        return None
+
+    def _classify_column_role(self, normalized_header: str, is_numeric: bool) -> str:
+        """Classify a column into a small set of layout roles."""
+        if normalized_header in self._WIDE_TEXT_HEADERS:
+            return "wide"
+        if normalized_header in self._COMPACT_HEADERS:
+            return "compact"
+        if normalized_header in self._MEDIUM_TEXT_HEADERS or normalized_header in self._LABEL_HEADERS:
+            return "medium"
+        if is_numeric:
+            return "numeric"
+        return "regular"
+
+    def _get_available_table_width_inches(self) -> float:
+        """Compute usable width inside the current section margins."""
+        section = self.doc.sections[-1]
+        page_width = section.page_width.inches if section.page_width else 8.5
+        left_margin = section.left_margin.inches if section.left_margin else STYLE.LEFT_MARGIN.inches
+        right_margin = (
+            section.right_margin.inches if section.right_margin else STYLE.RIGHT_MARGIN.inches
+        )
+        return max(page_width - left_margin - right_margin, 3.0)
+
+    @staticmethod
+    def _extract_header_labels(table: Table) -> List[str]:
+        """Read plain header labels from the first row."""
+        if not table.rows:
+            return []
+        return [cell.content.replace("**", "").strip() for cell in table.rows[0].cells]
+
+    @staticmethod
+    def _normalize_header_label(label: str) -> str:
+        """Normalize a header for simple semantic matching."""
+        return re.sub(r"\s+", " ", (label or "").strip().lower())
+
+    def _detect_numeric_columns(self, table: Table) -> List[bool]:
+        """Detect mostly numeric columns so short figures can stay compact."""
+        data_rows = table.rows[1:] if len(table.rows) > 1 else table.rows
+        if not data_rows:
+            return [False] * table.col_count
+
+        numeric_columns = []
+        for col_idx in range(table.col_count):
+            numeric_count = 0
+            populated_count = 0
+            for row in data_rows:
+                if col_idx >= len(row.cells):
+                    continue
+                cell = row.cells[col_idx]
+                if cell.content.strip():
+                    populated_count += 1
+                if cell.is_numeric:
+                    numeric_count += 1
+            ratio = numeric_count / populated_count if populated_count else 0.0
+            numeric_columns.append(ratio >= 0.6)
+        return numeric_columns
 
     @staticmethod
     def _format_financial_number(text: str) -> str:
