@@ -76,6 +76,14 @@ def safe_save(content: str, output_path: Path) -> Path:
     )
 
 
+def write_stdout_utf8(content: str) -> None:
+    """Write pipe output as UTF-8 bytes regardless of console locale."""
+    try:
+        sys.stdout.buffer.write(content.encode("utf-8"))
+    except AttributeError:
+        sys.stdout.write(content)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONVERTER
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -374,7 +382,7 @@ def main():
             out.write_text(markdown, encoding="utf-8")
             print(f"Output: {out}", file=sys.stderr)
         else:
-            sys.stdout.write(markdown)
+            write_stdout_utf8(markdown)
         sys.exit(0)
 
     # Resolve paths
