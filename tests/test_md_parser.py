@@ -289,6 +289,33 @@ class TestTableParser:
         table = TableParser.parse(lines)
         assert table.rows[1].cells[1].is_negative is True
 
+    def test_preserve_blank_leading_header_cell(self):
+        """Keep an intentionally blank first header cell so data columns stay aligned."""
+        lines = [
+            "|| Amount | Share |",
+            "|---|---|---|",
+            "| Tranche A | 7,000 | 63.6% |",
+        ]
+
+        table = TableParser.parse(lines)
+
+        assert table.col_count == 3
+        assert [cell.content for cell in table.rows[0].cells] == ["", "Amount", "Share"]
+        assert [cell.content for cell in table.rows[1].cells] == ["Tranche A", "7,000", "63.6%"]
+
+    def test_preserve_blank_interior_cells(self):
+        """Keep empty interior cells instead of collapsing later columns leftward."""
+        lines = [
+            "| Item | Amount | Notes |",
+            "|------|--------|-------|",
+            "| Tranche B | 2,000 | |",
+        ]
+
+        table = TableParser.parse(lines)
+
+        assert table.col_count == 3
+        assert [cell.content for cell in table.rows[1].cells] == ["Tranche B", "2,000", ""]
+
     def test_parse_table_cell_inline_latex(self):
         """Balanced inline LaTeX in a table cell should preserve latex run metadata."""
         lines = [

@@ -808,7 +808,7 @@ class TableParser:
             # Truncate extra cells with warning (v3: no silent data loss)
             if len(cells) > table.col_count:
                 logger.warning(
-                    "Table row %d has %d columns (expected %d) — extra columns dropped: %s",
+                    "Table row %d has %d columns (expected %d) - extra columns dropped: %s",
                     i,
                     len(cells),
                     table.col_count,
@@ -836,8 +836,16 @@ class TableParser:
 
     @staticmethod
     def _split_row(line: str) -> List[str]:
-        """Split a table row into cell contents"""
-        return [c.strip() for c in line.split("|") if c.strip()]
+        """Split a table row into cell contents, preserving intentional blanks."""
+        cells = line.split("|")
+
+        # Remove only the markdown boundary pipes, not genuine empty cells.
+        if line.startswith("|") and cells:
+            cells = cells[1:]
+        if line.endswith("|") and cells:
+            cells = cells[:-1]
+
+        return [cell.strip() for cell in cells]
 
     @staticmethod
     def _parse_alignments(lines: List[str]) -> List[str]:
