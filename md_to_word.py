@@ -396,6 +396,8 @@ class IBReportConverter:
         else:
             logger.info("Skipping disclaimer")
 
+        renderer.apply_generator_signature()
+
         return renderer.doc
 
 

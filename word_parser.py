@@ -357,6 +357,7 @@ class MetadataExtractor:
         cls,
         doc: DocxDocument,
         source_bytes: Optional[bytes] = None,
+        custom_properties: Optional[Dict[str, str]] = None,
     ) -> DocumentMetadata:
         """Extract metadata from document properties."""
         props = doc.core_properties
@@ -373,8 +374,10 @@ class MetadataExtractor:
         if props.category:
             metadata.sector = props.category
 
-        if source_bytes:
-            cls._apply_custom_metadata(metadata, cls.extract_custom_properties(source_bytes))
+        if custom_properties is None and source_bytes:
+            custom_properties = cls.extract_custom_properties(source_bytes)
+        if custom_properties:
+            cls._apply_custom_metadata(metadata, custom_properties)
 
         return metadata
 
@@ -1195,6 +1198,7 @@ class WordParser:
     _IB_TOC_TITLE = "TABLE OF CONTENTS"
     _IB_ENDNOTES_TITLE = "ENDNOTES"
     _IB_DISCLAIMER_TITLE = "면책 조항"
+    _IB_GENERATOR_SIGNATURE = "ib_report_formatter"
     _IB_TOC_NOTE_SNIPPET = "Update Field"
     _IB_DISCLAIMER_SNIPPET = "당행은 해당 문서에 최대한 정확하고 완전한 정보를 담고자 노력하였으나"
     _IB_METADATA_LABELS = frozenset(
@@ -1263,11 +1267,16 @@ class WordParser:
         doc = self._open_document(io.BytesIO(source_bytes))
         self.theme_color_resolver = ThemeColorResolver.from_docx_bytes(source_bytes)
         blocks = list(self._iter_block_items(doc))
+        custom_properties = MetadataExtractor.extract_custom_properties(source_bytes)
         context = ParseContext(
-            profile=self._detect_document_profile(blocks),
+            profile=self._detect_document_profile(blocks, custom_properties=custom_properties),
             footnotes=self._extract_native_footnotes(doc),
         )
-        metadata = MetadataExtractor.extract(doc, source_bytes=source_bytes)
+        metadata = MetadataExtractor.extract(
+            doc,
+            source_bytes=source_bytes,
+            custom_properties=custom_properties,
+        )
 
         if self.extract_images or self.embed_images_base64:
             self.image_extractor = ImageExtractor(
@@ -1340,8 +1349,16 @@ class WordParser:
         with open(source, "rb") as file_obj:
             return file_obj.read()
 
-    def _detect_document_profile(self, blocks: List[Union[DocxParagraph, DocxTable]]) -> DocumentProfile:
+    def _detect_document_profile(
+        self,
+        blocks: List[Union[DocxParagraph, DocxTable]],
+        custom_properties: Optional[Dict[str, str]] = None,
+    ) -> DocumentProfile:
         """Detect whether the document matches the IB-generated output profile."""
+        generator = (custom_properties or {}).get("generator", "").strip().lower()
+        if generator == self._IB_GENERATOR_SIGNATURE:
+            return DocumentProfile.IB_GENERATED
+
         structural_signals = 0
         textual_signals = 0
 

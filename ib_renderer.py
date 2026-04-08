@@ -19,7 +19,10 @@ import platform
 import re
 import time
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple, cast
+from xml.sax.saxutils import escape
 
 from docx import Document
 from docx.document import Document as DocxDocument
@@ -30,7 +33,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.opc.constants import CONTENT_TYPE as CT
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.opc.packuri import PackURI
-from docx.opc.part import XmlPart
+from docx.opc.part import XmlPart, serialize_part_xml
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.oxml.parser import parse_xml
@@ -137,6 +140,150 @@ class IBStyle:
 
 # Singleton style instance
 STYLE = IBStyle()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DOCUMENT SIGNATURE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class GeneratorSignatureWriter:
+    """Embed an explicit generator signature in DOCX custom properties."""
+
+    _CUSTOM_PROPS_PARTNAME = PackURI("/docProps/custom.xml")
+    _CUSTOM_PROPS_XML = (
+        b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        b'<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" '
+        b'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"/>'
+    )
+    _PROPERTY_TEMPLATE = (
+        '<property xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" '
+        'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes" '
+        'fmtid="{{D5CDD505-2E9C-101B-9397-08002B2CF9AE}}" pid="{pid}" name="{name}">'
+        "<vt:lpwstr>{value}</vt:lpwstr>"
+        "</property>"
+    )
+    _PROJECT_NAME = "ib-report-formatter"
+    _GENERATOR_NAME = "ib_report_formatter"
+    _GENERATOR_PROFILE = "ib_generated"
+    _PROPERTY_NAMES = ("generator", "generator_version", "generator_profile")
+    _PYPROJECT_VERSION_RE = re.compile(r'^version\s*=\s*"([^"]+)"\s*$')
+    _resolved_version: Optional[str] = None
+
+    @classmethod
+    def apply(cls, doc: DocxDocument) -> None:
+        """Upsert generator signature custom properties on a DOCX package."""
+        custom_part, custom_props = cls._get_or_add_custom_properties_part(doc)
+        cls._upsert_signature_properties(custom_props)
+        if isinstance(custom_part, XmlPart):
+            custom_part._element = custom_props
+            return
+        custom_part._blob = serialize_part_xml(custom_props)
+
+    @classmethod
+    def _get_or_add_custom_properties_part(cls, doc: DocxDocument):
+        """Return the package custom-properties part plus a mutable XML root."""
+        package = doc.part.package
+        try:
+            custom_part = package.part_related_by(RT.CUSTOM_PROPERTIES)
+            try:
+                custom_props = parse_xml(custom_part.blob)
+            except Exception:
+                custom_props = parse_xml(cls._CUSTOM_PROPS_XML)
+            return custom_part, custom_props
+        except KeyError:
+            custom_props = parse_xml(cls._CUSTOM_PROPS_XML)
+            custom_part = XmlPart(
+                cls._CUSTOM_PROPS_PARTNAME,
+                CT.OFC_CUSTOM_PROPERTIES,
+                custom_props,
+                package,
+            )
+            package.relate_to(custom_part, RT.CUSTOM_PROPERTIES)
+            return custom_part, custom_props
+
+    @classmethod
+    def _upsert_signature_properties(cls, custom_props) -> None:
+        """Replace only the generator signature properties, preserving others."""
+        for prop in list(custom_props):
+            if cls._local_name(prop.tag) != "property":
+                continue
+            if (prop.get("name") or "").strip() in cls._PROPERTY_NAMES:
+                custom_props.remove(prop)
+
+        used_pids = cls._used_property_ids(custom_props)
+        for name, value in cls._signature_properties().items():
+            custom_props.append(cls._build_property(name, value, cls._next_pid(used_pids)))
+
+    @classmethod
+    def _signature_properties(cls) -> Dict[str, str]:
+        """Return the ordered generator signature payload."""
+        return {
+            "generator": cls._GENERATOR_NAME,
+            "generator_version": cls._resolve_version(),
+            "generator_profile": cls._GENERATOR_PROFILE,
+        }
+
+    @classmethod
+    def _resolve_version(cls) -> str:
+        """Resolve the package version, falling back to pyproject parsing."""
+        if cls._resolved_version:
+            return cls._resolved_version
+
+        try:
+            cls._resolved_version = version(cls._PROJECT_NAME)
+            return cls._resolved_version
+        except PackageNotFoundError:
+            pass
+
+        pyproject_path = Path(__file__).resolve().with_name("pyproject.toml")
+        try:
+            for line in pyproject_path.read_text(encoding="utf-8").splitlines():
+                match = cls._PYPROJECT_VERSION_RE.match(line.strip())
+                if match:
+                    cls._resolved_version = match.group(1)
+                    return cls._resolved_version
+        except OSError:
+            pass
+
+        cls._resolved_version = "unknown"
+        return cls._resolved_version
+
+    @classmethod
+    def _build_property(cls, name: str, value: str, pid: int):
+        """Build a single string-valued custom property element."""
+        property_xml = cls._PROPERTY_TEMPLATE.format(
+            pid=pid,
+            name=escape(name, {'"': "&quot;"}),
+            value=escape(value),
+        )
+        return parse_xml(property_xml.encode("utf-8"))
+
+    @staticmethod
+    def _used_property_ids(custom_props) -> List[int]:
+        """Collect all valid pid values already present in the custom-properties root."""
+        used_pids = []
+        for prop in list(custom_props):
+            if not hasattr(prop, "get"):
+                continue
+            pid = (prop.get("pid") or "").strip()
+            if pid.isdigit():
+                used_pids.append(int(pid))
+        return used_pids
+
+    @staticmethod
+    def _next_pid(used_pids: List[int]) -> int:
+        """Return the next unused custom-property PID (starts at 2 per OPC convention)."""
+        candidate = 2
+        while candidate in used_pids:
+            candidate += 1
+        used_pids.append(candidate)
+        return candidate
+
+    @staticmethod
+    def _local_name(tag: str) -> str:
+        """Strip namespace from an XML tag."""
+        return tag.split("}", 1)[-1] if "}" in tag else tag
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2486,7 +2633,13 @@ class IBDocumentRenderer:
         # Disclaimer
         self.disclaimer_renderer.render(model.metadata.company)
 
+        self.apply_generator_signature()
+
         return self.doc
+
+    def apply_generator_signature(self) -> None:
+        """Stamp the DOCX package with a generator signature."""
+        GeneratorSignatureWriter.apply(self.doc)
 
     def _render_element(self, element: Element):
         """Render a single element based on its type"""

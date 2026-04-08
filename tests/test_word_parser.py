@@ -16,6 +16,7 @@ from md_parser import ElementType
 from md_to_word import IBReportConverter
 from word_parser import (
     DocumentProfile,
+    MetadataExtractor,
     NumberingTracker,
     StyleDetector,
     WordParser,
@@ -542,3 +543,42 @@ def test_parse_custom_doc_properties_maps_known_and_unknown_fields(tmp_path):
     assert model.metadata.extra["recipient"] == "Client A"
     assert model.metadata.extra["report_type"] == "INITIATION"
     assert model.metadata.extra["deal_size"] == "KRW 500bn"
+
+
+def test_ib_report_converter_embeds_generator_custom_property(tmp_path):
+    """IB-generated DOCX output should stamp generator custom properties."""
+    markdown = "# 본문 제목\n\n본문 문장입니다.\n"
+    md_path = tmp_path / "signature.md"
+    md_path.write_text(markdown, encoding="utf-8")
+    docx_path = tmp_path / "signature.docx"
+
+    converter = IBReportConverter(str(md_path), output_path=str(docx_path))
+    converter.convert()
+
+    custom_properties = MetadataExtractor.extract_custom_properties(docx_path.read_bytes())
+
+    assert custom_properties["generator"] == "ib_report_formatter"
+    assert custom_properties["generator_profile"] == "ib_generated"
+    assert custom_properties["generator_version"]
+
+
+def test_detect_document_profile_uses_generator_custom_property(tmp_path):
+    """Generator custom properties should enable IB profile detection without heuristics."""
+    doc = Document()
+    doc.add_paragraph("Plain body paragraph.")
+    docx_path = _save_doc(doc, tmp_path / "profile_by_signature.docx")
+    _inject_custom_properties(
+        docx_path,
+        {
+            "generator": "ib_report_formatter",
+        },
+    )
+
+    parser = WordParser(extract_images=False)
+    raw_doc = Document(str(docx_path))
+    custom_properties = MetadataExtractor.extract_custom_properties(docx_path.read_bytes())
+
+    assert parser._detect_document_profile(
+        list(parser._iter_block_items(raw_doc)),
+        custom_properties=custom_properties,
+    ) == DocumentProfile.IB_GENERATED
