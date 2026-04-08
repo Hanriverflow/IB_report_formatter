@@ -320,6 +320,23 @@ A
         assert isinstance(code_blocks[0].content, CodeBlock)
         assert "└── B" in code_blocks[0].content.code
 
+    def test_parse_diagram_fence_with_colon_language(self):
+        """Guard against diagram fences being skipped when the language tag contains a colon."""
+        content = """```diagram:flow
+title: Test Flow
+boxes:
+  - id: start
+    label: Start
+```
+"""
+        parser = MarkdownParser()
+        model = parser.parse(content)
+
+        assert len(model.elements) == 1
+        assert model.elements[0].element_type == ElementType.DIAGRAM
+        assert model.elements[0].content.diagram_type == "flow"
+        assert model.elements[0].content.title == "Test Flow"
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MARKDOWN PARSER TESTS
@@ -459,6 +476,24 @@ title: Test
         assert len(paragraphs) == 1
         assert isinstance(paragraphs[0].content, Paragraph)
         assert paragraphs[0].content.text == "동서울터미널 (신세계동서울 PFV)"
+
+    def test_separator_emits_separator_element(self):
+        """Guard against separator lines being consumed without producing an element."""
+        content = """Before
+
+---
+
+After
+"""
+        parser = MarkdownParser()
+        model = parser.parse(content)
+
+        element_types = [element.element_type for element in model.elements]
+        assert element_types == [
+            ElementType.PARAGRAPH,
+            ElementType.SEPARATOR,
+            ElementType.PARAGRAPH,
+        ]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

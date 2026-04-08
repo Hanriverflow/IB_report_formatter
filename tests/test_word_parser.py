@@ -14,7 +14,13 @@ from docx.shared import Inches
 
 from md_parser import ElementType
 from md_to_word import IBReportConverter
-from word_parser import NumberingTracker, StyleDetector, parse_word_file
+from word_parser import (
+    DocumentProfile,
+    NumberingTracker,
+    StyleDetector,
+    WordParser,
+    parse_word_file,
+)
 
 PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z8eQAAAAASUVORK5CYII="
@@ -331,6 +337,56 @@ def test_parse_word_native_numbering_continues_across_paragraphs(tmp_path):
     assert numbered == ["1", "2"]
 
 
+def test_detect_document_profile_requires_multiple_ib_signals(tmp_path):
+    """A lone ENDNOTES heading should stay generic instead of triggering IB cleanup."""
+    doc = Document()
+    doc.add_heading("ENDNOTES", level=1)
+    doc.add_paragraph("Standalone appendix content.")
+    docx_path = _save_doc(doc, tmp_path / "generic_endnotes.docx")
+
+    parser = WordParser(extract_images=False)
+    raw_doc = Document(str(docx_path))
+
+    # Regression guard: a single ENDNOTES heading must not enable the IB profile.
+    assert parser._detect_document_profile(list(parser._iter_block_items(raw_doc))) == (
+        DocumentProfile.GENERIC
+    )
+
+    model = parser.parse(str(docx_path))
+    assert [element.element_type for element in model.elements] == [
+        ElementType.HEADING_1,
+        ElementType.PARAGRAPH,
+    ]
+    assert model.elements[0].content.text == "ENDNOTES"
+    assert model.elements[1].content.text == "Standalone appendix content."
+
+
+def test_parse_mixed_text_and_image_paragraph_emits_ordered_elements(tmp_path):
+    """Mixed text/image paragraphs should preserve the inline image in sequence."""
+    image_path = _write_png(tmp_path / "inline.png")
+
+    doc = Document()
+    para = doc.add_paragraph()
+    para.add_run("Before ")
+    image_run = para.add_run()
+    image_run.add_picture(str(image_path), width=Inches(0.25))
+    para.add_run(" after")
+    doc.inline_shapes[0]._inline.docPr.set("descr", "Inline chart")
+    docx_path = _save_doc(doc, tmp_path / "mixed_inline_image.docx")
+
+    model = parse_word_file(str(docx_path), extract_images=False)
+
+    # Regression guard: mixed text/image paragraphs used to drop the embedded image.
+    assert [element.element_type for element in model.elements] == [
+        ElementType.PARAGRAPH,
+        ElementType.IMAGE,
+        ElementType.PARAGRAPH,
+    ]
+    assert model.elements[0].content.text == "Before"
+    assert model.elements[1].content.alt_text == "Inline chart"
+    assert model.elements[2].content.text == "after"
+
+
 def test_detect_heading_level_follows_custom_style_base_chain(tmp_path):
     """Custom styles based on Heading styles should still map to heading levels."""
     doc = Document()
@@ -364,6 +420,25 @@ def test_numbering_tracker_formats_non_decimal_values():
     """Numbering tracker should support non-decimal Word numbering formats."""
     assert NumberingTracker._format_value(3, "upperRoman") == "III"
     assert NumberingTracker._format_value(4, "lowerLetter") == "d"
+
+
+def test_numbering_tracker_preserves_per_level_formats(monkeypatch):
+    """Nested numbering should preserve each level's original Word format."""
+
+    class DummyParagraph:
+        def __init__(self, key: str, num_fmt: str):
+            self.key = key
+            self.num_fmt = num_fmt
+
+    monkeypatch.setattr(StyleDetector, "get_numbering_key", lambda para, indent_level: para.key)
+    monkeypatch.setattr(StyleDetector, "resolve_numbering_format", lambda para: para.num_fmt)
+
+    tracker = NumberingTracker()
+
+    # Regression guard: nested lowerLetter levels used to rewrite parent decimal levels.
+    assert tracker.next_number(DummyParagraph("num:42", "decimal"), 0) == "1"
+    assert tracker.next_number(DummyParagraph("num:42", "lowerLetter"), 1) == "1.a"
+    assert tracker.next_number(DummyParagraph("num:42", "decimal"), 0) == "2"
 
 
 def test_parse_ib_generated_doc_recovers_metadata_and_footnotes(tmp_path):

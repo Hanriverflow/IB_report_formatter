@@ -1,11 +1,18 @@
 """Tests for md_renderer module."""
 
+import yaml
+
 from md_parser import (
     Blockquote,
+    CodeBlock,
+    Diagram,
+    DiagramArrow,
+    DiagramBox,
     DocumentMetadata,
     DocumentModel,
     Element,
     ElementType,
+    FrontmatterParser,
     Heading,
     Image,
     LaTeXEquation,
@@ -206,6 +213,72 @@ def test_render_to_markdown_preserves_run_colors():
     rendered = render_to_markdown(model, include_frontmatter=False)
 
     assert rendered.strip() == '<span style="color:#C00000">**Loss**</span>'
+
+
+def test_render_to_markdown_frontmatter_quotes_are_yaml_safe():
+    """Regression: quoted metadata must render as valid YAML frontmatter."""
+    model = DocumentModel(
+        metadata=DocumentMetadata(
+            title='He said "Hi"',
+            extra={"summary": 'Quoted "metadata" stays parseable'},
+        )
+    )
+
+    rendered = render_to_markdown(model, include_frontmatter=True)
+    metadata, remaining = FrontmatterParser.parse(rendered.splitlines())
+
+    assert metadata.title == 'He said "Hi"'
+    assert metadata.extra["summary"] == 'Quoted "metadata" stays parseable'
+    assert remaining == []
+
+
+def test_render_to_markdown_preserves_pipe_lines_inside_fenced_code_blocks():
+    """Regression: table normalization must not rewrite fenced code that contains pipes."""
+    model = DocumentModel(
+        elements=[
+            Element(element_type=ElementType.PARAGRAPH, content=Paragraph(text="Before")),
+            Element(
+                element_type=ElementType.CODE_BLOCK,
+                content=CodeBlock(
+                    language="text",
+                    code="| not | a | table |\n| still | code |",
+                ),
+            ),
+            Element(element_type=ElementType.PARAGRAPH, content=Paragraph(text="After")),
+        ]
+    )
+
+    rendered = render_to_markdown(model, include_frontmatter=False)
+    fenced_body = rendered.split("```text\n", 1)[1].split("\n```", 1)[0]
+
+    assert fenced_body == "| not | a | table |\n| still | code |"
+
+
+def test_render_to_markdown_renders_diagram_elements_as_fenced_yaml():
+    """Regression: DIAGRAM elements should render as parser-compatible fenced blocks."""
+    diagram = Diagram(
+        diagram_type="flow",
+        title="Credit Flow",
+        boxes=[
+            DiagramBox(id="start", label="Start", pos=[0, 0], style="entry"),
+            DiagramBox(id="end", label="End", pos=[1, 0], style="exit"),
+        ],
+        arrows=[DiagramArrow(from_id="start", to_id="end", label="step", style="dashed")],
+        notes=["Check covenants"],
+    )
+    model = DocumentModel(
+        elements=[Element(element_type=ElementType.DIAGRAM, content=diagram)]
+    )
+
+    rendered = render_to_markdown(model, include_frontmatter=False)
+    payload = rendered.split("```diagram:flow\n", 1)[1].split("\n```", 1)[0]
+    parsed = yaml.safe_load(payload)
+
+    assert rendered.startswith("```diagram:flow\n")
+    assert parsed["title"] == "Credit Flow"
+    assert parsed["boxes"][0]["id"] == "start"
+    assert parsed["arrows"][0]["from"] == "start"
+    assert parsed["notes"] == ["Check covenants"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

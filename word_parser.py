@@ -13,7 +13,7 @@ import logging
 import mimetypes
 import re
 import zipfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Set, Tuple, Union
@@ -226,22 +226,30 @@ class NumberingTracker:
 
     def __init__(self):
         self._counters: Dict[str, Dict[int, int]] = {}
+        self._level_formats: Dict[str, Dict[int, str]] = {}
 
     def next_number(self, para, indent_level: int) -> str:
         """Return the next numbering label for a paragraph."""
         list_key = StyleDetector.get_numbering_key(para, indent_level)
         if list_key not in self._counters:
             self._counters[list_key] = {}
+            self._level_formats[list_key] = {}
 
         counters = self._counters[list_key]
+        level_formats = self._level_formats[list_key]
         for level in list(counters.keys()):
             if level > indent_level:
                 del counters[level]
 
         counters[indent_level] = counters.get(indent_level, 0) + 1
-        num_fmt = StyleDetector.resolve_numbering_format(para) or "decimal"
+        num_fmt = StyleDetector.resolve_numbering_format(para)
+        if num_fmt:
+            level_formats[indent_level] = num_fmt
+        elif indent_level not in level_formats:
+            level_formats[indent_level] = "decimal"
+
         return ".".join(
-            self._format_value(counters[level], num_fmt)
+            self._format_value(counters[level], level_formats.get(level, "decimal"))
             for level in sorted(counters)
             if level <= indent_level
         )
@@ -249,6 +257,7 @@ class NumberingTracker:
     def break_sequence(self) -> None:
         """Reset inferred numbering between disconnected list blocks."""
         self._counters.clear()
+        self._level_formats.clear()
 
     @staticmethod
     def _format_value(value: int, num_fmt: str) -> str:
@@ -1191,6 +1200,10 @@ class WordParser:
     _IB_METADATA_LABELS = frozenset(
         {"REPORT DATE", "PREPARED BY", "INSTITUTION", "SECTOR", "PREPARED FOR"}
     )
+    _IMAGE_FILENAME_RE = re.compile(
+        r"^[^\\/\s]+?\.(?:png|jpe?g|gif|bmp|tiff?|svg|webp|emf|wmf)$",
+        re.IGNORECASE,
+    )
 
     def __init__(
         self,
@@ -1329,14 +1342,24 @@ class WordParser:
 
     def _detect_document_profile(self, blocks: List[Union[DocxParagraph, DocxTable]]) -> DocumentProfile:
         """Detect whether the document matches the IB-generated output profile."""
+        structural_signals = 0
+        textual_signals = 0
+
         for block in blocks:
             if isinstance(block, DocxParagraph):
                 text = block.text.strip()
                 if text in {self._IB_TOC_TITLE, self._IB_ENDNOTES_TITLE, self._IB_DISCLAIMER_TITLE}:
-                    return DocumentProfile.IB_GENERATED
+                    textual_signals += 1
             elif isinstance(block, DocxTable):
-                if self._is_ib_metadata_panel(block) or self._is_ib_cover_disclaimer_table(block):
-                    return DocumentProfile.IB_GENERATED
+                if self._is_ib_metadata_panel(block):
+                    structural_signals += 1
+                elif self._is_ib_cover_disclaimer_table(block):
+                    structural_signals += 1
+
+        if structural_signals >= 2:
+            return DocumentProfile.IB_GENERATED
+        if structural_signals >= 1 and textual_signals >= 1:
+            return DocumentProfile.IB_GENERATED
         return DocumentProfile.GENERIC
 
     def _apply_ib_rules(
@@ -1400,7 +1423,11 @@ class WordParser:
                 continue
 
             if isinstance(block, DocxParagraph):
-                element = self._parse_paragraph(block, numbering_tracker)
+                parsed = self._parse_paragraph(block, numbering_tracker)
+                if isinstance(parsed, list):
+                    elements.extend(parsed)
+                    continue
+                element = parsed
             else:
                 table_id = id(block._tbl)
                 if table_id in processed_tables:
@@ -1426,9 +1453,14 @@ class WordParser:
     _BLOCK_LATEX_RE = re.compile(r"^\$\$(.+?)\$\$$", re.DOTALL)
     _INLINE_LATEX_RE = re.compile(r"\$([^$]+?)\$")
 
-    def _parse_paragraph(self, para, numbering_tracker: Optional[NumberingTracker] = None) -> Optional[Element]:
+    def _parse_paragraph(
+        self,
+        para,
+        numbering_tracker: Optional[NumberingTracker] = None,
+    ) -> Optional[Union[Element, List[Element]]]:
         """Parse a single paragraph."""
-        image_element = self._parse_image_paragraph(para)
+        image_refs = self._extract_image_references(para)
+        image_element = self._parse_image_paragraph(para, image_refs=image_refs)
         text = para.text.strip()
 
         if image_element and not text:
@@ -1495,6 +1527,11 @@ class WordParser:
                 raw_text=text,
             )
 
+        if image_refs:
+            mixed_elements = self._parse_mixed_paragraph_elements(para, image_refs)
+            if mixed_elements:
+                return mixed_elements
+
         runs = RunExtractor.extract_runs(para, theme_color_resolver=self.theme_color_resolver)
         has_inline_latex = bool(self._INLINE_LATEX_RE.search(text))
         return Element(
@@ -1503,47 +1540,42 @@ class WordParser:
             raw_text=text,
         )
 
-    def _parse_image_paragraph(self, para) -> Optional[Element]:
+    def _parse_image_paragraph(
+        self,
+        para,
+        image_refs: Optional[List[Tuple[str, str]]] = None,
+    ) -> Optional[Element]:
         """Convert an image-only paragraph into an Image element."""
-        image_refs = self._extract_image_references(para)
+        if image_refs is None:
+            image_refs = self._extract_image_references(para)
         if not image_refs:
             return None
 
-        image = None
-        for rel_id, alt_text in image_refs:
-            if self.image_extractor:
-                image = self.image_extractor.get_image_for_rel(rel_id, alt_text=alt_text)
-                if image:
-                    break
-            image = Image(alt_text=alt_text or "Image", path="")
-            break
-
-        if image is None:
-            image = Image(alt_text=image_refs[0][1] or "Image", path="")
-
-        return Element(
-            element_type=ElementType.IMAGE,
-            content=image,
-            raw_text=image.path or "[IMAGE]",
-        )
+        rel_id, alt_text = image_refs[0]
+        return self._build_image_element(rel_id, alt_text)
 
     @classmethod
     def _extract_image_references(cls, para) -> List[Tuple[str, str]]:
         """Extract embedded image relationship IDs and alt text from a paragraph."""
         refs: List[Tuple[str, str]] = []
-        for drawing in para._p.xpath(".//*[local-name()='drawing']"):
-            rel_id = cls._find_rel_id(drawing)
-            if not rel_id:
-                continue
-            refs.append((rel_id, cls._extract_image_alt_text(drawing)))
+        seen: Set[str] = set()
+        for node in para._p.xpath(
+            ".//*[local-name()='drawing' or local-name()='pict' or local-name()='object']"
+        ):
+            for rel_id, alt_text in cls._extract_image_references_from_container(node):
+                if rel_id in seen:
+                    continue
+                seen.add(rel_id)
+                refs.append((rel_id, alt_text))
 
         if refs:
             return refs
 
-        for blip in para._p.xpath(".//*[local-name()='blip']"):
-            rel_id = blip.get(qn("r:embed"))
-            if rel_id:
-                refs.append((str(rel_id), ""))
+        for rel_id, alt_text in cls._extract_image_references_from_container(para._p):
+            if rel_id in seen:
+                continue
+            seen.add(rel_id)
+            refs.append((rel_id, alt_text))
         return refs
 
     @staticmethod
@@ -1558,16 +1590,168 @@ class WordParser:
     @staticmethod
     def _extract_image_alt_text(drawing) -> str:
         """Extract human-authored alt text from a Word drawing node."""
-        for doc_pr in drawing.xpath(".//*[local-name()='docPr']"):
+        for doc_pr in drawing.xpath(
+            ".//*[local-name()='docPr' or local-name()='cNvPr' or local-name()='imagedata']"
+        ):
             for attr_name in ("descr", "title"):
                 value = (doc_pr.get(attr_name) or "").strip()
-                if value:
+                if value and not WordParser._looks_like_generated_image_name(value):
                     return value
 
             name = (doc_pr.get("name") or "").strip()
-            if name and not re.match(r"^Picture \d+$", name, re.I):
+            if (
+                name
+                and not re.match(r"^Picture \d+$", name, re.I)
+                and not WordParser._looks_like_generated_image_name(name)
+            ):
                 return name
         return ""
+
+    @classmethod
+    def _looks_like_generated_image_name(cls, value: str) -> bool:
+        """Return True for filename-like placeholders Word commonly injects as alt text."""
+        candidate = Path(value.strip()).name
+        return bool(candidate and cls._IMAGE_FILENAME_RE.match(candidate))
+
+    def _parse_mixed_paragraph_elements(
+        self,
+        para,
+        image_refs: List[Tuple[str, str]],
+    ) -> List[Element]:
+        """Split mixed text/image paragraphs into ordered paragraph and image elements."""
+        elements: List[Element] = []
+        pending_runs: List[TextRun] = []
+        pending_refs = list(image_refs)
+
+        def flush_pending_text() -> None:
+            trimmed_runs = self._trim_text_runs(pending_runs)
+            if not trimmed_runs:
+                pending_runs.clear()
+                return
+
+            text = "".join(run.text for run in trimmed_runs)
+            elements.append(
+                Element(
+                    element_type=ElementType.PARAGRAPH,
+                    content=Paragraph(
+                        text=text,
+                        runs=trimmed_runs,
+                        has_inline_latex=bool(self._INLINE_LATEX_RE.search(text)),
+                    ),
+                    raw_text=text,
+                )
+            )
+            pending_runs.clear()
+
+        for run in para.runs:
+            child_tokens = self._extract_run_tokens(run)
+            if not child_tokens and run.text:
+                child_tokens = [("text", run.text)]
+
+            for token_type, value in child_tokens:
+                if token_type == "text":
+                    pending_runs.append(
+                        TextRun(
+                            text=value,
+                            bold=bool(run.bold),
+                            italic=bool(run.italic),
+                            superscript=bool(run.font.superscript),
+                            subscript=bool(run.font.subscript),
+                            color_hex=RunExtractor._extract_color_hex(
+                                run,
+                                theme_color_resolver=self.theme_color_resolver,
+                            ),
+                        )
+                    )
+                    continue
+
+                if token_type == "footnote":
+                    pending_runs.append(TextRun(text=value, superscript=True))
+                    continue
+
+                if token_type != "image" or not pending_refs:
+                    continue
+
+                flush_pending_text()
+                rel_id, alt_text = pending_refs.pop(0)
+                image_element = self._build_image_element(rel_id, alt_text)
+                if image_element:
+                    elements.append(image_element)
+
+        flush_pending_text()
+        return elements
+
+    def _build_image_element(self, rel_id: str, alt_text: str) -> Optional[Element]:
+        """Build an image element from an extracted Word image relationship."""
+        image = None
+        if self.image_extractor:
+            image = self.image_extractor.get_image_for_rel(rel_id, alt_text=alt_text)
+        if image is None:
+            image = Image(alt_text=alt_text or "Image", path="")
+
+        return Element(
+            element_type=ElementType.IMAGE,
+            content=image,
+            raw_text=image.path or "[IMAGE]",
+        )
+
+    @staticmethod
+    def _extract_run_tokens(run) -> List[Tuple[str, str]]:
+        """Extract ordered text, footnote, and image markers from a Word run."""
+        tokens: List[Tuple[str, str]] = []
+        for child in run._r.iterchildren():
+            local_name = child.tag.split("}", 1)[-1]
+            if local_name == "t" and child.text:
+                tokens.append(("text", child.text))
+            elif local_name == "tab":
+                tokens.append(("text", "\t"))
+            elif local_name in {"br", "cr"}:
+                tokens.append(("text", "\n"))
+            elif local_name == "footnoteReference":
+                value = child.get(qn("w:id")) or child.get("id")
+                if value and str(value).isdigit():
+                    tokens.append(("footnote", str(value)))
+            elif local_name in {"drawing", "pict", "object"}:
+                tokens.append(("image", ""))
+        return tokens
+
+    @staticmethod
+    def _trim_text_runs(runs: List[TextRun]) -> List[TextRun]:
+        """Trim boundary whitespace while preserving inline formatting."""
+        trimmed = [replace(run) for run in runs]
+        while trimmed and not trimmed[0].text.strip():
+            trimmed.pop(0)
+        while trimmed and not trimmed[-1].text.strip():
+            trimmed.pop()
+        if not trimmed:
+            return []
+
+        trimmed[0] = replace(trimmed[0], text=trimmed[0].text.lstrip())
+        trimmed[-1] = replace(trimmed[-1], text=trimmed[-1].text.rstrip())
+        return [run for run in trimmed if run.text]
+
+    @classmethod
+    def _extract_image_references_from_container(cls, container) -> List[Tuple[str, str]]:
+        """Extract image relationship IDs and alt text from a Word XML container."""
+        refs: List[Tuple[str, str]] = []
+        alt_text = cls._extract_image_alt_text(container)
+
+        for blip in container.xpath(".//*[local-name()='blip']"):
+            rel_id = blip.get(qn("r:embed")) or blip.get(qn("r:link"))
+            if rel_id:
+                refs.append((str(rel_id), alt_text))
+
+        for image_data in container.xpath(".//*[local-name()='imagedata']"):
+            rel_id = (
+                image_data.get(qn("r:id"))
+                or image_data.get("{urn:schemas-microsoft-com:office:office}relid")
+                or image_data.get("id")
+                or image_data.get("relid")
+            )
+            if rel_id:
+                refs.append((str(rel_id), alt_text or cls._extract_image_alt_text(image_data)))
+
+        return refs
 
     def _parse_table(self, word_table) -> Optional[Element]:
         """Parse a Word table."""

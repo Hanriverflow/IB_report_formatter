@@ -1,6 +1,9 @@
 """End-to-end tests for the Word-to-Markdown CLI path."""
 
 import base64
+import subprocess
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 from docx import Document
@@ -51,31 +54,36 @@ def test_run_conversion_strip_and_no_frontmatter(tmp_path):
     assert "Bold paragraph" in rendered
 
 
-def test_converter_extract_images_writes_files_and_markdown_paths(tmp_path):
-    """Image extraction should emit both files on disk and markdown image links."""
-    image_path = _write_png(tmp_path / "tiny.png")
+def test_converter_extract_images_writes_files_and_markdown_paths(tmp_path, monkeypatch):
+    """Image extraction should keep markdown image links relative to the output file."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    # Guard against resolving image links from the process CWD instead of the .md location.
+    monkeypatch.chdir(workspace)
+
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    output_dir = tmp_path / "exports"
+    image_path = _write_png(source_dir / "tiny.png")
 
     doc = Document()
     doc.add_picture(str(image_path))
-    docx_path = tmp_path / "image_input.docx"
-    output_path = tmp_path / "image_output.md"
-    image_dir = tmp_path / "images"
+    docx_path = source_dir / "image_input.docx"
+    output_path = output_dir / "image_output.md"
+    image_dir = output_dir / "image_output_images"
     doc.save(str(docx_path))
 
     converter = WordToMarkdownConverter(
         docx_file_path=str(docx_path),
         output_path=str(output_path),
         extract_images=True,
-        image_output_dir=str(image_dir),
     )
 
     saved_path = converter.convert()
     rendered = output_path.read_text(encoding="utf-8")
-    normalized_image_dir = str(image_dir).replace("\\", "/")
 
     assert saved_path == str(output_path)
-    assert "![Image 1]" in rendered
-    assert normalized_image_dir in rendered
+    assert "![Image 1](image_output_images/image_1.png)" in rendered
     assert list(image_dir.glob("image_*"))
 
 
@@ -101,6 +109,35 @@ def test_converter_embeds_images_base64_without_extraction(tmp_path):
 
     assert "data:image/png;base64," in rendered
     assert "![Image 1]" in rendered or "![Image]" in rendered or "![Tiny]" in rendered
+
+
+def test_cli_stdin_output_uses_safe_save_for_nested_parent_dirs(tmp_path):
+    """Stdin DOCX output should create missing parent dirs via the safe-save path."""
+    doc = Document()
+    doc.add_paragraph("Piped body")
+    docx_path = tmp_path / "stdin_source.docx"
+    doc.save(str(docx_path))
+
+    output_path = tmp_path / "nested" / "exports" / "stdin_output.md"
+
+    # Regression guard: stdin mode used to bypass safe_save and fail on nested output paths.
+    result = subprocess.run(
+        [
+            sys.executable,
+            "word_to_md.py",
+            "-",
+            str(output_path),
+            "--no-frontmatter",
+        ],
+        input=docx_path.read_bytes(),
+        capture_output=True,
+        cwd=str(Path(__file__).resolve().parent.parent),
+        timeout=30,
+    )
+
+    assert result.returncode == 0
+    assert output_path.exists()
+    assert "Piped body" in output_path.read_text(encoding="utf-8")
 
 
 def test_run_conversion_preserves_word_native_numbering(tmp_path):

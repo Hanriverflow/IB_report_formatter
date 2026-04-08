@@ -1193,7 +1193,7 @@ class MarkdownParser:
     IMAGE_PATTERN = re.compile(r"^!\[(.*?)\]\((.*?)\)$")
     TABLE_START_PATTERN = re.compile(r"^\|")
     SEPARATOR_PATTERN = re.compile(r"^(---|## ---)$")
-    CODE_FENCE_PATTERN = re.compile(r"^```([A-Za-z0-9_+-]*)\s*$")
+    CODE_FENCE_PATTERN = re.compile(r"^```([\w.:-]*)\s*$")
 
     # Reference section keywords
     _REFERENCE_KEYWORDS = frozenset(
@@ -1292,6 +1292,13 @@ class MarkdownParser:
 
             # ── Separator ───────────────────────────────────────────────────
             if self.SEPARATOR_PATTERN.match(line):
+                elements.append(
+                    Element(
+                        element_type=ElementType.SEPARATOR,
+                        content=None,
+                        raw_text=raw_line,
+                    )
+                )
                 i += 1
                 continue
 

@@ -12,6 +12,8 @@ Usage:
 
 import argparse
 import logging
+import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -76,6 +78,103 @@ def safe_save(content: str, output_path: Path) -> Path:
     )
 
 
+def _resolve_image_output_dir(markdown_output_path: Path, image_output_dir: Optional[str] = None) -> Path:
+    """Resolve the extracted image directory from the markdown output path."""
+    if image_output_dir:
+        candidate = Path(image_output_dir)
+        if candidate.is_absolute():
+            return candidate
+        return markdown_output_path.parent / candidate
+
+    return markdown_output_path.parent / f"{markdown_output_path.stem}_images"
+
+
+def _build_image_path_prefix(markdown_output_path: Path, image_output_dir: Optional[Path]) -> str:
+    """Build a Markdown-safe image prefix relative to the saved markdown file."""
+    if image_output_dir is None:
+        return ""
+
+    relative_path = os.path.relpath(str(image_output_dir), str(markdown_output_path.parent))
+    normalized_path = relative_path.replace("\\", "/")
+    return "" if normalized_path == "." else normalized_path
+
+
+def _render_markdown_output(
+    model,
+    include_frontmatter: bool,
+    strip_formatting: bool,
+    embed_images_base64: bool,
+    markdown_output_path: Optional[Path] = None,
+    image_output_dir: Optional[Path] = None,
+) -> str:
+    """Render Markdown with image links anchored to the output file location."""
+    image_path_prefix = ""
+    if markdown_output_path is not None and image_output_dir is not None:
+        image_path_prefix = _build_image_path_prefix(markdown_output_path, image_output_dir)
+
+    return render_to_markdown(
+        model,
+        include_frontmatter=include_frontmatter,
+        strip_formatting=strip_formatting,
+        image_path_prefix=image_path_prefix,
+        embed_images_base64=embed_images_base64,
+    )
+
+
+def _relocate_extracted_images(source_dir: Path, target_dir: Path) -> None:
+    """Move extracted images when the markdown output path changes after safe-save."""
+    if source_dir == target_dir or not source_dir.exists() or not source_dir.is_dir():
+        return
+
+    target_dir.parent.mkdir(parents=True, exist_ok=True)
+
+    if target_dir.exists():
+        for child in source_dir.iterdir():
+            shutil.move(str(child), str(target_dir / child.name))
+        try:
+            source_dir.rmdir()
+        except OSError:
+            logger.debug("Leaving non-empty image directory in place: %s", source_dir)
+        return
+
+    source_dir.rename(target_dir)
+
+
+def _save_markdown_output(
+    markdown: str,
+    output_path: Path,
+    model,
+    include_frontmatter: bool,
+    strip_formatting: bool,
+    embed_images_base64: bool,
+    image_output_dir: Optional[Path] = None,
+    image_output_dir_arg: Optional[str] = None,
+) -> Path:
+    """Save markdown and keep extracted image links aligned with the saved file."""
+    saved_path = safe_save(markdown, output_path)
+
+    if image_output_dir is None:
+        return saved_path
+
+    final_image_output_dir = _resolve_image_output_dir(saved_path, image_output_dir_arg)
+    if final_image_output_dir != image_output_dir:
+        _relocate_extracted_images(image_output_dir, final_image_output_dir)
+        image_output_dir = final_image_output_dir
+
+    final_markdown = _render_markdown_output(
+        model,
+        include_frontmatter=include_frontmatter,
+        strip_formatting=strip_formatting,
+        embed_images_base64=embed_images_base64,
+        markdown_output_path=saved_path,
+        image_output_dir=image_output_dir,
+    )
+    if final_markdown != markdown:
+        saved_path.write_text(final_markdown, encoding="utf-8")
+
+    return saved_path
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONVERTER
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -115,18 +214,19 @@ class WordToMarkdownConverter:
     def convert(self) -> str:
         """Execute the full conversion pipeline."""
         start_time = time.perf_counter()
+        output_path = generate_output_path(self.docx_file_path, self.output_path)
 
         # Stage 1: Parse Word document
         logger.info("Parsing: %s", self.docx_file_path.name)
 
         image_dir = None
         if self.extract_images:
-            image_dir = self.image_output_dir or f"{self.docx_file_path.stem}_images"
+            image_dir = _resolve_image_output_dir(output_path, self.image_output_dir)
 
         model = parse_word_file(
             str(self.docx_file_path),
             extract_images=self.extract_images,
-            image_output_dir=image_dir,
+            image_output_dir=str(image_dir) if image_dir else None,
             embed_images_base64=self.embed_images_base64,
         )
 
@@ -136,17 +236,26 @@ class WordToMarkdownConverter:
         # Stage 2: Render to Markdown
         logger.info("Rendering Markdown...")
 
-        markdown = render_to_markdown(
+        markdown = _render_markdown_output(
             model,
             include_frontmatter=self.include_frontmatter,
             strip_formatting=self.strip_formatting,
-            image_path_prefix=image_dir if image_dir else "",
             embed_images_base64=self.embed_images_base64,
+            markdown_output_path=output_path,
+            image_output_dir=image_dir,
         )
 
         # Stage 3: Save output
-        output_path = generate_output_path(self.docx_file_path, self.output_path)
-        saved_path = safe_save(markdown, output_path)
+        saved_path = _save_markdown_output(
+            markdown,
+            output_path,
+            model,
+            include_frontmatter=self.include_frontmatter,
+            strip_formatting=self.strip_formatting,
+            embed_images_base64=self.embed_images_base64,
+            image_output_dir=image_dir,
+            image_output_dir_arg=self.image_output_dir,
+        )
 
         elapsed = time.perf_counter() - start_time
         logger.info("Conversion completed in %.2fs", elapsed)
@@ -304,7 +413,7 @@ Examples:
     conv_group.add_argument(
         "--image-dir",
         type=str,
-        help="Directory to save extracted images (default: ./images)",
+        help="Directory to save extracted images (default: <output-stem>_images beside the .md file)",
     )
     conv_group.add_argument(
         "--embed-images-base64",
@@ -349,11 +458,16 @@ def main():
         raw = sys.stdin.buffer.read()
         stream = io.BytesIO(raw)
         fmt = detect_format(stream, hint=getattr(args, "input_format", None))
+        output_path = generate_output_path(Path("stdin.docx"), args.output_file) if args.output_file else None
+        image_dir = None
 
         if fmt == "docx":
+            if args.extract_images and output_path is not None:
+                image_dir = _resolve_image_output_dir(output_path, args.image_dir)
             model = parse_word_file(
                 stream,
                 extract_images=args.extract_images,
+                image_output_dir=str(image_dir) if image_dir else None,
                 embed_images_base64=args.embed_images_base64,
             )
         else:
@@ -362,17 +476,27 @@ def main():
 
             model = parse_markdown_file(stream)
 
-        markdown = render_to_markdown(
+        markdown = _render_markdown_output(
             model,
             include_frontmatter=not args.no_frontmatter,
             strip_formatting=args.strip,
             embed_images_base64=args.embed_images_base64,
+            markdown_output_path=output_path,
+            image_output_dir=image_dir,
         )
 
-        if args.output_file:
-            out = Path(args.output_file)
-            out.write_text(markdown, encoding="utf-8")
-            print(f"Output: {out}", file=sys.stderr)
+        if output_path:
+            saved_path = _save_markdown_output(
+                markdown,
+                output_path,
+                model,
+                include_frontmatter=not args.no_frontmatter,
+                strip_formatting=args.strip,
+                embed_images_base64=args.embed_images_base64,
+                image_output_dir=image_dir,
+                image_output_dir_arg=args.image_dir,
+            )
+            print(f"Output: {saved_path}", file=sys.stderr)
         else:
             sys.stdout.write(markdown)
         sys.exit(0)

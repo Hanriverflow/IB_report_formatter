@@ -10,11 +10,17 @@ consistent spacing around block elements (tables, code, math).
 import logging
 import re
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover - optional dependency
+    yaml = None
 
 from md_parser import (
     Blockquote,
     CodeBlock,
+    Diagram,
     DocumentMetadata,
     DocumentModel,
     Element,
@@ -29,6 +35,86 @@ from md_parser import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_yaml_dump(data: Dict[str, Any]) -> str:
+    """Serialize metadata or diagram payloads with YAML-safe escaping."""
+    if yaml is not None:
+        rendered = yaml.safe_dump(
+            data,
+            sort_keys=False,
+            allow_unicode=True,
+            default_flow_style=False,
+        )
+        return rendered.strip() or "{}"
+    return _fallback_yaml_dump(data)
+
+
+def _fallback_yaml_dump(value: Any) -> str:
+    """Minimal YAML serializer used when PyYAML is unavailable."""
+    lines = _fallback_yaml_lines(value)
+    return "\n".join(lines) if lines else "{}"
+
+
+def _fallback_yaml_lines(value: Any, indent: int = 0) -> List[str]:
+    """Render nested dict/list data as YAML-compatible lines."""
+    prefix = "  " * indent
+
+    if isinstance(value, dict):
+        if not value:
+            return [f"{prefix}{{}}"] if indent else ["{}"]
+
+        lines: List[str] = []
+        for key, item in value.items():
+            rendered_key = str(key)
+            if isinstance(item, dict):
+                if item:
+                    lines.append(f"{prefix}{rendered_key}:")
+                    lines.extend(_fallback_yaml_lines(item, indent + 1))
+                else:
+                    lines.append(f"{prefix}{rendered_key}: {{}}")
+            elif isinstance(item, list):
+                if item:
+                    lines.append(f"{prefix}{rendered_key}:")
+                    lines.extend(_fallback_yaml_lines(item, indent + 1))
+                else:
+                    lines.append(f"{prefix}{rendered_key}: []")
+            else:
+                lines.append(f"{prefix}{rendered_key}: {_fallback_yaml_scalar(item)}")
+        return lines
+
+    if isinstance(value, list):
+        if not value:
+            return [f"{prefix}[]"]
+
+        lines = []
+        for item in value:
+            if isinstance(item, (dict, list)):
+                if item:
+                    lines.append(f"{prefix}-")
+                    lines.extend(_fallback_yaml_lines(item, indent + 1))
+                else:
+                    empty_value = "{}" if isinstance(item, dict) else "[]"
+                    lines.append(f"{prefix}- {empty_value}")
+            else:
+                lines.append(f"{prefix}- {_fallback_yaml_scalar(item)}")
+        return lines
+
+    return [f"{prefix}{_fallback_yaml_scalar(value)}"]
+
+
+def _fallback_yaml_scalar(value: Any) -> str:
+    """Render a scalar with conservative escaping."""
+    if value is None:
+        return '""'
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+
+    text = str(value)
+    text = text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    return f'"{text}"'
 
 
 @dataclass(frozen=True)
@@ -93,34 +179,38 @@ class EndnoteRenderer:
 class FrontmatterRenderer:
     """Renders YAML frontmatter from document metadata."""
 
-    @staticmethod
-    def render(metadata: DocumentMetadata) -> str:
+    @classmethod
+    def render(cls, metadata: DocumentMetadata) -> str:
         """Render metadata as YAML frontmatter block."""
-        lines = ["---"]
+        payload = cls._build_payload(metadata)
+        if not payload:
+            return ""
 
+        lines = ["---", _safe_yaml_dump(payload), "---", ""]
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def _build_payload(metadata: DocumentMetadata) -> Dict[str, Any]:
+        """Return only non-default metadata fields for frontmatter output."""
+        payload: Dict[str, Any] = {}
         if metadata.title and metadata.title != "IB Report":
-            lines.append(f'title: "{metadata.title}"')
+            payload["title"] = metadata.title
         if metadata.subtitle:
-            lines.append(f'subtitle: "{metadata.subtitle}"')
+            payload["subtitle"] = metadata.subtitle
         if metadata.company and metadata.company != "Korea Development Bank":
-            lines.append(f'company: "{metadata.company}"')
+            payload["company"] = metadata.company
         if metadata.ticker:
-            lines.append(f'ticker: "{metadata.ticker}"')
+            payload["ticker"] = metadata.ticker
         if metadata.sector and metadata.sector != "SECTOR":
-            lines.append(f'sector: "{metadata.sector}"')
+            payload["sector"] = metadata.sector
         if metadata.analyst and metadata.analyst != "DCM Team 1":
-            lines.append(f'analyst: "{metadata.analyst}"')
+            payload["analyst"] = metadata.analyst
 
         for key, value in metadata.extra.items():
-            lines.append(f'{key}: "{value}"')
+            payload[str(key)] = value
 
-        lines.append("---")
-        lines.append("")
-
-        # Only return if actual content
-        if len(lines) > 3:
-            return "\n".join(lines)
-        return ""
+        return payload
 
 
 class HeadingRenderer:
@@ -258,6 +348,44 @@ class BlockquoteRenderer:
         return "\n".join(lines)
 
 
+class DiagramRenderer:
+    """Renders diagram elements to fenced YAML blocks."""
+
+    @staticmethod
+    def render(diagram: Diagram) -> str:
+        """Render diagram payload in parser-compatible fenced syntax."""
+        diagram_type = diagram.diagram_type.strip()
+        language = f"diagram:{diagram_type}" if diagram_type else "diagram"
+        payload: Dict[str, Any] = {}
+
+        if diagram.title:
+            payload["title"] = diagram.title
+        if diagram.boxes:
+            payload["boxes"] = [
+                {
+                    "id": box.id,
+                    "label": box.label,
+                    "pos": box.pos,
+                    "style": box.style,
+                }
+                for box in diagram.boxes
+            ]
+        if diagram.arrows:
+            payload["arrows"] = [
+                {
+                    "from": arrow.from_id,
+                    "to": arrow.to_id,
+                    "label": arrow.label,
+                    "style": arrow.style,
+                }
+                for arrow in diagram.arrows
+            ]
+        if diagram.notes:
+            payload["notes"] = diagram.notes
+
+        return f"```{language}\n{_safe_yaml_dump(payload)}\n```\n"
+
+
 class ImageRenderer:
     """Renders image elements to Markdown."""
 
@@ -308,6 +436,7 @@ class MarkdownRenderer:
         self.table_renderer = TableRenderer(self.config)
         self.list_renderer = ListRenderer(self.config)
         self.blockquote_renderer = BlockquoteRenderer()
+        self.diagram_renderer = DiagramRenderer()
         self.image_renderer = ImageRenderer(self.config)
         self.endnote_renderer = EndnoteRenderer()
 
@@ -381,6 +510,9 @@ class MarkdownRenderer:
             fence = f"```{info}" if info else "```"
             return f"{fence}\n{content.code}\n```\n"
 
+        elif element.element_type == ElementType.DIAGRAM and isinstance(content, Diagram):
+            return self.diagram_renderer.render(content)
+
         elif element.element_type == ElementType.LATEX_BLOCK and isinstance(content, LaTeXEquation):
             return f"$$\n{content.expression}\n$$\n"
 
@@ -444,6 +576,26 @@ _RE_EXCESSIVE_BLANKS = re.compile(r"\n{3,}")
 _RE_TABLE_BLOCK = re.compile(r"(\|[^\n]+\|\n(?:\|[^\n]+\|\n)*)")
 _RE_MATH_BLOCK = re.compile(r"(\$\$\n.*?\n\$\$)", re.DOTALL)
 _RE_FENCE_BLOCK = re.compile(r"(```[^\n]*\n.*?\n```)", re.DOTALL)
+_RE_PROTECTED_FENCE_TOKEN = re.compile(r"(__MD_FENCE_BLOCK_\d+__)")
+
+
+def _protect_fenced_code_blocks(text: str) -> Tuple[str, List[str]]:
+    """Replace fenced code blocks with tokens during block normalization."""
+    protected_blocks: List[str] = []
+
+    def _replace(match) -> str:
+        token = f"__MD_FENCE_BLOCK_{len(protected_blocks)}__"
+        protected_blocks.append(match.group(1))
+        return token
+
+    return _RE_FENCE_BLOCK.sub(_replace, text), protected_blocks
+
+
+def _restore_fenced_code_blocks(text: str, protected_blocks: List[str]) -> str:
+    """Restore fenced code blocks after non-fenced normalization steps."""
+    for index, block in enumerate(protected_blocks):
+        text = text.replace(f"__MD_FENCE_BLOCK_{index}__", block)
+    return text
 
 
 def _normalize_markdown(text: str) -> str:
@@ -458,15 +610,20 @@ def _normalize_markdown(text: str) -> str:
     # 1. Strip trailing whitespace per line
     text = _RE_TRAILING_WHITESPACE.sub("", text)
 
-    # 2. Ensure blank line before/after block elements
-    #    (tables, $$ math $$, ``` fenced blocks ```)
-    for pattern in (_RE_TABLE_BLOCK, _RE_MATH_BLOCK, _RE_FENCE_BLOCK):
+    # 2. Protect fenced blocks before table/math normalization so block content
+    #    is not mistaken for Markdown tables or math blocks.
+    text, protected_fences = _protect_fenced_code_blocks(text)
+
+    # 3. Ensure blank line before/after block elements
+    #    (tables, $$ math $$, protected fenced blocks)
+    for pattern in (_RE_TABLE_BLOCK, _RE_MATH_BLOCK, _RE_PROTECTED_FENCE_TOKEN):
         text = pattern.sub(r"\n\1\n", text)
 
-    # 3. Compress excessive blank lines (3+ newlines → 2)
+    # 4. Compress excessive blank lines (3+ newlines → 2)
     text = _RE_EXCESSIVE_BLANKS.sub("\n\n", text)
 
-    # 4. Clean leading/trailing and ensure final newline
+    # 5. Restore protected fences and ensure final newline
+    text = _restore_fenced_code_blocks(text, protected_fences)
     text = text.strip() + "\n"
 
     return text
