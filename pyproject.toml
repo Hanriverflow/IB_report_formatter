@@ -2,7 +2,7 @@
 name = "ib-report-formatter"
 version = "1.0.1"
 description = "Markdown to Professional IB-Style Word Document Converter"
-readme = "AGENTS.md"
+readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [

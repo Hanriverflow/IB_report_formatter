@@ -23,7 +23,7 @@ uv run word_to_md.py input.docx --extract-images  # Extract images to folder
 uv run md_formatter.py input.md [output.md]
 uv run md_formatter.py --check input.md        # Check if formatting needed
 
-# Run test suite (156 tests)
+# Run test suite (267 tests)
 uv run pytest tests/ -v
 ```
 
