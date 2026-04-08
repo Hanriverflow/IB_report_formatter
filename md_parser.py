@@ -62,6 +62,8 @@ class ElementType(Enum):
     # ── NEW (v3) ────────────────────────────────────────────────────────────
     LATEX_BLOCK = auto()  # $$ ... $$ (display math)
     LATEX_INLINE = auto()  # standalone inline math rendered as paragraph
+    # ── NEW (v5) ────────────────────────────────────────────────────────────
+    DIAGRAM = auto()  # ```diagram:type ... ``` code block
 
 
 class TableType(Enum):
@@ -106,6 +108,46 @@ class CodeBlock:
 
     code: str
     language: str = ""
+    is_ascii_art: bool = False
+
+    _BOX_CHARS = set("┌┐└┘│─├┤┬┴┼╔╗╚╝║═╠╣╦╩╬→←↑↓▶◀▲▼►◄─━")
+
+    @staticmethod
+    def detect_ascii_art(text: str, threshold: int = 20) -> bool:
+        """Return True if text contains enough box-drawing characters."""
+        count = sum(1 for ch in text if ch in CodeBlock._BOX_CHARS)
+        return count >= threshold
+
+
+@dataclass
+class DiagramBox:
+    """A box in a flow diagram."""
+
+    id: str
+    label: str
+    pos: List[float] = field(default_factory=lambda: [0, 0])
+    style: str = "default"
+
+
+@dataclass
+class DiagramArrow:
+    """An arrow connecting two boxes in a flow diagram."""
+
+    from_id: str
+    to_id: str
+    label: str = ""
+    style: str = "solid"
+
+
+@dataclass
+class Diagram:
+    """A flow diagram element parsed from ```diagram:flow code blocks."""
+
+    diagram_type: str = "flow"
+    title: str = ""
+    boxes: List[DiagramBox] = field(default_factory=list)
+    arrows: List[DiagramArrow] = field(default_factory=list)
+    notes: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -212,6 +254,7 @@ ElementContent = Union[
     Image,
     CodeBlock,
     LaTeXEquation,  # NEW (v3)
+    "Diagram",  # NEW (v5)
     None,
 ]
 
@@ -1195,11 +1238,18 @@ class MarkdownParser:
         # Parse frontmatter
         metadata, remaining_lines = FrontmatterParser.parse(lines)
 
+        # Detect whether YAML frontmatter was present
+        has_frontmatter = len(remaining_lines) < len(lines)
+
         # Extract footnotes/references
         footnotes = FootnoteParser.extract_references(remaining_lines)
 
         # Parse elements
         elements = self._parse_elements(remaining_lines)
+
+        # If no YAML frontmatter, extract metadata from document header
+        if not has_frontmatter:
+            elements = self._extract_header_metadata(metadata, elements)
 
         return DocumentModel(
             metadata=metadata,
@@ -1258,10 +1308,28 @@ class MarkdownParser:
                     code_lines.append(lines[i].rstrip("\n"))
                     i += 1
 
+                code_text = "\n".join(code_lines).rstrip()
+
+                # ── diagram:flow → Diagram object ──────────────────────
+                if language.startswith("diagram:"):
+                    diagram = self._parse_diagram(language, code_text)
+                    if diagram:
+                        elements.append(
+                            Element(
+                                element_type=ElementType.DIAGRAM,
+                                content=diagram,
+                                raw_text=raw_line,
+                            )
+                        )
+                        continue
+
+                # ── ASCII art detection ────────────────────────────────
+                is_ascii = CodeBlock.detect_ascii_art(code_text)
+
                 elements.append(
                     Element(
                         element_type=ElementType.CODE_BLOCK,
-                        content=CodeBlock(code="\n".join(code_lines).rstrip(), language=language),
+                        content=CodeBlock(code=code_text, language=language, is_ascii_art=is_ascii),
                         raw_text=raw_line,
                     )
                 )
@@ -1641,6 +1709,95 @@ class MarkdownParser:
             return True
 
         return False
+
+    # ── Diagram parsing ─────────────────────────────────────────────────
+
+    # Matches **key**: value  OR  **key:** value (colon inside or outside bold)
+    _BOLD_KV_PATTERN = re.compile(r"^\*\*([^*:：]+)[:：]?\*\*\s*[:：]?\s*(.+)$")
+
+    def _parse_diagram(self, language: str, code_text: str) -> Optional[Diagram]:
+        """Parse a diagram:flow YAML block into a Diagram object."""
+        try:
+            data = yaml.safe_load(code_text)
+            if not isinstance(data, dict):
+                return None
+
+            diagram = Diagram(diagram_type=language.split(":", 1)[1] if ":" in language else "flow")
+            diagram.title = data.get("title", "")
+            diagram.notes = data.get("notes", [])
+
+            for b in data.get("boxes", []):
+                box = DiagramBox(
+                    id=b["id"],
+                    label=b.get("label", b["id"]),
+                    pos=b.get("pos", [0, 0]),
+                    style=b.get("style", "default"),
+                )
+                diagram.boxes.append(box)
+
+            for a in data.get("arrows", []):
+                arrow = DiagramArrow(
+                    from_id=a["from"],
+                    to_id=a["to"],
+                    label=a.get("label", ""),
+                    style=a.get("style", "solid"),
+                )
+                diagram.arrows.append(arrow)
+
+            return diagram
+        except Exception as e:
+            logger.warning("Failed to parse diagram: %s", e)
+            return None
+
+    def _extract_header_metadata(
+        self, metadata: DocumentMetadata, elements: List[Element]
+    ) -> List[Element]:
+        """Extract title, subtitle, and bold key-value metadata from document header."""
+        filtered: List[Element] = []
+        in_header = True
+        title_found = False
+        subtitle_found = False
+
+        # Clear defaults that don't make sense without frontmatter
+        metadata.company = ""
+
+        for elem in elements:
+            if in_header and elem.element_type in (
+                ElementType.HEADING_1,
+                ElementType.HEADING_2,
+                ElementType.PARAGRAPH,
+            ):
+                # First H1 → title
+                if not title_found and elem.element_type == ElementType.HEADING_1:
+                    metadata.title = elem.content.text
+                    title_found = True
+                    continue
+
+                # First H2 after H1 → subtitle
+                if title_found and not subtitle_found and elem.element_type == ElementType.HEADING_2:
+                    metadata.subtitle = elem.content.text
+                    subtitle_found = True
+                    continue
+
+                # Bold key-value lines → metadata.extra
+                if elem.element_type == ElementType.PARAGRAPH:
+                    raw = elem.raw_text.strip()
+                    kv_match = self._BOLD_KV_PATTERN.match(raw)
+                    if kv_match:
+                        key = kv_match.group(1).strip()
+                        value = kv_match.group(2).strip()
+                        metadata.extra[key] = value
+
+                        continue
+                    else:
+                        in_header = False
+            else:
+                if in_header:
+                    in_header = False
+
+            filtered.append(elem)
+
+        return filtered
 
     def _looks_like_heading(self, line: str) -> bool:
         """Quick check if a line looks like any kind of heading"""

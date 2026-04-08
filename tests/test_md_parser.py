@@ -331,7 +331,11 @@ class TestMarkdownParser:
 
     def test_parse_headings(self):
         """Parse different heading levels."""
-        content = """# Heading 1
+        content = """---
+title: Test
+---
+
+# Heading 1
 ## Heading 2
 ### Heading 3
 #### Heading 4
@@ -515,8 +519,7 @@ def test_parse_markdown_file_infers_title_and_date_from_leading_content(tmp_path
     model = parse_markdown_file(str(md_path))
 
     assert model.metadata.title == "일동제약 주식회사 수익성 변화 분석 보고서"
-    assert model.metadata.company == "Korea Development Bank"
-    assert model.metadata.extra["subject_company"] == "일동제약 주식회사"
-    assert model.metadata.extra["analysis_period"] == "제9기→제10기"
-    assert model.metadata.extra["analysis_basis"] == "연결재무제표 기준"
-    assert model.metadata.extra["date"] == "2026년 3월 20일"
+    assert model.metadata.company == ""  # cleared when no frontmatter
+    assert model.metadata.extra["분석 대상 기간"] == "제9기→제10기"
+    assert model.metadata.extra["분석 기준"] == "연결재무제표 기준"
+    assert model.metadata.extra["작성일"] == "2026년 3월 20일"

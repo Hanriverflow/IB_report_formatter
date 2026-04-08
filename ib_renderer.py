@@ -547,13 +547,19 @@ class TableStyler:
             border.set(qn("w:color"), STYLE.NAVY_HEX)
             tblBorders.append(border)
 
-        # Inner borders: Gray, thin
-        for border_name in ("insideH", "insideV"):
-            border = OxmlElement(f"w:{border_name}")
-            border.set(qn("w:val"), "single")
-            border.set(qn("w:sz"), "4")
-            border.set(qn("w:color"), STYLE.GRAY_BORDER_HEX)
-            tblBorders.append(border)
+        # Inner horizontal: Gray, thin solid
+        insideH = OxmlElement("w:insideH")
+        insideH.set(qn("w:val"), "single")
+        insideH.set(qn("w:sz"), "4")
+        insideH.set(qn("w:color"), STYLE.GRAY_BORDER_HEX)
+        tblBorders.append(insideH)
+
+        # Inner vertical: Gray, dotted for readability
+        insideV = OxmlElement("w:insideV")
+        insideV.set(qn("w:val"), "dotted")
+        insideV.set(qn("w:sz"), "4")
+        insideV.set(qn("w:color"), STYLE.GRAY_BORDER_HEX)
+        tblBorders.append(insideV)
 
         tblPr.append(tblBorders)
         if tbl.tblPr is None:
@@ -2527,6 +2533,14 @@ class IBDocumentRenderer:
 
         elif etype == ElementType.CODE_BLOCK:
             self._render_code_block(cast(CodeBlock, element.content))
+
+        elif etype == ElementType.DIAGRAM:
+            from md_parser import Diagram
+            from diagram_renderer import DiagramRenderer
+            renderer = DiagramRenderer(self.doc, theme_colors={
+                "navy": f"#{STYLE.NAVY_HEX}",
+            })
+            renderer.render(cast(Diagram, element.content))
 
         elif etype == ElementType.EMPTY:
             pass  # Intentionally skip empty elements
