@@ -31,6 +31,8 @@ from docx.text.paragraph import Paragraph as DocxParagraph
 
 from md_parser import (
     Blockquote,
+    CodeBlock,
+    Diagram,
     DocumentMetadata,
     DocumentModel,
     Element,
@@ -68,6 +70,15 @@ class ParseContext:
     profile: DocumentProfile = DocumentProfile.GENERIC
     skip_indices: Set[int] = field(default_factory=set)
     footnotes: Dict[int, str] = field(default_factory=dict)
+    semantic_paragraphs: Dict[str, "SemanticBookmarkInfo"] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class SemanticBookmarkInfo:
+    """Semantic bookmark metadata attached to a specific paragraph."""
+
+    element_type: ElementType
+    extra: str = ""
 
 
 @dataclass(frozen=True)
@@ -1208,6 +1219,13 @@ class WordParser:
         r"^[^\\/\s]+?\.(?:png|jpe?g|gif|bmp|tiff?|svg|webp|emf|wmf)$",
         re.IGNORECASE,
     )
+    _SEMANTIC_BOOKMARK_PREFIX = "_ibrep_"
+    _SEMANTIC_BOOKMARK_SUFFIX_RE = re.compile(r"_(?:[0-9a-f]{4})$", re.IGNORECASE)
+    _SEMANTIC_BOOKMARK_TYPES = (
+        ElementType.CODE_BLOCK,
+        ElementType.DIAGRAM,
+        ElementType.SEPARATOR,
+    )
 
     def __init__(
         self,
@@ -1271,6 +1289,7 @@ class WordParser:
         context = ParseContext(
             profile=self._detect_document_profile(blocks, custom_properties=custom_properties),
             footnotes=self._extract_native_footnotes(doc),
+            semantic_paragraphs=self._scan_semantic_bookmarks(doc),
         )
         metadata = MetadataExtractor.extract(
             doc,
@@ -1333,6 +1352,49 @@ class WordParser:
             if texts:
                 footnotes[int(footnote_id)] = " ".join(texts)
         return footnotes
+
+    @classmethod
+    def _scan_semantic_bookmarks(cls, doc: DocxDocument) -> Dict[str, SemanticBookmarkInfo]:
+        """Collect `_ibrep_` semantic bookmarks keyed by paragraph XML identity."""
+        paragraph_lookup: Dict[str, SemanticBookmarkInfo] = {}
+        for paragraph in doc.element.body.xpath(".//*[local-name()='p']"):
+            for bookmark in paragraph.xpath(".//*[local-name()='bookmarkStart']"):
+                info = cls._parse_semantic_bookmark_name(
+                    bookmark.get(qn("w:name")) or bookmark.get("name") or ""
+                )
+                if info is None:
+                    continue
+                paragraph_lookup[cls._paragraph_key(paragraph)] = info
+                break
+        return paragraph_lookup
+
+    @classmethod
+    def _parse_semantic_bookmark_name(cls, name: str) -> Optional[SemanticBookmarkInfo]:
+        """Decode a semantic bookmark name emitted by the Word renderer."""
+        if not name.startswith(cls._SEMANTIC_BOOKMARK_PREFIX):
+            return None
+
+        payload = name[len(cls._SEMANTIC_BOOKMARK_PREFIX) :]
+        for element_type in cls._SEMANTIC_BOOKMARK_TYPES:
+            marker = element_type.name
+            if payload == marker:
+                return SemanticBookmarkInfo(element_type=element_type)
+            if not payload.startswith(f"{marker}_"):
+                continue
+
+            extra = payload[len(marker) + 1 :]
+            if re.fullmatch(r"[0-9a-f]{4}", extra, re.IGNORECASE):
+                return SemanticBookmarkInfo(element_type=element_type)
+            extra = cls._SEMANTIC_BOOKMARK_SUFFIX_RE.sub("", extra).strip("_")
+            return SemanticBookmarkInfo(element_type=element_type, extra=extra)
+
+        return None
+
+    @staticmethod
+    def _paragraph_key(paragraph) -> str:
+        """Return a stable XML path for a paragraph element or paragraph proxy."""
+        element = getattr(paragraph, "_p", paragraph)
+        return element.getroottree().getpath(element)
 
     @staticmethod
     def _read_source_bytes(source: "Union[str, BinaryIO]") -> bytes:
@@ -1440,7 +1502,11 @@ class WordParser:
                 continue
 
             if isinstance(block, DocxParagraph):
-                parsed = self._parse_paragraph(block, numbering_tracker)
+                parsed = self._parse_paragraph(
+                    block,
+                    numbering_tracker,
+                    semantic_bookmark=context.semantic_paragraphs.get(self._paragraph_key(block)),
+                )
                 if isinstance(parsed, list):
                     elements.extend(parsed)
                     continue
@@ -1450,7 +1516,10 @@ class WordParser:
                 if table_id in processed_tables:
                     continue
                 processed_tables.add(table_id)
-                element = self._parse_table(block)
+                element = self._parse_table(
+                    block,
+                    semantic_paragraphs=context.semantic_paragraphs,
+                )
 
             if element:
                 elements.append(element)
@@ -1474,11 +1543,36 @@ class WordParser:
         self,
         para,
         numbering_tracker: Optional[NumberingTracker] = None,
+        semantic_bookmark: Optional[SemanticBookmarkInfo] = None,
     ) -> Optional[Union[Element, List[Element]]]:
         """Parse a single paragraph."""
         image_refs = self._extract_image_references(para)
         image_element = self._parse_image_paragraph(para, image_refs=image_refs)
         text = para.text.strip()
+
+        if semantic_bookmark is not None:
+            if semantic_bookmark.element_type == ElementType.SEPARATOR:
+                return Element(
+                    element_type=ElementType.SEPARATOR,
+                    content=None,
+                    raw_text=text or "---",
+                )
+            if semantic_bookmark.element_type == ElementType.CODE_BLOCK:
+                code = self._extract_paragraph_text(para).strip("\n") or text
+                return Element(
+                    element_type=ElementType.CODE_BLOCK,
+                    content=CodeBlock(code=code, language=semantic_bookmark.extra),
+                    raw_text=code or text,
+                )
+            if semantic_bookmark.element_type == ElementType.DIAGRAM:
+                return Element(
+                    element_type=ElementType.DIAGRAM,
+                    content=Diagram(
+                        diagram_type=semantic_bookmark.extra or "flow",
+                        title=text,
+                    ),
+                    raw_text=text or "[DIAGRAM]",
+                )
 
         if image_element and not text:
             return image_element
@@ -1556,6 +1650,16 @@ class WordParser:
             content=Paragraph(text=text, runs=runs, has_inline_latex=has_inline_latex),
             raw_text=text,
         )
+
+    @staticmethod
+    def _extract_paragraph_text(para) -> str:
+        """Extract paragraph text while preserving explicit line breaks and tabs."""
+        parts: List[str] = []
+        for run in para.runs:
+            for token_type, value in WordParser._extract_run_tokens(run):
+                if token_type in {"text", "footnote"}:
+                    parts.append(value)
+        return "".join(parts)
 
     def _parse_image_paragraph(
         self,
@@ -1770,8 +1874,19 @@ class WordParser:
 
         return refs
 
-    def _parse_table(self, word_table) -> Optional[Element]:
+    def _parse_table(
+        self,
+        word_table,
+        semantic_paragraphs: Optional[Dict[str, SemanticBookmarkInfo]] = None,
+    ) -> Optional[Element]:
         """Parse a Word table."""
+        semantic_code_block = self._parse_semantic_code_block_table(
+            word_table,
+            semantic_paragraphs=semantic_paragraphs,
+        )
+        if semantic_code_block:
+            return semantic_code_block
+
         callout = CalloutDetector.detect_callout(word_table)
         if callout:
             return Element(
@@ -1788,6 +1903,39 @@ class WordParser:
             element_type=ElementType.TABLE,
             content=table,
             raw_text="[TABLE]",
+        )
+
+    @staticmethod
+    def _parse_semantic_code_block_table(
+        word_table,
+        semantic_paragraphs: Optional[Dict[str, SemanticBookmarkInfo]] = None,
+    ) -> Optional[Element]:
+        """Recover renderer-emitted code blocks that are stored as single-cell tables."""
+        if semantic_paragraphs is None:
+            return None
+        if len(word_table.rows) != 1 or len(word_table.columns) != 1:
+            return None
+
+        cell = word_table.rows[0].cells[0]
+        language = ""
+        has_code_bookmark = False
+        code_lines: List[str] = []
+
+        for paragraph in cell.paragraphs:
+            bookmark = semantic_paragraphs.get(WordParser._paragraph_key(paragraph))
+            if bookmark and bookmark.element_type == ElementType.CODE_BLOCK:
+                has_code_bookmark = True
+                language = bookmark.extra or language
+            code_lines.append(WordParser._extract_paragraph_text(paragraph))
+
+        if not has_code_bookmark:
+            return None
+
+        code = "\n".join(code_lines).strip("\n")
+        return Element(
+            element_type=ElementType.CODE_BLOCK,
+            content=CodeBlock(code=code, language=language),
+            raw_text=code,
         )
 
     def _find_metadata_panel_index(

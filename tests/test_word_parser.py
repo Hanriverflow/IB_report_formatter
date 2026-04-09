@@ -9,6 +9,8 @@ from docx import Document
 from docx.enum.dml import MSO_THEME_COLOR_INDEX
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import RGBColor
 from docx.shared import Inches
 
@@ -38,6 +40,23 @@ def _write_png(output_path: Path) -> Path:
     """Write a tiny PNG fixture used for image extraction tests."""
     output_path.write_bytes(PNG_BYTES)
     return output_path
+
+
+def _add_semantic_bookmark(paragraph, name: str) -> None:
+    """Attach a semantic bookmark to the paragraph's first run."""
+    if not paragraph.runs:
+        paragraph.add_run("")
+
+    bookmark_start = OxmlElement("w:bookmarkStart")
+    bookmark_start.set(qn("w:id"), "1")
+    bookmark_start.set(qn("w:name"), name)
+
+    bookmark_end = OxmlElement("w:bookmarkEnd")
+    bookmark_end.set(qn("w:id"), "1")
+
+    first_run = paragraph.runs[0]._r
+    first_run.addprevious(bookmark_start)
+    first_run.addnext(bookmark_end)
 
 
 def _inject_custom_properties(output_path: Path, properties) -> Path:
@@ -259,6 +278,56 @@ def test_parse_word_theme_tint_colors(tmp_path):
 
     paragraph = next(element.content for element in model.elements if element.element_type == ElementType.PARAGRAPH)
     assert paragraph.runs[0].color_hex == "#A7C0DE"
+
+
+def test_parse_semantic_separator_bookmark_overrides_empty_paragraph(tmp_path):
+    """Semantic separator bookmarks should survive even when the paragraph is empty."""
+    doc = Document()
+    para = doc.add_paragraph()
+    _add_semantic_bookmark(para, "_ibrep_SEPARATOR_abcd")
+    docx_path = _save_doc(doc, tmp_path / "semantic_separator.docx")
+
+    model = parse_word_file(str(docx_path), extract_images=False)
+
+    assert len(model.elements) == 1
+    assert model.elements[0].element_type == ElementType.SEPARATOR
+    assert model.elements[0].raw_text == "---"
+
+
+def test_parse_semantic_diagram_bookmark_overrides_image_paragraph(tmp_path):
+    """Semantic diagram bookmarks should override image-only paragraph parsing."""
+    image_path = _write_png(tmp_path / "diagram.png")
+
+    doc = Document()
+    para = doc.add_paragraph()
+    image_run = para.add_run()
+    image_run.add_picture(str(image_path), width=Inches(0.25))
+    _add_semantic_bookmark(para, "_ibrep_DIAGRAM_flow_abcd")
+    docx_path = _save_doc(doc, tmp_path / "semantic_diagram.docx")
+
+    model = parse_word_file(str(docx_path), extract_images=False)
+
+    assert len(model.elements) == 1
+    assert model.elements[0].element_type == ElementType.DIAGRAM
+    assert model.elements[0].content.diagram_type == "flow"
+
+
+def test_parse_semantic_code_block_table_becomes_code_block(tmp_path):
+    """Single-cell tables bookmarked as code blocks should not stay generic tables."""
+    doc = Document()
+    table = doc.add_table(rows=1, cols=1)
+    cell = table.cell(0, 0)
+    cell.paragraphs[0].text = "print(1)"
+    _add_semantic_bookmark(cell.paragraphs[0], "_ibrep_CODE_BLOCK_python_abcd")
+    cell.add_paragraph("print(2)")
+    docx_path = _save_doc(doc, tmp_path / "semantic_code_block.docx")
+
+    model = parse_word_file(str(docx_path), extract_images=False)
+
+    assert len(model.elements) == 1
+    assert model.elements[0].element_type == ElementType.CODE_BLOCK
+    assert model.elements[0].content.language == "python"
+    assert model.elements[0].content.code == "print(1)\nprint(2)"
 
 
 def test_generic_single_cell_table_stays_table(tmp_path):
