@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.2] - 2026-04-03
+
+### Fixed
+- Preserved intentional blank markdown table cells during parsing so Word table headers and body fields stay aligned.
+- Forced UTF-8 stdout writes for piped `word_to_md.py` output on Windows so Korean markdown round-trips cleanly through CLI pipes.
+
 ## [1.0.1] - 2026-03-24
 
 ### Changed

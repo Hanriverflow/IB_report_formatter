@@ -20,6 +20,7 @@ __pycache__/
 .claude/
 .sisyphus/
 .omx/
+.omc/
 
 # Build and test outputs
 *.docx
@@ -42,3 +43,6 @@ GPT_deep/
 batch_docx/
 batch_docx_output/
 .gstack/
+output/
+reports/
+IB_CPSTB_reader/
