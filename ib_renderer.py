@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, cast
+from uuid import uuid4
 from xml.sax.saxutils import escape
 
 from docx import Document
@@ -2567,10 +2568,14 @@ class IBDocumentRenderer:
 
     _TREE_PREFIX_RE = re.compile(r"^([\s│├└─]+)(.*)$")
     _TREE_VALUE_RE = re.compile(r"^(.*?)(\d+(?:\.\d+)?%|실질지배)(\s+──\s+)(.*)$")
+    _SEMANTIC_BOOKMARK_PREFIX = "_ibrep_"
+    _SEMANTIC_BOOKMARK_MAX_LEN = 40
+    _SEMANTIC_BOOKMARK_EXTRA_RE = re.compile(r"[^a-z0-9]+")
 
     def __init__(self, separator_mode: str = "auto"):
         self.doc: DocxDocument = Document()
         self.separator_mode = separator_mode
+        self._bookmark_id = 0
         self.styler = DocumentStyler(self.doc)
         self.cover_renderer = CoverRenderer(self.doc)
         self.toc_renderer = TOCRenderer(self.doc)
@@ -2641,6 +2646,65 @@ class IBDocumentRenderer:
         """Stamp the DOCX package with a generator signature."""
         GeneratorSignatureWriter.apply(self.doc)
 
+    def _add_semantic_bookmark(self, paragraph, element_type: str, extra: str = "") -> None:
+        """Wrap a paragraph's first run with a hidden semantic bookmark."""
+        if paragraph is None:
+            return
+
+        bookmark_name = self._build_semantic_bookmark_name(element_type, extra)
+        if not bookmark_name:
+            return
+
+        try:
+            if not paragraph.runs:
+                paragraph.add_run("")
+
+            first_run = paragraph.runs[0]._r
+            bookmark_id = str(self._next_bookmark_id())
+
+            bookmark_start = OxmlElement("w:bookmarkStart")
+            bookmark_start.set(qn("w:id"), bookmark_id)
+            bookmark_start.set(qn("w:name"), bookmark_name)
+
+            bookmark_end = OxmlElement("w:bookmarkEnd")
+            bookmark_end.set(qn("w:id"), bookmark_id)
+
+            first_run.addprevious(bookmark_start)
+            first_run.addnext(bookmark_end)
+        except Exception as exc:
+            logger.warning("Failed to add semantic bookmark for %s: %s", element_type, exc)
+
+    def _build_semantic_bookmark_name(self, element_type: str, extra: str = "") -> str:
+        """Build a Word-safe semantic bookmark name within Word's length limit."""
+        base = f"{self._SEMANTIC_BOOKMARK_PREFIX}{element_type}"
+        suffix = uuid4().hex[:4]
+        normalized_extra = self._normalize_semantic_bookmark_extra(extra)
+
+        if not normalized_extra:
+            return f"{base}_{suffix}"
+
+        max_extra_len = (
+            self._SEMANTIC_BOOKMARK_MAX_LEN - len(base) - len(suffix) - 2
+        )
+        if max_extra_len <= 0:
+            return f"{base}_{suffix}"
+
+        trimmed_extra = normalized_extra[:max_extra_len].strip("_")
+        if not trimmed_extra:
+            return f"{base}_{suffix}"
+        return f"{base}_{trimmed_extra}_{suffix}"
+
+    @classmethod
+    def _normalize_semantic_bookmark_extra(cls, extra: str) -> str:
+        """Normalize bookmark extra data to a compact lowercase slug."""
+        normalized = cls._SEMANTIC_BOOKMARK_EXTRA_RE.sub("_", (extra or "").strip().lower())
+        return normalized.strip("_")
+
+    def _next_bookmark_id(self) -> int:
+        """Return the next bookmark ID for the current document."""
+        self._bookmark_id += 1
+        return self._bookmark_id
+
     def _render_element(self, element: Element):
         """Render a single element based on its type"""
 
@@ -2690,10 +2754,18 @@ class IBDocumentRenderer:
         elif etype == ElementType.DIAGRAM:
             from md_parser import Diagram
             from diagram_renderer import DiagramRenderer
+            diagram = cast(Diagram, element.content)
+            start_paragraph_count = len(self.doc.paragraphs)
             renderer = DiagramRenderer(self.doc, theme_colors={
                 "navy": f"#{STYLE.NAVY_HEX}",
             })
-            renderer.render(cast(Diagram, element.content))
+            renderer.render(diagram)
+            if len(self.doc.paragraphs) > start_paragraph_count:
+                self._add_semantic_bookmark(
+                    self.doc.paragraphs[start_paragraph_count],
+                    ElementType.DIAGRAM.name,
+                    diagram.diagram_type,
+                )
 
         elif etype == ElementType.EMPTY:
             pass  # Intentionally skip empty elements
@@ -2710,7 +2782,8 @@ class IBDocumentRenderer:
             - auto: `## ---` becomes a page break, plain `---` stays a rule
         """
         if self._resolve_separator_mode(element) == "page-break":
-            self.doc.add_page_break()
+            paragraph = self.doc.add_page_break()
+            self._add_semantic_bookmark(paragraph, ElementType.SEPARATOR.name)
             return
 
         p = self.doc.add_paragraph()
@@ -2731,6 +2804,7 @@ class IBDocumentRenderer:
         pFmt = p.paragraph_format
         pFmt.space_before = Pt(6)
         pFmt.space_after = Pt(6)
+        self._add_semantic_bookmark(p, ElementType.SEPARATOR.name)
 
     def _resolve_separator_mode(self, element: Element) -> str:
         """Resolve separator rendering mode for a specific element."""
@@ -2765,6 +2839,11 @@ class IBDocumentRenderer:
             paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
             self._render_code_block_line(paragraph, line)
 
+        self._add_semantic_bookmark(
+            cell.paragraphs[0],
+            ElementType.CODE_BLOCK.name,
+            code_block.language,
+        )
         self.doc.add_paragraph()
 
     @staticmethod

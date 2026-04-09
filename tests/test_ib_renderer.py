@@ -19,6 +19,8 @@ from docx import Document
 from md_parser import (
     Blockquote,
     CodeBlock,
+    Diagram,
+    DiagramBox,
     DocumentMetadata,
     DocumentModel,
     Element,
@@ -38,6 +40,20 @@ from word_parser import parse_word_file
 PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z8eQAAAAASUVORK5CYII="
 )
+
+
+def _semantic_bookmark_names(doc: Document):
+    """Collect ib-report semantic bookmark names from a rendered document."""
+    bookmark_starts = doc.element.xpath(".//*[local-name()='bookmarkStart']")
+    names = []
+    for bookmark in bookmark_starts:
+        name = bookmark.get(
+            "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}name",
+            "",
+        )
+        if name.startswith("_ibrep_"):
+            names.append(name)
+    return names
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TABLE RENDERER TESTS
@@ -924,6 +940,17 @@ class TestSeparatorRendering:
                 break
         assert found_border, "SEPARATOR should produce a paragraph with bottom border"
 
+    def test_separator_adds_semantic_bookmark(self):
+        from ib_renderer import IBDocumentRenderer
+
+        model = DocumentModel(
+            elements=[Element(element_type=ElementType.SEPARATOR, content=None)]
+        )
+        renderer = IBDocumentRenderer()
+        doc = renderer.render(model)
+
+        assert any(name.startswith("_ibrep_SEPARATOR_") for name in _semantic_bookmark_names(doc))
+
     def test_explicit_separator_marker_becomes_page_break_in_auto_mode(self):
         from ib_renderer import IBDocumentRenderer
 
@@ -952,6 +979,22 @@ class TestSeparatorRendering:
 
         assert len(doc_page_breaks) == len(baseline_page_breaks) + 1
         assert len(doc_borders) == len(baseline_borders)
+
+    def test_page_break_separator_adds_semantic_bookmark(self):
+        from ib_renderer import IBDocumentRenderer
+
+        model = DocumentModel(
+            elements=[
+                Element(
+                    element_type=ElementType.SEPARATOR,
+                    content=None,
+                    raw_text="## ---",
+                )
+            ]
+        )
+        doc = IBDocumentRenderer().render(model)
+
+        assert any(name.startswith("_ibrep_SEPARATOR_") for name in _semantic_bookmark_names(doc))
 
     def test_separator_mode_page_break_overrides_plain_separator(self):
         from ib_renderer import IBDocumentRenderer
@@ -1070,6 +1113,42 @@ class TestTOCPreviewRendering:
         assert run.font.name == "Consolas"
         assert cell.vertical_alignment == WD_CELL_VERTICAL_ALIGNMENT.TOP
         assert not cell._tc.xpath(".//*[local-name()='tblBorders']/*[@*[local-name()='val']='single']")
+
+    def test_code_block_adds_semantic_bookmark(self):
+        from ib_renderer import IBDocumentRenderer
+
+        model = DocumentModel(
+            elements=[
+                Element(
+                    element_type=ElementType.CODE_BLOCK,
+                    content=CodeBlock(code="print('alpha')", language="python"),
+                )
+            ]
+        )
+
+        doc = IBDocumentRenderer().render(model)
+
+        assert any(name.startswith("_ibrep_CODE_BLOCK_python_") for name in _semantic_bookmark_names(doc))
+
+    def test_diagram_adds_semantic_bookmark(self):
+        from ib_renderer import IBDocumentRenderer
+
+        model = DocumentModel(
+            elements=[
+                Element(
+                    element_type=ElementType.DIAGRAM,
+                    content=Diagram(
+                        diagram_type="flow",
+                        title="Approval Flow",
+                        boxes=[DiagramBox(id="start", label="Start", pos=[0, 0])],
+                    ),
+                )
+            ]
+        )
+
+        doc = IBDocumentRenderer().render(model)
+
+        assert any(name.startswith("_ibrep_DIAGRAM_flow_") for name in _semantic_bookmark_names(doc))
 
 
 class TestCoverMetadataInference:
