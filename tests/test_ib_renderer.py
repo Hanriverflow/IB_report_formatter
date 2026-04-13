@@ -391,6 +391,22 @@ class TestLaTeXRenderer:
             == "K-ICS비율 = (가용자본 / 요구자본) × 100 ≥ 50%"
         )
 
+    def test_display_text_conversion_keeps_mixed_korean_math_readable(self):
+        """Mixed Korean and LaTeX commands should render as readable unicode text."""
+        from ib_renderer import LaTeXRenderer
+
+        expression = r"\text{가용자본}_t + \alpha"
+
+        assert LaTeXRenderer.to_display_text(expression) == "가용자본_t + α"
+
+    def test_display_text_conversion_for_korean_summation(self):
+        """Summation operators should not remain as literal LaTeX commands."""
+        from ib_renderer import LaTeXRenderer
+
+        expression = r"\text{요구자본} = \sum_{i=1}^{n} x_i"
+
+        assert LaTeXRenderer.to_display_text(expression) == "요구자본 = ∑_i=1^n x_i"
+
     def test_non_ascii_equation_prefers_plain_text_renderer(self, monkeypatch):
         """Non-ASCII equations should use the unicode fallback renderer first."""
         from ib_renderer import LaTeXRenderer

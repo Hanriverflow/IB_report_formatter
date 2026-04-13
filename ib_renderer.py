@@ -3030,23 +3030,63 @@ class LaTeXRenderer:
     _FRAC_RE = re.compile(r"\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}")
     _MULTISPACE_RE = re.compile(r"\s+")
     _LATEX_SYMBOL_REPLACEMENTS: Tuple[Tuple[str, str], ...] = (
-        (r"\rightarrow", "→"),
-        (r"\leftarrow", "←"),
-        (r"\leftrightarrow", "↔"),
-        (r"\Rightarrow", "⇒"),
-        (r"\Leftarrow", "⇐"),
         (r"\Leftrightarrow", "⇔"),
+        (r"\Leftarrow", "⇐"),
+        (r"\Rightarrow", "⇒"),
+        (r"\leftrightarrow", "↔"),
+        (r"\leftarrow", "←"),
+        (r"\rightarrow", "→"),
+        (r"\approx", "≈"),
+        (r"\alpha", "α"),
+        (r"\beta", "β"),
+        (r"\gamma", "γ"),
+        (r"\delta", "δ"),
+        (r"\epsilon", "ε"),
+        (r"\varepsilon", "ε"),
+        (r"\theta", "θ"),
+        (r"\lambda", "λ"),
+        (r"\mu", "μ"),
+        (r"\pi", "π"),
+        (r"\rho", "ρ"),
+        (r"\sigma", "σ"),
+        (r"\tau", "τ"),
+        (r"\phi", "φ"),
+        (r"\varphi", "φ"),
+        (r"\omega", "ω"),
+        (r"\Gamma", "Γ"),
+        (r"\Delta", "Δ"),
+        (r"\Theta", "Θ"),
+        (r"\Lambda", "Λ"),
+        (r"\Pi", "Π"),
+        (r"\Sigma", "Σ"),
+        (r"\Phi", "Φ"),
+        (r"\Omega", "Ω"),
+        (r"\cdot", "·"),
+        (r"\times", "×"),
+        (r"\sqrt", "√"),
+        (r"\infty", "∞"),
+        (r"\prod", "∏"),
+        (r"\sum", "∑"),
+        (r"\int", "∫"),
         (r"\geq", "≥"),
         (r"\leq", "≤"),
         (r"\neq", "≠"),
-        (r"\approx", "≈"),
-        (r"\times", "×"),
-        (r"\cdot", "·"),
         (r"\pm", "±"),
         (r"\to", "→"),
-        (r"\%", "%"),
         (r"\left", ""),
         (r"\right", ""),
+        (r"\%", "%"),
+    )
+    _LATEX_SYMBOL_MAP = dict(_LATEX_SYMBOL_REPLACEMENTS)
+    _LATEX_SYMBOL_RE = re.compile(
+        "|".join(
+            re.escape(source) + r"(?![A-Za-z])"
+            for source, _ in sorted(
+                _LATEX_SYMBOL_REPLACEMENTS,
+                key=lambda item: len(item[0]),
+                reverse=True,
+            )
+        )
     )
 
     @classmethod
@@ -3117,8 +3157,10 @@ class LaTeXRenderer:
                 display,
             )
 
-        for source, target in cls._LATEX_SYMBOL_REPLACEMENTS:
-            display = display.replace(source, target)
+        display = cls._LATEX_SYMBOL_RE.sub(
+            lambda match: cls._LATEX_SYMBOL_MAP[match.group(0)],
+            display,
+        )
 
         display = display.replace("{", "").replace("}", "")
         display = cls._MULTISPACE_RE.sub(" ", display)
