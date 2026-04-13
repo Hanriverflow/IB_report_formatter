@@ -25,7 +25,7 @@ This project converts research and internal memo markdown into bank-style docume
 - Diagram/code-block rendering as monospaced shaded panels
 - Callout box rendering (`[Executive Summary]`, `[요약]`, `[시사점]`, `[주의]`, `[참고]`)
 - Image rendering (local file paths and Base64 `data:image/...`)
-- LaTeX support (`$inline$`, `$$block$$`, rendered via matplotlib when available)
+- LaTeX support (`$inline$`, `$$block$$`, rendered as Word images in the default install path)
 - Native Word footnotes for markdown citations when inline markers are present
 - Header/footer support (company label, `CONFIDENTIAL`, page numbers)
 
@@ -103,7 +103,7 @@ uv sync
 
 This creates a virtual environment and installs all required packages automatically.
 
-**Optional:** Install full features (LaTeX rendering + robust encoding):
+**Optional:** Install robust encoding fallback for Korean files:
 
 ```bash
 uv sync --extra full
@@ -476,7 +476,7 @@ uv run mypy ib_renderer.py md_formatter.py md_parser.py md_to_word.py
 ## Notes
 
 - If output file is locked (open in Word), the converter auto-saves with a timestamp suffix.
-- LaTeX rendering requires `matplotlib` (`uv sync --extra full`). Without it, equations fall back gracefully.
+- LaTeX rendering is included in the default install via `matplotlib`. If it is unavailable at runtime, equations fall back gracefully.
 - Encoding fallback includes `utf-8`, `utf-8-sig`, `euc-kr`, and `cp949` for Korean text robustness.
 
 ## Markdown Paragraph Normalization Policy

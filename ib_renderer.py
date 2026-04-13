@@ -3025,6 +3025,29 @@ class LaTeXRenderer:
 
     # Flag to track if matplotlib is available
     _matplotlib_available: Optional[bool] = None
+    _NON_ASCII_RE = re.compile(r"[^\x00-\x7F]")
+    _TEXT_COMMAND_RE = re.compile(r"\\(?:text|mathrm|operatorname)\{([^{}]*)\}")
+    _FRAC_RE = re.compile(r"\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}")
+    _MULTISPACE_RE = re.compile(r"\s+")
+    _LATEX_SYMBOL_REPLACEMENTS: Tuple[Tuple[str, str], ...] = (
+        (r"\rightarrow", "→"),
+        (r"\leftarrow", "←"),
+        (r"\leftrightarrow", "↔"),
+        (r"\Rightarrow", "⇒"),
+        (r"\Leftarrow", "⇐"),
+        (r"\Leftrightarrow", "⇔"),
+        (r"\geq", "≥"),
+        (r"\leq", "≤"),
+        (r"\neq", "≠"),
+        (r"\approx", "≈"),
+        (r"\times", "×"),
+        (r"\cdot", "·"),
+        (r"\pm", "±"),
+        (r"\to", "→"),
+        (r"\%", "%"),
+        (r"\left", ""),
+        (r"\right", ""),
+    )
 
     @classmethod
     def is_available(cls) -> bool:
@@ -3064,6 +3087,51 @@ class LaTeXRenderer:
         if not cls.is_available():
             return None
 
+        if cls._NON_ASCII_RE.search(expression):
+            display_text = cls.to_display_text(expression)
+            image_path = cls._render_plain_text_to_image(display_text, fontsize=fontsize, dpi=dpi)
+            if image_path:
+                return image_path
+
+        image_path = cls._render_mathtext_to_image(expression, fontsize=fontsize, dpi=dpi)
+        if image_path:
+            return image_path
+
+        display_text = cls.to_display_text(expression)
+        if display_text != expression:
+            return cls._render_plain_text_to_image(display_text, fontsize=fontsize, dpi=dpi)
+
+        return None
+
+    @classmethod
+    def to_display_text(cls, expression: str) -> str:
+        """Convert a LaTeX expression into a readable unicode text fallback."""
+        display = expression.strip()
+
+        previous = None
+        while previous != display:
+            previous = display
+            display = cls._TEXT_COMMAND_RE.sub(lambda match: match.group(1), display)
+            display = cls._FRAC_RE.sub(
+                lambda match: f"({match.group(1)} / {match.group(2)})",
+                display,
+            )
+
+        for source, target in cls._LATEX_SYMBOL_REPLACEMENTS:
+            display = display.replace(source, target)
+
+        display = display.replace("{", "").replace("}", "")
+        display = cls._MULTISPACE_RE.sub(" ", display)
+        return display.strip()
+
+    @classmethod
+    def _render_mathtext_to_image(
+        cls,
+        expression: str,
+        fontsize: int,
+        dpi: int,
+    ) -> Optional[str]:
+        """Render mathtext-compatible LaTeX to a PNG image."""
         try:
             import matplotlib
 
@@ -3072,13 +3140,10 @@ class LaTeXRenderer:
 
             import matplotlib.pyplot as plt
 
-            # Create figure with transparent background
             fig, ax = plt.subplots(figsize=(0.01, 0.01))
             fig.patch.set_alpha(0)
             ax.set_axis_off()
 
-            # Render LaTeX text
-            # Wrap in display math mode for better rendering
             latex_text = f"${expression}$"
 
             ax.text(
@@ -3091,9 +3156,8 @@ class LaTeXRenderer:
                 transform=ax.transAxes,
             )
 
-            # Save to temporary file
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False, mode="wb") as f:
-                temp_path = f.name
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False, mode="wb") as temp_file:
+                temp_path = temp_file.name
 
             fig.savefig(
                 temp_path,
@@ -3108,6 +3172,58 @@ class LaTeXRenderer:
             logger.debug("Rendered LaTeX to: %s", temp_path)
             return temp_path
 
-        except Exception as e:
-            logger.warning("LaTeX rendering failed: %s", e)
+        except Exception as err:
+            logger.warning("LaTeX rendering failed: %s", err)
+            return None
+
+    @classmethod
+    def _render_plain_text_to_image(
+        cls,
+        display_text: str,
+        fontsize: int,
+        dpi: int,
+    ) -> Optional[str]:
+        """Render a readable unicode fallback image for non-ASCII equations."""
+        try:
+            import matplotlib
+
+            matplotlib.use("Agg")  # Non-interactive backend
+            import tempfile
+
+            import matplotlib.pyplot as plt
+            from matplotlib.font_manager import FontProperties
+
+            fig = plt.figure(figsize=(0.01, 0.01))
+            fig.patch.set_facecolor("white")
+            fig.patch.set_alpha(1)
+            font_props = FontProperties(family=FontPolicy.resolve_korean_font())
+
+            fig.text(
+                0.5,
+                0.5,
+                display_text,
+                fontsize=fontsize,
+                ha="center",
+                va="center",
+                fontproperties=font_props,
+            )
+
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False, mode="wb") as temp_file:
+                temp_path = temp_file.name
+
+            fig.savefig(
+                temp_path,
+                dpi=dpi,
+                bbox_inches="tight",
+                pad_inches=0.12,
+                transparent=False,
+                facecolor="white",
+            )
+            plt.close(fig)
+
+            logger.debug("Rendered unicode equation to: %s", temp_path)
+            return temp_path
+
+        except Exception as err:
+            logger.warning("Unicode equation rendering failed: %s", err)
             return None

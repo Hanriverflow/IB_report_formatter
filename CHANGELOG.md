@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.2] - 2026-04-13
+
+### Changed
+- Installed `matplotlib` through the default dependency set so Markdown LaTeX renders during standard Markdown-to-Word conversion.
+- Added a readable plain-text image fallback for LaTeX expressions that include Korean text or other non-ASCII content.
+- Normalized CLI stdout and stderr to UTF-8 on Windows so logging and piped output stay stable with report titles and Unicode text.
+
+### Fixed
+- Removed standalone HTML anchor tags such as `<a id="제3장"></a>` before Markdown paragraphs are rendered into Word.
+- Preserved smoke-test report generation on Windows even when console encoding cannot represent some characters directly.
+
+### Documentation
+- Updated installation guidance to reflect that LaTeX rendering is part of the default install path.
+
 ## [1.0.1] - 2026-03-24
 
 ### Changed

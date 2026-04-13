@@ -1,6 +1,6 @@
 [project]
 name = "ib-report-formatter"
-version = "1.0.1"
+version = "1.0.2"
 description = "Markdown to Professional IB-Style Word Document Converter"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -28,11 +28,11 @@ classifiers = [
 dependencies = [
     "python-docx>=0.8.11",
     "pyyaml>=6.0",
+    "matplotlib>=3.5.0",
 ]
 
 [project.optional-dependencies]
 full = [
-    "matplotlib>=3.5.0",      # LaTeX equation rendering
     "charset-normalizer>=3.0", # Better encoding detection for Korean
 ]
 dev = [

@@ -1208,6 +1208,10 @@ class MarkdownParser:
     )
 
     _HTML_BREAK_RE = re.compile(r"<br\s*/?>\s*$", re.IGNORECASE)
+    _HTML_ANCHOR_RE = re.compile(
+        r"<a\b[^>]*\bid\s*=\s*(['\"]).*?\1[^>]*>\s*</a>",
+        re.IGNORECASE,
+    )
     _MULTISPACE_RE = re.compile(r"[ \t]{2,}")
     _OPEN_PAREN_SPACE_RE = re.compile(r"\(\s+")
     _CLOSE_PAREN_SPACE_RE = re.compile(r"\s+\)")
@@ -1267,7 +1271,7 @@ class MarkdownParser:
 
         while i < len(lines):
             raw_line = lines[i]
-            line = raw_line.strip()
+            line = self._strip_html_anchors(raw_line.strip()).strip()
 
             # ── References section gating ───────────────────────────────────
             if self._is_reference_header(line):
@@ -1535,7 +1539,7 @@ class MarkdownParser:
 
         while i < len(lines):
             raw_line = lines[i]
-            line = raw_line.strip()
+            line = self._strip_html_anchors(raw_line).strip()
 
             if not line:
                 break
@@ -1574,7 +1578,7 @@ class MarkdownParser:
     def _normalize_paragraph_line(self, raw_line: str) -> Tuple[str, bool]:
         """Normalize one paragraph source line and detect hard line breaks."""
         hard_break = False
-        working = raw_line
+        working = self._strip_html_anchors(raw_line)
 
         if self._HTML_BREAK_RE.search(working):
             hard_break = True
@@ -1598,6 +1602,13 @@ class MarkdownParser:
         normalized = cls._OPEN_PAREN_SPACE_RE.sub("(", normalized)
         normalized = cls._CLOSE_PAREN_SPACE_RE.sub(")", normalized)
         return normalized.strip()
+
+    @classmethod
+    def _strip_html_anchors(cls, text: str) -> str:
+        """Remove HTML anchor tags that should not surface in rendered output."""
+        if "<a" not in text.lower():
+            return text
+        return cls._HTML_ANCHOR_RE.sub("", text)
 
     @staticmethod
     def _get_indent_level(prefix: str) -> int:

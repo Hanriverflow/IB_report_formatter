@@ -25,6 +25,19 @@ class LogFormatter(logging.Formatter):
         return f"{prefix} {record.getMessage()}"
 
 
+def _configure_text_stream(stream) -> None:
+    """Prefer UTF-8 console output when the current stream supports reconfiguration."""
+    reconfigure = getattr(stream, "reconfigure", None)
+    if not callable(reconfigure):
+        return
+
+    try:
+        reconfigure(encoding="utf-8", errors="replace")
+    except (ValueError, OSError):
+        # Some redirected streams reject runtime reconfiguration. Best effort only.
+        return
+
+
 def setup_logging(verbose: bool = False) -> None:
     """
     Configure root logging for CLI tools.
@@ -32,6 +45,9 @@ def setup_logging(verbose: bool = False) -> None:
     Using the root logger lets imported helper modules emit logs without
     every caller wiring handlers manually.
     """
+
+    _configure_text_stream(sys.stdout)
+    _configure_text_stream(sys.stderr)
 
     level = logging.DEBUG if verbose else logging.INFO
     handler = logging.StreamHandler(sys.stdout)

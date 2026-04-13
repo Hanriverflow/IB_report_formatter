@@ -377,6 +377,48 @@ class TestLaTeXRenderer:
         # Cleanup
         os.unlink(path)
 
+    def test_display_text_conversion_for_korean_equation(self):
+        """Korean text equations should become readable unicode fallback text."""
+        from ib_renderer import LaTeXRenderer
+
+        expression = (
+            r"\text{K-ICS비율} = \frac{\text{가용자본}}{\text{요구자본}} "
+            r"\times 100 \geq 50\%"
+        )
+
+        assert (
+            LaTeXRenderer.to_display_text(expression)
+            == "K-ICS비율 = (가용자본 / 요구자본) × 100 ≥ 50%"
+        )
+
+    def test_non_ascii_equation_prefers_plain_text_renderer(self, monkeypatch):
+        """Non-ASCII equations should use the unicode fallback renderer first."""
+        from ib_renderer import LaTeXRenderer
+
+        monkeypatch.setattr(
+            LaTeXRenderer,
+            "is_available",
+            classmethod(lambda cls: True),
+        )
+        monkeypatch.setattr(
+            LaTeXRenderer,
+            "_render_plain_text_to_image",
+            classmethod(lambda cls, display_text, fontsize, dpi: "plain.png"),
+        )
+        monkeypatch.setattr(
+            LaTeXRenderer,
+            "_render_mathtext_to_image",
+            classmethod(
+                lambda cls, expression, fontsize, dpi: (_ for _ in ()).throw(
+                    AssertionError("mathtext path should not run for non-ASCII equations")
+                )
+            ),
+        )
+
+        result = LaTeXRenderer.render_to_image(r"\text{가용자본}")
+
+        assert result == "plain.png"
+
     def test_inline_latex_runs_render_as_inline_images(self, tmp_path, monkeypatch):
         """Inline LaTeX runs should render as inline pictures rather than fallback text."""
         from ib_renderer import DocumentStyler, TextRenderer

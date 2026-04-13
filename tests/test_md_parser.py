@@ -414,6 +414,30 @@ title: Test
         assert isinstance(latex_blocks[0].content, LaTeXEquation)
         assert "E = mc^2" in latex_blocks[0].content.expression
 
+    def test_standalone_html_anchor_tags_are_skipped(self):
+        """Standalone HTML anchor tags should not survive as paragraph text."""
+        content = """<a id="제3장"></a>
+## 제3장 제목
+본문입니다.
+"""
+        parser = MarkdownParser()
+        model = parser.parse(content)
+
+        heading_texts = [
+            element.content.text
+            for element in model.elements
+            if element.element_type == ElementType.HEADING_2
+        ]
+        paragraph_texts = [
+            element.content.text
+            for element in model.elements
+            if element.element_type == ElementType.PARAGRAPH
+        ]
+
+        assert heading_texts == ["제3장 제목"]
+        assert paragraph_texts == ["본문입니다."]
+        assert all("<a id=" not in text for text in paragraph_texts)
+
     def test_soft_wrapped_lines_merge_into_single_paragraph(self):
         """Soft-wrapped markdown lines should remain one paragraph."""
         content = """첫 문장입니다.

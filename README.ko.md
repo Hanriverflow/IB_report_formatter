@@ -25,7 +25,7 @@ Markdown ↔ Word 양방향 변환기로, IB(투자은행) 스타일의 전문 W
 - 구조 도식/코드블록을 monospaced shaded panel로 렌더링
 - 콜아웃 박스 렌더링 (`[요약]`, `[시사점]`, `[주의]`, `[참고]` 등)
 - 이미지 삽입(파일 경로, Base64 `data:image/...`)
-- LaTeX 수식 지원 (`$inline$`, `$$block$$`, matplotlib 사용 시 이미지 렌더링)
+- LaTeX 수식 지원 (`$inline$`, `$$block$$`, 기본 설치에서 Word 이미지로 렌더링)
 - inline citation marker가 있을 때 markdown 인용을 Word 네이티브 footnote로 렌더링
 - 헤더/푸터 구성(회사명, `CONFIDENTIAL`, 페이지 번호)
 
@@ -103,7 +103,7 @@ uv sync
 
 가상환경 생성과 필수 패키지 설치가 자동으로 완료됩니다.
 
-**선택:** 전체 기능 설치 (LaTeX 렌더링 + 인코딩 보강):
+**선택:** 한글 파일 인코딩 보강 설치:
 
 ```bash
 uv sync --extra full
@@ -476,7 +476,7 @@ uv run mypy ib_renderer.py md_formatter.py md_parser.py md_to_word.py
 ## 참고 사항
 
 - 출력 파일이 Word에서 열려 잠겨 있으면 타임스탬프가 붙은 파일명으로 자동 저장됩니다.
-- LaTeX 렌더링은 `matplotlib`가 필요합니다 (`uv sync --extra full`). 없으면 fallback 처리됩니다.
+- LaTeX 렌더링은 기본 설치에 포함된 `matplotlib`를 사용합니다. 런타임에서 사용할 수 없으면 fallback 처리됩니다.
 - 한글 문서 안정성을 위해 `utf-8`, `utf-8-sig`, `euc-kr`, `cp949` 인코딩 fallback을 사용합니다.
 
 ## Markdown 문단 정규화 정책

@@ -360,7 +360,7 @@ The project uses `uv` for package management with `pyproject.toml`.
 # Install dependencies
 uv sync
 
-# Install with optional features (LaTeX rendering, better encoding)
+# Install with optional features (better encoding)
 uv sync --extra full
 
 # Install dev dependencies
@@ -381,7 +381,7 @@ Claude settings are in `.claude/settings.local.json` for allowed permissions.
 ### LaTeX Equations
 - **Block equations**: `$$ E = mc^2 $$` rendered as centered images
 - **Inline equations**: `$x^2$` detected within paragraphs
-- **Requires**: `matplotlib` (optional dependency)
+- **Requires**: `matplotlib` (installed by default; plain-text fallback if unavailable)
 
 ### Tables
 - **Financial tables**: Automatic thousand separator formatting
