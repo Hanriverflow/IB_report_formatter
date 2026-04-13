@@ -1,6 +1,6 @@
 [project]
 name = "ib-report-formatter"
-version = "1.0.2"
+version = "1.0.3"
 description = "Markdown to Professional IB-Style Word Document Converter"
 readme = "README.md"
 requires-python = ">=3.8"

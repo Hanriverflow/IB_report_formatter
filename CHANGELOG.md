@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.3] - 2026-04-13
+
+### Fixed
+- Improved unicode LaTeX fallback rendering so mixed Korean equations preserve readable Greek letters and math operators instead of emitting raw LaTeX commands.
+- Added regression coverage for Korean math fallback cases such as `\alpha` and `\sum`.
+
 ## [1.0.2] - 2026-04-13
 
 ### Changed
