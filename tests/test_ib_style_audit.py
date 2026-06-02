@@ -9,7 +9,6 @@ if str(_TOOLS) not in sys.path:
 
 import ib_style_audit  # noqa: E402
 
-
 # ── pure-function rubric / diff tests (no docx needed) ──────────────────────
 
 
@@ -81,14 +80,18 @@ def test_rubric_color_restraint_levels():
 # ── integration: render + extract + diff (slower, exercises full path) ───────
 
 
-def test_audit_markdown_phase1_diff_is_identical(tmp_path):
+def test_audit_markdown_ibpro_differs_from_classic(tmp_path):
     md = tmp_path / "sample.md"
     md.write_text(
         "# Title\n\nBody paragraph.\n\n## Section\n\n| A | B |\n|---|---|\n| 1 | 2 |\n",
         encoding="utf-8",
     )
     result = ib_style_audit.audit_markdown(md)
-    # Phase 1: ib-pro must reproduce classic exactly.
-    assert result["diff"] == []
+    diff_text = "\n".join(result["diff"])
+    # ib-pro left-aligns body text ...
+    assert "IB Body.align" in diff_text
+    assert "JUSTIFY" in diff_text and "LEFT" in diff_text
+    # ... and switches data tables off full grid to horizontal rules
+    assert "horizontal" in diff_text
     assert result["classic"]["rubric"]
     assert result["ib_pro"]["rubric"]

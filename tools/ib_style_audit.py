@@ -17,14 +17,12 @@ Usage:
     uv run python tools/ib_style_audit.py --docx a.docx b.docx   # compare two existing files
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 # Make project-root modules importable when run as tools/ib_style_audit.py
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -69,11 +67,16 @@ def _style_features(doc) -> Dict[str, Dict[str, Any]]:
             continue
         try:
             font = style.font
+            align = None
+            pf = getattr(style, "paragraph_format", None)
+            if pf is not None and pf.alignment is not None:
+                align = pf.alignment.name
             out[style.name] = {
                 "font": font.name,
                 "size_pt": font.size.pt if font.size is not None else None,
                 "bold": bool(font.bold) if font.bold is not None else None,
                 "color": _color_hex(font),
+                "align": align,
             }
         except AttributeError:
             continue
@@ -115,14 +118,24 @@ def _table_borders(table) -> Dict[str, Dict[str, Optional[str]]]:
 
 
 def _border_style_label(borders: Dict[str, Dict[str, Optional[str]]]) -> str:
-    """Classify a table's border treatment for the rubric."""
+    """Classify a table's border treatment for the rubric.
+
+    Vertical rules are the IB-relevant signal, so classification keys on
+    insideV: 'grid' = has inside vertical rules; 'horizontal' = inside
+    horizontals only (no verticals); 'box' = outer borders only.
+    """
     if not borders:
         return "none"
-    inside = any(
-        edge in borders and (borders[edge].get("val") not in (None, "none", "nil"))
-        for edge in ("insideH", "insideV")
-    )
-    return "grid" if inside else "horizontal"
+
+    def _present(edge: str) -> bool:
+        b = borders.get(edge)
+        return b is not None and b.get("val") not in (None, "none", "nil")
+
+    if _present("insideV"):
+        return "grid"
+    if _present("insideH"):
+        return "horizontal"
+    return "box"
 
 
 def _table_features(doc) -> List[Dict[str, Any]]:

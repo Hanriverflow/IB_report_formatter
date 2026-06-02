@@ -138,12 +138,13 @@ class IBStyle:
     STYLE_IB_BULLET: str = "IB Bullet"
     STYLE_TABLE_GRID: str = "Table Grid"
 
-    # ── Profile identity ────────────────────────────────────────────────────
-    # Selectable via style_profiles.set_active_profile(). The "classic" profile
-    # reproduces current production output; "ib-pro" carries IB-grade
-    # improvements. Behavior toggles (table borders, banding, cover rule, ...)
-    # are introduced alongside their renderer branches in a later phase.
+    # ── Profile identity & behavior toggles ─────────────────────────────────
+    # Selectable via style_profiles.set_active_profile(). "classic" reproduces
+    # current production output; "ib-pro" carries IB-grade improvements.
+    # classic toggle values MUST match current behavior (regression-safe).
     PROFILE: str = "classic"
+    BODY_JUSTIFY: bool = True             # body paragraphs justified (ib-pro: left)
+    TABLE_BORDER_STYLE: str = "grid"      # "grid" (full) or "horizontal" (rules only)
 
     @classmethod
     def classic(cls) -> "IBStyle":
@@ -152,9 +153,12 @@ class IBStyle:
 
     @classmethod
     def ib_pro(cls) -> "IBStyle":
-        """IB-grade profile. Initially identical to classic so the preset switch
-        is regression-safe; audited improvements are layered on later."""
-        return cls(PROFILE="ib-pro")
+        """IB-grade profile: left-aligned body and horizontal-rule tables."""
+        return cls(
+            PROFILE="ib-pro",
+            BODY_JUSTIFY=False,
+            TABLE_BORDER_STYLE="horizontal",
+        )
 
 
 # Singleton style instance (rebindable via style_profiles.set_active_profile)
@@ -446,7 +450,11 @@ class DocumentStyler:
         body.font.size = STYLE.BODY_SIZE
         body.paragraph_format.line_spacing = STYLE.BODY_LINE_SPACING
         body.paragraph_format.space_after = STYLE.BODY_SPACE_AFTER
-        body.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        body.paragraph_format.alignment = (
+            WD_ALIGN_PARAGRAPH.JUSTIFY
+            if STYLE.BODY_JUSTIFY
+            else WD_ALIGN_PARAGRAPH.LEFT
+        )
         FontStyler.set_east_asian_font(body)
 
         # IB Bullet
@@ -700,31 +708,49 @@ class TableStyler:
 
     @staticmethod
     def set_table_borders(table):
-        """Apply IB-style borders to table"""
+        """Apply IB-style borders to a table.
+
+        classic ("grid"): navy outer box, gray inner horizontals, dotted inner
+        verticals. ib-pro ("horizontal"): navy top/bottom rules, gray inner
+        horizontals, open sides and no vertical rules (sell-side look).
+        """
         tbl = table._tbl
         tblPr = tbl.tblPr if tbl.tblPr is not None else OxmlElement("w:tblPr")
         tblBorders = OxmlElement("w:tblBorders")
+        horizontal_only = STYLE.TABLE_BORDER_STYLE == "horizontal"
 
-        # Outer borders: Navy, thick
-        for border_name in ("top", "left", "bottom", "right"):
+        # Outer borders: Navy, thick. ib-pro keeps only top/bottom rules.
+        outer = ("top", "bottom") if horizontal_only else ("top", "left", "bottom", "right")
+        for border_name in outer:
             border = OxmlElement(f"w:{border_name}")
             border.set(qn("w:val"), "single")
             border.set(qn("w:sz"), "12")
             border.set(qn("w:color"), STYLE.NAVY_HEX)
             tblBorders.append(border)
 
-        # Inner horizontal: Gray, thin solid
+        # ib-pro: explicitly suppress side borders so the Table Grid style
+        # cannot redraw them.
+        if horizontal_only:
+            for border_name in ("left", "right"):
+                border = OxmlElement(f"w:{border_name}")
+                border.set(qn("w:val"), "none")
+                tblBorders.append(border)
+
+        # Inner horizontal: Gray, thin solid (both profiles)
         insideH = OxmlElement("w:insideH")
         insideH.set(qn("w:val"), "single")
         insideH.set(qn("w:sz"), "4")
         insideH.set(qn("w:color"), STYLE.GRAY_BORDER_HEX)
         tblBorders.append(insideH)
 
-        # Inner vertical: Gray, dotted for readability
+        # Inner vertical: dotted gray in classic; suppressed in ib-pro
         insideV = OxmlElement("w:insideV")
-        insideV.set(qn("w:val"), "dotted")
-        insideV.set(qn("w:sz"), "4")
-        insideV.set(qn("w:color"), STYLE.GRAY_BORDER_HEX)
+        if horizontal_only:
+            insideV.set(qn("w:val"), "none")
+        else:
+            insideV.set(qn("w:val"), "dotted")
+            insideV.set(qn("w:sz"), "4")
+            insideV.set(qn("w:color"), STYLE.GRAY_BORDER_HEX)
         tblBorders.append(insideV)
 
         tblPr.append(tblBorders)
