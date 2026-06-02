@@ -28,8 +28,7 @@ from xml.sax.saxutils import escape
 from docx import Document
 from docx.document import Document as DocxDocument
 from docx.enum.style import WD_STYLE_TYPE
-from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
-from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.opc.constants import CONTENT_TYPE as CT
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
@@ -756,6 +755,29 @@ class TableStyler:
         tblPr.append(tblBorders)
         if tbl.tblPr is None:
             tbl.insert(0, tblPr)
+
+        # ib-pro: thick navy rule under the header row for a sell-side look
+        if horizontal_only and table.rows:
+            TableStyler._apply_header_bottom_rule(table, STYLE.NAVY_HEX)
+
+    @staticmethod
+    def _apply_header_bottom_rule(table, hex_color: str, size: str = "18"):
+        """Apply a thick rule beneath the header row (ib-pro sell-side look)."""
+        if not table.rows:
+            return
+        for cell in table.rows[0].cells:
+            tcPr = cell._tc.get_or_add_tcPr()
+            borders = tcPr.find(qn("w:tcBorders"))
+            if borders is None:
+                borders = OxmlElement("w:tcBorders")
+                tcPr.append(borders)
+            bottom = borders.find(qn("w:bottom"))
+            if bottom is None:
+                bottom = OxmlElement("w:bottom")
+                borders.append(bottom)
+            bottom.set(qn("w:val"), "single")
+            bottom.set(qn("w:sz"), size)
+            bottom.set(qn("w:color"), hex_color)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2796,8 +2818,8 @@ class IBDocumentRenderer:
             self._render_code_block(cast(CodeBlock, element.content))
 
         elif etype == ElementType.DIAGRAM:
-            from md_parser import Diagram
             from diagram_renderer import DiagramRenderer
+            from md_parser import Diagram
             diagram = cast(Diagram, element.content)
             start_paragraph_count = len(self.doc.paragraphs)
             renderer = DiagramRenderer(self.doc, theme_colors={

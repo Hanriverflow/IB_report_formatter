@@ -80,3 +80,34 @@ def test_classic_table_borders_keep_vertical_rules():
     TableStyler.set_table_borders(table)
     borders = table._tbl.tblPr.find(qn("w:tblBorders"))
     assert borders.find(qn("w:insideV")).get(qn("w:val")) == "dotted"
+
+
+def test_ib_pro_header_has_thick_navy_rule():
+    from docx import Document
+    from docx.oxml.ns import qn
+
+    from ib_renderer import STYLE, TableStyler
+
+    style_profiles.set_active_profile("ib-pro")
+    doc = Document()
+    table = doc.add_table(rows=2, cols=2)
+    TableStyler.set_table_borders(table)
+    cell = table.rows[0].cells[0]
+    tc_borders = cell._tc.get_or_add_tcPr().find(qn("w:tcBorders"))
+    bottom = tc_borders.find(qn("w:bottom"))
+    assert bottom.get(qn("w:sz")) == "18"
+    assert bottom.get(qn("w:color")) == STYLE.NAVY_HEX
+
+
+def test_classic_header_has_no_per_cell_rule():
+    from docx import Document
+    from docx.oxml.ns import qn
+
+    from ib_renderer import TableStyler
+
+    style_profiles.set_active_profile("classic")
+    doc = Document()
+    table = doc.add_table(rows=2, cols=2)
+    TableStyler.set_table_borders(table)
+    tcPr = table.rows[0].cells[0]._tc.tcPr
+    assert tcPr is None or tcPr.find(qn("w:tcBorders")) is None
