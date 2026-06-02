@@ -43,3 +43,10 @@ GPT_deep/
 batch_docx/
 batch_docx_output/
 .gstack/
+
+# Local-only report data and conversion outputs (internal/sensitive)
+reports/
+output/
+
+# Separate money-market report skill workspace (unrelated to this converter)
+IB_CPSTB_reader/

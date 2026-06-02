@@ -47,6 +47,8 @@ dev = [
 ib-report = "md_to_word:main"
 md-format = "md_formatter:main"
 roundtrip-audit = "roundtrip_audit:main"
+report-select = "report_selector:main"
+convert-reports = "reports_md_to_word:main"
 
 [project.urls]
 Homepage = "https://github.com/example/ib-report-formatter"
