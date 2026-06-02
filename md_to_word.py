@@ -527,6 +527,12 @@ Examples:
         default="auto",
         help="Render separators as horizontal rules, page breaks, or auto (`## ---` => page break)",
     )
+    section_group.add_argument(
+        "--style",
+        choices=["classic", "ib-pro"],
+        default="classic",
+        help="Output style profile: classic (current output) or ib-pro (IB-grade styling)",
+    )
 
     # Verbosity
     parser.add_argument(
@@ -550,6 +556,12 @@ def run_conversion(input_path: Path, args) -> int:
     Returns:
         Exit code (0 = success, 1 = error)
     """
+    # Activate the requested style profile (classic by default; rebinds STYLE).
+    # Done here so single-file, batch, and reports_md_to_word paths all apply it.
+    import style_profiles
+
+    style_profiles.set_active_profile(getattr(args, "style", "classic"))
+
     # Build render options
     render_options = RenderOptions(
         include_cover=not args.no_cover,

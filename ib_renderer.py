@@ -138,8 +138,26 @@ class IBStyle:
     STYLE_IB_BULLET: str = "IB Bullet"
     STYLE_TABLE_GRID: str = "Table Grid"
 
+    # ── Profile identity ────────────────────────────────────────────────────
+    # Selectable via style_profiles.set_active_profile(). The "classic" profile
+    # reproduces current production output; "ib-pro" carries IB-grade
+    # improvements. Behavior toggles (table borders, banding, cover rule, ...)
+    # are introduced alongside their renderer branches in a later phase.
+    PROFILE: str = "classic"
 
-# Singleton style instance
+    @classmethod
+    def classic(cls) -> "IBStyle":
+        """Current production styling (default profile, regression baseline)."""
+        return cls()
+
+    @classmethod
+    def ib_pro(cls) -> "IBStyle":
+        """IB-grade profile. Initially identical to classic so the preset switch
+        is regression-safe; audited improvements are layered on later."""
+        return cls(PROFILE="ib-pro")
+
+
+# Singleton style instance (rebindable via style_profiles.set_active_profile)
 STYLE = IBStyle()
 
 

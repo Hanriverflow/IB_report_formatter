@@ -334,6 +334,12 @@ Examples:
         default="auto",
         help="Separator line rendering mode (rule, page-break, or auto)",
     )
+    section_group.add_argument(
+        "--style",
+        choices=["classic", "ib-pro"],
+        default="classic",
+        help="Output style profile: classic (current output) or ib-pro (IB-grade styling)",
+    )
 
     # Verbosity
     parser.add_argument(
