@@ -16,8 +16,6 @@ Usage:
     style_profiles.set_active_profile("classic")  # reset (tests do this)
 """
 
-from __future__ import annotations
-
 import ib_renderer
 from ib_renderer import IBStyle
 
