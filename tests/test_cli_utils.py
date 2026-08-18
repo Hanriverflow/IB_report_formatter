@@ -24,7 +24,7 @@ def test_resolve_input_path_prefers_nested_cwd_path(tmp_path, monkeypatch):
     resolved = resolve_input_path(
         "reports/q1/report.docx",
         parent_dir=project_parent,
-        script_path=script_dir / "word_to_md.py",
+        script_path=script_dir / "md_to_word.py",
     )
 
     assert resolved == right_file

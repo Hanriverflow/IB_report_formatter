@@ -11,11 +11,9 @@ Usage:
 
     # Parse any supported file -> DocumentModel
     model = registry.convert("report.md")
-    model = registry.convert("report.docx")
 
     # Render DocumentModel -> output
     registry.convert(model, output_format="docx", output_path="out.docx")
-    md_text = registry.convert(model, output_format="md")
 
     # Add a new format
     class PdfOutputConverter(OutputConverter):
@@ -178,35 +176,6 @@ class MarkdownInputConverter(InputConverter):
         return parse_markdown_file(str(source))
 
 
-class DocxInputConverter(InputConverter):
-    """Parse Word (.docx) files into DocumentModel."""
-
-    name = "docx-input"
-    priority = 100
-    supported_extensions = [".docx"]
-    supported_format = "docx"
-
-    def convert(
-        self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any
-    ) -> DocumentModel:
-        from word_parser import parse_word_file
-
-        # parse_word_file now accepts both str and BinaryIO
-        if is_stream(source):
-            return parse_word_file(
-                source,
-                extract_images=kwargs.get("extract_images", True),
-                image_output_dir=kwargs.get("image_output_dir"),
-                embed_images_base64=kwargs.get("embed_images_base64", False),
-            )
-        return parse_word_file(
-            str(source),
-            extract_images=kwargs.get("extract_images", True),
-            image_output_dir=kwargs.get("image_output_dir"),
-            embed_images_base64=kwargs.get("embed_images_base64", False),
-        )
-
-
 class DocxOutputConverter(OutputConverter):
     """Render DocumentModel to Word (.docx) format."""
 
@@ -225,31 +194,6 @@ class DocxOutputConverter(OutputConverter):
             doc.save(str(output_path))
             return str(output_path)
         return doc
-
-
-class MarkdownOutputConverter(OutputConverter):
-    """Render DocumentModel to Markdown string/file."""
-
-    name = "markdown-output"
-    priority = 100
-    output_format = "md"
-
-    def convert(self, source: Union[str, Path, DocumentModel], **kwargs: Any) -> Any:
-        from md_renderer import render_to_markdown
-
-        assert isinstance(source, DocumentModel)
-        md_text = render_to_markdown(
-            source,
-            include_frontmatter=kwargs.get("include_frontmatter", True),
-            strip_formatting=kwargs.get("strip_formatting", False),
-            image_path_prefix=kwargs.get("image_path_prefix", ""),
-            embed_images_base64=kwargs.get("embed_images_base64", False),
-        )
-        output_path = kwargs.get("output_path")
-        if output_path:
-            Path(output_path).write_text(md_text, encoding="utf-8")
-            return str(output_path)
-        return md_text
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -271,6 +215,4 @@ def get_default_registry() -> ConverterRegistry:
 def _register_builtin_converters(registry: ConverterRegistry) -> None:
     """Register the built-in converters."""
     registry.register(MarkdownInputConverter())
-    registry.register(DocxInputConverter())
     registry.register(DocxOutputConverter())
-    registry.register(MarkdownOutputConverter())
