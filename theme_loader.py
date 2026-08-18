@@ -3,10 +3,6 @@
 Theme values are converted according to the current value type on ``IBStyle``.
 This keeps serialized point, inch, and color values unambiguous while allowing
 plain YAML scalar values to retain their native types.
-
-Known limitation: ``HeadingRenderer._STYLE_CONFIG`` and
-``CalloutRenderer._CALLOUT_STYLES`` capture colors at module import time, so
-those paths cannot respond to theme overrides until the renderer is changed.
 """
 
 import logging

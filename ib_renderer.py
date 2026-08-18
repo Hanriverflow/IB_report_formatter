@@ -1316,16 +1316,17 @@ class TOCRenderer:
 class HeadingRenderer:
     """Renders headings"""
 
-    # Level → (font_size, color, bold)
-    _STYLE_CONFIG = {
-        1: (STYLE.H1_SIZE, STYLE.NAVY, True),
-        2: (STYLE.H2_SIZE, STYLE.DARK_GRAY, True),
-        3: (STYLE.H3_SIZE, STYLE.NAVY, True),
-        4: (STYLE.H4_SIZE, STYLE.DARK_GRAY, True),
-    }
-
     def __init__(self, doc: DocxDocument):
         self.doc = doc
+        # Level → (font_size, color, bold). Built per-instance (not as a class-level
+        # literal) so it re-reads STYLE when this renderer is constructed instead of
+        # capturing values once when the module is imported.
+        self._STYLE_CONFIG = {
+            1: (STYLE.H1_SIZE, STYLE.NAVY, True),
+            2: (STYLE.H2_SIZE, STYLE.DARK_GRAY, True),
+            3: (STYLE.H3_SIZE, STYLE.NAVY, True),
+            4: (STYLE.H4_SIZE, STYLE.DARK_GRAY, True),
+        }
 
     def render(self, heading: Heading):
         """Render a heading with appropriate level"""
@@ -1944,6 +1945,20 @@ class TableRenderer:
                         run.font.bold = True
 
 
+class _ClassProperty:
+    """Read-only property resolved on every access, including via the class itself.
+
+    Used so a style lookup table re-reads the STYLE singleton at access time instead of
+    capturing values once when the class body executes at module import time.
+    """
+
+    def __init__(self, fget):
+        self.fget = fget
+
+    def __get__(self, obj, owner):
+        return self.fget(owner)
+
+
 class CalloutRenderer:
     """
     Renders callout boxes (blockquotes) with professional IB styling.
@@ -1955,25 +1970,32 @@ class CalloutRenderer:
         - NOTE / 참고: Gray accent
     """
 
-    # Callout type configurations: (background_hex, border_color, title_color, icon)
-    _CALLOUT_STYLES = {
-        # Executive Summary / Important
-        "EXECUTIVE SUMMARY": (STYLE.NAVY_HEX, STYLE.NAVY, STYLE.WHITE, "▶"),
-        "요약": (STYLE.NAVY_HEX, STYLE.NAVY, STYLE.WHITE, "▶"),
-        "핵심": (STYLE.NAVY_HEX, STYLE.NAVY, STYLE.WHITE, "▶"),
-        "SUMMARY": (STYLE.NAVY_HEX, STYLE.NAVY, STYLE.WHITE, "▶"),
-        # Insights
-        "KEY INSIGHT": (STYLE.ACCENT_BLUE_HEX, STYLE.NAVY, STYLE.NAVY, "▌"),
-        "시사점": (STYLE.ACCENT_BLUE_HEX, STYLE.NAVY, STYLE.NAVY, "▌"),
-        "결론": (STYLE.ACCENT_BLUE_HEX, STYLE.NAVY, STYLE.NAVY, "▌"),
-        # Warnings
-        "WARNING": ("FFF3CD", STYLE.ORANGE, STYLE.ORANGE, "⚠"),
-        "주의": ("FFF3CD", STYLE.ORANGE, STYLE.ORANGE, "⚠"),
-        "RISK": ("FFF3CD", STYLE.ORANGE, STYLE.ORANGE, "⚠"),
-        # Notes
-        "NOTE": (STYLE.LIGHT_GRAY_HEX, STYLE.DARK_GRAY, STYLE.DARK_GRAY, "ℹ"),
-        "참고": (STYLE.LIGHT_GRAY_HEX, STYLE.DARK_GRAY, STYLE.DARK_GRAY, "ℹ"),
-    }
+    @_ClassProperty
+    def _CALLOUT_STYLES(cls):
+        """Callout type configurations: (background_hex, border_color, title_color, icon).
+
+        Resolved fresh on every access (class or instance) via the `_ClassProperty`
+        descriptor above, so overridden STYLE values are picked up instead of being
+        captured once when the module is imported.
+        """
+        return {
+            # Executive Summary / Important
+            "EXECUTIVE SUMMARY": (STYLE.NAVY_HEX, STYLE.NAVY, STYLE.WHITE, "▶"),
+            "요약": (STYLE.NAVY_HEX, STYLE.NAVY, STYLE.WHITE, "▶"),
+            "핵심": (STYLE.NAVY_HEX, STYLE.NAVY, STYLE.WHITE, "▶"),
+            "SUMMARY": (STYLE.NAVY_HEX, STYLE.NAVY, STYLE.WHITE, "▶"),
+            # Insights
+            "KEY INSIGHT": (STYLE.ACCENT_BLUE_HEX, STYLE.NAVY, STYLE.NAVY, "▌"),
+            "시사점": (STYLE.ACCENT_BLUE_HEX, STYLE.NAVY, STYLE.NAVY, "▌"),
+            "결론": (STYLE.ACCENT_BLUE_HEX, STYLE.NAVY, STYLE.NAVY, "▌"),
+            # Warnings
+            "WARNING": ("FFF3CD", STYLE.ORANGE, STYLE.ORANGE, "⚠"),
+            "주의": ("FFF3CD", STYLE.ORANGE, STYLE.ORANGE, "⚠"),
+            "RISK": ("FFF3CD", STYLE.ORANGE, STYLE.ORANGE, "⚠"),
+            # Notes
+            "NOTE": (STYLE.LIGHT_GRAY_HEX, STYLE.DARK_GRAY, STYLE.DARK_GRAY, "ℹ"),
+            "참고": (STYLE.LIGHT_GRAY_HEX, STYLE.DARK_GRAY, STYLE.DARK_GRAY, "ℹ"),
+        }
 
     def __init__(self, doc: DocxDocument):
         self.doc = doc

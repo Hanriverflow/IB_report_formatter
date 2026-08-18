@@ -13,7 +13,7 @@ from docx.shared import Pt, RGBColor
 
 import ib_renderer
 from ib_renderer import IBStyle
-from md_parser import DocumentModel, Element, ElementType, ListItem
+from md_parser import Blockquote, DocumentModel, Element, ElementType, Heading, ListItem
 from theme_loader import load_theme, restore_style, snapshot_style
 
 THEMES_DIR = Path(__file__).resolve().parents[1] / "themes"
@@ -128,6 +128,81 @@ def test_loaded_theme_changes_rendered_bullet_color(tmp_path):
         paragraph
         for paragraph in reopened.paragraphs
         if "Bullet item" in paragraph.text
+    ]
+    assert len(matching_paragraphs) == 1
+
+    run_colors = [
+        run.font.color.rgb
+        for run in matching_paragraphs[0].runs
+        if run.font.color.rgb is not None
+    ]
+    assert RGBColor(0x1A, 0x2B, 0x3C) in run_colors
+    assert RGBColor(0x00, 0x33, 0x66) not in run_colors
+
+
+def test_loaded_theme_changes_rendered_heading_color(tmp_path):
+    """A loaded theme changes the serialized heading run color."""
+    theme_path = tmp_path / "heading-theme.yaml"
+    theme_path.write_text('NAVY: "1A2B3C"\n', encoding="utf-8")
+    load_theme(str(theme_path))
+
+    model = DocumentModel(
+        elements=[
+            Element(
+                element_type=ElementType.HEADING_1,
+                content=Heading(text="Themed Heading", level=1),
+            ),
+        ]
+    )
+    doc = ib_renderer.IBDocumentRenderer().render(model)
+    output_path = tmp_path / "themed-heading.docx"
+    doc.save(str(output_path))
+
+    reopened = Document(str(output_path))
+    matching_paragraphs = [
+        paragraph
+        for paragraph in reopened.paragraphs
+        if paragraph.text == "Themed Heading"
+        and paragraph.style is not None
+        and paragraph.style.name == "Heading 1"
+    ]
+    assert len(matching_paragraphs) == 1
+
+    run_colors = [
+        run.font.color.rgb
+        for run in matching_paragraphs[0].runs
+        if run.font.color.rgb is not None
+    ]
+    assert RGBColor(0x1A, 0x2B, 0x3C) in run_colors
+    assert RGBColor(0x00, 0x33, 0x66) not in run_colors
+
+
+def test_loaded_theme_changes_rendered_callout_color(tmp_path):
+    """A loaded theme changes the serialized callout title run color."""
+    theme_path = tmp_path / "callout-theme.yaml"
+    theme_path.write_text('NAVY: "1A2B3C"\n', encoding="utf-8")
+    load_theme(str(theme_path))
+
+    model = DocumentModel(
+        elements=[
+            Element(
+                element_type=ElementType.BLOCKQUOTE,
+                content=Blockquote(title="KEY INSIGHT", text="Some insight text."),
+            )
+        ]
+    )
+    doc = ib_renderer.IBDocumentRenderer().render(model)
+    output_path = tmp_path / "themed-callout.docx"
+    doc.save(str(output_path))
+
+    reopened = Document(str(output_path))
+    matching_paragraphs = [
+        paragraph
+        for table in reopened.tables
+        for row in table.rows
+        for cell in row.cells
+        for paragraph in cell.paragraphs
+        if "KEY INSIGHT" in paragraph.text
     ]
     assert len(matching_paragraphs) == 1
 
