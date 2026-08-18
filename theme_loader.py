@@ -103,6 +103,30 @@ def _convert_value(name: str, value: object, current: object) -> object:
             raise ValueError(f"Theme field {name} must be numeric")
         return Inches(value)
 
+    if isinstance(current, bool):
+        if not isinstance(value, bool):
+            raise ValueError(f"Theme field {name} must be a boolean")
+        return value
+
+    if isinstance(current, int):
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"Theme field {name} must be an integer")
+        return value
+
+    if isinstance(current, float):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"Theme field {name} must be numeric")
+        return float(value)
+
+    if isinstance(current, str):
+        if not isinstance(value, str):
+            raise ValueError(f"Theme field {name} must be a string")
+        return value
+
+    if not isinstance(value, type(current)):
+        raise ValueError(
+            f"Theme field {name} must have type {type(current).__name__}"
+        )
     return value
 
 
@@ -127,7 +151,7 @@ def load_theme(name_or_path: str) -> Dict[str, object]:
         raise ValueError("Theme YAML must contain a top-level mapping")
 
     public_attributes = _public_style_attributes()
-    applied = {}
+    converted_values = {}
 
     for key, value in raw_theme.items():
         current = (
@@ -138,13 +162,17 @@ def load_theme(name_or_path: str) -> Dict[str, object]:
         if current is _SENTINEL or key not in public_attributes:
             raise ValueError(f"Unknown IBStyle theme field: {key!r}")
 
-        converted = _convert_value(key, value, current)
+        converted_values[key] = _convert_value(key, value, current)
+
+    # Validate the complete document before mutating global renderer state. This
+    # keeps a malformed profile from leaking a partially applied theme into later
+    # conversions performed by the same process.
+    for key, converted in converted_values.items():
         setattr(ib_renderer.IBStyle, key, converted)
         object.__setattr__(ib_renderer.STYLE, key, converted)
-        applied[key] = converted
 
-    logger.info("Loaded %d style values from %s", len(applied), theme_path)
-    return applied
+    logger.info("Loaded %d style values from %s", len(converted_values), theme_path)
+    return converted_values
 
 
 def snapshot_style() -> Dict[str, object]:

@@ -94,6 +94,30 @@ def test_unknown_theme_key_raises_value_error(tmp_path):
         load_theme(str(theme_path))
 
 
+def test_invalid_late_field_does_not_partially_apply_theme(tmp_path):
+    """Reject a malformed profile before mutating any shared style value."""
+    original = snapshot_style()
+    theme_path = tmp_path / "partially-invalid.yaml"
+    theme_path.write_text(
+        'NAVY: "112233"\nBODY_FONT: 123\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="BODY_FONT.*string"):
+        load_theme(str(theme_path))
+
+    assert snapshot_style() == original
+
+
+def test_integer_style_field_rejects_boolean_value(tmp_path):
+    """Reject booleans for integer fields despite bool subclassing int."""
+    theme_path = tmp_path / "invalid-integer.yaml"
+    theme_path.write_text("FULL_LIST_INDENT_LEVELS: true\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="FULL_LIST_INDENT_LEVELS.*integer"):
+        load_theme(str(theme_path))
+
+
 def test_missing_theme_raises_file_not_found_error():
     """A missing path and bundled name produce a clear resolution error."""
     with pytest.raises(FileNotFoundError, match="this-theme-does-not-exist"):

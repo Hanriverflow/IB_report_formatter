@@ -17,7 +17,11 @@ __pycache__/
 .ruff_cache/
 
 # Local agent/tool state
-.claude/
+# Project skills are versioned; machine-specific permissions remain local.
+.claude/*
+!.claude/skills/
+!.claude/skills/**
+.claude/settings.local.json
 .sisyphus/
 .omx/
 .omc/
@@ -38,6 +42,7 @@ docs/.pdca-status.json
 
 # Local DeepResearch raw samples (do not publish)
 GPT_deep/
+reports/
 
 # Batch processing directories
 batch_docx/
