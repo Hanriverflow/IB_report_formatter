@@ -531,7 +531,7 @@ Examples:
     section_group.add_argument(
         "--separator-mode",
         choices=["auto", "rule", "page-break"],
-        default="auto",
+        default=None,
         help="Render separators as horizontal rules, page breaks, or auto (`## ---` => page break)",
     )
     section_group.add_argument(
@@ -546,6 +546,17 @@ Examples:
         "--theme",
         default=None,
         help="Apply a style profile from themes/<name>.yaml or an explicit path",
+    )
+
+    # Preset selection
+    preset_group = parser.add_argument_group("preset options")
+    preset_group.add_argument(
+        "--preset",
+        default=None,
+        help=(
+            "Apply a document preset (ib-report, termsheet, legal-memo, "
+            "lecture-note) or an explicit YAML path"
+        ),
     )
 
     # Verbosity
@@ -688,6 +699,74 @@ def run_batch_conversion(input_dir: Path, args) -> int:
     return 0 if failure_count == 0 else 1
 
 
+def merge_preset(args, preset) -> argparse.Namespace:
+    """Merge parsed CLI args with an optional document-type preset.
+
+    Precedence per field: explicit CLI value > preset value > built-in default.
+
+    Section toggles (``--no-cover``/``--no-toc``/``--no-disclaimer``) are
+    ``store_true`` flags, so a preset can only strengthen them to True (skip the
+    section) when the user did not already pass the explicit flag. A preset can
+    never force a section back on against an explicit ``--no-X``.
+
+    Args:
+        args: Parsed CLI arguments (argparse.Namespace or compatible object)
+            exposing no_cover, no_toc, no_disclaimer, separator_mode, theme.
+        preset: A PresetConfig-shaped object exposing optional theme,
+            include_cover, include_toc, include_disclaimer, and separator_mode
+            attributes, or None if no preset was requested.
+
+    Returns:
+        A new Namespace containing all original attributes with mergeable
+        fields replaced by their effective values.
+    """
+    merged = argparse.Namespace(**vars(args))
+    merged.no_cover = args.no_cover or (
+        preset is not None and preset.include_cover is False
+    )
+    merged.no_toc = args.no_toc or (
+        preset is not None and preset.include_toc is False
+    )
+    merged.no_disclaimer = args.no_disclaimer or (
+        preset is not None and preset.include_disclaimer is False
+    )
+    merged.separator_mode = (
+        args.separator_mode
+        or (preset.separator_mode if preset is not None else None)
+        or "auto"
+    )
+    merged.theme = (
+        args.theme
+        if args.theme is not None
+        else (preset.theme if preset is not None else None)
+    )
+    return merged
+
+
+def load_document_preset(preset):
+    """Load an optional document-type preset before merging CLI args.
+
+    Args:
+        preset: Bundled preset name or explicit YAML path, or None to skip.
+
+    Returns:
+        A tuple of exit code and loaded preset config. The config is None when
+        no preset was requested or loading failed.
+    """
+    if preset is None:
+        return 0, None
+
+    import preset_loader
+
+    try:
+        config = preset_loader.load_preset(preset)
+    except (FileNotFoundError, ValueError) as e:
+        logger.error("Preset load failed: %s", e)
+        return 1, None
+
+    return 0, config
+
+
 def apply_theme(theme: Optional[str]) -> int:
     """Apply an optional theme before conversion dispatch."""
     if theme is None:
@@ -712,6 +791,12 @@ def main():
 
     # Setup logging
     configure_logging(verbose=args.verbose)
+
+    preset_exit_code, preset = load_document_preset(getattr(args, "preset", None))
+    if preset_exit_code != 0:
+        sys.exit(preset_exit_code)
+
+    args = merge_preset(args, preset)
 
     theme_exit_code = apply_theme(getattr(args, "theme", None))
     if theme_exit_code != 0:

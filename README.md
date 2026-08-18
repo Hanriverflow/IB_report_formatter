@@ -281,6 +281,7 @@ Options:
 - `--no-disclaimer` / `--no-disc`: skip disclaimer page
 - `--separator-mode {auto,rule,page-break}`: control whether separators become horizontal rules or page breaks
 - `--theme <name|path>`: apply a style profile from `themes/<name>.yaml` or an explicit YAML path
+- `--preset <name|path>`: apply a document-type preset (`ib-report`, `termsheet`, `legal-memo`, `lecture-note`, or a YAML path); explicit CLI flags override preset values
 - `--charts`: render ` ```chart ` fenced YAML blocks as chart images (default: off, renders as a code panel)
 - `-v, --verbose`: debug logs
 
@@ -293,6 +294,7 @@ uv run md_to_word.py "네페스_기업분석2026.md"
 uv run md_to_word.py report.md --format --no-toc
 uv run md_to_word.py report.md --deepresearch-cleaner auto --cite-mode strip --cleaner-report
 uv run md_to_word.py report.md --theme default
+uv run md_to_word.py report.md --preset termsheet
 uv run md_to_word.py reports/ --batch
 ```
 
@@ -310,6 +312,7 @@ Practical notes:
 - Frontmatter is optional. When absent, the converter tries to infer title/date/analysis metadata from the first heading and leading bold metadata lines.
 - The cover `INSTITUTION` can reflect the analyzed company, while disclaimer/header/footer branding continue to use the configured house company identity.
 - Themes live in `themes/*.yaml`. The bundled `default.yaml` mirrors the built-in hardcoded style; custom themes can override any subset of public `IBStyle` fields, and unknown keys are rejected.
+- Presets live in `presets/*.yaml` and provide document-type defaults for cover, TOC, disclaimer, separator mode, and theme. Explicit CLI flags such as `--no-cover`, `--separator-mode`, and `--theme` always take precedence over preset values.
 
 ## Formatter CLI (`md_formatter.py`)
 
