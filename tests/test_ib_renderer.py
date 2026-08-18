@@ -35,7 +35,6 @@ from md_parser import (
     TableType,
     TextRun,
 )
-from word_parser import parse_word_file
 
 PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z8eQAAAAASUVORK5CYII="
@@ -332,11 +331,11 @@ class TestImageRendererMimeTypes:
 
         output_path = tmp_path / "roundtrip_image.docx"
         doc.save(str(output_path))
-        parsed = parse_word_file(str(output_path), extract_images=False)
-        image_element = next(
-            element for element in parsed.elements if element.element_type == ElementType.IMAGE
-        )
-        assert image_element.content.alt_text == "Revenue bridge"
+
+        reopened = Document(str(output_path))
+        reopened_shape = reopened.inline_shapes[0]
+        assert reopened_shape._inline.docPr.get("descr") == "Revenue bridge"
+        assert reopened_shape._inline.docPr.get("title") == "Revenue bridge"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
