@@ -1,0 +1,4 @@
+# Lecture note preset — full cover page and table of contents for classroom handouts, no disclaimer.
+include_cover: true
+include_toc: true
+include_disclaimer: false

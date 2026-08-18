@@ -1,0 +1,4 @@
+# Term sheet preset — lean deal-terms document, no cover page, TOC, or disclaimer.
+include_cover: false
+include_toc: false
+include_disclaimer: false

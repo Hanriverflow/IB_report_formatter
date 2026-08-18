@@ -1,0 +1,7 @@
+# Default IB report preset.
+# All fields null: no overrides — matches current CLI/renderer defaults exactly.
+theme: null
+include_cover: null
+include_toc: null
+include_disclaimer: null
+separator_mode: null

@@ -1,0 +1,4 @@
+# Legal memo preset — table of contents for navigation, no cover page or disclaimer.
+include_cover: false
+include_toc: true
+include_disclaimer: false
