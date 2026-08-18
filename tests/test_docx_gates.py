@@ -108,6 +108,8 @@ def _assert_rendered_docx(
     fixture_path: Path,
     output_path: Path,
     expected_table_count: int,
+    expected_heading_text: str,
+    expected_cell_text: str,
 ) -> None:
     """Render a fixture and assert structural properties in the saved DOCX."""
     rendered_path = IBReportConverter(
@@ -132,6 +134,17 @@ def _assert_rendered_docx(
         and "Heading" in paragraph.style.name
     ]
     assert len(heading_paragraphs) > 0
+
+    heading_texts = [paragraph.text for paragraph in doc.paragraphs]
+    assert any(expected_heading_text in text for text in heading_texts)
+
+    cell_texts = [
+        cell.text
+        for table in doc.tables
+        for row in table.rows
+        for cell in row.cells
+    ]
+    assert any(expected_cell_text in text for text in cell_texts)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -172,6 +185,8 @@ def test_woongjin_rendered_docx_structure(tmp_path):
         WOONGJIN_FIXTURE,
         tmp_path / "woongjin-gate.docx",
         expected_table_count=6,
+        expected_heading_text="주요 시사점",
+        expected_cell_text="도심형 복합 레저시설",
     )
 
 
@@ -181,4 +196,6 @@ def test_ildong_rendered_docx_structure(tmp_path):
         ILDONG_FIXTURE,
         tmp_path / "ildong-gate.docx",
         expected_table_count=7,
+        expected_heading_text="영업현금흐름 분석",
+        expected_cell_text="아로나민류",
     )
