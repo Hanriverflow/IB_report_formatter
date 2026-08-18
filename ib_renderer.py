@@ -13,6 +13,7 @@ Changelog (v2):
     - Blockquote multi-line content preserved
 """
 
+import io
 import logging
 import os
 import platform
@@ -2594,9 +2595,10 @@ class IBDocumentRenderer:
     _SEMANTIC_BOOKMARK_MAX_LEN = 40
     _SEMANTIC_BOOKMARK_EXTRA_RE = re.compile(r"[^a-z0-9]+")
 
-    def __init__(self, separator_mode: str = "auto"):
+    def __init__(self, separator_mode: str = "auto", enable_charts: bool = False):
         self.doc: DocxDocument = Document()
         self.separator_mode = separator_mode
+        self.enable_charts = enable_charts
         self._bookmark_id = 0
         self.styler = DocumentStyler(self.doc)
         self.cover_renderer = CoverRenderer(self.doc)
@@ -2842,6 +2844,31 @@ class IBDocumentRenderer:
         """Render a fenced code block as a monospaced shaded block."""
         if not isinstance(code_block, CodeBlock):
             return
+
+        if self.enable_charts and code_block.language == "chart":
+            try:
+                import chart_renderer
+
+                spec = chart_renderer.parse_chart_spec(code_block.code)
+                png_bytes = chart_renderer.render_chart_png(spec)
+                start_paragraph_count = len(self.doc.paragraphs)
+                paragraph = self.doc.add_paragraph()
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = paragraph.add_run()
+                run.add_picture(io.BytesIO(png_bytes), width=Inches(6.0))
+                if len(self.doc.paragraphs) > start_paragraph_count:
+                    self._add_semantic_bookmark(
+                        self.doc.paragraphs[start_paragraph_count],
+                        ElementType.CODE_BLOCK.name,
+                        "chart",
+                    )
+                return
+            except Exception as exc:
+                logger.warning(
+                    "Chart rendering failed (%s: %s); falling back to code panel",
+                    type(exc).__name__,
+                    exc,
+                )
 
         table = self.doc.add_table(rows=1, cols=1)
         table.alignment = WD_TABLE_ALIGNMENT.CENTER

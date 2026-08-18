@@ -48,6 +48,32 @@ source: Company filings
     )
 
 
+def test_parse_numeric_labels_and_reject_bool_labels():
+    """Coerce numeric labels to strings while rejecting bool labels."""
+    spec = parse_chart_spec(
+        """
+chart_type: bar
+labels: [2023, 2024]
+series:
+  - name: Revenue
+    values: [100, 120]
+"""
+    )
+
+    assert spec.labels == ["2023", "2024"]
+
+    with pytest.raises(ChartSpecError, match="labels"):
+        parse_chart_spec(
+            """
+chart_type: bar
+labels: [2023, true]
+series:
+  - name: Revenue
+    values: [100, 120]
+"""
+        )
+
+
 def test_parse_unknown_chart_type_raises_field_error():
     """Reject a chart_type outside the supported set."""
     with pytest.raises(ChartSpecError, match="chart_type"):

@@ -73,11 +73,13 @@ class RenderOptions:
         include_toc: bool = True,
         include_disclaimer: bool = True,
         separator_mode: str = "auto",
+        enable_charts: bool = False,
     ):
         self.include_cover = include_cover
         self.include_toc = include_toc
         self.include_disclaimer = include_disclaimer
         self.separator_mode = separator_mode
+        self.enable_charts = enable_charts
 
     def __repr__(self) -> str:
         flags = []
@@ -89,6 +91,8 @@ class RenderOptions:
             flags.append("no-disclaimer")
         if self.separator_mode != "auto":
             flags.append(f"separator={self.separator_mode}")
+        if self.enable_charts:
+            flags.append("charts")
         return f"RenderOptions({', '.join(flags) if flags else 'all sections'})"
 
 
@@ -336,7 +340,10 @@ class IBReportConverter:
         Returns:
             python-docx Document object
         """
-        renderer = IBDocumentRenderer(separator_mode=self.render_options.separator_mode)
+        renderer = IBDocumentRenderer(
+            separator_mode=self.render_options.separator_mode,
+            enable_charts=self.render_options.enable_charts,
+        )
 
         # Setup
         renderer.styler.setup_document()
@@ -527,6 +534,11 @@ Examples:
         default="auto",
         help="Render separators as horizontal rules, page breaks, or auto (`## ---` => page break)",
     )
+    section_group.add_argument(
+        "--charts",
+        action="store_true",
+        help="Render ```chart fenced YAML blocks as chart images (default: off, renders as code panel)",
+    )
 
     # Theme selection
     theme_group = parser.add_argument_group("theme options")
@@ -564,6 +576,7 @@ def run_conversion(input_path: Path, args) -> int:
         include_toc=not args.no_toc,
         include_disclaimer=not args.no_disclaimer,
         separator_mode=getattr(args, "separator_mode", "auto"),
+        enable_charts=getattr(args, "charts", False),
     )
 
     # Auto-format / cleaner if requested

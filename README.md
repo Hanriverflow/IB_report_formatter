@@ -281,6 +281,7 @@ Options:
 - `--no-disclaimer` / `--no-disc`: skip disclaimer page
 - `--separator-mode {auto,rule,page-break}`: control whether separators become horizontal rules or page breaks
 - `--theme <name|path>`: apply a style profile from `themes/<name>.yaml` or an explicit YAML path
+- `--charts`: render ` ```chart ` fenced YAML blocks as chart images (default: off, renders as a code panel)
 - `-v, --verbose`: debug logs
 
 Examples:
@@ -293,6 +294,14 @@ uv run md_to_word.py report.md --format --no-toc
 uv run md_to_word.py report.md --deepresearch-cleaner auto --cite-mode strip --cleaner-report
 uv run md_to_word.py report.md --theme default
 uv run md_to_word.py reports/ --batch
+```
+
+```chart
+chart_type: bar
+labels: ["2025", "2026"]
+series:
+  - name: Revenue
+    values: [100, 120]
 ```
 
 Practical notes:

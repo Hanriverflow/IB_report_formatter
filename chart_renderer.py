@@ -84,9 +84,16 @@ def parse_chart_spec(text: str) -> ChartSpec:
     labels_data = data.get("labels")
     if not isinstance(labels_data, list) or not labels_data:
         raise ChartSpecError("labels must be a non-empty list")
-    if any(not isinstance(label, str) for label in labels_data):
-        raise ChartSpecError("labels must contain only strings")
-    labels = list(labels_data)
+    labels = []
+    for label in labels_data:
+        if isinstance(label, bool):
+            raise ChartSpecError("labels must not contain booleans")
+        if isinstance(label, str):
+            labels.append(label)
+        elif isinstance(label, (int, float)):
+            labels.append(str(label))
+        else:
+            raise ChartSpecError("labels must contain only strings or numbers")
 
     series_data = data.get("series")
     if not isinstance(series_data, list) or not series_data:

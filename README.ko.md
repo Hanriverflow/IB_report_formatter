@@ -281,6 +281,7 @@ uv run md_to_word.py [input_file] [output_file] [options]
 - `--no-disclaimer` / `--no-disc`: 디스클레이머 생략
 - `--separator-mode {auto,rule,page-break}`: separator를 수평선 또는 페이지 나누기로 렌더링
 - `--theme <name|path>`: `themes/<name>.yaml`의 스타일 프로필 또는 지정한 YAML 경로 적용
+- `--charts`: ` ```chart ` fenced YAML 블록을 차트 이미지로 렌더링 (기본값: 끔, 코드 패널로 렌더링)
 - `-v, --verbose`: 디버그 로그 출력
 
 예시:
@@ -293,6 +294,14 @@ uv run md_to_word.py report.md --format --no-toc
 uv run md_to_word.py report.md --deepresearch-cleaner auto --cite-mode strip --cleaner-report
 uv run md_to_word.py report.md --theme default
 uv run md_to_word.py reports/ --batch
+```
+
+```chart
+chart_type: bar
+labels: ["2025", "2026"]
+series:
+  - name: 매출
+    values: [100, 120]
 ```
 
 실무 팁:
