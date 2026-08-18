@@ -5,16 +5,14 @@
 
 # IB Report Formatter
 
-Bidirectional Markdown ↔ Word document converter for professional IB-style reports (`.docx`).
+Markdown → Word document converter for professional IB-style reports (`.docx`).
 
-This project converts research and internal memo markdown into bank-style documents with structured headings, styled tables, callout boxes, images, equations, and footer/header formatting. It also supports the reverse: extracting clean Markdown from Word documents for LLM consumption.
+This project converts research and internal memo markdown into bank-style documents with structured headings, styled tables, callout boxes, images, equations, and footer/header formatting.
 
 ## Features
 
 - **Markdown → Word** conversion with IB-oriented document styling
-- **Word → Markdown** conversion for LLM consumption (new!)
-- Batch directory conversion for both pipelines
-- Round-trip audit helper for semantic preservation checks
+- Batch directory conversion for Markdown inputs
 - Auto-format pass for single-line clipboard markdown (Deep Research output)
 - Optional OpenAI DeepResearch marker cleaner (`off`/`auto`/`on`)
 - Frontmatter-free metadata inference from real-world report markdown (title/date/analysis period/basis)
@@ -23,7 +21,7 @@ This project converts research and internal memo markdown into bank-style docume
 - YAML frontmatter parsing (`title`, `date`, `recipient`, `analyst`, etc.)
 - Financial table rendering with number formatting, semantic alignment, and content-aware column widths
 - Diagram/code-block rendering as monospaced shaded panels
-- Callout box rendering (`[Executive Summary]`, `[요약]`, `[시사점]`, `[주의]`, `[참고]`)
+- Callout box rendering (`[요약]`, `[시사점]`, `[주의]`, `[참고]`, `[결론]`, `[핵심]`, `[KEY INSIGHT]`, `[NOTE]`, `[WARNING]`)
 - Image rendering (local file paths and Base64 `data:image/...`)
 - LaTeX support (`$inline$`, `$$block$$`, rendered as Word images in the default install path)
 - Native Word footnotes for markdown citations when inline markers are present
@@ -37,10 +35,6 @@ IB_report_formatter/
 ├── md_parser.py       # Markdown/frontmatter/elements parser
 ├── md_formatter.py    # Single-line markdown pre-formatter
 ├── ib_renderer.py     # Word renderer and style system
-├── word_to_md.py      # Word → Markdown CLI converter (new!)
-├── word_parser.py     # Word document parser
-├── md_renderer.py     # Markdown text renderer
-├── roundtrip_audit.py # Round-trip audit CLI
 ├── tests/             # Pytest test suite
 └── pyproject.toml     # Dependencies and tool config
 ```
@@ -133,9 +127,6 @@ Include:
 - `md_parser.py`
 - `md_formatter.py`
 - `ib_renderer.py`
-- `word_to_md.py`
-- `word_parser.py`
-- `md_renderer.py`
 - `tests/`
 - `pyproject.toml`
 - `uv.lock`
@@ -198,14 +189,6 @@ Batch-convert an entire folder:
 
 ```bash
 uv run md_to_word.py reports/ --batch
-uv run word_to_md.py reports/ --batch
-```
-
-Audit round-trip preservation:
-
-```bash
-uv run roundtrip-audit report.md
-uv run roundtrip-audit report.docx --json
 ```
 
 ## Recommended Workflows
@@ -244,32 +227,6 @@ Recommended order:
 2. Use `--format` if structure looks collapsed
 3. Add `--deepresearch-cleaner auto` only when marker cleanup may be needed
 4. Generate the final `.docx`
-
-### 3. Convert Word back to Markdown for LLM use
-
-Preserve formatting:
-
-```bash
-uv run word_to_md.py report.docx
-```
-
-LLM-oriented plain markdown:
-
-```bash
-uv run word_to_md.py report.docx --strip --no-frontmatter
-```
-
-Keep images embedded inside one markdown file:
-
-```bash
-uv run word_to_md.py report.docx --embed-images-base64
-```
-
-Write images into a folder:
-
-```bash
-uv run word_to_md.py report.docx --extract-images --image-dir report_images
-```
 
 What does `--format` (pre-formatting) do?
 
@@ -375,67 +332,10 @@ Or use the script entrypoint:
 uv run md-format --check input.md
 ```
 
-## Word to Markdown CLI (`word_to_md.py`)
+## Word → Markdown Extraction (Out of Scope)
 
-Convert Word documents to clean Markdown for LLM consumption:
-
-```bash
-uv run word_to_md.py [input_file] [output_file] [options]
-```
-
-Options:
-
-- `-l, --list`: list Word files in parent folder
-- `-i, --interactive`: interactive selection mode (with `--list`)
-- `--batch`: convert every `.docx` file in the given directory
-- `-s, --strip`: strip formatting (no bold/italic) for LLM optimization
-- `--no-frontmatter`: skip YAML metadata header
-- `--extract-images`: extract embedded images to folder
-- `--image-dir`: choose the extraction directory explicitly
-- `--embed-images-base64`: inline image data directly into the markdown output
-- `-v, --verbose`: debug logs
-
-Examples:
-
-```bash
-uv run word_to_md.py --list
-uv run word_to_md.py --list -i
-uv run word_to_md.py report.docx
-uv run word_to_md.py report.docx output.md
-uv run word_to_md.py report.docx --strip              # LLM-optimized output
-uv run word_to_md.py report.docx --strip --no-frontmatter
-uv run word_to_md.py report.docx --extract-images     # Save images to folder
-uv run word_to_md.py report.docx --extract-images --image-dir report_images
-uv run word_to_md.py report.docx --embed-images-base64
-uv run word_to_md.py reports/ --batch
-```
-
-Practical notes:
-
-- `--strip` is the safest default when the output goes directly into an LLM.
-- `--extract-images` is better for human editing workflows where separate files are easier to manage.
-- `--embed-images-base64` is better when you want one portable markdown file.
-
-## Round-trip Audit CLI (`roundtrip_audit.py`)
-
-Audit semantic preservation after one conversion round-trip:
-
-```bash
-uv run roundtrip-audit [input_file] [options]
-```
-
-Examples:
-
-```bash
-uv run roundtrip-audit report.md
-uv run roundtrip-audit report.docx --json
-```
-
-When to use `--strip`?
-
-- When feeding the output to an LLM that doesn't benefit from bold/italic markers
-- When you want cleaner, more compact text
-- For RAG/embedding pipelines where formatting is noise
+Word → Markdown extraction is intentionally out of scope as of v2.0.0. For this need, use a dedicated parser such as [kordoc](https://github.com/chrisryugj/kordoc), which converts HWP/HWPX/PDF/DOCX to Markdown and is available as a CLI and MCP server, or a similar tool.
+The removed Word-to-Markdown implementation is archived on branch `archive/word-to-md-final` for reference.
 
 ## Supported Markdown Patterns
 

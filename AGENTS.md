@@ -11,19 +11,11 @@ uv run md_to_word.py --list                    # List available .md files
 uv run md_to_word.py --list -i                 # Interactive file selection
 uv run md_to_word.py input.md --format         # Pre-format single-line markdown
 
-# Word → Markdown conversion (for LLM consumption)
-uv run word_to_md.py input.docx [output.md]
-uv run word_to_md.py --list                    # List available .docx files
-uv run word_to_md.py --list -i                 # Interactive file selection
-uv run word_to_md.py input.docx --strip        # LLM-optimized (no bold/italic)
-uv run word_to_md.py input.docx --no-frontmatter  # Skip YAML metadata header
-uv run word_to_md.py input.docx --extract-images  # Extract images to folder
-
 # Pre-format only (Gemini Deep Research clipboard output)
 uv run md_formatter.py input.md [output.md]
 uv run md_formatter.py --check input.md        # Check if formatting needed
 
-# Run test suite (267 tests)
+# Run test suite (185 tests)
 uv run pytest tests/ -v
 ```
 
@@ -35,10 +27,6 @@ IB_report_formatter/
 ├── md_parser.py       # Markdown parsing, frontmatter, elements, LaTeX, Base64 images
 ├── md_formatter.py    # Pre-processor for single-line clipboard markdown
 ├── ib_renderer.py     # Word document rendering with IB bank styling
-├── word_to_md.py      # Word → Markdown CLI entry point
-├── word_parser.py     # Word document parsing into DocumentModel
-├── md_renderer.py     # DocumentModel → Markdown text rendering
-├── omml_latex.py      # OMML (Word equations) → LaTeX converter
 ├── converters.py      # Plugin architecture: BaseConverter, ConverterRegistry
 └── docs/              # Documentation/memory files
 ```
@@ -47,18 +35,12 @@ IB_report_formatter/
 
 **MD → Word Pipeline:** `Markdown → Parser → DocumentModel → Renderer → Word Document`
 
-**Word → MD Pipeline:** `Word Document → Parser → DocumentModel → Renderer → Markdown`
-
 | Module           | Responsibility                                          |
 |------------------|---------------------------------------------------------|
 | `md_to_word.py`  | CLI, path resolution, MD→Word conversion orchestration  |
 | `md_parser.py`   | Parse frontmatter, headings, tables, LaTeX, images      |
 | `md_formatter.py`| Convert single-line text to structured markdown         |
 | `ib_renderer.py` | Apply IB styling, generate Word via python-docx         |
-| `word_to_md.py`  | CLI, path resolution, Word→MD conversion orchestration  |
-| `word_parser.py` | Parse Word doc properties, paragraphs, tables, images   |
-| `md_renderer.py` | Render DocumentModel to clean Markdown text             |
-| `omml_latex.py`  | Convert Word OMML equations to LaTeX ($, $$)            |
 | `converters.py`  | Plugin architecture: BaseConverter, ConverterRegistry   |
 
 ### Converter Registry (Plugin Architecture)
@@ -84,12 +66,6 @@ registry.register(PdfOutputConverter())
 
 Built-in converters: `MarkdownInputConverter`, `DocxInputConverter`, `DocxOutputConverter`, `MarkdownOutputConverter`.
 Existing CLI entry points and direct API calls continue to work unchanged.
-
-### OMML Equation Support (Word → LaTeX)
-
-`omml_latex.py` converts Word equations (OMML XML) to LaTeX during DOCX parsing.
-Automatically applied when `WordParser.parse()` opens a DOCX file.
-Supports: fractions, sub/superscripts, roots, matrices, integrals, trig functions, Greek letters.
 
 ### Markdown Paragraph Normalization (MD -> Word)
 

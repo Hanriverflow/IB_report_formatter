@@ -5,16 +5,14 @@
 
 # IB Report Formatter
 
-Markdown ↔ Word 양방향 변환기로, IB(투자은행) 스타일의 전문 Word 보고서(`.docx`)를 생성합니다.
+Markdown → Word 변환기로, IB(투자은행) 스타일의 전문 Word 보고서(`.docx`)를 생성합니다.
 
-이 프로젝트는 리서치/내부 메모 형태의 markdown을 구조화된 제목, 표 스타일링, 콜아웃 박스, 이미지, 수식, 헤더/푸터가 포함된 보고서 형태로 출력합니다. 또한 역방향으로 Word 문서에서 깔끔한 Markdown을 추출하여 LLM에 활용할 수 있습니다.
+이 프로젝트는 리서치/내부 메모 형태의 markdown을 구조화된 제목, 표 스타일링, 콜아웃 박스, 이미지, 수식, 헤더/푸터가 포함된 보고서 형태로 출력합니다.
 
 ## 주요 기능
 
 - **Markdown → Word** 변환 (IB 스타일 문서 생성)
-- **Word → Markdown** 변환 (LLM 활용용, 신규!)
-- 양방향 폴더 batch 변환 지원
-- semantic 보존 점검용 round-trip audit 도구
+- Markdown 입력 폴더 batch 변환 지원
 - 단일 라인(클립보드) markdown 자동 구조화 포맷팅
 - OpenAI DeepResearch 마커 정리기(선택 적용: `off`/`auto`/`on`)
 - frontmatter가 없는 실제 보고서에서도 제목/날짜/분석기간/분석기준 메타데이터 자동 추론
@@ -37,10 +35,6 @@ IB_report_formatter/
 ├── md_parser.py       # Markdown/frontmatter/요소 파서
 ├── md_formatter.py    # 단일 라인 markdown 전처리기
 ├── ib_renderer.py     # Word 렌더러 및 스타일 시스템
-├── word_to_md.py      # Word → Markdown 변환 CLI (신규!)
-├── word_parser.py     # Word 문서 파서
-├── md_renderer.py     # Markdown 텍스트 렌더러
-├── roundtrip_audit.py # round-trip audit CLI
 ├── tests/             # Pytest 테스트
 └── pyproject.toml     # 의존성/도구 설정
 ```
@@ -133,9 +127,6 @@ uv run md_to_word.py --list
 - `md_parser.py`
 - `md_formatter.py`
 - `ib_renderer.py`
-- `word_to_md.py`
-- `word_parser.py`
-- `md_renderer.py`
 - `tests/`
 - `pyproject.toml`
 - `uv.lock`
@@ -198,14 +189,6 @@ uv run md_to_word.py input.md --deepresearch-cleaner auto --cite-mode footnote -
 
 ```bash
 uv run md_to_word.py reports/ --batch
-uv run word_to_md.py reports/ --batch
-```
-
-round-trip 보존 점검:
-
-```bash
-uv run roundtrip-audit report.md
-uv run roundtrip-audit report.docx --json
 ```
 
 ## 추천 사용 흐름
@@ -244,32 +227,6 @@ uv run md_to_word.py raw_report.md --format --deepresearch-cleaner auto --cite-m
 2. 구조가 뭉쳐 있으면 `--format`
 3. 마커 정리가 필요할 수 있으면 `--deepresearch-cleaner auto`
 4. 최종 `.docx` 생성
-
-### 3. Word를 다시 Markdown으로 추출해 LLM에 사용
-
-서식을 유지한 일반 markdown 추출:
-
-```bash
-uv run word_to_md.py report.docx
-```
-
-LLM 입력용 평문 중심 markdown:
-
-```bash
-uv run word_to_md.py report.docx --strip --no-frontmatter
-```
-
-이미지를 하나의 markdown 파일 안에 유지하려면:
-
-```bash
-uv run word_to_md.py report.docx --embed-images-base64
-```
-
-이미지를 별도 폴더로 추출하려면:
-
-```bash
-uv run word_to_md.py report.docx --extract-images --image-dir report_images
-```
 
 `--format`(사전 포맷팅)은 무엇을 하나요?
 
@@ -375,67 +332,10 @@ uv run md_formatter.py input.md --deepresearch-cleaner on --cite-mode strip --dr
 uv run md-format --check input.md
 ```
 
-## Word → Markdown 변환기 CLI (`word_to_md.py`)
+## Word → Markdown 추출(지원 범위 외)
 
-Word 문서를 LLM 활용에 적합한 깔끔한 Markdown으로 변환합니다:
-
-```bash
-uv run word_to_md.py [input_file] [output_file] [options]
-```
-
-옵션:
-
-- `-l, --list`: 상위 폴더의 Word 파일 목록 표시
-- `-i, --interactive`: 목록에서 대화형 선택 (`--list`와 함께 사용)
-- `--batch`: 지정한 디렉터리의 `.docx` 파일 전체 변환
-- `-s, --strip`: 서식 제거 (볼드/이탤릭 없음) - LLM 최적화
-- `--no-frontmatter`: YAML 메타데이터 헤더 생략
-- `--extract-images`: 포함된 이미지를 폴더로 추출
-- `--image-dir`: 이미지 추출 폴더 직접 지정
-- `--embed-images-base64`: 이미지 데이터를 markdown 안에 inline 삽입
-- `-v, --verbose`: 디버그 로그 출력
-
-예시:
-
-```bash
-uv run word_to_md.py --list
-uv run word_to_md.py --list -i
-uv run word_to_md.py report.docx
-uv run word_to_md.py report.docx output.md
-uv run word_to_md.py report.docx --strip              # LLM 최적화 출력
-uv run word_to_md.py report.docx --strip --no-frontmatter
-uv run word_to_md.py report.docx --extract-images     # 이미지 폴더로 저장
-uv run word_to_md.py report.docx --extract-images --image-dir report_images
-uv run word_to_md.py report.docx --embed-images-base64
-uv run word_to_md.py reports/ --batch
-```
-
-실무 팁:
-
-- LLM 입력 목적이면 기본적으로 `--strip`이 가장 무난합니다.
-- 사람이 다시 편집할 markdown이면 `--extract-images`가 더 다루기 쉽습니다.
-- 하나의 파일로 들고 다니거나 프롬프트 첨부용이면 `--embed-images-base64`가 더 편합니다.
-
-## Round-trip Audit CLI (`roundtrip_audit.py`)
-
-한 번의 왕복 변환 후 semantic 보존 상태를 점검합니다:
-
-```bash
-uv run roundtrip-audit [input_file] [options]
-```
-
-예시:
-
-```bash
-uv run roundtrip-audit report.md
-uv run roundtrip-audit report.docx --json
-```
-
-`--strip` 옵션은 언제 쓰나요?
-
-- 볼드/이탤릭 마커가 필요 없는 LLM에 넣을 때
-- 더 깔끔하고 간결한 텍스트가 필요할 때
-- RAG/임베딩 파이프라인에서 서식이 노이즈일 때
+Word → Markdown 추출은 v2.0.0부터 의도적으로 지원 범위에서 제외됩니다. 이 기능이 필요하면 HWP/HWPX/PDF/DOCX를 Markdown으로 변환하고 CLI와 MCP 서버로 제공되는 [kordoc](https://github.com/chrisryugj/kordoc) 같은 전용 파서나 유사 도구를 사용하세요.
+제거된 Word-to-Markdown 구현은 참고용으로 `archive/word-to-md-final` 브랜치에 보관되어 있습니다.
 
 ## 지원 Markdown 패턴
 
