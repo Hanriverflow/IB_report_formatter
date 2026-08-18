@@ -64,7 +64,7 @@ class PdfOutputConverter(OutputConverter):
 registry.register(PdfOutputConverter())
 ```
 
-Built-in converters: `MarkdownInputConverter`, `DocxInputConverter`, `DocxOutputConverter`, `MarkdownOutputConverter`.
+Built-in converters: `MarkdownInputConverter`, `DocxOutputConverter`.
 Existing CLI entry points and direct API calls continue to work unchanged.
 
 ### Markdown Paragraph Normalization (MD -> Word)
