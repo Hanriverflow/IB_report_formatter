@@ -92,7 +92,8 @@
   틀렸는지 확정한 뒤, 그 층에서만 고친다.
 
 ### M9. git add . 사고 (Staging Blast Radius)
-- **증거**: `reports/`(실제 딜 문서)가 현재 untracked 상태로 존재한다. `git add .` 한 번이면 유출이다.
+- **증거**: `reports/`의 실제 딜 문서가 과거 untracked 상태로 노출되어 있었다. 현재는 `.gitignore`로
+  차단하지만, ignore 규칙이 빠지거나 우회되면 `git add .` 한 번으로 유출될 수 있다.
 - **규칙**: 스테이징은 항상 명시적 파일 경로로. `git add .`/`-A` 금지. 커밋 직전
   `git diff --cached --name-only` 출력에서 `reports/`, `*.docx`, `GPT_deep/`, `nul` 이 보이면 즉시 unstage.
 
@@ -181,7 +182,7 @@
 매 세션 첫 코드 편집 **전에**:
 
 ```bash
-git status --short            # 기존 untracked(.python-version, reports/ 등)를 파악. 내 소행과 구분.
+git status --short            # 기존 untracked(.python-version, 로컬 계획 문서 등)를 파악. 내 소행과 구분.
 uv run pytest -q | tail -1    # 그린 확인 (~10초). 시작부터 빨간불이면 편집하지 말고 즉시 보고.
 ```
 
