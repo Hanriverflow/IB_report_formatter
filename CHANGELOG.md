@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.1.0] - 2026-08-18
+
+### Added
+- `--theme <name|path>`: style profiles loaded from `themes/*.yaml`; `default.yaml` mirrors the built-in style and is pinned by a full-field parity test. Heading and callout renderers were reworked to read styles at render time so themes actually apply.
+- `--preset <name|path>`: document-type presets (`ib-report`, `termsheet`, `legal-memo`, `lecture-note`) with explicit-flag > preset > built-in default precedence.
+- `--charts`: opt-in rendering of ```` ```chart ```` fenced YAML specs (bar, line, waterfall) as PNG charts; invalid specs fall back to the existing code panel.
+- `kordoc_check.py`: standalone dev script cross-checking conversions with the external kordoc parser (exit 3 with install hint when absent).
+
+### Notes
+- Theme application is process-global by design (a CLI run exits; batch applies one theme to all files). Long-lived embedders can revert via `theme_loader.snapshot_style` / `restore_style`.
+
 ## [2.0.0] - 2026-08-18
 
 ### Removed
