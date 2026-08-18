@@ -16,7 +16,6 @@ from docx import Document
 from md_parser import parse_markdown_file
 from md_to_word import IBReportConverter
 
-
 HEADING_ELEMENT_TYPES = {
     "HEADING_1",
     "HEADING_2",
