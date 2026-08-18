@@ -528,6 +528,14 @@ Examples:
         help="Render separators as horizontal rules, page breaks, or auto (`## ---` => page break)",
     )
 
+    # Theme selection
+    theme_group = parser.add_argument_group("theme options")
+    theme_group.add_argument(
+        "--theme",
+        default=None,
+        help="Apply a style profile from themes/<name>.yaml or an explicit path",
+    )
+
     # Verbosity
     parser.add_argument(
         "-v",
@@ -667,6 +675,23 @@ def run_batch_conversion(input_dir: Path, args) -> int:
     return 0 if failure_count == 0 else 1
 
 
+def apply_theme(theme: Optional[str]) -> int:
+    """Apply an optional theme before conversion dispatch."""
+    if theme is None:
+        return 0
+
+    import theme_loader
+
+    try:
+        applied = theme_loader.load_theme(theme)
+    except (FileNotFoundError, ValueError) as e:
+        logger.error("Theme load failed: %s", e)
+        return 1
+
+    logger.info("Applied theme %s (%d values)", theme, len(applied))
+    return 0
+
+
 def main():
     """Main entry point with CLI argument parsing"""
     parser = build_parser()
@@ -674,6 +699,10 @@ def main():
 
     # Setup logging
     configure_logging(verbose=args.verbose)
+
+    theme_exit_code = apply_theme(getattr(args, "theme", None))
+    if theme_exit_code != 0:
+        sys.exit(theme_exit_code)
 
     # ── List mode ───────────────────────────────────────────────────────────
     if args.list:

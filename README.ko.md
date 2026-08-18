@@ -280,6 +280,7 @@ uv run md_to_word.py [input_file] [output_file] [options]
 - `--no-toc`: 목차 생략
 - `--no-disclaimer` / `--no-disc`: 디스클레이머 생략
 - `--separator-mode {auto,rule,page-break}`: separator를 수평선 또는 페이지 나누기로 렌더링
+- `--theme <name|path>`: `themes/<name>.yaml`의 스타일 프로필 또는 지정한 YAML 경로 적용
 - `-v, --verbose`: 디버그 로그 출력
 
 예시:
@@ -290,6 +291,7 @@ uv run md_to_word.py --list -i
 uv run md_to_word.py "네페스_기업분석2026.md"
 uv run md_to_word.py report.md --format --no-toc
 uv run md_to_word.py report.md --deepresearch-cleaner auto --cite-mode strip --cleaner-report
+uv run md_to_word.py report.md --theme default
 uv run md_to_word.py reports/ --batch
 ```
 
@@ -298,6 +300,7 @@ uv run md_to_word.py reports/ --batch
 - `--separator-mode auto`에서는 plain `---`는 수평선으로 유지되고, `## ---`는 페이지 나누기로 렌더됩니다.
 - frontmatter가 없어도 첫 H1과 선행 bold 메타 문단에서 제목/날짜/분석 메타를 추론합니다.
 - cover의 `INSTITUTION`은 분석대상 회사를 반영할 수 있지만, disclaimer/header/footer 등 문서 브랜딩은 house company identity를 유지합니다.
+- 테마는 `themes/*.yaml`에 두며, 기본 제공 `default.yaml`은 코드에 내장된 기본 스타일과 같습니다. 사용자 테마에서는 공개 `IBStyle` 필드 중 필요한 항목만 덮어쓸 수 있고, 알 수 없는 키는 허용되지 않습니다.
 
 ## 포맷터 CLI (`md_formatter.py`)
 

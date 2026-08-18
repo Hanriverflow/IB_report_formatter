@@ -280,6 +280,7 @@ Options:
 - `--no-toc`: skip table of contents
 - `--no-disclaimer` / `--no-disc`: skip disclaimer page
 - `--separator-mode {auto,rule,page-break}`: control whether separators become horizontal rules or page breaks
+- `--theme <name|path>`: apply a style profile from `themes/<name>.yaml` or an explicit YAML path
 - `-v, --verbose`: debug logs
 
 Examples:
@@ -290,6 +291,7 @@ uv run md_to_word.py --list -i
 uv run md_to_word.py "네페스_기업분석2026.md"
 uv run md_to_word.py report.md --format --no-toc
 uv run md_to_word.py report.md --deepresearch-cleaner auto --cite-mode strip --cleaner-report
+uv run md_to_word.py report.md --theme default
 uv run md_to_word.py reports/ --batch
 ```
 
@@ -298,6 +300,7 @@ Practical notes:
 - `--separator-mode auto` keeps plain `---` as a horizontal rule, while `## ---` becomes a page break.
 - Frontmatter is optional. When absent, the converter tries to infer title/date/analysis metadata from the first heading and leading bold metadata lines.
 - The cover `INSTITUTION` can reflect the analyzed company, while disclaimer/header/footer branding continue to use the configured house company identity.
+- Themes live in `themes/*.yaml`. The bundled `default.yaml` mirrors the built-in hardcoded style; custom themes can override any subset of public `IBStyle` fields, and unknown keys are rejected.
 
 ## Formatter CLI (`md_formatter.py`)
 
