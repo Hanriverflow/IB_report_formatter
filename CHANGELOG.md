@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.0.0] - 2026-08-18
+
+### Removed
+- **Breaking:** the Word-to-Markdown direction — `word_to_md.py`, `word_parser.py`, `md_renderer.py`, `omml_latex.py`, and the `roundtrip-audit` CLI (`roundtrip_audit.py`), together with their test modules and the registry's Docx-input/Markdown-output converters. Word-to-Markdown extraction is delegated to dedicated external parsers such as kordoc. The final implementation is archived on branch `archive/word-to-md-final` (commit d819bbb).
+
+### Added
+- `tests/test_docx_gates.py` — replacement verification gates: DocumentModel element-sequence snapshots for the two Korean fixtures plus rendered-docx structural and text-fidelity assertions.
+
+### Changed
+- Converter registry now supports Markdown input and DOCX output only.
+- README pair rewritten for the md-to-word-only scope; callout label list corrected to the parser-verified set.
+
 ## [1.0.3] - 2026-04-13
 
 ### Fixed
