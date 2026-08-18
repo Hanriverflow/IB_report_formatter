@@ -15,7 +15,7 @@ uv run md_to_word.py input.md --format         # Pre-format single-line markdown
 uv run md_formatter.py input.md [output.md]
 uv run md_formatter.py --check input.md        # Check if formatting needed
 
-# Run test suite (185 tests)
+# Run test suite (228 tests)
 uv run pytest tests/ -v
 ```
 
