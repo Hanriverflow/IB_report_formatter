@@ -1,491 +1,176 @@
-<p align="right">
-  <a href="./README.md"><img alt="lang English" src="https://img.shields.io/badge/lang-English-blue"></a>
-  <a href="./README.ko.md"><img alt="lang 한국어" src="https://img.shields.io/badge/lang-한국어-orange"></a>
-</p>
+# IB Report Formatter 2.0
 
-# IB Report Formatter
+Markdown → editable Word for investment-banking reports and Korean business documents.
 
-Bidirectional Markdown ↔ Word document converter for professional IB-style reports (`.docx`).
+[한국어 설명](README.ko.md) · [Implementation plan](docs/implementation-plan-20260914.md) · [Verification](docs/verification-20260914.md)
 
-This project converts research and internal memo markdown into bank-style documents with structured headings, styled tables, callout boxes, images, equations, and footer/header formatting. It also supports the reverse: extracting clean Markdown from Word documents for LLM consumption.
+Latest: [letter quality improvement plan](docs/improvement-plan-20260915.md) · [verification](docs/verification-20260915.md).
 
-## Features
+## Product direction
 
-- **Markdown → Word** conversion with IB-oriented document styling
-- **Word → Markdown** conversion for LLM consumption (new!)
-- Batch directory conversion for both pipelines
-- Round-trip audit helper for semantic preservation checks
-- Auto-format pass for single-line clipboard markdown (Deep Research output)
-- Optional OpenAI DeepResearch marker cleaner (`off`/`auto`/`on`)
-- Frontmatter-free metadata inference from real-world report markdown (title/date/analysis period/basis)
-- Static TOC preview plus updateable Word TOC field
-- Korean-friendly cover and TOC typography with `Malgun Gothic` defaults
-- YAML frontmatter parsing (`title`, `date`, `recipient`, `analyst`, etc.)
-- Financial table rendering with number formatting, semantic alignment, and content-aware column widths
-- Diagram/code-block rendering as monospaced shaded panels
-- Callout box rendering (`[Executive Summary]`, `[요약]`, `[시사점]`, `[주의]`, `[참고]`)
-- Image rendering (local file paths and Base64 `data:image/...`)
-- LaTeX support (`$inline$`, `$$block$$`, rendered as Word images in the default install path)
-- Native Word footnotes for markdown citations when inline markers are present
-- Header/footer support (company label, `CONFIDENTIAL`, page numbers)
+This is a **Markdown-to-Word-only engine**. In-house Word→Markdown development has been retired deliberately: established external projects already address that problem. Version 2 removes the inverse parser/CLI, Markdown output converter, OMML reverse converter and roundtrip audit. There is no plan to rebuild them.
 
-## Project Structure
+## Quick start
 
-```text
-IB_report_formatter/
-├── md_to_word.py      # Markdown → Word CLI converter
-├── md_parser.py       # Markdown/frontmatter/elements parser
-├── md_formatter.py    # Single-line markdown pre-formatter
-├── ib_renderer.py     # Word renderer and style system
-├── word_to_md.py      # Word → Markdown CLI converter (new!)
-├── word_parser.py     # Word document parser
-├── md_renderer.py     # Markdown text renderer
-├── roundtrip_audit.py # Round-trip audit CLI
-├── tests/             # Pytest test suite
-└── pyproject.toml     # Dependencies and tool config
+Requires Python 3.8+ syntax support; current verification uses Python 3.12. Install with [uv](https://docs.astral.sh/uv/):
+
+```sh
+uv sync
+uv run md-to-word samples/profiles/office-letter.md letter.docx --strict
+uv run md-to-word samples/profiles/ib-memo.md memo.docx --strict
+uv run md-to-word input.md output.docx --profile plain
+uv run md-to-word --list-profiles
+uv run docx-audit letter.docx
 ```
 
-## Requirements
+The existing `uv run md_to_word.py ...` and `uv run ib-report ...` commands still work. Word is not required to generate DOCX; it is useful for reviewing pagination and updating fields. Files locked by Word are saved to a timestamp-suffixed path, reported in the log.
 
-- Python 3.8+
-- [uv](https://docs.astral.sh/uv/) (recommended package manager)
+## Profiles
 
-## Installation on a New PC
+| Profile | Default composition | Page |
+|---|---|---|
+| `ib-report` | Legacy IB cover, TOC, disclaimer, confidentiality label | Letter |
+| `ib-memo` | Compact IB title/author/date, confidentiality label; no cover/TOC/disclaimer | A4 |
+| `plain` | Body only; no IB metadata inference | A4 |
+| `office-letter` | Company, document number, recipients, title, attachments, sender | A4 |
+| `business-report` | Title, date, department, author, body | A4 |
+| `meeting-minutes` | Title, time, place, attendees, author, body | A4 |
 
-Follow these steps to set up the project on any machine:
+Profile defaults do not supply factual document content. The four general profiles do not infer financial tables or turn short numbered items into headings. They use neutral styling and editable Word multilevel numbering (decimal → Korean 가나다 → parenthesized decimal). Nest lists using four spaces per level. Legacy IB list behaviour is retained.
 
-### 1. Install Python
+## Frontmatter
 
-Download and install Python 3.8 or higher from [python.org](https://www.python.org/downloads/).
+Use [the six runnable examples](samples/profiles) as starting points:
 
-Verify installation:
-
-```bash
-python --version
+```yaml
+---
+profile: office-letter
+title: 자료 제출 요청
+document_no: 기획-2026-015
+date: "2026-09-14"
+sender:
+  organization: 주식회사 예시
+  department: 경영기획팀
+  signatory: 주식회사 예시 대표이사
+  contact: planning@example.com
+recipients: [협력회사 담당부서장]
+cc: [재무담당자]
+attachments: [제출 양식 1부]
+---
 ```
 
-### 2. Install uv (Package Manager)
+Letters require `recipients` and `sender.organization`; no seal/signature image is manufactured. Reports use `analyst`, `date`, `sender.department`; minutes also accept `meeting_time`, `location`, `attendees`. Quote dates, codes and numeric-looking identifiers to preserve their text. A matching first H1 is not duplicated when the profile already supplies a title.
 
-**Windows (PowerShell):**
+### Letters with an appendix
+
+The letter profile uses a centred company name, aligned recipient/reference/subject fields, native numbered attachments, a closing marker, signatory and issue/contact details. Wrapped metadata aligns below the value. The company name is not repeated in the page header. `sender.signatory` accepts a YAML multiline string; no signer name is invented.
+
+To place the closing **before** an appendix, specify its exact H1 text:
+
+```yaml
+letter:
+  appendix_heading: 운영자료 확인 내역
+  appendix_label: 붙임 1
+```
+
+That H1 must appear exactly once after the letter body and differ from the document title. Missing/duplicate/empty-body boundaries and unknown `letter` keys are rejected before saving. `appendix_label` is optional and requires `appendix_heading`. Without these settings the entire Markdown remains the letter body. Attachments are a declared list, not proof that external files exist or have been embedded. See [the complete synthetic example](samples/qa/office-letter-appendix.md).
+
+Configuration precedence is **explicit CLI/API option > YAML > profile default**. YAML `layout` supports boolean `cover`, `toc`, `disclaimer`, `confidential`, `strict`, plus `separator_mode: auto|rule|page-break`. Unknown layout/table/theme keys fail validation. CLI overrides: `--profile`, `--theme`, `--strict`, `--no-cover`, `--no-toc`, `--no-disclaimer`, `--no-confidential`, `--separator-mode`. Enable cover/TOC through YAML or API when needed.
+
+Themes: `default`, `mono`, or a small YAML file using `body_font`, `heading_font`, `korean_font`, `body_size`, `primary_color`, `margin_mm`. See [company-theme.yaml](samples/profiles/company-theme.yaml). YAML theme paths are relative to the input Markdown; CLI paths are relative to the working directory. This is not an arbitrary DOCX template importer.
+
+## Explicit financial tables
+
+```yaml
+tables:
+  - type: financial
+    columns: [text, money, percent, code]
+    caption: 실적 요약
+    unit: 금액 백만원
+    as_of: "2026-06-30"
+    source: "[회사 자료](https://example.com)"
+    landscape: false
+  - type: sensitivity
+    base_case: {row: 2, column: 3}
+```
+
+Specifications correspond to body tables in order; use `{}` to skip one. Supported types: `generic`, `financial`, `sensitivity`, `risk`. Supported column roles: `text`, `code`, `date`, `number`, `money`, `percent`, `bps`, `multiple`. If supplied, roles must cover every column.
+
+Number/money add thousands separators. Percent/bps/multiple append display suffixes to plain numbers; **they do not rescale values** (`12.5` becomes `12.5%`, not `1250%`). Code/date/text roles preserve values such as `001234`. Blank cells and escaped pipes `A\|B` retain their positions. Headers repeat across pages; rows are kept together when Word permits. `landscape: true` places that table in a separate landscape section, then restores portrait geometry.
+
+Sensitivity highlighting is **explicit only**: row 1 is the first data row; columns are one-based and include the label column. The old guessed centre-cell highlight is removed. Risk highlighting recognises supported risk headers and levels such as high/medium/low or 높음/중간/낮음.
+
+## Supported Markdown and limitations
+
+- Headings, paragraphs, emphasis, pipe tables, lists, blockquotes/callouts, local/base64 images, code blocks and existing diagram/LaTeX rendering.
+- External HTTP(S)/mailto links become Word hyperlinks. Numeric single-line footnotes `[^1]` / `[^1]: Note` become native notes when referenced; no named or multiline footnotes.
+- Soft-wrapped paragraph lines merge with spaces. `<br>`, `<br/>`, `<BR />` work inside paragraphs, emphasis, headings, lists and table cells. A trailing backslash also preserves a paragraph hard break. Escaped `\<br>` and code remain literal; link destinations are not rewritten. Trailing two spaces require the parser's opt-in legacy flag.
+- IB legacy reference-section extraction remains, but only actual reference labels trigger it. General documents keep References as ordinary content.
+- This is not a full CommonMark/GFM implementation, a financial calculation engine, a compliance validator, or a lossless layout converter. Raw HTML, complex nested Markdown and arbitrary Word templates are not guaranteed.
+- Existing math/diagram output may be images, not editable equations/charts. New valuation models, chart engines and PDF distribution are outside this release.
+- Update fields/TOC in Word if necessary. Pagination, font substitution and very tall/wide tables still require a visual review. Strict mode is **not** visual QA.
+
+## API
+
+```python
+from md_parser import parse_markdown_file
+from document_profiles import RenderOptions
+from ib_renderer import IBDocumentRenderer
+
+model = parse_markdown_file("input.md", profile="plain")
+doc = IBDocumentRenderer(options=RenderOptions(strict=True)).render(model)
+doc.save("output.docx")
+```
+
+Pass the same profile at parsing time to apply its parsing policy; a render-only override cannot reconstruct content already transformed by a different parsing policy. The renderer copies its input model and uses request-local immutable styles. Use one renderer instance per concurrent job.
+
+```python
+from converters import get_default_registry
+
+registry = get_default_registry()
+model = registry.convert("input.md", profile="business-report")
+saved_path = registry.convert(model, output_format="docx",
+                              output_path="output.docx", strict=True)
+```
+
+Only Markdown input and DOCX output are built in. Models live in `document_model.py`; legacy model imports from `md_parser` remain supported.
+
+## Validation and development
+
+`--strict` rejects known input loss (e.g. extra table cells), invalid footnote references, element render errors and unresolved image placeholders before saving. Without strict mode the converter may emit a partial document with warnings. `docx-audit` reports structural observations and known problems as JSON; it never converts Word back to Markdown.
+
+Audit `warnings` distinguish Normal-style pagination constraints from structural `issues`. `pagination_marked_paragraphs` counts effective keep-lines/keep-next/page-break-before settings, including table paragraphs and inherited styles; it is not a bullet count. Word may show these as **nonprinting black squares** when formatting marks are visible. Keep necessary heading pagination controls; do not strip every flag or silently change the user's Word display settings. `visual_review: not_performed` means that structural inspection did not review rendered pages.
+
+```sh
+uv sync --extra dev
+uv run pytest tests/
+uv run mypy document_model.py document_profiles.py render_styles.py office_layout.py docx_audit.py md_parser.py ib_renderer.py md_to_word.py converters.py --follow-imports=silent
+uv build
+```
+
+Batch conversion: `uv run md-to-word samples/profiles --batch`. Optional clipboard cleanup: `--format`; optional DeepResearch cleanup: `--deepresearch-cleaner auto`. Preprocessors can change content, so review the cleaned input.
+
+UTF-8/BOM, EUC-KR and CP949 Korean input is decoded deterministically before optional statistical detection. Local image paths resolve from the Markdown directory. In plain/office profiles, superscripts such as `m^2^` remain text; use `[^2]` for a footnote.
+
+### Word page QA on Windows
+
+With Microsoft Word installed, generate examples and render all pages as PNGs:
 
 ```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+uv run md_to_word.py samples/profiles .dryforge/qa/docx --batch --strict
+uv run md_to_word.py samples/qa .dryforge/qa/docx --batch --strict
+powershell.exe -NoProfile -File scripts/word_visual_qa.ps1 -InputDirectory .dryforge/qa/docx -OutputDirectory .dryforge/qa/pages
 ```
 
-**macOS / Linux:**
+The local QA script opens source DOCX files read-only, updates fields in QA copies, warms Word's page cache, and writes page PNGs plus `manifest.json`. It does not change the default printer or add-in settings. Output directories **must be new or empty**; existing evidence is never overwritten. Optional `-ExpectedPages 2` requires every input to have two pages (omit for mixed page counts). A mismatch or source change produces a nonzero exit after recording the completed evidence.
 
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
+The manifest is always an array and records Word version/build, timestamps, source/updated-DOCX/PNG SHA-256 hashes, actual/expected page counts, and `visualReview: pending`. A successful render does not mark visual review complete: inspect every PNG and record observations separately against the manifest hash. This is not unattended Office hosting or PDF delivery. See the [latest verification record](docs/verification-20260915.md).
 
-Verify installation:
+On Windows, pass Korean paths in quotes using the literal filesystem spelling. Markdown-escaped paths such as `file\_draft.md` are not the same as `file_draft.md`; do not blindly remove backslashes, since `_draft.md` could be a real child path. Resolve the actual file first; input/output paths are not guessed or rewritten by the CLI.
 
-```bash
-uv --version
-```
+## Migration from 1.x
 
-### 3. Copy the Project
-
-Copy the entire `IB_report_formatter` folder to your target machine, or clone from your repository:
-
-```bash
-git clone <your-repo-url> IB_report_formatter
-cd IB_report_formatter
-```
-
-### 4. Install Dependencies
-
-Navigate to the project folder and run:
-
-```bash
-uv sync
-```
-
-This creates a virtual environment and installs all required packages automatically.
-
-**Optional:** Install robust encoding fallback for Korean files:
-
-```bash
-uv sync --extra full
-```
-
-**Optional:** Install dev/test tooling:
-
-```bash
-uv sync --extra dev
-```
-
-### 5. Verify Installation
-
-```bash
-uv run md_to_word.py --list
-```
-
-If successful, you'll see a list of available markdown files.
-
-## What to Upload to GitHub
-
-Upload only source/config files required to run the project on another PC.
-
-Include:
-
-- `md_to_word.py`
-- `md_parser.py`
-- `md_formatter.py`
-- `ib_renderer.py`
-- `word_to_md.py`
-- `word_parser.py`
-- `md_renderer.py`
-- `tests/`
-- `pyproject.toml`
-- `uv.lock`
-- `README.md`
-- `README.ko.md`
-- `AGENTS.md` (optional for contributor guidance)
-- `docs/` (optional, after removing internal/private notes)
-
-Do not include:
-
-- `.venv/`, `__pycache__/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`
-- `*.docx` output files
-- local tool state (`.claude/`, `.sisyphus/`)
-- private/raw business markdown files containing sensitive internal content
-
-This repository now includes a root `.gitignore` configured to exclude those files by default.
-
-## Quick Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| `uv: command not found` | Restart terminal after installing uv, or add uv to PATH |
-| `python: command not found` | Install Python and ensure it's added to PATH |
-| Permission errors on Windows | Run PowerShell as Administrator for uv install |
-| Encoding errors with Korean files | Use `uv sync --extra full` for better encoding support |
-
-## Quick Start
-
-Convert markdown to Word:
-
-```bash
-uv run md_to_word.py input.md
-```
-
-Or use the script entrypoint:
-
-```bash
-uv run ib-report input.md
-```
-
-Specify output path:
-
-```bash
-uv run md_to_word.py input.md output.docx
-```
-
-Auto-format then convert:
-
-```bash
-uv run md_to_word.py input.md --format
-```
-
-Clean OpenAI DeepResearch markers only when detected, then convert:
-
-```bash
-uv run md_to_word.py input.md --deepresearch-cleaner auto --cite-mode footnote --cleaner-report
-```
-
-Batch-convert an entire folder:
-
-```bash
-uv run md_to_word.py reports/ --batch
-uv run word_to_md.py reports/ --batch
-```
-
-Audit round-trip preservation:
-
-```bash
-uv run roundtrip-audit report.md
-uv run roundtrip-audit report.docx --json
-```
-
-## Recommended Workflows
-
-### 1. Convert a normal report markdown to Word
-
-For a report that already has headings, paragraphs, and tables separated cleanly:
-
-```bash
-uv run md_to_word.py tests/웅진_계열사.md
-```
-
-If you want the output path to be explicit:
-
-```bash
-uv run md_to_word.py tests/웅진_계열사.md tests/웅진_계열사_Report_Pro.docx
-```
-
-### 2. Convert messy copied markdown
-
-If the source came from a clipboard paste or collapsed research output:
-
-```bash
-uv run md_to_word.py raw_report.md --format
-```
-
-If OpenAI DeepResearch markers may be present:
-
-```bash
-uv run md_to_word.py raw_report.md --format --deepresearch-cleaner auto --cite-mode footnote --cleaner-report
-```
-
-Recommended order:
-
-1. Run `uv run md_formatter.py --check input.md`
-2. Use `--format` if structure looks collapsed
-3. Add `--deepresearch-cleaner auto` only when marker cleanup may be needed
-4. Generate the final `.docx`
-
-### 3. Convert Word back to Markdown for LLM use
-
-Preserve formatting:
-
-```bash
-uv run word_to_md.py report.docx
-```
-
-LLM-oriented plain markdown:
-
-```bash
-uv run word_to_md.py report.docx --strip --no-frontmatter
-```
-
-Keep images embedded inside one markdown file:
-
-```bash
-uv run word_to_md.py report.docx --embed-images-base64
-```
-
-Write images into a folder:
-
-```bash
-uv run word_to_md.py report.docx --extract-images --image-dir report_images
-```
-
-What does `--format` (pre-formatting) do?
-
-- It restores document structure from compressed or single-line markdown.
-- Internally, it runs `md_formatter.py` first, creates an intermediate `*_formatted.md` file, then converts that file to Word.
-- It is especially useful for copied/pasted Deep Research output where:
-  - headings and paragraph boundaries are collapsed,
-  - callout labels (`[요약]`, `[시사점]`, `[NOTE]`, etc.) are embedded mid-line,
-  - LaTeX (`$...$`, `$$...$$`) and bold markers (`**...**`) are mixed in broken line flow.
-
-Pre-formatting mainly performs:
-
-- heading/subheading boundary detection and line-break insertion
-- paragraph splitting based on sentence boundaries
-- callout and bullet normalization
-- LaTeX and bold token protection/restoration
-- metadata extraction into YAML frontmatter
-
-When should you use it?
-
-- Input is mostly 1-5 long lines (or otherwise poorly structured)
-- Direct conversion produces merged paragraphs/headings
-
-When can you skip it?
-
-- Markdown is already cleanly structured (headings, paragraphs, tables already separated)
-
-Quick check before converting:
-
-```bash
-uv run md_formatter.py --check input.md
-```
-
-## Converter CLI (`md_to_word.py`)
-
-```bash
-uv run md_to_word.py [input_file] [output_file] [options]
-```
-
-Options:
-
-- `-l, --list`: list markdown files in parent folder
-- `-i, --interactive`: interactive selection mode (with `--list`)
-- `--batch`: convert every `.md` file in the given directory
-- `-f, --format`: run formatter before conversion
-- `--deepresearch-cleaner {off,auto,on}`: apply DeepResearch marker cleaner (`off` by default)
-- `--cite-mode {footnote,inline,strip}`: citation marker transform mode
-- `--drop-unknown-markers`: drop unknown DeepResearch marker blocks (default keeps comments)
-- `--cleaner-report`: print cleaner execution summary
-- `--no-cover`: skip cover page
-- `--no-toc`: skip table of contents
-- `--no-disclaimer` / `--no-disc`: skip disclaimer page
-- `--separator-mode {auto,rule,page-break}`: control whether separators become horizontal rules or page breaks
-- `-v, --verbose`: debug logs
-
-Examples:
-
-```bash
-uv run md_to_word.py --list
-uv run md_to_word.py --list -i
-uv run md_to_word.py "네페스_기업분석2026.md"
-uv run md_to_word.py report.md --format --no-toc
-uv run md_to_word.py report.md --deepresearch-cleaner auto --cite-mode strip --cleaner-report
-uv run md_to_word.py reports/ --batch
-```
-
-Practical notes:
-
-- `--separator-mode auto` keeps plain `---` as a horizontal rule, while `## ---` becomes a page break.
-- Frontmatter is optional. When absent, the converter tries to infer title/date/analysis metadata from the first heading and leading bold metadata lines.
-- The cover `INSTITUTION` can reflect the analyzed company, while disclaimer/header/footer branding continue to use the configured house company identity.
-
-## Formatter CLI (`md_formatter.py`)
-
-Format a raw markdown file:
-
-```bash
-uv run md_formatter.py input.md
-```
-
-Format into a specific output file:
-
-```bash
-uv run md_formatter.py input.md output_formatted.md
-```
-
-Check if formatting is needed:
-
-```bash
-uv run md_formatter.py --check input.md
-```
-
-Format with optional DeepResearch cleaner controls:
-
-```bash
-uv run md_formatter.py input.md output_formatted.md --deepresearch-cleaner auto --cite-mode inline --cleaner-report
-uv run md_formatter.py input.md --deepresearch-cleaner on --cite-mode strip --drop-unknown-markers
-```
-
-Or use the script entrypoint:
-
-```bash
-uv run md-format --check input.md
-```
-
-## Word to Markdown CLI (`word_to_md.py`)
-
-Convert Word documents to clean Markdown for LLM consumption:
-
-```bash
-uv run word_to_md.py [input_file] [output_file] [options]
-```
-
-Options:
-
-- `-l, --list`: list Word files in parent folder
-- `-i, --interactive`: interactive selection mode (with `--list`)
-- `--batch`: convert every `.docx` file in the given directory
-- `-s, --strip`: strip formatting (no bold/italic) for LLM optimization
-- `--no-frontmatter`: skip YAML metadata header
-- `--extract-images`: extract embedded images to folder
-- `--image-dir`: choose the extraction directory explicitly
-- `--embed-images-base64`: inline image data directly into the markdown output
-- `-v, --verbose`: debug logs
-
-Examples:
-
-```bash
-uv run word_to_md.py --list
-uv run word_to_md.py --list -i
-uv run word_to_md.py report.docx
-uv run word_to_md.py report.docx output.md
-uv run word_to_md.py report.docx --strip              # LLM-optimized output
-uv run word_to_md.py report.docx --strip --no-frontmatter
-uv run word_to_md.py report.docx --extract-images     # Save images to folder
-uv run word_to_md.py report.docx --extract-images --image-dir report_images
-uv run word_to_md.py report.docx --embed-images-base64
-uv run word_to_md.py reports/ --batch
-```
-
-Practical notes:
-
-- `--strip` is the safest default when the output goes directly into an LLM.
-- `--extract-images` is better for human editing workflows where separate files are easier to manage.
-- `--embed-images-base64` is better when you want one portable markdown file.
-
-## Round-trip Audit CLI (`roundtrip_audit.py`)
-
-Audit semantic preservation after one conversion round-trip:
-
-```bash
-uv run roundtrip-audit [input_file] [options]
-```
-
-Examples:
-
-```bash
-uv run roundtrip-audit report.md
-uv run roundtrip-audit report.docx --json
-```
-
-When to use `--strip`?
-
-- When feeding the output to an LLM that doesn't benefit from bold/italic markers
-- When you want cleaner, more compact text
-- For RAG/embedding pipelines where formatting is noise
-
-## Supported Markdown Patterns
-
-- Headings: `#`, `##`, `###`, `####`
-- Numbered heading-like lines (handled in parser/formatter)
-- Paragraphs and list items
-- Tables (generic, financial, risk/sensitivity patterns)
-- Blockquotes for callouts
-- Images:
-  - `![alt](path/to/image.png)`
-  - Base64: `![alt](data:image/png;base64,...)`
-- LaTeX:
-  - Inline: `$E=mc^2$`
-  - Block: `$$\\int_a^b f(x)dx$$`
-
-## Typical Workflow
-
-1. If needed, normalize one-line markdown:
-   `uv run md_formatter.py raw.md`
-2. Convert formatted markdown to Word:
-   `uv run md_to_word.py raw_formatted.md`
-3. Open `.docx` in Word and update TOC field if required.
-
-## Testing and Quality Checks
-
-Run tests:
-
-```bash
-uv run pytest tests/ -v
-```
-
-Run type checking:
-
-```bash
-uv run mypy ib_renderer.py md_formatter.py md_parser.py md_to_word.py
-```
-
-## Notes
-
-- If output file is locked (open in Word), the converter auto-saves with a timestamp suffix.
-- LaTeX rendering is included in the default install via `matplotlib`. If it is unavailable at runtime, equations fall back gracefully.
-- Encoding fallback includes `utf-8`, `utf-8-sig`, `euc-kr`, and `cp949` for Korean text robustness.
-
-## Markdown Paragraph Normalization Policy
-
-Recent parser behavior updates in `md_parser.py`:
-
-- Soft-wrapped paragraph lines are merged into a single paragraph with spaces.
-- Hard line breaks are preserved for explicit markers (`<br>` or trailing `\`).
-- Trailing double-space hard break behavior is now opt-in via `MarkdownParser(preserve_trailing_double_space_break=True)`; default is `False` to avoid accidental `↵` artifacts from copied/OCR text.
-- Paragraph text now normalizes excessive inline spacing (repeated spaces/tabs) and trims unnecessary spaces inside parentheses (for example `( PFV ) -> (PFV)`).
-
-Validation tests were added in `tests/test_md_parser.py` for soft-wrap merge, hard-break policy, opt-in legacy behavior, and spacing normalization.
+- Default `ib-report` and the existing Markdown→Word CLI stay available. Corrected empty cells, number formatting, CLI header/footer composition and disclaimer toggles intentionally change affected output.
+- Removed modules: `word_to_md`, `word_parser`, `md_renderer`, `omml_latex`, `roundtrip_audit`; removed built-ins: `DocxInputConverter`, `MarkdownOutputConverter`; removed command: `roundtrip-audit`.
+- Historical source is recoverable at commit `d819bbb` / local branch `codex/archive-word-to-md-d819bbb`. Use external tools for Word→Markdown; those tools are not dependencies of this engine.
+- Historical plans may discuss bidirectional conversion; this README and the September 2026 implementation plan supersede them.

@@ -1,95 +1,79 @@
 # AGENTS.md - IB Report Formatter
 
-> Bidirectional Markdown ↔ Word Document Converter for IB-Style Reports
+> Markdown → Word engine for IB reports and Korean business documents.
 
-## Quick Reference
+## Product boundary
 
-```bash
-# Markdown → Word conversion
-uv run md_to_word.py input.md [output.docx]
-uv run md_to_word.py --list                    # List available .md files
-uv run md_to_word.py --list -i                 # Interactive file selection
-uv run md_to_word.py input.md --format         # Pre-format single-line markdown
+Word→MD development is deliberately retired by the project owner. Do not restore the inverse CLI/parser/renderer/OMML converter or roundtrip audit as a roadmap item. Use external projects for reverse conversion. Historical source: `d819bbb` / `codex/archive-word-to-md-d819bbb`.
 
-# Word → Markdown conversion (for LLM consumption)
-uv run word_to_md.py input.docx [output.md]
-uv run word_to_md.py --list                    # List available .docx files
-uv run word_to_md.py --list -i                 # Interactive file selection
-uv run word_to_md.py input.docx --strip        # LLM-optimized (no bold/italic)
-uv run word_to_md.py input.docx --no-frontmatter  # Skip YAML metadata header
-uv run word_to_md.py input.docx --extract-images  # Extract images to folder
+Current plan: `docs/implementation-plan-20260914.md`. Verification: `docs/verification-20260914.md`. Older bidirectional plans are historical, not active requirements.
 
-# Pre-format only (Gemini Deep Research clipboard output)
-uv run md_formatter.py input.md [output.md]
-uv run md_formatter.py --check input.md        # Check if formatting needed
+Production-quality follow-up: `docs/improvement-plan-20260915.md` and `docs/verification-20260915.md`.
 
-# Run test suite (267 tests)
-uv run pytest tests/ -v
+## Quick reference
+
+```sh
+uv sync --extra dev
+uv run md-to-word input.md output.docx --strict
+uv run md-to-word input.md output.docx --profile plain
+uv run md-to-word samples/profiles/office-letter.md letter.docx --strict
+uv run md-to-word --list-profiles
+uv run md-to-word samples/profiles --batch
+uv run docx-audit letter.docx
+uv run md_formatter.py input.md output.md
+uv run pytest tests/
+uv build
 ```
 
-## Project Structure
-
-```
-IB_report_formatter/
-├── md_to_word.py      # Main CLI entry point, orchestrates conversion
-├── md_parser.py       # Markdown parsing, frontmatter, elements, LaTeX, Base64 images
-├── md_formatter.py    # Pre-processor for single-line clipboard markdown
-├── ib_renderer.py     # Word document rendering with IB bank styling
-├── word_to_md.py      # Word → Markdown CLI entry point
-├── word_parser.py     # Word document parsing into DocumentModel
-├── md_renderer.py     # DocumentModel → Markdown text rendering
-├── omml_latex.py      # OMML (Word equations) → LaTeX converter
-├── converters.py      # Plugin architecture: BaseConverter, ConverterRegistry
-└── docs/              # Documentation/memory files
-```
+Existing `md_to_word.py` and `ib-report` remain entry points. On Windows, use a fresh absolute pytest basetemp under the actual OS temp directory. Do not delete unrelated/unreadable legacy temp directories in the repository.
 
 ## Architecture
 
-**MD → Word Pipeline:** `Markdown → Parser → DocumentModel → Renderer → Word Document`
+`Markdown → MarkdownParser → DocumentModel → IBDocumentRenderer → DOCX`
 
-**Word → MD Pipeline:** `Word Document → Parser → DocumentModel → Renderer → Markdown`
+| Module | Responsibility |
+|---|---|
+| `document_model.py` | Shared data classes and enums; re-exported by `md_parser` for compatibility |
+| `document_profiles.py` | Six profiles, immutable options, YAML validation, table semantics, themes |
+| `render_styles.py` | Immutable style values and render-scoped ContextVar |
+| `md_parser.py` | Profile-aware Markdown parsing, frontmatter, tables, images, equations |
+| `ib_renderer.py` | One composition path for all callers; reusable element renderers |
+| `office_layout.py` | Letter/report/minutes metadata and native Korean numbering |
+| `docx_audit.py` | Structural diagnostics, not reverse conversion or visual QA |
+| `md_to_word.py` | CLI, file/batch conversion and safe save |
+| `converters.py` | Registry with Markdown input and DOCX output only |
+| `md_formatter.py`, `deep_md_cleaner.py` | Optional input cleanup |
+| `diagram_renderer.py` | Existing diagram rendering |
+| `cli_utils.py`, `stream_utils.py` | Shared I/O helpers |
 
-| Module           | Responsibility                                          |
-|------------------|---------------------------------------------------------|
-| `md_to_word.py`  | CLI, path resolution, MD→Word conversion orchestration  |
-| `md_parser.py`   | Parse frontmatter, headings, tables, LaTeX, images      |
-| `md_formatter.py`| Convert single-line text to structured markdown         |
-| `ib_renderer.py` | Apply IB styling, generate Word via python-docx         |
-| `word_to_md.py`  | CLI, path resolution, Word→MD conversion orchestration  |
-| `word_parser.py` | Parse Word doc properties, paragraphs, tables, images   |
-| `md_renderer.py` | Render DocumentModel to clean Markdown text             |
-| `omml_latex.py`  | Convert Word OMML equations to LaTeX ($, $$)            |
-| `converters.py`  | Plugin architecture: BaseConverter, ConverterRegistry   |
+## Profiles and configuration
 
-### Converter Registry (Plugin Architecture)
+- Profiles: `ib-report` (legacy default), `ib-memo`, `plain`, `office-letter`, `business-report`, `meeting-minutes`.
+- Explicit CLI/API options override YAML, then profile defaults. Pass profile to the parser as well as renderer when overriding.
+- Four general profiles use A4, neutral metadata and native numbered lists with four-space nesting. They must not infer IB financial table semantics or promote short numbered text to headings.
+- Keep styles immutable and scoped. Do not replace a process-global style instance, capture theme-dependent values in default arguments, or cache styles across requests.
+- Use one renderer per concurrent job. CLI/API/registry must share `IBDocumentRenderer.render`; do not reintroduce a second document assembler.
+- Tables use ordered YAML specifications. Never guess a sensitivity table's base case: use explicit one-based body-row/column coordinates.
+- Preserve blank cells, escapes, codes, dates and numeric presentation. Percent/bps/multiple roles do not rescale numeric values.
+- Strict mode rejects known input loss or rendering failures before saving. Diagnostics do not establish visual or financial correctness.
+- Changes to output must have regression tests through actual parsing/rendering and, for layout changes, representative page inspection.
+- Office letters close before the explicitly named unique H1 in `letter.appendix_heading`; no implicit appendix inference or second assembler. Optional `appendix_label` requires that boundary. Preserve native attachment numbers.
+- Inline HTML breaks must reach Word paragraphs, emphasis, headings, lists and cells without changing code/escaped literals or link URLs.
+- Word's nonprinting pagination squares are not list bullets. Do not globally add or remove keep-lines/keep-next; retain necessary heading controls. Audit warnings and visual-review status are distinct from structural issues.
+- Word QA requires a new/empty output directory. Record source/output hashes, actual/expected pages and Word version; `visualReview: pending` is not a visual pass. Inspect every page and record review against the manifest hash.
+- Built distributions explicitly include engine code only; never package private reports, QA artifacts or user files.
 
-Extensible converter system inspired by Microsoft's markitdown. New formats can be added
-by implementing `InputConverter` or `OutputConverter` and registering with the registry.
+## Converter registry
 
 ```python
 from converters import get_default_registry
 
 registry = get_default_registry()
-model = registry.convert("report.md")                              # Any input → DocumentModel
-registry.convert(model, output_format="docx", output_path="out.docx")  # DocumentModel → Any output
-
-# Adding a new format:
-class PdfOutputConverter(OutputConverter):
-    name = "pdf"
-    output_format = "pdf"
-    def convert(self, source, **kwargs): ...
-
-registry.register(PdfOutputConverter())
+model = registry.convert("report.md", profile="business-report")
+saved = registry.convert(model, output_format="docx", output_path="out.docx", strict=True)
 ```
 
-Built-in converters: `MarkdownInputConverter`, `DocxInputConverter`, `DocxOutputConverter`, `MarkdownOutputConverter`.
-Existing CLI entry points and direct API calls continue to work unchanged.
-
-### OMML Equation Support (Word → LaTeX)
-
-`omml_latex.py` converts Word equations (OMML XML) to LaTeX during DOCX parsing.
-Automatically applied when `WordParser.parse()` opens a DOCX file.
-Supports: fractions, sub/superscripts, roots, matrices, integrals, trig functions, Greek letters.
+Only `MarkdownInputConverter` and `DocxOutputConverter` are built in.
 
 ### Markdown Paragraph Normalization (MD -> Word)
 
@@ -106,6 +90,7 @@ Regression coverage is in `tests/test_md_parser.py` (soft wrap merge, hard-break
 
 - **pyyaml** - YAML frontmatter parsing
 - **python-docx** - Word document generation
+- **matplotlib** - Existing math and diagram rendering
 - **charset-normalizer** (optional) - Better encoding detection for Korean text
 
 ---
@@ -216,7 +201,7 @@ Changelog (v3):
 ## Error Handling
 
 ### Element-Level Resilience
-Render continues even if individual elements fail:
+Non-strict rendering continues with diagnostics if an element fails. Strict rendering must reject the output before saving:
 ```python
 for idx, element in enumerate(model.elements):
     try:
@@ -316,7 +301,7 @@ class LogFormatter(logging.Formatter):
 
 ## Adding New Element Types
 
-1. Add to `ElementType` enum in `md_parser.py`
+1. Add to `ElementType` enum in `document_model.py`
 2. Create dataclass for the element data
 3. Add parsing logic in `MarkdownParser._parse_elements()`
 4. Add rendering logic in `ib_renderer.py` (create Renderer class)
@@ -386,7 +371,7 @@ Claude settings are in `.claude/settings.local.json` for allowed permissions.
 ### Tables
 - **Financial tables**: Automatic thousand separator formatting
 - **Negative numbers**: Red color, parentheses support
-- **Sensitivity tables**: Base case highlighting
+- **Sensitivity tables**: Explicit-coordinate base case highlighting only
 - **Risk matrices**: Color-coded risk levels
 
 ### Callout Boxes
@@ -397,5 +382,5 @@ Claude settings are in `.claude/settings.local.json` for allowed permissions.
 
 ### Headers & Footers
 - Company name in header
-- CONFIDENTIAL mark
-- Page numbers (Page X of Y)
+- CONFIDENTIAL mark only when configured (IB defaults)
+- Page numbers (Page X of Y for IB, X / Y for general documents)

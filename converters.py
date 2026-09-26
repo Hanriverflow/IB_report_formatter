@@ -11,11 +11,9 @@ Usage:
 
     # Parse any supported file -> DocumentModel
     model = registry.convert("report.md")
-    model = registry.convert("report.docx")
 
     # Render DocumentModel -> output
     registry.convert(model, output_format="docx", output_path="out.docx")
-    md_text = registry.convert(model, output_format="md")
 
     # Add a new format
     class PdfOutputConverter(OutputConverter):
@@ -28,7 +26,7 @@ Usage:
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import IO, Any, BinaryIO, List, Optional, Union
+from typing import Any, BinaryIO, List, Optional, Union, cast
 
 from md_parser import DocumentModel
 from stream_utils import detect_format, ensure_seekable, is_stream
@@ -48,16 +46,12 @@ class BaseConverter(ABC):
     priority: int = 100  # Lower = tried first
 
     @abstractmethod
-    def accepts(
-        self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any
-    ) -> bool:
+    def accepts(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> bool:
         """Return True if this converter can handle the given source."""
         ...
 
     @abstractmethod
-    def convert(
-        self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any
-    ) -> Any:
+    def convert(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> Any:
         """Execute the conversion."""
         ...
 
@@ -73,20 +67,20 @@ class InputConverter(BaseConverter):
     # Format name for stream detection (e.g. "docx", "md")
     supported_format: str = ""
 
-    def accepts(
-        self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any
-    ) -> bool:
+    def accepts(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> bool:
         if isinstance(source, DocumentModel):
             return False
 
         # Stream path: use hint or detect format
         if is_stream(source):
             hint = kwargs.get("extension_hint")
-            fmt = detect_format(source, hint=hint)
+            fmt = detect_format(cast(BinaryIO, source), hint=hint)
             return fmt == self.supported_format
 
         # File path
-        path = Path(source) if isinstance(source, str) else source
+        if not isinstance(source, (str, Path)):
+            return False
+        path = Path(source)
         return path.suffix.lower() in self.supported_extensions
 
 
@@ -95,13 +89,11 @@ class OutputConverter(BaseConverter):
 
     output_format: str = ""
 
-    def accepts(
-        self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any
-    ) -> bool:
+    def accepts(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> bool:
         if not isinstance(source, DocumentModel):
             return False
         fmt = kwargs.get("output_format", "")
-        return fmt.lower() == self.output_format
+        return isinstance(fmt, str) and fmt.lower() == self.output_format
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -129,23 +121,19 @@ class ConverterRegistry:
                 return converter
         return None
 
-    def convert(
-        self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any
-    ) -> Any:
+    def convert(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> Any:
         """Find a matching converter and execute conversion.
 
-        For BinaryIO streams, pass extension_hint="docx" (or ".docx") to
+        For Markdown BinaryIO streams, pass extension_hint="md" (or ".md") to
         help format detection when the stream lacks a file signature.
         """
         # Ensure stream is seekable before converter lookup (accepts may peek)
         if is_stream(source):
-            source = ensure_seekable(source)
+            source = ensure_seekable(cast(BinaryIO, source))
 
         converter = self.find_converter(source, **kwargs)
         if converter is None:
-            raise ValueError(
-                "No converter found for: {!r} with kwargs={}".format(source, kwargs)
-            )
+            raise ValueError(f"No converter found for: {source!r} with kwargs={kwargs}")
         return converter.convert(source, **kwargs)
 
     @property
@@ -174,37 +162,8 @@ class MarkdownInputConverter(InputConverter):
 
         # parse_markdown_file now accepts both str and BinaryIO
         if is_stream(source):
-            return parse_markdown_file(source)
-        return parse_markdown_file(str(source))
-
-
-class DocxInputConverter(InputConverter):
-    """Parse Word (.docx) files into DocumentModel."""
-
-    name = "docx-input"
-    priority = 100
-    supported_extensions = [".docx"]
-    supported_format = "docx"
-
-    def convert(
-        self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any
-    ) -> DocumentModel:
-        from word_parser import parse_word_file
-
-        # parse_word_file now accepts both str and BinaryIO
-        if is_stream(source):
-            return parse_word_file(
-                source,
-                extract_images=kwargs.get("extract_images", True),
-                image_output_dir=kwargs.get("image_output_dir"),
-                embed_images_base64=kwargs.get("embed_images_base64", False),
-            )
-        return parse_word_file(
-            str(source),
-            extract_images=kwargs.get("extract_images", True),
-            image_output_dir=kwargs.get("image_output_dir"),
-            embed_images_base64=kwargs.get("embed_images_base64", False),
-        )
+            return parse_markdown_file(cast(BinaryIO, source), profile=kwargs.get("profile"))
+        return parse_markdown_file(str(source), profile=kwargs.get("profile"))
 
 
 class DocxOutputConverter(OutputConverter):
@@ -214,42 +173,41 @@ class DocxOutputConverter(OutputConverter):
     priority = 100
     output_format = "docx"
 
-    def convert(self, source: Union[str, Path, DocumentModel], **kwargs: Any) -> Any:
+    def convert(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> Any:
         from ib_renderer import IBDocumentRenderer
 
         assert isinstance(source, DocumentModel)
-        renderer = IBDocumentRenderer()
+        from document_profiles import RenderOptions
+
+        options = kwargs.get("render_options")
+        if options is None:
+            keys = {
+                "include_cover",
+                "include_toc",
+                "include_disclaimer",
+                "separator_mode",
+                "profile",
+                "theme",
+                "strict",
+                "confidential",
+            }
+            options = RenderOptions(**{key: value for key, value in kwargs.items() if key in keys})
+        if not isinstance(options, RenderOptions):
+            raise TypeError("render_options must be RenderOptions")
+        renderer = IBDocumentRenderer(options=options)
         doc = renderer.render(source)
         output_path = kwargs.get("output_path")
         if output_path:
-            doc.save(str(output_path))
-            return str(output_path)
+            from cli_utils import safe_save
+
+            saved = safe_save(
+                Path(output_path),
+                lambda path: doc.save(str(path)),
+                logger,
+                "%s is locked; saving with timestamp suffix",
+            )
+            return str(saved)
         return doc
-
-
-class MarkdownOutputConverter(OutputConverter):
-    """Render DocumentModel to Markdown string/file."""
-
-    name = "markdown-output"
-    priority = 100
-    output_format = "md"
-
-    def convert(self, source: Union[str, Path, DocumentModel], **kwargs: Any) -> Any:
-        from md_renderer import render_to_markdown
-
-        assert isinstance(source, DocumentModel)
-        md_text = render_to_markdown(
-            source,
-            include_frontmatter=kwargs.get("include_frontmatter", True),
-            strip_formatting=kwargs.get("strip_formatting", False),
-            image_path_prefix=kwargs.get("image_path_prefix", ""),
-            embed_images_base64=kwargs.get("embed_images_base64", False),
-        )
-        output_path = kwargs.get("output_path")
-        if output_path:
-            Path(output_path).write_text(md_text, encoding="utf-8")
-            return str(output_path)
-        return md_text
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -271,6 +229,4 @@ def get_default_registry() -> ConverterRegistry:
 def _register_builtin_converters(registry: ConverterRegistry) -> None:
     """Register the built-in converters."""
     registry.register(MarkdownInputConverter())
-    registry.register(DocxInputConverter())
     registry.register(DocxOutputConverter())
-    registry.register(MarkdownOutputConverter())

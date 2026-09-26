@@ -3,15 +3,11 @@ Tests for Step 3: Stream-based processing + MIME detection.
 
 Tests cover:
     - stream_utils: detect_format, ensure_seekable, is_stream
-    - word_parser: parse() / parse_word_file() with BinaryIO
     - md_parser: parse_markdown_file() with BinaryIO
     - converters: InputConverter.accepts() with streams
-    - CLI stdin pipe support
 """
 
 import io
-import subprocess
-import sys
 import zipfile
 from pathlib import Path
 
@@ -23,32 +19,6 @@ PNG_BYTES = (
     b"\xb5\x1c\x0c\x02\x00\x00\x00\x0bIDATx\xdac\xfc\xff\x1f\x00\x03\x03\x02\x00\xee\xd9\xf1"
     b"\xe4\x00\x00\x00\x00IEND\xaeB`\x82"
 )
-
-
-def _inject_custom_properties(docx_bytes: bytes, properties) -> bytes:
-    """Inject docProps/custom.xml into an in-memory DOCX payload."""
-    custom_props_xml = [
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
-        '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" '
-        'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">'
-    ]
-
-    for index, (name, value) in enumerate(properties.items(), start=2):
-        custom_props_xml.append(
-            f'<property fmtid="{{D5CDD505-2E9C-101B-9397-08002B2CF9AE}}" pid="{index}" name="{name}">'
-            f"<vt:lpwstr>{value}</vt:lpwstr>"
-            "</property>"
-        )
-
-    custom_props_xml.append("</Properties>")
-
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(io.BytesIO(docx_bytes), "r") as source_zip:
-        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as target_zip:
-            for info in source_zip.infolist():
-                target_zip.writestr(info, source_zip.read(info.filename))
-            target_zip.writestr("docProps/custom.xml", "".join(custom_props_xml))
-    return buffer.getvalue()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -70,7 +40,7 @@ def sample_docx_bytes():
 @pytest.fixture
 def sample_md_bytes():
     """Create sample Markdown bytes."""
-    return "# 스트림 테스트\n\n본문 텍스트입니다.\n".encode("utf-8")
+    return "# 스트림 테스트\n\n본문 텍스트입니다.\n".encode()
 
 
 @pytest.fixture
@@ -183,10 +153,10 @@ class TestEnsureSeekable:
 
             def read(self, n=-1):
                 if n == -1:
-                    result = self._data[self._pos:]
+                    result = self._data[self._pos :]
                     self._pos = len(self._data)
                 else:
-                    result = self._data[self._pos:self._pos + n]
+                    result = self._data[self._pos : self._pos + n]
                     self._pos += n
                 return result
 
@@ -211,76 +181,7 @@ class TestIsStream:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# word_parser stream tests
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-class TestWordParserStream:
-    """Test that WordParser accepts BinaryIO."""
-
-    def test_parse_from_stream(self, sample_docx_bytes):
-        from word_parser import parse_word_file
-
-        stream = io.BytesIO(sample_docx_bytes)
-        model = parse_word_file(stream, extract_images=False)
-        assert model is not None
-        assert len(model.elements) > 0
-        # Should find our heading or paragraph text
-        texts = [str(e) for e in model.elements]
-        combined = " ".join(texts)
-        assert "Stream Test" in combined or "Hello" in combined
-
-    def test_parse_from_path_still_works(self, sample_docx_path):
-        from word_parser import parse_word_file
-
-        model = parse_word_file(str(sample_docx_path), extract_images=False)
-        assert model is not None
-        assert len(model.elements) > 0
-
-    def test_parse_stream_via_word_parser_class(self, sample_docx_bytes):
-        from word_parser import WordParser
-
-        stream = io.BytesIO(sample_docx_bytes)
-        parser = WordParser(extract_images=False)
-        model = parser.parse(stream)
-        assert len(model.elements) > 0
-
-    def test_parse_stream_extracts_custom_doc_properties(self, sample_docx_bytes):
-        """Custom docProps should survive BinaryIO parsing."""
-        from word_parser import parse_word_file
-
-        payload = _inject_custom_properties(
-            sample_docx_bytes,
-            {"Company": "Stream Corp", "Report Type": "PIPELINE"},
-        )
-        stream = io.BytesIO(payload)
-
-        model = parse_word_file(stream, extract_images=False)
-
-        assert model.metadata.company == "Stream Corp"
-        assert model.metadata.extra["report_type"] == "PIPELINE"
-
-    def test_parse_image_stream_with_base64_embedding(self, tmp_path):
-        """Stream parsing should still populate base64 image data."""
-        from word_parser import parse_word_file
-
-        image_path = tmp_path / "tiny.png"
-        image_path.write_bytes(PNG_BYTES)
-
-        doc = Document()
-        doc.add_picture(str(image_path))
-        buf = io.BytesIO()
-        doc.save(buf)
-        buf.seek(0)
-
-        model = parse_word_file(buf, extract_images=False, embed_images_base64=True)
-
-        image_element = next(element for element in model.elements if element.element_type.name == "IMAGE")
-        assert image_element.content.base64_data is not None
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# md_parser stream tests
+# Markdown stream tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
@@ -319,15 +220,6 @@ class TestMdParserStream:
 class TestConverterRegistryStream:
     """Test ConverterRegistry with BinaryIO streams."""
 
-    def test_registry_convert_docx_stream(self, sample_docx_bytes):
-        from converters import get_default_registry
-
-        registry = get_default_registry()
-        stream = io.BytesIO(sample_docx_bytes)
-        model = registry.convert(stream, extract_images=False)
-        assert model is not None
-        assert len(model.elements) > 0
-
     def test_registry_convert_md_stream(self, sample_md_bytes):
         from converters import get_default_registry
 
@@ -336,14 +228,6 @@ class TestConverterRegistryStream:
         model = registry.convert(stream)
         assert model is not None
         assert len(model.elements) > 0
-
-    def test_registry_with_extension_hint(self, sample_docx_bytes):
-        from converters import get_default_registry
-
-        registry = get_default_registry()
-        stream = io.BytesIO(sample_docx_bytes)
-        model = registry.convert(stream, extension_hint=".docx", extract_images=False)
-        assert model is not None
 
     def test_registry_unknown_stream_raises(self):
         from converters import get_default_registry
@@ -357,41 +241,3 @@ class TestConverterRegistryStream:
 # ═══════════════════════════════════════════════════════════════════════════════
 # CLI pipe tests
 # ═══════════════════════════════════════════════════════════════════════════════
-
-
-class TestCliPipe:
-    """Test word_to_md.py stdin pipe support."""
-
-    def test_pipe_md_to_stdout(self, sample_md_bytes, tmp_path):
-        """Pipe markdown into CLI, expect markdown output on stdout."""
-        result = subprocess.run(
-            [sys.executable, "word_to_md.py", "-", "--no-frontmatter"],
-            input=sample_md_bytes,
-            capture_output=True,
-            cwd=str(Path(__file__).resolve().parent.parent),
-            timeout=30,
-        )
-        assert result.returncode == 0
-        output = result.stdout.decode("utf-8")
-        assert "스트림 테스트" in output or "본문" in output
-
-    def test_pipe_docx_to_file(self, sample_docx_bytes, tmp_path):
-        """Pipe DOCX into CLI, expect output file."""
-        out_file = tmp_path / "piped_output.md"
-        result = subprocess.run(
-            [
-                sys.executable,
-                "word_to_md.py",
-                "-",
-                str(out_file),
-                "--no-frontmatter",
-            ],
-            input=sample_docx_bytes,
-            capture_output=True,
-            cwd=str(Path(__file__).resolve().parent.parent),
-            timeout=30,
-        )
-        assert result.returncode == 0
-        assert out_file.exists()
-        content = out_file.read_text(encoding="utf-8")
-        assert "Stream Test" in content or "Hello" in content

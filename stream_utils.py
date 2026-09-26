@@ -15,6 +15,7 @@ Usage:
 
 import io
 import logging
+import pathlib
 from typing import BinaryIO, Optional, Union
 
 logger = logging.getLogger(__name__)
@@ -113,8 +114,6 @@ def normalize_source(
     - str / Path → str (file path)
     - BinaryIO → BinaryIO (stream)
     """
-    import pathlib
-
     if isinstance(source, pathlib.Path):
         return str(source)
     return source
@@ -122,7 +121,7 @@ def normalize_source(
 
 def is_stream(source: object) -> bool:
     """Check if source is a binary stream (has read method)."""
-    return hasattr(source, "read") and callable(getattr(source, "read"))
+    return hasattr(source, "read") and callable(source.read)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

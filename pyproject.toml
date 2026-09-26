@@ -1,7 +1,7 @@
 [project]
 name = "ib-report-formatter"
-version = "1.0.3"
-description = "Markdown to Professional IB-Style Word Document Converter"
+version = "2.0.0"
+description = "Markdown to Word for IB reports and Korean business documents"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
@@ -45,19 +45,33 @@ dev = [
 
 [project.scripts]
 ib-report = "md_to_word:main"
+md-to-word = "md_to_word:main"
 md-format = "md_formatter:main"
-roundtrip-audit = "roundtrip_audit:main"
-
-[project.urls]
-Homepage = "https://github.com/example/ib-report-formatter"
-Documentation = "https://github.com/example/ib-report-formatter#readme"
+docx-audit = "docx_audit:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["."]
+only-include = [
+    "cli_utils.py", "converters.py", "deep_md_cleaner.py", "diagram_renderer.py",
+    "document_model.py", "document_profiles.py", "docx_audit.py", "ib_renderer.py",
+    "md_formatter.py", "md_parser.py", "md_to_word.py", "office_layout.py",
+    "render_styles.py", "stream_utils.py",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/cli_utils.py", "/converters.py", "/deep_md_cleaner.py", "/diagram_renderer.py",
+    "/document_model.py", "/document_profiles.py", "/docx_audit.py", "/ib_renderer.py",
+    "/md_formatter.py", "/md_parser.py", "/md_to_word.py", "/office_layout.py",
+    "/render_styles.py", "/stream_utils.py", "/pyproject.toml", "/uv.lock",
+    "/README.md", "/README.ko.md", "/CHANGELOG.md", "/AGENTS.md",
+    "/samples/profiles/**", "/samples/qa/**", "/scripts/word_visual_qa.ps1", "/docs/implementation-plan-20260914.md",
+    "/docs/verification-20260914.md",
+    "/docs/improvement-plan-20260915.md", "/docs/verification-20260915.md",
+]
 
 [tool.ruff]
 target-version = "py38"
@@ -85,13 +99,14 @@ known-first-party = [
     "ib_renderer",
     "md_formatter",
     "md_parser",
-    "md_renderer",
+    "document_model",
+    "document_profiles",
+    "docx_audit",
     "md_to_word",
     "converters",
-    "omml_latex",
+    "office_layout",
+    "render_styles",
     "stream_utils",
-    "word_parser",
-    "word_to_md",
 ]
 
 [tool.mypy]

@@ -23,6 +23,8 @@ __pycache__/
 .omc/
 
 # Build and test outputs
+dist/
+.dryforge/qa/
 *.docx
 *_Report_Pro.docx
 out_*.docx
@@ -43,3 +45,9 @@ GPT_deep/
 batch_docx/
 batch_docx_output/
 .gstack/
+
+# Local private reports and scratch data, preserved outside source control
+reports/
+output/
+IB_CPSTB_reader/
+.dryforge/

@@ -14,17 +14,17 @@ def test_resolve_input_path_prefers_nested_cwd_path(tmp_path, monkeypatch):
     nested_dir.mkdir(parents=True)
     script_dir.mkdir(parents=True)
 
-    wrong_file = project_parent / "report.docx"
-    right_file = nested_dir / "report.docx"
+    wrong_file = project_parent / "report.md"
+    right_file = nested_dir / "report.md"
     wrong_file.write_text("wrong", encoding="utf-8")
     right_file.write_text("right", encoding="utf-8")
 
     monkeypatch.chdir(cwd)
 
     resolved = resolve_input_path(
-        "reports/q1/report.docx",
+        "reports/q1/report.md",
         parent_dir=project_parent,
-        script_path=script_dir / "word_to_md.py",
+        script_path=script_dir / "md_to_word.py",
     )
 
     assert resolved == right_file

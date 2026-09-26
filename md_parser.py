@@ -28,288 +28,90 @@ Dependencies:
 
 import logging
 import re
-from dataclasses import dataclass, field
-from enum import Enum, auto
-from typing import Dict, List, Optional, Tuple, Union
+from pathlib import Path
+from typing import BinaryIO, Dict, List, Optional, Set, Tuple, Union, cast
 
 import yaml
 
-logger = logging.getLogger(__name__)
-
+from document_model import (
+    Blockquote as Blockquote,
+)
+from document_model import (
+    BulletList as BulletList,
+)
+from document_model import (
+    CodeBlock as CodeBlock,
+)
+from document_model import (
+    Diagram as Diagram,
+)
+from document_model import (
+    DiagramArrow as DiagramArrow,
+)
+from document_model import (
+    DiagramBox as DiagramBox,
+)
+from document_model import (
+    DocumentMetadata as DocumentMetadata,
+)
+from document_model import (
+    DocumentModel as DocumentModel,
+)
+from document_model import (
+    Element as Element,
+)
+from document_model import (
+    ElementContent as ElementContent,
+)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ENUMS
 # ═══════════════════════════════════════════════════════════════════════════════
-
-
-class ElementType(Enum):
-    """Types of markdown elements"""
-
-    HEADING_1 = auto()
-    HEADING_2 = auto()
-    HEADING_3 = auto()
-    HEADING_4 = auto()
-    NUMBERED_HEADING = auto()  # **1. 제목** format
-    PARAGRAPH = auto()
-    BULLET_LIST = auto()
-    NUMBERED_LIST = auto()
-    TABLE = auto()
-    BLOCKQUOTE = auto()
-    IMAGE = auto()
-    SEPARATOR = auto()
-    EMPTY = auto()
-    CODE_BLOCK = auto()
-    # ── NEW (v3) ────────────────────────────────────────────────────────────
-    LATEX_BLOCK = auto()  # $$ ... $$ (display math)
-    LATEX_INLINE = auto()  # standalone inline math rendered as paragraph
-    # ── NEW (v5) ────────────────────────────────────────────────────────────
-    DIAGRAM = auto()  # ```diagram:type ... ``` code block
-
-
-class TableType(Enum):
-    """Types of tables for specialized rendering"""
-
-    GENERIC = auto()
-    FINANCIAL = auto()
-    BEP_SENSITIVITY = auto()
-    RISK_MATRIX = auto()
-    UPSIDE_DOWNSIDE = auto()
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# DATA MODELS
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-@dataclass
-class TextRun:
-    """A run of text with formatting"""
-
-    text: str
-    bold: bool = False
-    italic: bool = False
-    superscript: bool = False
-    subscript: bool = False
-    color_hex: Optional[str] = None
-    is_latex: bool = False  # NEW (v3): marks this run as inline LaTeX
-
-
-@dataclass
-class LaTeXEquation:
-    """A LaTeX equation element (NEW v3)"""
-
-    expression: str
-    is_block: bool = True  # True = display ($$), False = inline ($)
-
-
-@dataclass
-class CodeBlock:
-    """A fenced code block element."""
-
-    code: str
-    language: str = ""
-    is_ascii_art: bool = False
-
-    _BOX_CHARS = set("┌┐└┘│─├┤┬┴┼╔╗╚╝║═╠╣╦╩╬→←↑↓▶◀▲▼►◄─━")
-
-    @staticmethod
-    def detect_ascii_art(text: str, threshold: int = 20) -> bool:
-        """Return True if text contains enough box-drawing characters."""
-        count = sum(1 for ch in text if ch in CodeBlock._BOX_CHARS)
-        return count >= threshold
-
-
-@dataclass
-class DiagramBox:
-    """A box in a flow diagram."""
-
-    id: str
-    label: str
-    pos: List[float] = field(default_factory=lambda: [0, 0])
-    style: str = "default"
-
-
-@dataclass
-class DiagramArrow:
-    """An arrow connecting two boxes in a flow diagram."""
-
-    from_id: str
-    to_id: str
-    label: str = ""
-    style: str = "solid"
-
-
-@dataclass
-class Diagram:
-    """A flow diagram element parsed from ```diagram:flow code blocks."""
-
-    diagram_type: str = "flow"
-    title: str = ""
-    boxes: List[DiagramBox] = field(default_factory=list)
-    arrows: List[DiagramArrow] = field(default_factory=list)
-    notes: List[str] = field(default_factory=list)
-
-
-@dataclass
-class TableCell:
-    """A cell in a table"""
-
-    content: str
-    runs: List[TextRun] = field(default_factory=list)
-    alignment: str = "left"  # left, center, right
-    is_header: bool = False
-    is_numeric: bool = False
-    is_negative: bool = False
-    is_base_case: bool = False
-    risk_level: Optional[str] = None  # high, medium, low
-
-
-@dataclass
-class TableRow:
-    """A row in a table"""
-
-    cells: List[TableCell] = field(default_factory=list)
-    is_header: bool = False
-
-
-@dataclass
-class Table:
-    """A parsed table"""
-
-    rows: List[TableRow] = field(default_factory=list)
-    table_type: TableType = TableType.GENERIC
-    col_count: int = 0
-    alignments: List[str] = field(default_factory=list)
-
-
-@dataclass
-class Heading:
-    """A heading element"""
-
-    level: int
-    text: str
-    is_numbered: bool = False
-
-
-@dataclass
-class Paragraph:
-    """A paragraph element"""
-
-    text: str
-    runs: List[TextRun] = field(default_factory=list)
-    has_inline_latex: bool = False  # NEW (v3)
-
-
-@dataclass
-class ListItem:
-    """A list item"""
-
-    text: str
-    runs: List[TextRun] = field(default_factory=list)
-    indent_level: int = 0
-
-
-@dataclass
-class BulletList:
-    """A bullet list"""
-
-    items: List[ListItem] = field(default_factory=list)
-
-
-@dataclass
-class NumberedList:
-    """A numbered list"""
-
-    items: List[ListItem] = field(default_factory=list)
-
-
-@dataclass
-class Blockquote:
-    """A blockquote (callout)"""
-
-    text: str
-    title: str = "KEY INSIGHT"
-
-
-@dataclass
-class Image:
-    """An image reference — supports file paths and Base64 (v3)"""
-
-    alt_text: str
-    path: str
-    base64_data: Optional[str] = None  # NEW (v3): Base64-encoded image data
-    mime_type: str = "image/png"  # NEW (v3): MIME type for Base64
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Union type for Element.content
-# ─────────────────────────────────────────────────────────────────────────────
-ElementContent = Union[
-    Heading,
-    Paragraph,
-    Table,
-    ListItem,
-    Tuple[str, ListItem],  # numbered list: (number, ListItem)
-    Blockquote,
-    Image,
-    CodeBlock,
-    LaTeXEquation,  # NEW (v3)
-    "Diagram",  # NEW (v5)
-    None,
-]
-
-
-@dataclass
-class Element:
-    """A generic document element"""
-
-    element_type: ElementType
-    content: ElementContent
-    raw_text: str = ""
-
-
-@dataclass
-class Section:
-    """A document section"""
-
-    heading: Optional[Heading] = None
-    elements: List[Element] = field(default_factory=list)
-
-
-@dataclass
-class Footnote:
-    """A footnote reference"""
-
-    number: int
-    text: str
-
-
-@dataclass
-class DocumentMetadata:
-    """Document metadata from frontmatter"""
-
-    title: str = "IB Report"
-    subtitle: str = ""
-    company: str = "Korea Development Bank"
-    ticker: str = ""
-    sector: str = "SECTOR"
-    analyst: str = "DCM Team 1"
-    extra: Dict[str, str] = field(default_factory=dict)
-
-
-@dataclass
-class DocumentModel:
-    """The complete parsed document"""
-
-    metadata: DocumentMetadata = field(default_factory=DocumentMetadata)
-    sections: List[Section] = field(default_factory=list)
-    elements: List[Element] = field(default_factory=list)
-    footnotes: Dict[int, str] = field(default_factory=dict)
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PARSERS
-# ═══════════════════════════════════════════════════════════════════════════════
+from document_model import (
+    ElementType as ElementType,
+)
+from document_model import (
+    Footnote as Footnote,
+)
+from document_model import (
+    Heading as Heading,
+)
+from document_model import (
+    Image as Image,
+)
+from document_model import (
+    LaTeXEquation as LaTeXEquation,
+)
+from document_model import (
+    ListItem as ListItem,
+)
+from document_model import (
+    NumberedList as NumberedList,
+)
+from document_model import (
+    Paragraph as Paragraph,
+)
+from document_model import (
+    Section as Section,
+)
+from document_model import (
+    Table as Table,
+)
+from document_model import (
+    TableCell as TableCell,
+)
+from document_model import (
+    TableRow as TableRow,
+)
+from document_model import (
+    TableType as TableType,
+)
+from document_model import (
+    TextRun as TextRun,
+)
+from document_profiles import apply_table_specs, default_metadata, get_profile
+
+logger = logging.getLogger(__name__)
 
 
 class FrontmatterParser:
@@ -320,7 +122,9 @@ class FrontmatterParser:
     _SIMPLE_KEY_VALUE_RE = re.compile(r"^[A-Za-z0-9_.-]+\s*:\s*.*$")
 
     @staticmethod
-    def parse(lines: List[str]) -> Tuple[DocumentMetadata, List[str]]:
+    def parse(
+        lines: List[str], profile: Optional[str] = None
+    ) -> Tuple[DocumentMetadata, List[str]]:
         """
         Parse YAML frontmatter and return metadata + remaining lines.
 
@@ -330,7 +134,7 @@ class FrontmatterParser:
         Returns:
             Tuple of (DocumentMetadata, remaining_lines)
         """
-        metadata = DocumentMetadata()
+        metadata = default_metadata(profile or "ib-report")
 
         if not lines or lines[0].strip() != "---":
             return metadata, lines
@@ -348,7 +152,8 @@ class FrontmatterParser:
         if content_start_idx == 0:
             return metadata, lines
 
-        if not FrontmatterParser._is_valid_frontmatter(frontmatter_lines):
+        declared = any(re.match(r"^(profile|layout|tables|sender):", line, re.IGNORECASE) for line in frontmatter_lines)
+        if not declared and not FrontmatterParser._is_valid_frontmatter(frontmatter_lines):
             logger.debug("Frontmatter markers found, but content is not YAML frontmatter")
             return metadata, lines
 
@@ -356,7 +161,9 @@ class FrontmatterParser:
         yaml_content = "\n".join(frontmatter_lines)
         try:
             parsed_data = yaml.safe_load(yaml_content) or {}
-        except yaml.YAMLError:
+        except yaml.YAMLError as exc:
+            if declared:
+                raise ValueError(f"Invalid YAML frontmatter: {exc}") from exc
             # Fallback to simple key: value parsing only for simple YAML-like blocks
             if not FrontmatterParser._is_simple_key_value_block(frontmatter_lines):
                 logger.debug(
@@ -377,6 +184,8 @@ class FrontmatterParser:
             str(key).strip().lower(): value for key, value in parsed_data.items() if key is not None
         }
 
+        metadata = default_metadata(profile or str(data.get("profile", "ib-report")))
+
         # Map to metadata fields
         metadata.title = str(data.get("title", metadata.title))
         metadata.subtitle = str(data.get("subtitle", metadata.subtitle))
@@ -386,8 +195,11 @@ class FrontmatterParser:
         metadata.analyst = str(data.get("analyst", metadata.analyst))
 
         # Store extra fields
-        known_keys = {"title", "subtitle", "company", "ticker", "sector", "analyst"}
-        metadata.extra = {k: str(v) for k, v in data.items() if k not in known_keys}
+        known_keys = {"title", "subtitle", "company", "ticker", "sector", "analyst", "profile"}
+        structured = {"layout", "tables", "sender", "recipients", "cc", "attachments", "attendees", "letter"}
+        metadata.extra = {
+            k: v if k in structured else str(v) for k, v in data.items() if k not in known_keys
+        }
 
         return metadata, lines[content_start_idx:]
 
@@ -473,6 +285,9 @@ class TextParser:
 
     # Compiled once — used by cleanup_text
     _ESCAPE_RE = re.compile(r'\\([~.*"\'()\[\]{}|_-])')
+    _HTML_BREAK_RE = re.compile(r"(?<!\\)<br\s*/?>", re.IGNORECASE)
+    _ESCAPED_HTML_BREAK_RE = re.compile(r"\\(<br\s*/?>)", re.IGNORECASE)
+    _CODE_SPAN_RE = re.compile(r"(`+)(.+?)\1", re.DOTALL)
 
     # Inline formatting patterns
     _SUBSCRIPT_PATTERN = r"(?<!~)~[A-Za-z0-9]{1,8}~(?!~)"
@@ -497,6 +312,7 @@ class TextParser:
         Handles **bold**, inline $LaTeX$, and combinations.
         """
         runs: List[TextRun] = []
+        text, code_spans = cls._protect_code_spans(text)
 
         # Normalize escaped asterisks to regular bold markers
         normalized_text = text.replace(r"\*\*", "**")
@@ -519,9 +335,11 @@ class TextParser:
                         )
                     )
                 else:
-                    runs.extend(cls._apply_color(cls._parse_inline_formatting(inline_text), color_hex))
+                    runs.extend(
+                        cls._apply_color(cls._parse_inline_formatting(inline_text), color_hex)
+                    )
 
-        return runs
+        return cls._restore_code_spans(runs, code_spans)
 
     @classmethod
     def _split_on_inline_latex(cls, text: str) -> List[Tuple[str, bool]]:
@@ -562,10 +380,36 @@ class TextParser:
         Used for contexts where $ should not be interpreted as LaTeX
         (e.g., table cells with currency values).
         """
+        text, code_spans = cls._protect_code_spans(text)
         normalized = text.replace(r"\*\*", "**")
         runs: List[TextRun] = []
         for segment_text, color_hex in cls._split_on_color_spans(normalized):
             runs.extend(cls._apply_color(cls._parse_inline_formatting(segment_text), color_hex))
+        return cls._restore_code_spans(runs, code_spans)
+
+    @classmethod
+    def _protect_code_spans(cls, text: str) -> Tuple[str, Dict[str, str]]:
+        """Shield literals before emphasis, HTML, links and math tokenize them."""
+        literals: Dict[str, str] = {}
+        prefix = "\ue000CODE"
+        while prefix in text:
+            prefix += "X"
+
+        def replace(match):
+            token = prefix + str(len(literals)) + "\ue001"
+            literals[token] = match.group(0)
+            return token
+
+        return cls._CODE_SPAN_RE.sub(replace, text), literals
+
+    @staticmethod
+    def _restore_code_spans(runs: List[TextRun], literals: Dict[str, str]) -> List[TextRun]:
+        """Restore original text without manufacturing code-font semantics."""
+        for run in runs:
+            for token, literal in literals.items():
+                run.text = run.text.replace(token, literal)
+                if run.hyperlink:
+                    run.hyperlink = run.hyperlink.replace(token, literal)
         return runs
 
     @classmethod
@@ -612,8 +456,30 @@ class TextParser:
             run.color_hex = color_hex
         return runs
 
+    _INLINE_REFERENCE_RE = re.compile(
+        r"(?<!!)\[([^\]\n]+)\]\((https?://[^\s)]+|mailto:[^\s)]+)\)|\[\^(\d+)\]"
+    )
+
     @classmethod
     def _parse_inline_formatting(cls, text: str) -> List[TextRun]:
+        """Parse links and numeric footnote references alongside inline emphasis."""
+        runs: List[TextRun] = []
+        offset = 0
+        for match in cls._INLINE_REFERENCE_RE.finditer(text):
+            runs.extend(cls._parse_plain_formatting(text[offset : match.start()]))
+            if match.group(3):
+                runs.append(TextRun(text=match.group(3), superscript=True, footnote_id=int(match.group(3))))
+            else:
+                labels = cls._parse_plain_formatting(match.group(1))
+                for run in labels:
+                    run.hyperlink = match.group(2)
+                runs.extend(labels)
+            offset = match.end()
+        runs.extend(cls._parse_plain_formatting(text[offset:]))
+        return runs
+
+    @classmethod
+    def _parse_plain_formatting(cls, text: str) -> List[TextRun]:
         """Parse bold, italic, superscript, and subscript runs from plain text."""
         runs: List[TextRun] = []
         parts = cls._INLINE_FORMAT_SPLIT_RE.split(text)
@@ -666,12 +532,30 @@ class TextParser:
     @staticmethod
     def cleanup_text(text: str) -> str:
         """Remove markdown artifacts and escape characters (single-pass regex)"""
-        return TextParser._ESCAPE_RE.sub(r"\1", text).strip()
+        return TextParser.normalize_html_breaks(TextParser._ESCAPE_RE.sub(r"\1", text).strip())
 
     @staticmethod
     def cleanup_text_preserve_spacing(text: str) -> str:
         """Remove markdown escape characters while preserving surrounding spacing."""
-        return TextParser._ESCAPE_RE.sub(r"\1", text)
+        return TextParser.normalize_html_breaks(TextParser._ESCAPE_RE.sub(r"\1", text))
+
+    @classmethod
+    def normalize_html_breaks(cls, text: str) -> str:
+        """Convert explicit HTML breaks, preserving literal code and escaped tags.
+
+        Run after emphasis/link tokenization so breaks inside bold text retain
+        their formatting and link destinations are never rewritten.
+        """
+        pieces: List[str] = []
+        offset = 0
+        for match in cls._CODE_SPAN_RE.finditer(text):
+            part = cls._HTML_BREAK_RE.sub("\n", text[offset:match.start()])
+            pieces.append(cls._ESCAPED_HTML_BREAK_RE.sub(r"\1", part))
+            pieces.append(match.group(0))
+            offset = match.end()
+        part = cls._HTML_BREAK_RE.sub("\n", text[offset:])
+        pieces.append(cls._ESCAPED_HTML_BREAK_RE.sub(r"\1", part))
+        return "".join(pieces)
 
 
 class FootnoteParser:
@@ -711,7 +595,8 @@ class FootnoteParser:
             line_lower = stripped.lower()
 
             # Detect references section start
-            if any(kw in line_lower for kw in FootnoteParser.REFERENCE_KEYWORDS):
+            reference_label = re.sub(r"^#{1,6}\s+", "", line_lower).strip("* :：")
+            if reference_label in FootnoteParser.REFERENCE_KEYWORDS:
                 in_references = True
                 continue
 
@@ -808,7 +693,7 @@ class TableParser:
     ]
 
     @staticmethod
-    def parse(lines: List[str]) -> Table:
+    def parse(lines: List[str], financial_rules: bool = True) -> Table:
         """
         Parse markdown table lines into a Table object.
 
@@ -819,7 +704,9 @@ class TableParser:
 
         # Filter out separator lines (|---|---|)
         data_lines = [
-            line for line in lines if not set(line.strip()).issubset({"|", "-", " ", ":"})
+            line
+            for line in lines
+            if not ("-" in line and set(line.strip()).issubset({"|", "-", " ", ":"}))
         ]
 
         if not data_lines:
@@ -837,7 +724,9 @@ class TableParser:
 
         # Detect table type
         header_text = " ".join(first_row_cells).lower()
-        table.table_type = TableParser._detect_type(header_text)
+        table.table_type = (
+            TableParser._detect_type(header_text) if financial_rules else TableType.GENERIC
+        )
 
         # Parse all rows — normalise column count per row
         for i, line in enumerate(data_lines):
@@ -857,6 +746,7 @@ class TableParser:
                     table.col_count,
                     cells[table.col_count :],
                 )
+                table.warnings.append(f"Table row {i} has extra cells; content was dropped")
                 cells = cells[: table.col_count]
 
             row = TableRow(is_header=is_header)
@@ -880,7 +770,30 @@ class TableParser:
     @staticmethod
     def _split_row(line: str) -> List[str]:
         """Split a table row into cell contents"""
-        return [c.strip() for c in line.split("|") if c.strip()]
+        text = line.strip()
+        cells: List[str] = []
+        current: List[str] = []
+        index = 0
+        while index < len(text):
+            char = text[index]
+            if char == "\\" and index + 1 < len(text) and text[index + 1] in {"|", "\\"}:
+                current.append(text[index + 1])
+                index += 2
+                continue
+            if char == "|":
+                cells.append("".join(current).strip())
+                current = []
+            else:
+                current.append(char)
+            index += 1
+        cells.append("".join(current).strip())
+        if text.startswith("|"):
+            cells = cells[1:]
+        if text.endswith("|") and cells and cells[-1] == "":
+            backslashes = len(text[:-1]) - len(text[:-1].rstrip("\\"))
+            if backslashes % 2 == 0:
+                cells = cells[:-1]
+        return cells
 
     @staticmethod
     def _parse_alignments(lines: List[str]) -> List[str]:
@@ -944,21 +857,15 @@ class TableParser:
         cell.is_numeric = any(char.isdigit() for char in text) and col_idx > 0
 
         # Detect negative numbers
+        visible_text = "".join(run.text for run in cell.runs)
         cell.is_negative = (
-            text.startswith("(") and text.endswith(")") and any(c.isdigit() for c in text)
-        ) or (text.startswith("-") and any(c.isdigit() for c in text))
+            visible_text.startswith("(")
+            and visible_text.endswith(")")
+            and any(c.isdigit() for c in visible_text)
+        ) or (visible_text.startswith("-") and any(c.isdigit() for c in visible_text))
 
         # Table-type specific detection
-        if table_type == TableType.BEP_SENSITIVITY:
-            cell.is_base_case = (
-                "base" in text.lower()
-                or "기준" in text
-                or (
-                    row_idx == total_rows // 2 and col_idx == len(header_cells) // 2 and row_idx > 0
-                )
-            )
-
-        elif table_type == TableType.RISK_MATRIX:
+        if table_type == TableType.RISK_MATRIX:
             header_lower = header_cells[col_idx].lower() if col_idx < len(header_cells) else ""
             risk_header_kw = ("impact", "probability", "영향", "확률")
             if any(kw in header_lower for kw in risk_header_kw):
@@ -1207,7 +1114,7 @@ class MarkdownParser:
         ]
     )
 
-    _HTML_BREAK_RE = re.compile(r"<br\s*/?>\s*$", re.IGNORECASE)
+    _HTML_BREAK_RE = re.compile(r"(?<!\\)<br\s*/?>\s*$", re.IGNORECASE)
     _HTML_ANCHOR_RE = re.compile(
         r"<a\b[^>]*\bid\s*=\s*(['\"]).*?\1[^>]*>\s*</a>",
         re.IGNORECASE,
@@ -1216,7 +1123,11 @@ class MarkdownParser:
     _OPEN_PAREN_SPACE_RE = re.compile(r"\(\s+")
     _CLOSE_PAREN_SPACE_RE = re.compile(r"\s+\)")
 
-    def __init__(self, preserve_trailing_double_space_break: bool = False):
+    _EXT_FOOTNOTE_DEF_RE = re.compile(r"^\[\^(\d+)\]:\s*(.+)$")
+
+    def __init__(
+        self, preserve_trailing_double_space_break: bool = False, profile: Optional[str] = None
+    ):
         """
         Initialize parser behavior flags.
 
@@ -1226,6 +1137,8 @@ class MarkdownParser:
                 Default False to avoid accidental Shift+Enter artifacts from noisy input.
         """
         self.preserve_trailing_double_space_break = preserve_trailing_double_space_break
+        self.profile = profile
+        self._financial_rules = True
 
     def parse(self, content: str) -> DocumentModel:
         """
@@ -1240,26 +1153,70 @@ class MarkdownParser:
         lines = content.split("\n")
 
         # Parse frontmatter
-        metadata, remaining_lines = FrontmatterParser.parse(lines)
+        metadata, remaining_lines = FrontmatterParser.parse(lines, self.profile)
+        self._financial_rules = get_profile(metadata.profile).is_ib
 
         # Detect whether YAML frontmatter was present
         has_frontmatter = len(remaining_lines) < len(lines)
 
         # Extract footnotes/references
-        footnotes = FootnoteParser.extract_references(remaining_lines)
+        footnotes = (
+            FootnoteParser.extract_references(remaining_lines) if self._financial_rules else {}
+        )
+        input_warnings: List[str] = []
+        explicit_references: Set[int] = set()
+        content_lines: List[str] = []
+        in_fence = False
+        for raw_line in remaining_lines:
+            if self.CODE_FENCE_PATTERN.match(raw_line.strip()):
+                in_fence = not in_fence
+            match = self._EXT_FOOTNOTE_DEF_RE.match(raw_line.strip()) if not in_fence else None
+            if match:
+                number = int(match.group(1))
+                if number <= 0:
+                    raise ValueError("Footnote IDs must be positive integers")
+                if number in footnotes:
+                    input_warnings.append(f"Duplicate footnote definition: {number}")
+                footnotes[number] = match.group(2)
+            else:
+                if not in_fence:
+                    explicit_references.update(int(n) for n in re.findall(r"\[\^(\d+)\]", raw_line))
+                content_lines.append(raw_line)
+        remaining_lines = content_lines
 
         # Parse elements
         elements = self._parse_elements(remaining_lines)
 
         # If no YAML frontmatter, extract metadata from document header
-        if not has_frontmatter:
+        if not has_frontmatter and self._financial_rules:
             elements = self._extract_header_metadata(metadata, elements)
 
-        return DocumentModel(
-            metadata=metadata,
-            elements=elements,
-            footnotes=footnotes,
+        input_warnings.extend(
+            f"Undefined footnote: {number}"
+            for number in sorted(explicit_references - set(footnotes))
         )
+        model = DocumentModel(
+            metadata=metadata, elements=elements, footnotes=footnotes, warnings=input_warnings
+        )
+        if not self._financial_rules:
+            first_heading = next(
+                (
+                    e.content.text
+                    for e in elements
+                    if e.element_type == ElementType.HEADING_1 and isinstance(e.content, Heading)
+                ),
+                "",
+            )
+            if metadata.title in {"", "Document", "IB Report"} and first_heading:
+                metadata.title = first_heading
+        apply_table_specs(model)
+        model.warnings.extend(
+            warning
+            for element in elements
+            if element.element_type == ElementType.TABLE and isinstance(element.content, Table)
+            for warning in element.content.warnings
+        )
+        return model
 
     # ── Element-level parsing ───────────────────────────────────────────────
 
@@ -1274,7 +1231,7 @@ class MarkdownParser:
             line = self._strip_html_anchors(raw_line.strip()).strip()
 
             # ── References section gating ───────────────────────────────────
-            if self._is_reference_header(line):
+            if self._financial_rules and self._is_reference_header(line):
                 in_references = True
                 i += 1
                 continue
@@ -1411,7 +1368,7 @@ class MarkdownParser:
                 while i < len(lines) and lines[i].strip().startswith("|"):
                     table_lines.append(lines[i].strip())
                     i += 1
-                table = TableParser.parse(table_lines)
+                table = TableParser.parse(table_lines, financial_rules=self._financial_rules)
                 elements.append(
                     Element(
                         element_type=ElementType.TABLE,
@@ -1610,13 +1567,12 @@ class MarkdownParser:
             return text
         return cls._HTML_ANCHOR_RE.sub("", text)
 
-    @staticmethod
-    def _get_indent_level(prefix: str) -> int:
+    def _get_indent_level(self, prefix: str) -> int:
         """Convert leading markdown indentation to a list nesting level."""
         expanded = prefix.replace("\t", "    ")
         if not expanded:
             return 0
-        return max(0, len(expanded) // 2)
+        return max(0, len(expanded) // (2 if self._financial_rules else 4))
 
     # ── Paragraph parsing (ENHANCED v3) ─────────────────────────────────────
 
@@ -1648,7 +1604,7 @@ class MarkdownParser:
         """Try to parse line as a heading"""
 
         # Numbered heading (**1. Title**)
-        if self.NUMBERED_HEADING_PATTERN.match(line):
+        if self._financial_rules and self.NUMBERED_HEADING_PATTERN.match(line):
             text = TextParser.cleanup_text(line)
             return Element(
                 element_type=ElementType.NUMBERED_HEADING,
@@ -1709,6 +1665,8 @@ class MarkdownParser:
             - Does NOT contain sentence-ending punctuation mid-line
             - Number ≤ 20 (unlikely section numbers above this)
         """
+        if not self._financial_rules:
+            return False
         match = self._NUMBERED_HEADING_HEURISTIC.match(line.strip())
         if not match:
             return False
@@ -1786,13 +1744,22 @@ class MarkdownParser:
                 ElementType.PARAGRAPH,
             ):
                 # First H1 → title
-                if not title_found and elem.element_type == ElementType.HEADING_1:
+                if (
+                    not title_found
+                    and elem.element_type == ElementType.HEADING_1
+                    and isinstance(elem.content, Heading)
+                ):
                     metadata.title = elem.content.text
                     title_found = True
                     continue
 
                 # First H2 after H1 → subtitle
-                if title_found and not subtitle_found and elem.element_type == ElementType.HEADING_2:
+                if (
+                    title_found
+                    and not subtitle_found
+                    and elem.element_type == ElementType.HEADING_2
+                    and isinstance(elem.content, Heading)
+                ):
                     metadata.subtitle = elem.content.text
                     subtitle_found = True
                     continue
@@ -1831,7 +1798,7 @@ class MarkdownParser:
         """Check if line is a references section header"""
         stripped = line.strip().lower()
         cleaned = re.sub(r"^#{1,4}\s+", "", stripped)
-        return any(kw in cleaned for kw in self._REFERENCE_KEYWORDS)
+        return cleaned.strip("* :：") in self._REFERENCE_KEYWORDS
 
     # ── Blockquote helpers ──────────────────────────────────────────────────
 
@@ -1872,63 +1839,8 @@ class MarkdownParser:
 
 
 def _read_with_encoding(file_path: str) -> str:
-    """
-    Read file content with intelligent encoding detection.
-
-    Strategy:
-        1. charset_normalizer (if available) — statistical detection
-        2. BOM detection — UTF-8 BOM
-        3. Sequential fallback — UTF-8 → EUC-KR → CP949
-
-    Args:
-        file_path: Path to file
-
-    Returns:
-        File content as string
-
-    Raises:
-        UnicodeDecodeError: If all detection methods fail
-    """
-    from pathlib import Path
-
-    raw_bytes = Path(file_path).read_bytes()
-
-    # Strategy 1: charset_normalizer (optional dependency)
-    try:
-        from charset_normalizer import from_bytes  # pyright: ignore[reportMissingImports]
-
-        result = from_bytes(raw_bytes).best()
-        if result and result.encoding:
-            logger.debug(
-                "Encoding detected by charset_normalizer: %s (confidence: %.1f%%)",
-                result.encoding,
-                result.encoding if hasattr(result, "encoding") else 0,
-            )
-            return str(result)
-    except ImportError:
-        pass
-    except Exception as e:
-        logger.debug("charset_normalizer failed: %s — falling back", e)
-
-    # Strategy 2: BOM detection
-    if raw_bytes.startswith(b"\xef\xbb\xbf"):
-        return raw_bytes.decode("utf-8-sig")
-
-    # Strategy 3: Sequential fallback
-    encodings = ["utf-8", "euc-kr", "cp949"]
-    for enc in encodings:
-        try:
-            return raw_bytes.decode(enc)
-        except (UnicodeDecodeError, UnicodeError):
-            continue
-
-    raise UnicodeDecodeError(
-        "multiple",
-        b"",
-        0,
-        1,
-        f"Failed to decode {file_path} with encodings: {encodings}",
-    )
+    """Read a file without statistically misdetecting valid UTF-8 Korean text."""
+    return _decode_bytes(Path(file_path).read_bytes(), label=file_path)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1937,41 +1849,29 @@ def _read_with_encoding(file_path: str) -> str:
 
 
 def _decode_bytes(raw_bytes: bytes, label: str = "<stream>") -> str:
-    """Decode raw bytes with intelligent encoding detection.
-
-    Same strategy as _read_with_encoding but works on bytes directly.
-    """
-    # charset_normalizer (optional)
+    """Prefer deterministic UTF-8/Korean decoding, then optional detection."""
+    for encoding in ("utf-8-sig", "euc-kr", "cp949"):
+        try:
+            return raw_bytes.decode(encoding)
+        except UnicodeDecodeError:
+            continue
     try:
-        from charset_normalizer import from_bytes  # pyright: ignore[reportMissingImports]
+        from charset_normalizer import from_bytes
 
         result = from_bytes(raw_bytes).best()
         if result and result.encoding:
+            logger.debug("Encoding detected by charset_normalizer: %s", result.encoding)
             return str(result)
     except ImportError:
         pass
-    except Exception:
-        pass
-
-    # BOM detection
-    if raw_bytes.startswith(b"\xef\xbb\xbf"):
-        return raw_bytes.decode("utf-8-sig")
-
-    # Sequential fallback
-    encodings = ["utf-8", "euc-kr", "cp949"]
-    for enc in encodings:
-        try:
-            return raw_bytes.decode(enc)
-        except (UnicodeDecodeError, UnicodeError):
-            continue
-
-    raise UnicodeDecodeError(
-        "multiple", b"", 0, 1,
-        f"Failed to decode {label} with encodings: {encodings}",
-    )
+    except Exception as exc:
+        logger.debug("Encoding detector failed: %s", exc)
+    raise UnicodeDecodeError("multiple", raw_bytes, 0, min(1, len(raw_bytes)), f"Failed to decode {label}")
 
 
-def parse_markdown_file(source: "Union[str, BinaryIO]") -> DocumentModel:
+def parse_markdown_file(
+    source: "Union[str, BinaryIO]", profile: Optional[str] = None
+) -> DocumentModel:
     """
     Parse a markdown file or stream into a DocumentModel.
 
@@ -1992,20 +1892,35 @@ def parse_markdown_file(source: "Union[str, BinaryIO]") -> DocumentModel:
     from stream_utils import is_stream
 
     if is_stream(source):
-        raw_bytes = source.read()
+        raw_bytes = cast(BinaryIO, source).read()
         content = _decode_bytes(raw_bytes, label="<stream>")
         label = "<stream>"
     else:
-        content = _read_with_encoding(source)
-        label = source
+        content = _read_with_encoding(str(source))
+        label = str(source)
 
     lines = content.splitlines()
-    _, remaining_lines = FrontmatterParser.parse(lines)
+    _, remaining_lines = FrontmatterParser.parse(lines, profile=profile)
     frontmatter_present = remaining_lines is not lines
 
-    parser = MarkdownParser()
+    parser = MarkdownParser(profile=profile)
     model = parser.parse(content)
-    _infer_metadata_from_elements(model, allow_company_inference=not frontmatter_present)
+    if get_profile(model.metadata.profile).is_ib:
+        _infer_metadata_from_elements(model, allow_company_inference=not frontmatter_present)
+    if not is_stream(source) and model.metadata.extra.get("theme") not in {None, "default", "mono"}:
+        theme_path = Path(model.metadata.extra["theme"])
+        if not theme_path.is_absolute():
+            model.metadata.extra["theme"] = str(Path(str(source)).resolve().parent / theme_path)
+
+    if not is_stream(source):
+        source_dir = Path(str(source)).resolve().parent
+        for element in model.elements:
+            if isinstance(element.content, Image):
+                image = element.content
+                if image.path and not image.base64_data and not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", image.path):
+                    image_path = Path(image.path)
+                    if not image_path.is_absolute():
+                        image.path = str(source_dir / image_path)
 
     logger.info(
         "Parsed %s: %d elements, %d footnotes, latex_blocks=%d, images=%d",
@@ -2088,7 +2003,13 @@ def _infer_metadata_from_elements(
         field_name, extra_key = mapped
         if field_name == "extra" and extra_key:
             metadata.extra.setdefault(extra_key, value)
-        elif field_name and getattr(metadata, field_name, "") in {"", "IB Report", "SECTOR", "DCM Team 1", "Korea Development Bank"}:
+        elif field_name and getattr(metadata, field_name, "") in {
+            "",
+            "IB Report",
+            "SECTOR",
+            "DCM Team 1",
+            "Korea Development Bank",
+        }:
             setattr(metadata, field_name, value)
 
 
