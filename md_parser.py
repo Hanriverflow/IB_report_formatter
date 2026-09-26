@@ -1196,7 +1196,11 @@ class MarkdownParser:
             for number in sorted(explicit_references - set(footnotes))
         )
         model = DocumentModel(
-            metadata=metadata, elements=elements, footnotes=footnotes, warnings=input_warnings
+            metadata=metadata,
+            elements=elements,
+            footnotes=footnotes,
+            warnings=input_warnings,
+            parsed_profile=metadata.profile,
         )
         if not self._financial_rules:
             first_heading = next(

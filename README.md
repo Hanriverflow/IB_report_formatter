@@ -122,7 +122,7 @@ doc = IBDocumentRenderer(options=RenderOptions(strict=True)).render(model)
 doc.save("output.docx")
 ```
 
-Pass the same profile at parsing time to apply its parsing policy; a render-only override cannot reconstruct content already transformed by a different parsing policy. The renderer copies its input model and uses request-local immutable styles. Use one renderer instance per concurrent job.
+Pass the same profile at parsing time to apply its parsing policy. Parsed models record that profile, and rendering under a different profile raises `ValueError` in both strict and non-strict modes: reparse the Markdown with the desired profile instead of silently losing transformed content. Hand-built models without parser provenance may select their rendering profile. The renderer copies its input model and uses request-local immutable styles. Use one renderer instance per concurrent job.
 
 ```python
 from converters import get_default_registry

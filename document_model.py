@@ -279,6 +279,8 @@ class DocumentModel:
     elements: List[Element] = field(default_factory=list)
     footnotes: Dict[int, str] = field(default_factory=dict)
     warnings: List[str] = field(default_factory=list)
+    # None means a hand-built model; parsed models retain their parsing policy.
+    parsed_profile: Optional[str] = None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

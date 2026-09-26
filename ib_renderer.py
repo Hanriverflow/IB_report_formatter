@@ -2695,6 +2695,11 @@ class IBDocumentRenderer:
         """Render through one composition path, using request-local settings."""
         model = deepcopy(model)
         resolved = resolve_options(model.metadata, self.options)
+        if model.parsed_profile is not None and model.parsed_profile != resolved.profile.name:
+            raise ValueError(
+                f"Document was parsed with profile {model.parsed_profile!r}; "
+                f"reparse the Markdown with profile={resolved.profile.name!r} before rendering."
+            )
         if model.metadata.profile != resolved.profile.name:
             old_defaults = default_metadata(model.metadata.profile)
             new_defaults = default_metadata(resolved.profile.name)
