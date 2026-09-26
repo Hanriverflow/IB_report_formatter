@@ -5,16 +5,18 @@ Renders flow diagrams as high-quality matplotlib images inserted into Word.
 Requires: matplotlib (optional dependency, graceful fallback to text placeholder).
 """
 
+import importlib
 import logging
 import os
 import tempfile
-from typing import Optional, Dict, List, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Inches
 
 if TYPE_CHECKING:
     from docx.document import Document as DocxDocument
+
     from md_parser import Diagram
 
 logger = logging.getLogger(__name__)
@@ -27,7 +29,7 @@ _LIGHT_BG = "#F5F5F5"
 
 def _matplotlib_available() -> bool:
     try:
-        import matplotlib
+        importlib.import_module("matplotlib")
         return True
     except ImportError:
         return False
@@ -156,12 +158,12 @@ class DiagramRenderer:
 
                 ax.annotate(
                     "", xy=(ex, ey), xytext=(sx, sy),
-                    arrowprops=dict(
-                        arrowstyle=arrowstyle, color=color,
-                        lw=2.0, linestyle=ls,
-                        shrinkA=0, shrinkB=0,
-                        connectionstyle="arc3,rad=0.0",
-                    ),
+                    arrowprops={
+                        "arrowstyle": arrowstyle, "color": color,
+                        "lw": 2.0, "linestyle": ls,
+                        "shrinkA": 0, "shrinkB": 0,
+                        "connectionstyle": "arc3,rad=0.0",
+                    },
                     zorder=1,
                 )
 
@@ -180,11 +182,11 @@ class DiagramRenderer:
                         ha="center", va="center",
                         fontsize=16, color=_DARK_GRAY,
                         linespacing=1.3,
-                        bbox=dict(
-                            boxstyle="round,pad=0.25",
-                            facecolor="white", edgecolor="#DDDDDD",
-                            alpha=0.92, linewidth=0.5,
-                        ),
+                        bbox={
+                            "boxstyle": "round,pad=0.25",
+                            "facecolor": "white", "edgecolor": "#DDDDDD",
+                            "alpha": 0.92, "linewidth": 0.5,
+                        },
                         zorder=4,
                     )
 
@@ -249,7 +251,7 @@ class DiagramRenderer:
                     style="italic",
                 )
 
-            plt.tight_layout(rect=[0, 0.05, 1, 0.95])
+            plt.tight_layout(rect=(0, 0.05, 1, 0.95))
 
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False, mode="wb") as f:
                 temp_path = f.name

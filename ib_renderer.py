@@ -18,19 +18,20 @@ import os
 import platform
 import re
 import time
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 from uuid import uuid4
 from xml.sax.saxutils import escape
 
 from docx import Document
 from docx.document import Document as DocxDocument
+from docx.enum.section import WD_ORIENT, WD_SECTION_START
 from docx.enum.style import WD_STYLE_TYPE
-from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
-from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.opc.constants import CONTENT_TYPE as CT
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.opc.packuri import PackURI
@@ -38,8 +39,15 @@ from docx.opc.part import XmlPart, serialize_part_xml
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.oxml.parser import parse_xml
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Inches, Mm, Pt, RGBColor
 
+from document_profiles import (
+    RenderOptions,
+    default_metadata,
+    load_style,
+    resolve_options,
+    validate_office_metadata,
+)
 from md_parser import (
     Blockquote,
     CodeBlock,
@@ -58,6 +66,16 @@ from md_parser import (
     TextParser,
     TextRun,
 )
+from office_layout import (
+    NativeNumbering,
+    add_text,
+    letter_appendix_index,
+    render_office_closing,
+    render_office_opening,
+    setup_letter_styles,
+)
+from render_styles import STYLE, use_style
+from render_styles import IBStyle as IBStyle
 
 logger = logging.getLogger(__name__)
 
@@ -65,82 +83,6 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════════════
 # STYLE CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
-
-
-@dataclass(frozen=True)
-class IBStyle:
-    """IB Bank styling constants"""
-
-    # ── Colors (RGBColor) ───────────────────────────────────────────────────
-    NAVY: RGBColor = RGBColor(0, 51, 102)
-    DARK_GRAY: RGBColor = RGBColor(64, 64, 64)
-    LIGHT_GRAY: RGBColor = RGBColor(245, 245, 245)
-    ACCENT_BLUE: RGBColor = RGBColor(230, 240, 250)
-    WHITE: RGBColor = RGBColor(255, 255, 255)
-    RED: RGBColor = RGBColor(192, 0, 0)
-    GREEN: RGBColor = RGBColor(0, 128, 0)
-    ORANGE: RGBColor = RGBColor(255, 165, 0)
-    MEDIUM_GRAY: RGBColor = RGBColor(128, 128, 128)
-    CODE_BG: RGBColor = RGBColor(248, 249, 250)
-
-    # ── Colors (Hex for OOXML) ──────────────────────────────────────────────
-    NAVY_HEX: str = "003366"
-    LIGHT_GRAY_HEX: str = "F5F5F5"
-    ACCENT_BLUE_HEX: str = "E6F0FA"
-    GRAY_BORDER_HEX: str = "C8C8C8"
-    YELLOW_HEX: str = "FFFF00"
-
-    # ── Fonts ───────────────────────────────────────────────────────────────
-    HEADING_FONT: str = "Arial"
-    BODY_FONT: str = "Calibri"
-    KOREAN_FONT: str = "Malgun Gothic"
-    COVER_FONT: str = "Malgun Gothic"
-    TOC_FONT: str = "Malgun Gothic"
-
-    # ── Sizes ───────────────────────────────────────────────────────────────
-    H1_SIZE: Pt = Pt(14)
-    H2_SIZE: Pt = Pt(12)
-    H3_SIZE: Pt = Pt(11)
-    H4_SIZE: Pt = Pt(10.5)
-    BODY_SIZE: Pt = Pt(10.5)
-    SMALL_SIZE: Pt = Pt(9)
-    TABLE_HEADER_SIZE: Pt = Pt(10)
-    TABLE_BODY_SIZE: Pt = Pt(10)
-
-    # ── Spacing ─────────────────────────────────────────────────────────────
-    H1_SPACE_BEFORE: Pt = Pt(18)
-    H1_SPACE_AFTER: Pt = Pt(6)
-    H2_SPACE_BEFORE: Pt = Pt(12)
-    H2_SPACE_AFTER: Pt = Pt(4)
-    H3_SPACE_BEFORE: Pt = Pt(10)
-    H3_SPACE_AFTER: Pt = Pt(2)
-    BODY_SPACE_AFTER: Pt = Pt(8)
-    BULLET_SPACE_AFTER: Pt = Pt(4)
-
-    # ── Line spacing ────────────────────────────────────────────────────────
-    BODY_LINE_SPACING: float = 1.15
-
-    # ── Margins ─────────────────────────────────────────────────────────────
-    TOP_MARGIN: Inches = Inches(1.0)
-    BOTTOM_MARGIN: Inches = Inches(0.75)
-    LEFT_MARGIN: Inches = Inches(1.0)
-    RIGHT_MARGIN: Inches = Inches(0.8)
-
-    # ── Bullet ──────────────────────────────────────────────────────────────
-    BULLET_INDENT: Inches = Inches(0.25)
-    DEEP_LIST_INDENT: Inches = Inches(0.125)
-    FULL_LIST_INDENT_LEVELS: int = 4
-    MAX_LIST_INDENT: Inches = Inches(1.5)
-    BULLET_CHAR: str = "■"
-
-    # ── Custom Style Names ──────────────────────────────────────────────────
-    STYLE_IB_BODY: str = "IB Body"
-    STYLE_IB_BULLET: str = "IB Bullet"
-    STYLE_TABLE_GRID: str = "Table Grid"
-
-
-# Singleton style instance
-STYLE = IBStyle()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -172,10 +114,10 @@ class GeneratorSignatureWriter:
     _resolved_version: Optional[str] = None
 
     @classmethod
-    def apply(cls, doc: DocxDocument) -> None:
+    def apply(cls, doc: DocxDocument, profile: str = "ib_generated") -> None:
         """Upsert generator signature custom properties on a DOCX package."""
         custom_part, custom_props = cls._get_or_add_custom_properties_part(doc)
-        cls._upsert_signature_properties(custom_props)
+        cls._upsert_signature_properties(custom_props, profile)
         if isinstance(custom_part, XmlPart):
             custom_part._element = custom_props
             return
@@ -204,7 +146,7 @@ class GeneratorSignatureWriter:
             return custom_part, custom_props
 
     @classmethod
-    def _upsert_signature_properties(cls, custom_props) -> None:
+    def _upsert_signature_properties(cls, custom_props, profile: str = "ib_generated") -> None:
         """Replace only the generator signature properties, preserving others."""
         for prop in list(custom_props):
             if cls._local_name(prop.tag) != "property":
@@ -213,16 +155,16 @@ class GeneratorSignatureWriter:
                 custom_props.remove(prop)
 
         used_pids = cls._used_property_ids(custom_props)
-        for name, value in cls._signature_properties().items():
+        for name, value in cls._signature_properties(profile).items():
             custom_props.append(cls._build_property(name, value, cls._next_pid(used_pids)))
 
     @classmethod
-    def _signature_properties(cls) -> Dict[str, str]:
+    def _signature_properties(cls, profile: str = "ib_generated") -> Dict[str, str]:
         """Return the ordered generator signature payload."""
         return {
             "generator": cls._GENERATOR_NAME,
             "generator_version": cls._resolve_version(),
-            "generator_profile": cls._GENERATOR_PROFILE,
+            "generator_profile": profile,
         }
 
     @classmethod
@@ -304,6 +246,10 @@ class FontStyler:
         if rPr.rFonts is None:
             rPr.get_or_add_rFonts()
         rPr.rFonts.set(qn("w:eastAsia"), resolved_font)
+        # Theme attributes take precedence over explicit fonts in Word.
+        for explicit, theme in (("ascii", "asciiTheme"), ("hAnsi", "hAnsiTheme"), ("eastAsia", "eastAsiaTheme")):
+            if rPr.rFonts.get(qn("w:" + explicit)):
+                rPr.rFonts.attrib.pop(qn("w:" + theme), None)
 
     @staticmethod
     def apply_run_style(
@@ -340,7 +286,8 @@ class FontPolicy:
     def resolve_korean_font(cls, system_name: Optional[str] = None) -> str:
         """Return the preferred Korean font for the current platform."""
         system = system_name or platform.system() or "Unknown"
-        cached = cls._resolved_fonts.get(system)
+        cache_key = system + ":" + STYLE.KOREAN_FONT
+        cached = cls._resolved_fonts.get(cache_key)
         if cached:
             return cached
 
@@ -358,7 +305,7 @@ class FontPolicy:
             chosen,
             ", ".join(candidates[1:]) or "none",
         )
-        cls._resolved_fonts[system] = chosen
+        cls._resolved_fonts[cache_key] = chosen
         return chosen
 
 
@@ -385,6 +332,16 @@ class DocumentStyler:
         """Create all custom IB styles"""
         styles = self.doc.styles
 
+        # Do not inherit an unrelated Word theme's title colour or borders.
+        self._setup_heading_style(
+            styles["Title"],
+            font_size=STYLE.H1_SIZE,
+            color=STYLE.NAVY,
+            space_before=STYLE.H1_SPACE_BEFORE,
+            space_after=STYLE.H1_SPACE_AFTER,
+            add_border=STYLE.HEADING_BORDER,
+        )
+
         # Heading 1
         self._setup_heading_style(
             styles["Heading 1"],
@@ -392,7 +349,7 @@ class DocumentStyler:
             color=STYLE.NAVY,
             space_before=STYLE.H1_SPACE_BEFORE,
             space_after=STYLE.H1_SPACE_AFTER,
-            add_border=True,
+            add_border=STYLE.HEADING_BORDER,
         )
 
         # Heading 2
@@ -428,7 +385,10 @@ class DocumentStyler:
         body.font.size = STYLE.BODY_SIZE
         body.paragraph_format.line_spacing = STYLE.BODY_LINE_SPACING
         body.paragraph_format.space_after = STYLE.BODY_SPACE_AFTER
-        body.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        body.paragraph_format.alignment = (
+            WD_ALIGN_PARAGRAPH.JUSTIFY if STYLE.BODY_JUSTIFY else WD_ALIGN_PARAGRAPH.LEFT
+        )
+        body.paragraph_format.widow_control = True
         FontStyler.set_east_asian_font(body)
 
         # IB Bullet
@@ -478,7 +438,11 @@ class DocumentStyler:
         style.font.color.rgb = color
         style.paragraph_format.space_before = space_before
         style.paragraph_format.space_after = space_after
+        style.paragraph_format.keep_with_next = True
+        style.paragraph_format.keep_together = True
         FontStyler.set_east_asian_font(style)
+        for border in list(style.element.xpath("./w:pPr/w:pBdr")):
+            border.getparent().remove(border)
         if add_border:
             self._add_bottom_border(style)
 
@@ -554,8 +518,18 @@ class DocumentStyler:
                     color=STYLE.DARK_GRAY,
                 )
 
-            # Tab for right alignment
-            header_para.add_run("\t\t")
+            # Tab width follows this section, including landscape tables.
+            width, left, right = section.page_width, section.left_margin, section.right_margin
+            if width is None or left is None or right is None:
+                raise ValueError("Section dimensions are required for header alignment")
+            available_width = width - left - right
+            header_style = header_para.style
+            if header_style is not None:
+                header_style.paragraph_format.tab_stops.clear_all()
+            header_para.paragraph_format.tab_stops.clear_all()
+            header_para.paragraph_format.tab_stops.add_tab_stop(available_width, WD_TAB_ALIGNMENT.RIGHT)
+            if company or confidential:
+                header_para.add_run("\t")
 
             # Right-aligned confidential mark
             if confidential:
@@ -569,7 +543,8 @@ class DocumentStyler:
                 )
 
             # Add separator line under header
-            self._add_header_border(header_para)
+            if company or confidential:
+                self._add_header_border(header_para)
 
             # ── Footer ─────────────────────────────────────────────────────────
             footer = section.footer
@@ -600,7 +575,7 @@ class DocumentStyler:
     def _add_page_number_field(self, paragraph):
         """Add page number field code to paragraph."""
         # "Page X of Y" format
-        run1 = paragraph.add_run("Page ")
+        run1 = paragraph.add_run(STYLE.PAGE_LABEL)
         FontStyler.apply_run_style(
             run1,
             font_name=STYLE.BODY_FONT,
@@ -629,7 +604,7 @@ class DocumentStyler:
             color=STYLE.DARK_GRAY,
         )
 
-        run2 = paragraph.add_run(" of ")
+        run2 = paragraph.add_run(STYLE.PAGE_OF_LABEL)
         FontStyler.apply_run_style(
             run2,
             font_name=STYLE.BODY_FONT,
@@ -764,6 +739,19 @@ class TextRenderer:
             if run_color:
                 run.font.color.rgb = run_color
             FontStyler.set_east_asian_font(run)
+            if run_data.footnote_id is not None:
+                FootnoteRenderer._replace_with_native_reference(run, run_data.footnote_id)
+            if run_data.hyperlink:
+                link = OxmlElement("w:hyperlink")
+                relation = paragraph.part.relate_to(
+                    run_data.hyperlink, RT.HYPERLINK, is_external=True
+                )
+                link.set(qn("r:id"), relation)
+                run.font.underline = True
+                if not run_color:
+                    run.font.color.rgb = STYLE.NAVY
+                link.append(run._r)
+                paragraph._p.append(link)
 
     @staticmethod
     def _render_inline_latex(paragraph, expression: str, font_size: Pt):
@@ -853,7 +841,12 @@ class TextRenderer:
                 # Bold segment — check for ^superscript^ / ~subscript~ inside
                 inner = TextRenderer._cleanup(bold_part[2:-2])
                 TextRenderer._render_with_vertical_align(
-                    paragraph, inner, font_name, font_size, bold=True, italic=False,
+                    paragraph,
+                    inner,
+                    font_name,
+                    font_size,
+                    bold=True,
+                    italic=False,
                     color=default_color,
                 )
             else:
@@ -871,15 +864,25 @@ class TextRenderer:
                     ):
                         inner = TextRenderer._cleanup(italic_part[1:-1])
                         TextRenderer._render_with_vertical_align(
-                            paragraph, inner, font_name, font_size,
-                            bold=False, italic=True, color=default_color,
+                            paragraph,
+                            inner,
+                            font_name,
+                            font_size,
+                            bold=False,
+                            italic=True,
+                            color=default_color,
                         )
                     else:
                         cleaned = TextRenderer._cleanup(italic_part)
                         if cleaned:
                             TextRenderer._render_with_vertical_align(
-                                paragraph, cleaned, font_name, font_size,
-                                bold=False, italic=False, color=default_color,
+                                paragraph,
+                                cleaned,
+                                font_name,
+                                font_size,
+                                bold=False,
+                                italic=False,
+                                color=default_color,
                             )
 
     @staticmethod
@@ -945,6 +948,8 @@ class TextRenderer:
 class CoverRenderer:
     """Renders the cover page"""
 
+    include_disclaimer: bool = True
+
     _COVER_DISCLAIMER_TEXT = (
         "당행은 해당 문서에 최대한 정확하고 완전한 정보를 담고자 노력하였으나, 오류와 중요정보의 "
         "누락이 있을 수 있으며, 정보의 정확성, 완전성 및 적정성을 보장하지 않습니다. 이 문서는 "
@@ -978,10 +983,12 @@ class CoverRenderer:
 
         if (
             not ticker
-            and self._is_meaningful_metadata_value(institution, style_default="Korea Development Bank")
+            and self._is_meaningful_metadata_value(
+                institution, style_default="Korea Development Bank"
+            )
             and title.startswith(institution)
         ):
-            stripped_title = title[len(institution):].strip(" :-")
+            stripped_title = title[len(institution) :].strip(" :-")
             if stripped_title:
                 cover_identity = institution
                 cover_title = stripped_title.strip(" —–-:")
@@ -1017,7 +1024,9 @@ class CoverRenderer:
         self._add_spacer(2)
 
         # Security / company identifier
-        if self._is_meaningful_metadata_value(cover_identity, style_default="Korea Development Bank"):
+        if self._is_meaningful_metadata_value(
+            cover_identity, style_default="Korea Development Bank"
+        ):
             id_para = self.doc.add_paragraph()
             id_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             id_run = id_para.add_run(cover_identity)
@@ -1070,7 +1079,8 @@ class CoverRenderer:
         )
 
         self._add_spacer(1)
-        self._render_cover_disclaimer_table()
+        if getattr(self, "include_disclaimer", True):
+            self._render_cover_disclaimer_table()
 
         self.doc.add_page_break()
 
@@ -1231,7 +1241,7 @@ class TOCRenderer:
 
     def render(self, model: Optional[DocumentModel] = None):
         """Insert an auto-updating TOC plus an immediate preview outline."""
-        heading = self.doc.add_heading("TABLE OF CONTENTS", level=1)
+        heading = self.doc.add_paragraph(STYLE.TOC_TITLE, style="TOC Heading")
         self._apply_toc_heading_style(heading)
 
         paragraph = self.doc.add_paragraph()
@@ -1254,10 +1264,9 @@ class TOCRenderer:
         run._r.append(fldChar1)
         run._r.append(instrText)
         run._r.append(fldChar2)
-        run._r.append(fldChar3)
-
         if model is not None:
             self._render_preview_entries(model)
+        self.doc.paragraphs[-1].add_run()._r.append(fldChar3)
 
         self.doc.add_page_break()
 
@@ -1307,7 +1316,9 @@ class TOCRenderer:
             FontStyler.apply_run_style(
                 run,
                 font_name=STYLE.TOC_FONT,
-                font_size=STYLE.BODY_SIZE if level == 1 else (Pt(10) if level == 2 else STYLE.SMALL_SIZE),
+                font_size=STYLE.BODY_SIZE
+                if level == 1
+                else (Pt(10) if level == 2 else STYLE.SMALL_SIZE),
                 bold=level == 1,
                 color=STYLE.DARK_GRAY if level <= 2 else STYLE.MEDIUM_GRAY,
             )
@@ -1317,12 +1328,14 @@ class HeadingRenderer:
     """Renders headings"""
 
     # Level → (font_size, color, bold)
-    _STYLE_CONFIG = {
-        1: (STYLE.H1_SIZE, STYLE.NAVY, True),
-        2: (STYLE.H2_SIZE, STYLE.DARK_GRAY, True),
-        3: (STYLE.H3_SIZE, STYLE.NAVY, True),
-        4: (STYLE.H4_SIZE, STYLE.DARK_GRAY, True),
-    }
+    @property
+    def _STYLE_CONFIG(self):
+        return {
+            1: (STYLE.H1_SIZE, STYLE.NAVY, True),
+            2: (STYLE.H2_SIZE, STYLE.DARK_GRAY, True),
+            3: (STYLE.H3_SIZE, STYLE.NAVY, True),
+            4: (STYLE.H4_SIZE, STYLE.DARK_GRAY, True),
+        }
 
     def __init__(self, doc: DocxDocument):
         self.doc = doc
@@ -1335,16 +1348,12 @@ class HeadingRenderer:
 
         # Clamp level to 1-4 (Word supports Heading 1-9, but we style 1-4)
         level = max(1, min(heading.level, 4))
-        p = self.doc.add_heading(clean_text, level=level)
+        p = self.doc.add_heading(level=level)
 
         size, color, bold = self._STYLE_CONFIG.get(level, (STYLE.BODY_SIZE, STYLE.DARK_GRAY, True))
 
-        for run in p.runs:
-            run.font.name = STYLE.HEADING_FONT
-            run.font.size = size
-            run.font.bold = bold
-            run.font.color.rgb = color
-            FontStyler.set_east_asian_font(run)
+        runs = [replace(run, bold=bold) for run in TextParser.parse_runs(clean_text)]
+        TextRenderer.render_runs(p, runs, font_name=STYLE.HEADING_FONT, font_size=size, default_color=color)
 
 
 class ParagraphRenderer:
@@ -1367,6 +1376,7 @@ class ListRenderer:
 
     def __init__(self, doc: DocxDocument):
         self.doc = doc
+        self.numbering = NativeNumbering(doc)
 
     def render_bullet(self, item: ListItem):
         """Render a bullet list item"""
@@ -1374,6 +1384,11 @@ class ListRenderer:
         indent = self._resolve_indent(item.indent_level)
         p.paragraph_format.left_indent = indent
         p.paragraph_format.first_line_indent = -STYLE.BULLET_INDENT
+
+        if STYLE.NATIVE_NUMBERING:
+            self.numbering.apply(p, item.indent_level, bullet=True)
+            TextRenderer.render_runs(p, item.runs or TextParser.parse_runs(item.text))
+            return
 
         # Bullet character
         bullet_run = p.add_run(f"{STYLE.BULLET_CHAR}  ")
@@ -1396,6 +1411,11 @@ class ListRenderer:
         indent = self._resolve_indent(item.indent_level)
         p.paragraph_format.left_indent = indent
         p.paragraph_format.first_line_indent = -STYLE.BULLET_INDENT
+
+        if STYLE.NATIVE_NUMBERING:
+            self.numbering.apply(p, item.indent_level, start=int(number))
+            TextRenderer.render_runs(p, item.runs or TextParser.parse_runs(item.text))
+            return
 
         # Number
         num_run = p.add_run(f"{number}. ")
@@ -1423,8 +1443,7 @@ class ListRenderer:
         extra_levels = max(0, normalized_level + 1 - STYLE.FULL_LIST_INDENT_LEVELS)
 
         indent_inches = (
-            full_levels * STYLE.BULLET_INDENT.inches
-            + extra_levels * STYLE.DEEP_LIST_INDENT.inches
+            full_levels * STYLE.BULLET_INDENT.inches + extra_levels * STYLE.DEEP_LIST_INDENT.inches
         )
         indent_inches = min(indent_inches, STYLE.MAX_LIST_INDENT.inches)
         return Inches(indent_inches)
@@ -1441,6 +1460,7 @@ class TableRenderer:
         r"(?:%|bp|bps|x|배|원|천원|만원|백만원|억원|억|조|주|개|명|건)?$",
         re.IGNORECASE,
     )
+    _PURE_NUMBER_RE = re.compile(r"^\(?[+-]?\d[\d,]*(?:\.\d+)?\)?$")
     _MIN_COLUMN_WIDTH_INCHES = 0.65
     _MIN_TEXT_COLUMN_WIDTH_INCHES = 1.15
     _MAX_NUMERIC_COLUMN_WIDTH_INCHES = 1.35
@@ -1457,6 +1477,32 @@ class TableRenderer:
         row_count = len(table.rows)
         col_count = table.col_count
 
+        previous_geometry = None
+        if table.landscape:
+            section = self.doc.sections[-1]
+            assert section.page_width is not None and section.page_height is not None
+            previous_geometry = (section.orientation, section.page_width, section.page_height)
+            section = self.doc.add_section(WD_SECTION_START.NEW_PAGE)
+            section.orientation = WD_ORIENT.LANDSCAPE
+            section.page_width = max(previous_geometry[1:])
+            section.page_height = min(previous_geometry[1:])
+        for text in [
+            table.caption,
+            " · ".join(
+                v
+                for v in [
+                    "단위: " + table.unit if table.unit else "",
+                    "기준일: " + table.as_of if table.as_of else "",
+                ]
+                if v
+            ),
+        ]:
+            if text:
+                paragraph = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
+                paragraph.paragraph_format.keep_with_next = True
+                TextRenderer.render_runs(
+                    paragraph, TextParser.parse_runs(text), font_size=STYLE.SMALL_SIZE
+                )
         word_table = self.doc.add_table(rows=row_count, cols=col_count)
         word_table.style = STYLE.STYLE_TABLE_GRID
         column_kinds = self._infer_column_kinds(table)
@@ -1475,13 +1521,28 @@ class TableRenderer:
                 col_count,
                 table.table_type,
                 column_kinds,
+                table.column_types,
+                table.alignments,
             )
 
+        word_table.rows[0]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
+        for word_row in word_table.rows:
+            word_row._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
         # Apply borders
         TableStyler.set_table_borders(word_table)
 
+        if table.source:
+            paragraph = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
+            TextRenderer.render_runs(
+                paragraph,
+                TextParser.parse_runs("출처: " + table.source),
+                font_size=STYLE.SMALL_SIZE,
+            )
         # Spacer paragraph after table
         self.doc.add_paragraph()
+        if previous_geometry:
+            section = self.doc.add_section(WD_SECTION_START.NEW_PAGE)
+            section.orientation, section.page_width, section.page_height = previous_geometry
 
     def _apply_column_widths(self, word_table, table: Table, column_kinds: List[str]) -> None:
         """Apply content-aware column widths for more readable report tables."""
@@ -1534,7 +1595,7 @@ class TableRenderer:
 
         return widths
 
-    def _build_column_info(self, table: Table, col_idx: int, column_kind: str) -> Dict[str, float]:
+    def _build_column_info(self, table: Table, col_idx: int, column_kind: str) -> Dict[str, Any]:
         """Summarize the content profile of a single column."""
         texts = []
 
@@ -1560,6 +1621,11 @@ class TableRenderer:
         }
 
     def _infer_column_kinds(self, table: Table) -> List[str]:
+        if table.column_types:
+            return [
+                "text" if role in {"text", "code", "date"} else "numeric"
+                for role in table.column_types
+            ]
         """Infer each column's semantic type from the first few data cells."""
         return [self._infer_column_kind(table, col_idx) for col_idx in range(table.col_count)]
 
@@ -1625,11 +1691,7 @@ class TableRenderer:
         if is_numeric_column:
             return 1.0 + min(representative_length, 12) * 0.05
 
-        return (
-            1.8
-            + min(representative_length, 48) * 0.06
-            + min(longest_token, 24) * 0.03
-        )
+        return 1.8 + min(representative_length, 48) * 0.06 + min(longest_token, 24) * 0.03
 
     @classmethod
     def _minimum_column_width(cls, kind_marker: str) -> float:
@@ -1673,7 +1735,9 @@ class TableRenderer:
         ]
 
         widths = [min(widths[idx], max_widths[idx]) for idx in range(col_count)]
-        widths = cls._rebalance_widths(widths, min_widths, max_widths, preferred, available_width_inches)
+        widths = cls._rebalance_widths(
+            widths, min_widths, max_widths, preferred, available_width_inches
+        )
         return widths
 
     @classmethod
@@ -1726,8 +1790,14 @@ class TableRenderer:
             return 6.0
 
         section = self.doc.sections[-1]
-        available_width = int(section.page_width) - int(section.left_margin) - int(
-            section.right_margin
+        if (
+            section.page_width is None
+            or section.left_margin is None
+            or section.right_margin is None
+        ):
+            return 6.0
+        available_width = (
+            int(section.page_width) - int(section.left_margin) - int(section.right_margin)
         )
         available_width = max(available_width, int(Inches(3.0)))
         return float(available_width) / float(self._EMUS_PER_INCH)
@@ -1748,7 +1818,7 @@ class TableRenderer:
 
             cell = word_cells[c_idx]
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-            TableStyler.set_cell_background(cell, STYLE.NAVY_HEX)
+            TableStyler.set_cell_background(cell, STYLE.TABLE_HEADER_BG)
 
             # Clear default paragraph and add styled run
             p = cell.paragraphs[0]
@@ -1760,16 +1830,11 @@ class TableRenderer:
             # Headers are always bold+white, so we parse for content only
             if cell_data.runs:
                 # Use structured runs but override style for header
-                for run_data in cell_data.runs:
-                    run = p.add_run(run_data.text)
-                    FontStyler.apply_run_style(
-                        run,
-                        font_name=STYLE.HEADING_FONT,
-                        font_size=STYLE.TABLE_HEADER_SIZE,
-                        bold=True,
-                        italic=run_data.italic,
-                        color=STYLE.WHITE,
-                    )
+                TextRenderer.render_runs(
+                    p, [replace(run, bold=True, color_hex=None) for run in cell_data.runs],
+                    font_name=STYLE.HEADING_FONT, font_size=STYLE.TABLE_HEADER_SIZE,
+                    default_color=STYLE.TABLE_HEADER_COLOR,
+                )
             else:
                 clean_text = cell_data.content.replace("**", "").strip()
                 run = p.add_run(clean_text)
@@ -1778,7 +1843,7 @@ class TableRenderer:
                     font_name=STYLE.HEADING_FONT,
                     font_size=STYLE.TABLE_HEADER_SIZE,
                     bold=True,
-                    color=STYLE.WHITE,
+                    color=STYLE.TABLE_HEADER_COLOR,
                 )
 
     def _render_data_row(
@@ -1789,6 +1854,8 @@ class TableRenderer:
         col_count: int,
         table_type: TableType,
         column_kinds: List[str],
+        column_types: Optional[List[str]] = None,
+        alignments: Optional[List[str]] = None,
     ):
         """Render a data row with type-specific styling"""
         word_cells = word_table.rows[row_idx].cells
@@ -1808,17 +1875,37 @@ class TableRenderer:
             else:
                 p.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
+            if alignments and c_idx < len(alignments) and alignments[c_idx] in {"center", "right"}:
+                p.alignment = (
+                    WD_ALIGN_PARAGRAPH.CENTER
+                    if alignments[c_idx] == "center"
+                    else WD_ALIGN_PARAGRAPH.RIGHT
+                )
+
             # ── Format content (financial number formatting) ───────────────
-            display_content = cell_data.content
-            if table_type == TableType.FINANCIAL and cell_data.is_numeric:
-                display_content = self._format_financial_number(cell_data.content)
+            raw_content = (
+                "".join(run.text for run in cell_data.runs) if cell_data.runs else cell_data.content
+            )
+            display_content = raw_content
+            role = column_types[c_idx] if column_types else None
+            if role and role not in {"text", "code", "date"}:
+                display_content = self._format_financial_number(raw_content)
+                suffix = {"percent": "%", "bps": " bps", "multiple": "x"}.get(role, "")
+                if suffix and self._PURE_NUMBER_RE.fullmatch(raw_content.strip()):
+                    display_content += suffix
+            elif not role and table_type == TableType.FINANCIAL and cell_data.is_numeric:
+                if self._NUMERIC_LIKE_RE.fullmatch(raw_content.strip()):
+                    display_content = self._format_financial_number(raw_content)
+            display_runs = cell_data.runs
+            if display_runs and display_content != raw_content:
+                display_runs = [replace(display_runs[0], text=display_content)]
 
             # ── Render content ──────────────────────────────────────────────
             if cell_data.runs:
                 # Use structured runs for full formatting fidelity
                 TextRenderer.render_runs(
                     p,
-                    cell_data.runs,
+                    display_runs,
                     font_name=STYLE.BODY_FONT,
                     font_size=STYLE.TABLE_BODY_SIZE,
                 )
@@ -1831,10 +1918,11 @@ class TableRenderer:
                 )
 
             # ── Type-specific styling ───────────────────────────────────────
-            self._apply_type_styling(cell, p, cell_data, row_idx, table_type)
+            if not (table_type == TableType.FINANCIAL and role in {"text", "code", "date"}):
+                self._apply_type_styling(cell, p, cell_data, row_idx, table_type)
 
             # ── Alternating row colors (unless special styling applied) ─────
-            if row_idx % 2 == 1 and not cell_data.is_base_case:
+            if STYLE.TABLE_ZEBRA and row_idx % 2 == 1 and not cell_data.is_base_case:
                 TableStyler.set_cell_background(cell, STYLE.LIGHT_GRAY_HEX)
 
     @staticmethod
@@ -1956,24 +2044,26 @@ class CalloutRenderer:
     """
 
     # Callout type configurations: (background_hex, border_color, title_color, icon)
-    _CALLOUT_STYLES = {
-        # Executive Summary / Important
-        "EXECUTIVE SUMMARY": (STYLE.NAVY_HEX, STYLE.NAVY, STYLE.WHITE, "▶"),
-        "요약": (STYLE.NAVY_HEX, STYLE.NAVY, STYLE.WHITE, "▶"),
-        "핵심": (STYLE.NAVY_HEX, STYLE.NAVY, STYLE.WHITE, "▶"),
-        "SUMMARY": (STYLE.NAVY_HEX, STYLE.NAVY, STYLE.WHITE, "▶"),
-        # Insights
-        "KEY INSIGHT": (STYLE.ACCENT_BLUE_HEX, STYLE.NAVY, STYLE.NAVY, "▌"),
-        "시사점": (STYLE.ACCENT_BLUE_HEX, STYLE.NAVY, STYLE.NAVY, "▌"),
-        "결론": (STYLE.ACCENT_BLUE_HEX, STYLE.NAVY, STYLE.NAVY, "▌"),
-        # Warnings
-        "WARNING": ("FFF3CD", STYLE.ORANGE, STYLE.ORANGE, "⚠"),
-        "주의": ("FFF3CD", STYLE.ORANGE, STYLE.ORANGE, "⚠"),
-        "RISK": ("FFF3CD", STYLE.ORANGE, STYLE.ORANGE, "⚠"),
-        # Notes
-        "NOTE": (STYLE.LIGHT_GRAY_HEX, STYLE.DARK_GRAY, STYLE.DARK_GRAY, "ℹ"),
-        "참고": (STYLE.LIGHT_GRAY_HEX, STYLE.DARK_GRAY, STYLE.DARK_GRAY, "ℹ"),
-    }
+    @property
+    def _CALLOUT_STYLES(self):
+        return {
+            # Executive Summary / Important
+            "EXECUTIVE SUMMARY": (STYLE.NAVY_HEX, STYLE.NAVY, STYLE.WHITE, "▶"),
+            "요약": (STYLE.NAVY_HEX, STYLE.NAVY, STYLE.WHITE, "▶"),
+            "핵심": (STYLE.NAVY_HEX, STYLE.NAVY, STYLE.WHITE, "▶"),
+            "SUMMARY": (STYLE.NAVY_HEX, STYLE.NAVY, STYLE.WHITE, "▶"),
+            # Insights
+            "KEY INSIGHT": (STYLE.ACCENT_BLUE_HEX, STYLE.NAVY, STYLE.NAVY, "▌"),
+            "시사점": (STYLE.ACCENT_BLUE_HEX, STYLE.NAVY, STYLE.NAVY, "▌"),
+            "결론": (STYLE.ACCENT_BLUE_HEX, STYLE.NAVY, STYLE.NAVY, "▌"),
+            # Warnings
+            "WARNING": ("FFF3CD", STYLE.ORANGE, STYLE.ORANGE, "⚠"),
+            "주의": ("FFF3CD", STYLE.ORANGE, STYLE.ORANGE, "⚠"),
+            "RISK": ("FFF3CD", STYLE.ORANGE, STYLE.ORANGE, "⚠"),
+            # Notes
+            "NOTE": (STYLE.LIGHT_GRAY_HEX, STYLE.DARK_GRAY, STYLE.DARK_GRAY, "ℹ"),
+            "참고": (STYLE.LIGHT_GRAY_HEX, STYLE.DARK_GRAY, STYLE.DARK_GRAY, "ℹ"),
+        }
 
     def __init__(self, doc: DocxDocument):
         self.doc = doc
@@ -2303,25 +2393,26 @@ class FootnoteRenderer:
     def __init__(self, doc: DocxDocument):
         self.doc = doc
 
-    def render(self, footnotes: dict):
+    def render(self, footnotes: dict, allow_legacy_refs: bool = True):
         """Render footnotes natively when possible, else fall back to an ENDNOTES section."""
         if not footnotes:
             return
 
-        if self._render_native(footnotes):
+        if self._render_native(footnotes, allow_legacy_refs):
             return
 
         self._render_endnotes(footnotes)
 
-    def _render_native(self, footnotes: dict) -> bool:
+    def _render_native(self, footnotes: dict, allow_legacy_refs: bool = True) -> bool:
         """Replace superscript markers with native Word footnote references."""
-        run_refs = self._collect_reference_runs(footnotes)
-        if not run_refs:
+        run_refs = self._collect_reference_runs(footnotes) if allow_legacy_refs else []
+        explicit_ids = {int(node.get(qn("w:id"))) for node in self.doc.element.xpath(".//w:footnoteReference")}
+        if not run_refs and not explicit_ids:
             return False
 
         footnotes_part = NativeFootnotesPart.get_or_add(self.doc.part)
-        referenced_numbers = sorted({number for _, number in run_refs})
-        footnotes_part.set_footnotes({number: footnotes[number] for number in referenced_numbers})
+        referenced_numbers = sorted({number for _, number in run_refs} | explicit_ids)
+        footnotes_part.set_footnotes({number: footnotes[number] for number in referenced_numbers if number in footnotes})
 
         for run, number in run_refs:
             self._replace_with_native_reference(run, number)
@@ -2401,7 +2492,7 @@ class NativeFootnotesPart(XmlPart):
         b'<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
         b'<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>'
         b'<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>'
-        b'</w:footnotes>'
+        b"</w:footnotes>"
     )
 
     @classmethod
@@ -2572,9 +2663,21 @@ class IBDocumentRenderer:
     _SEMANTIC_BOOKMARK_MAX_LEN = 40
     _SEMANTIC_BOOKMARK_EXTRA_RE = re.compile(r"[^a-z0-9]+")
 
-    def __init__(self, separator_mode: str = "auto"):
-        self.doc: DocxDocument = Document()
+    def __init__(
+        self,
+        separator_mode: str = "auto",
+        options: Optional[RenderOptions] = None,
+        profile: Optional[str] = None,
+    ):
+        self.options = options or RenderOptions(
+            profile=profile, separator_mode=separator_mode if separator_mode != "auto" else None
+        )
         self.separator_mode = separator_mode
+        self.errors: List[str] = []
+        self._reset_document()
+
+    def _reset_document(self) -> None:
+        self.doc: DocxDocument = Document()
         self._bookmark_id = 0
         self.styler = DocumentStyler(self.doc)
         self.cover_renderer = CoverRenderer(self.doc)
@@ -2589,62 +2692,111 @@ class IBDocumentRenderer:
         self.disclaimer_renderer = DisclaimerRenderer(self.doc)
 
     def render(self, model: DocumentModel) -> DocxDocument:
-        """
-        Render a DocumentModel to a Word Document.
+        """Render through one composition path, using request-local settings."""
+        model = deepcopy(model)
+        resolved = resolve_options(model.metadata, self.options)
+        if model.parsed_profile is not None and model.parsed_profile != resolved.profile.name:
+            raise ValueError(
+                f"Document was parsed with profile {model.parsed_profile!r}; "
+                f"reparse the Markdown with profile={resolved.profile.name!r} before rendering."
+            )
+        if model.metadata.profile != resolved.profile.name:
+            old_defaults = default_metadata(model.metadata.profile)
+            new_defaults = default_metadata(resolved.profile.name)
+            for field_name in ("title", "company", "sector", "analyst"):
+                if getattr(model.metadata, field_name) == getattr(old_defaults, field_name):
+                    setattr(model.metadata, field_name, getattr(new_defaults, field_name))
+            model.metadata.profile = resolved.profile.name
+        if not resolved.profile.is_ib:
+            validate_office_metadata(model.metadata)
+        appendix_index = letter_appendix_index(model)
+        if resolved.strict and model.warnings:
+            raise ValueError("Input validation failed: " + "; ".join(model.warnings))
+        self.errors = list(model.warnings)
+        self._reset_document()
+        self.separator_mode = resolved.separator_mode
+        with use_style(load_style(resolved.profile, resolved.theme)):
+            self.styler.setup_document()
+            self.styler.create_styles()
+            if resolved.profile.name == "office-letter":
+                setup_letter_styles(self.doc)
+            update_fields = OxmlElement("w:updateFields")
+            update_fields.set(qn("w:val"), "true")
+            self.doc.settings.element.append(update_fields)
+            if resolved.profile.a4:
+                for section in self.doc.sections:
+                    section.page_width, section.page_height = Mm(210), Mm(297)
+            if resolved.cover:
+                self.cover_renderer.include_disclaimer = resolved.disclaimer
+                self.cover_renderer.render(model.metadata)
+            if resolved.toc:
+                self.toc_renderer.render(model)
+            title_inserted = (
+                render_office_opening(self.doc, model.metadata) if not resolved.cover else False
+            )
+            skipped_title = False
+            office_closed = False
+            for idx, element in enumerate(model.elements):
+                if idx == appendix_index:
+                    render_office_closing(self.doc, model.metadata)
+                    office_closed = True
+                    self.doc.add_page_break()
+                    label = model.metadata.extra["letter"].get("appendix_label")
+                    if label:
+                        add_text(self.doc, label, bold=True, keep_next=True)
+                if (
+                    title_inserted
+                    and not skipped_title
+                    and element.element_type == ElementType.HEADING_1
+                    and isinstance(element.content, Heading)
+                    and element.content.text == model.metadata.title
+                ):
+                    skipped_title = True
+                    continue
+                if element.element_type not in {ElementType.BULLET_LIST, ElementType.NUMBERED_LIST}:
+                    self.list_renderer.numbering.reset()
+                try:
+                    self._render_element(element)
+                except Exception as exc:
+                    message = f"Element {idx} ({element.element_type.name}): {exc}"
+                    self.errors.append(message)
+                    logger.warning("%s", message)
+                    p = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
+                    FontStyler.apply_run_style(
+                        p.add_run(f"[Render Error: {element.element_type.name}]"),
+                        italic=True,
+                        color=STYLE.RED,
+                    )
+            if not office_closed:
+                render_office_closing(self.doc, model.metadata)
+            if model.footnotes:
+                self.footnote_renderer.render(model.footnotes, allow_legacy_refs=resolved.profile.is_ib)
+            if resolved.disclaimer:
+                self.disclaimer_renderer.render(model.metadata.company)
+            sender = model.metadata.extra.get("sender", {})
+            company = (
+                sender.get("organization", model.metadata.company)
+                if isinstance(sender, dict)
+                else model.metadata.company
+            )
+            self.styler.setup_header_footer(
+                company="" if resolved.profile.name == "office-letter" else company,
+                confidential=resolved.confidential, show_page_numbers=True
+            )
+            self.apply_generator_signature(
+                "ib_generated" if resolved.profile.name == "ib-report" else resolved.profile.name
+            )
+            from docx_audit import inspect_document
 
-        Args:
-            model: The parsed document model
-
-        Returns:
-            The rendered Word Document
-        """
-        # Setup document
-        self.styler.setup_document()
-        self.styler.create_styles()
-
-        # Setup header/footer with company name
-        self.styler.setup_header_footer(
-            company=model.metadata.company,
-            confidential=True,
-            show_page_numbers=True,
-        )
-
-        # Cover page
-        self.cover_renderer.render(model.metadata)
-
-        # Table of contents
-        self.toc_renderer.render(model)
-
-        # Render elements with error resilience
-        for idx, element in enumerate(model.elements):
-            try:
-                self._render_element(element)
-            except Exception as e:
-                logger.warning(
-                    "Failed to render element %d (type=%s): %s — skipping",
-                    idx,
-                    element.element_type.name,
-                    e,
-                )
-                # Insert a visible marker in the document so the user knows
-                p = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
-                err_run = p.add_run(f"[Render Error: {element.element_type.name}]")
-                FontStyler.apply_run_style(err_run, italic=True, color=STYLE.RED)
-
-        # Footnotes/Endnotes
-        if model.footnotes:
-            self.footnote_renderer.render(model.footnotes)
-
-        # Disclaimer
-        self.disclaimer_renderer.render(model.metadata.company)
-
-        self.apply_generator_signature()
-
+            issues = inspect_document(self.doc).issues
+            self.errors.extend(issue for issue in issues if issue not in self.errors)
+            if resolved.strict and self.errors:
+                raise ValueError("Document validation failed: " + "; ".join(self.errors))
         return self.doc
 
-    def apply_generator_signature(self) -> None:
+    def apply_generator_signature(self, profile: str = "ib_generated") -> None:
         """Stamp the DOCX package with a generator signature."""
-        GeneratorSignatureWriter.apply(self.doc)
+        GeneratorSignatureWriter.apply(self.doc, profile)
 
     def _add_semantic_bookmark(self, paragraph, element_type: str, extra: str = "") -> None:
         """Wrap a paragraph's first run with a hidden semantic bookmark."""
@@ -2683,9 +2835,7 @@ class IBDocumentRenderer:
         if not normalized_extra:
             return f"{base}_{suffix}"
 
-        max_extra_len = (
-            self._SEMANTIC_BOOKMARK_MAX_LEN - len(base) - len(suffix) - 2
-        )
+        max_extra_len = self._SEMANTIC_BOOKMARK_MAX_LEN - len(base) - len(suffix) - 2
         if max_extra_len <= 0:
             return f"{base}_{suffix}"
 
@@ -2752,14 +2902,19 @@ class IBDocumentRenderer:
             self._render_code_block(cast(CodeBlock, element.content))
 
         elif etype == ElementType.DIAGRAM:
-            from md_parser import Diagram
             from diagram_renderer import DiagramRenderer
+            from md_parser import Diagram
+
             diagram = cast(Diagram, element.content)
             start_paragraph_count = len(self.doc.paragraphs)
-            renderer = DiagramRenderer(self.doc, theme_colors={
-                "navy": f"#{STYLE.NAVY_HEX}",
-            })
-            renderer.render(diagram)
+            renderer = DiagramRenderer(
+                self.doc,
+                theme_colors={
+                    "navy": f"#{STYLE.NAVY_HEX}",
+                },
+            )
+            if not renderer.render(diagram):
+                raise ValueError("Diagram could not be rendered")
             if len(self.doc.paragraphs) > start_paragraph_count:
                 self._add_semantic_bookmark(
                     self.doc.paragraphs[start_paragraph_count],
@@ -2771,7 +2926,7 @@ class IBDocumentRenderer:
             pass  # Intentionally skip empty elements
 
         else:
-            logger.debug("Unhandled element type: %s", etype.name)
+            raise ValueError("Unhandled element type: " + etype.name)
 
     def _render_separator(self, element: Element):
         """Render a separator as either a horizontal rule or a page break.

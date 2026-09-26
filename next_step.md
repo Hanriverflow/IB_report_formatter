@@ -1,5 +1,7 @@
 # IB Report Formatter — 프로젝트 현황 & 다음 단계
 
+> Historical document — superseded by [the 2026-09-14 implementation plan](docs/implementation-plan-20260914.md). Word→MD development is retired; bidirectional roadmap items below are not active requirements.
+
 > **최종 목표**: MD → 사람이 읽기에 좋은 Word / Word → LLM이 처리하기 좋은 MD
 > **Branch**: `main`
 > **Last updated**: 2026-03-23

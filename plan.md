@@ -1,5 +1,7 @@
 # IB Report Formatter Stability Plan
 
+> Historical document — superseded by [the 2026-09-14 implementation plan](docs/implementation-plan-20260914.md). Word→MD development is retired; bidirectional roadmap items below are not active requirements.
+
 ## Goal
 
 Stabilize the existing Markdown ↔ Word pipelines before large-scale modularization.

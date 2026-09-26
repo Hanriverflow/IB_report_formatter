@@ -13,7 +13,6 @@ Tests rendering functionality including:
 import base64
 
 import pytest
-
 from docx import Document
 
 from md_parser import (
@@ -32,10 +31,8 @@ from md_parser import (
     Table,
     TableCell,
     TableRow,
-    TableType,
     TextRun,
 )
-from word_parser import parse_word_file
 
 PNG_BYTES = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z8eQAAAAASUVORK5CYII="
@@ -54,6 +51,7 @@ def _semantic_bookmark_names(doc: Document):
         if name.startswith("_ibrep_"):
             names.append(name)
     return names
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TABLE RENDERER TESTS
@@ -197,7 +195,9 @@ class TestTableRendererFormatting:
             col_count=5,
         )
 
-        widths = renderer._estimate_column_widths(table, renderer._get_available_table_width_inches())
+        widths = renderer._estimate_column_widths(
+            table, renderer._get_available_table_width_inches()
+        )
 
         assert len(widths) == 5
         assert abs(sum(widths) - renderer._get_available_table_width_inches()) < 0.05
@@ -216,7 +216,11 @@ class TestTableRendererFormatting:
         table = Table(
             rows=[
                 TableRow(
-                    cells=[TableCell(content="구분"), TableCell(content="값"), TableCell(content="코드")],
+                    cells=[
+                        TableCell(content="구분"),
+                        TableCell(content="값"),
+                        TableCell(content="코드"),
+                    ],
                     is_header=True,
                 ),
                 TableRow(
@@ -259,7 +263,7 @@ class TestCalloutStyles:
         """Verify callout styles are defined."""
         from ib_renderer import CalloutRenderer
 
-        styles = CalloutRenderer._CALLOUT_STYLES
+        styles = CalloutRenderer(Document())._CALLOUT_STYLES
 
         # Check key styles exist
         assert "EXECUTIVE SUMMARY" in styles
@@ -275,7 +279,7 @@ class TestCalloutStyles:
         """Executive Summary should have navy background."""
         from ib_renderer import STYLE, CalloutRenderer
 
-        style = CalloutRenderer._CALLOUT_STYLES["EXECUTIVE SUMMARY"]
+        style = CalloutRenderer(Document())._CALLOUT_STYLES["EXECUTIVE SUMMARY"]
         bg_hex, _, _, _ = style
 
         assert bg_hex == STYLE.NAVY_HEX
@@ -330,13 +334,10 @@ class TestImageRendererMimeTypes:
         assert inline_shape._inline.docPr.get("descr") == "Revenue bridge"
         assert inline_shape._inline.docPr.get("title") == "Revenue bridge"
 
-        output_path = tmp_path / "roundtrip_image.docx"
+        output_path = tmp_path / "saved_image.docx"
         doc.save(str(output_path))
-        parsed = parse_word_file(str(output_path), extract_images=False)
-        image_element = next(
-            element for element in parsed.elements if element.element_type == ElementType.IMAGE
-        )
-        assert image_element.content.alt_text == "Revenue bridge"
+        reopened = Document(str(output_path))
+        assert reopened.inline_shapes[0]._inline.docPr.get("descr") == "Revenue bridge"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -704,9 +705,7 @@ class TestTextRendererFormatting:
 
         p = doc.add_paragraph()
         white = RGBColor(255, 255, 255)
-        TextRenderer.render_text_with_formatting(
-            p, "White text", default_color=white
-        )
+        TextRenderer.render_text_with_formatting(p, "White text", default_color=white)
         assert p.runs[0].font.color.rgb == white
 
     def test_color_span_rendered(self, doc):
@@ -715,9 +714,7 @@ class TestTextRendererFormatting:
         from ib_renderer import TextRenderer
 
         p = doc.add_paragraph()
-        TextRenderer.render_text_with_formatting(
-            p, '<span style="color:#C00000">Loss</span>'
-        )
+        TextRenderer.render_text_with_formatting(p, '<span style="color:#C00000">Loss</span>')
         assert p.runs[0].font.color.rgb == RGBColor(192, 0, 0)
 
 
@@ -735,12 +732,10 @@ class TestTableCellRunsRendering:
         header = TableRow(cells=[TableCell(content="Header")])
         data = TableRow(cells=cells)
         table = Table(rows=[header, data], col_count=1)
-        return DocumentModel(
-            elements=[Element(element_type=ElementType.TABLE, content=table)]
-        )
+        return DocumentModel(elements=[Element(element_type=ElementType.TABLE, content=table)])
 
     def test_cell_with_runs_uses_runs(self):
-        from ib_renderer import DocumentStyler, IBDocumentRenderer
+        from ib_renderer import IBDocumentRenderer
 
         runs = [
             TextRun(text="Bold", bold=True),
@@ -769,7 +764,7 @@ class TestTableCellRunsRendering:
         return None
 
     def test_cell_without_runs_falls_back_to_text(self):
-        from ib_renderer import DocumentStyler, IBDocumentRenderer
+        from ib_renderer import IBDocumentRenderer
 
         model = self._build_model_with_table(cell_text="**Important** value")
 
@@ -784,15 +779,13 @@ class TestTableCellRunsRendering:
         assert "**" not in text  # Markers should be parsed, not literal
 
     def test_header_cell_with_runs_uses_runs(self):
-        from ib_renderer import DocumentStyler, IBDocumentRenderer
+        from ib_renderer import IBDocumentRenderer
 
         runs = [TextRun(text="Revenue"), TextRun(text=" (M)", italic=True)]
         header = TableRow(cells=[TableCell(content="Revenue (M)", runs=runs)])
         data = TableRow(cells=[TableCell(content="100")])
         table = Table(rows=[header, data], col_count=1)
-        model = DocumentModel(
-            elements=[Element(element_type=ElementType.TABLE, content=table)]
-        )
+        model = DocumentModel(elements=[Element(element_type=ElementType.TABLE, content=table)])
 
         renderer = IBDocumentRenderer()
         doc = renderer.render(model)
@@ -865,9 +858,7 @@ class TestTableCellRunsRendering:
             ],
             col_count=3,
         )
-        model = DocumentModel(
-            elements=[Element(element_type=ElementType.TABLE, content=table)]
-        )
+        model = DocumentModel(elements=[Element(element_type=ElementType.TABLE, content=table)])
 
         doc = IBDocumentRenderer().render(model)
         content_table = self._find_content_table(doc, "매출총이익")
@@ -897,9 +888,7 @@ class TestTableCellRunsRendering:
             ],
             col_count=2,
         )
-        model = DocumentModel(
-            elements=[Element(element_type=ElementType.TABLE, content=table)]
-        )
+        model = DocumentModel(elements=[Element(element_type=ElementType.TABLE, content=table)])
 
         doc = IBDocumentRenderer().render(model)
         content_table = self._find_content_table(doc, "A-101")
@@ -918,7 +907,7 @@ class TestListIndentRendering:
     """Tests that deep list nesting stays within a bounded indentation range."""
 
     def test_deep_bullet_indent_is_compressed(self):
-        from ib_renderer import IBDocumentRenderer, STYLE
+        from ib_renderer import STYLE, IBDocumentRenderer
 
         model = DocumentModel(
             elements=[
@@ -978,13 +967,10 @@ class TestSeparatorRendering:
         assert "After" in all_text
 
     def test_separator_has_border(self):
-        from lxml import etree
 
         from ib_renderer import IBDocumentRenderer
 
-        model = DocumentModel(
-            elements=[Element(element_type=ElementType.SEPARATOR, content=None)]
-        )
+        model = DocumentModel(elements=[Element(element_type=ElementType.SEPARATOR, content=None)])
         renderer = IBDocumentRenderer()
         doc = renderer.render(model)
 
@@ -1001,9 +987,7 @@ class TestSeparatorRendering:
     def test_separator_adds_semantic_bookmark(self):
         from ib_renderer import IBDocumentRenderer
 
-        model = DocumentModel(
-            elements=[Element(element_type=ElementType.SEPARATOR, content=None)]
-        )
+        model = DocumentModel(elements=[Element(element_type=ElementType.SEPARATOR, content=None)])
         renderer = IBDocumentRenderer()
         doc = renderer.render(model)
 
@@ -1028,12 +1012,20 @@ class TestSeparatorRendering:
         baseline_page_breaks = baseline_doc.element.xpath(
             ".//*[local-name()='br' and @*[local-name()='type']='page']"
         )
-        doc_page_breaks = doc.element.xpath(".//*[local-name()='br' and @*[local-name()='type']='page']")
+        doc_page_breaks = doc.element.xpath(
+            ".//*[local-name()='br' and @*[local-name()='type']='page']"
+        )
 
         baseline_borders = [
-            paragraph for paragraph in baseline_doc.paragraphs if paragraph._p.xpath(".//*[local-name()='pBdr']")
+            paragraph
+            for paragraph in baseline_doc.paragraphs
+            if paragraph._p.xpath(".//*[local-name()='pBdr']")
         ]
-        doc_borders = [paragraph for paragraph in doc.paragraphs if paragraph._p.xpath(".//*[local-name()='pBdr']")]
+        doc_borders = [
+            paragraph
+            for paragraph in doc.paragraphs
+            if paragraph._p.xpath(".//*[local-name()='pBdr']")
+        ]
 
         assert len(doc_page_breaks) == len(baseline_page_breaks) + 1
         assert len(doc_borders) == len(baseline_borders)
@@ -1063,15 +1055,15 @@ class TestSeparatorRendering:
         renderer = IBDocumentRenderer(separator_mode="page-break")
         doc = renderer.render(model)
 
-        page_breaks = doc.element.xpath(".//*[local-name()='br' and @*[local-name()='type']='page']")
+        page_breaks = doc.element.xpath(
+            ".//*[local-name()='br' and @*[local-name()='type']='page']"
+        )
         assert len(page_breaks) >= 1
 
     def test_empty_element_no_crash(self):
         from ib_renderer import IBDocumentRenderer
 
-        model = DocumentModel(
-            elements=[Element(element_type=ElementType.EMPTY, content=None)]
-        )
+        model = DocumentModel(elements=[Element(element_type=ElementType.EMPTY, content=None)])
         renderer = IBDocumentRenderer()
         doc = renderer.render(model)
         # Should not crash — that's the test
@@ -1112,7 +1104,7 @@ class TestTOCPreviewRendering:
         assert not any("Update Field" in text for text in texts)
 
     def test_toc_title_and_preview_use_toc_font(self):
-        from ib_renderer import IBDocumentRenderer, STYLE
+        from ib_renderer import STYLE, IBDocumentRenderer
 
         model = DocumentModel(
             metadata=DocumentMetadata(title="샘플 보고서"),
@@ -1138,7 +1130,7 @@ class TestTOCPreviewRendering:
     def test_word_toc_styles_use_toc_font(self):
         from docx import Document
 
-        from ib_renderer import DocumentStyler, STYLE
+        from ib_renderer import STYLE, DocumentStyler
 
         doc = Document()
         DocumentStyler(doc).create_styles()
@@ -1170,7 +1162,9 @@ class TestTOCPreviewRendering:
         run = cell.paragraphs[0].runs[0]
         assert run.font.name == "Consolas"
         assert cell.vertical_alignment == WD_CELL_VERTICAL_ALIGNMENT.TOP
-        assert not cell._tc.xpath(".//*[local-name()='tblBorders']/*[@*[local-name()='val']='single']")
+        assert not cell._tc.xpath(
+            ".//*[local-name()='tblBorders']/*[@*[local-name()='val']='single']"
+        )
 
     def test_code_block_adds_semantic_bookmark(self):
         from ib_renderer import IBDocumentRenderer
@@ -1186,7 +1180,9 @@ class TestTOCPreviewRendering:
 
         doc = IBDocumentRenderer().render(model)
 
-        assert any(name.startswith("_ibrep_CODE_BLOCK_python_") for name in _semantic_bookmark_names(doc))
+        assert any(
+            name.startswith("_ibrep_CODE_BLOCK_python_") for name in _semantic_bookmark_names(doc)
+        )
 
     def test_diagram_adds_semantic_bookmark(self):
         from ib_renderer import IBDocumentRenderer
@@ -1206,7 +1202,9 @@ class TestTOCPreviewRendering:
 
         doc = IBDocumentRenderer().render(model)
 
-        assert any(name.startswith("_ibrep_DIAGRAM_flow_") for name in _semantic_bookmark_names(doc))
+        assert any(
+            name.startswith("_ibrep_DIAGRAM_flow_") for name in _semantic_bookmark_names(doc)
+        )
 
 
 class TestCoverMetadataInference:
@@ -1239,7 +1237,7 @@ class TestCoverMetadataInference:
         assert not any(row[0] == "SECTOR" for row in rows)
 
     def test_cover_uses_cover_font_for_title_and_metadata(self):
-        from ib_renderer import IBDocumentRenderer, STYLE
+        from ib_renderer import STYLE, IBDocumentRenderer
 
         model = DocumentModel(
             metadata=DocumentMetadata(

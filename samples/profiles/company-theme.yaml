@@ -1,0 +1,7 @@
+# Use --theme samples/profiles/company-theme.yaml or a relative YAML frontmatter path.
+body_font: Malgun Gothic
+heading_font: Malgun Gothic
+korean_font: Malgun Gothic
+body_size: 11
+primary_color: "234E70"
+margin_mm: 20

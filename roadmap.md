@@ -1,5 +1,7 @@
 # OpenAI DeepResearch 전용 Cleaner 구현 로드맵
 
+> Historical document — superseded by [the 2026-09-14 implementation plan](docs/implementation-plan-20260914.md). Word→MD development is retired; bidirectional roadmap items below are not active requirements.
+
 > **Status**: 구현 및 문서화 완료
 > **Verified on**: 2026-03-23 (`main`, `uv run pytest tests/ -q` → 250 passed)
 

@@ -46,6 +46,8 @@ from cli_utils import (
 from cli_utils import (
     setup_logging as configure_logging,
 )
+from document_profiles import PROFILES
+from document_profiles import RenderOptions as RenderOptions
 from ib_renderer import IBDocumentRenderer
 from md_parser import DocumentModel, parse_markdown_file
 
@@ -64,34 +66,6 @@ logger = logging.getLogger("md_to_word")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-class RenderOptions:
-    """Options that control which sections are rendered"""
-
-    def __init__(
-        self,
-        include_cover: bool = True,
-        include_toc: bool = True,
-        include_disclaimer: bool = True,
-        separator_mode: str = "auto",
-    ):
-        self.include_cover = include_cover
-        self.include_toc = include_toc
-        self.include_disclaimer = include_disclaimer
-        self.separator_mode = separator_mode
-
-    def __repr__(self) -> str:
-        flags = []
-        if not self.include_cover:
-            flags.append("no-cover")
-        if not self.include_toc:
-            flags.append("no-toc")
-        if not self.include_disclaimer:
-            flags.append("no-disclaimer")
-        if self.separator_mode != "auto":
-            flags.append(f"separator={self.separator_mode}")
-        return f"RenderOptions({', '.join(flags) if flags else 'all sections'})"
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # FORMATTER INTEGRATION
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -226,8 +200,7 @@ def safe_save(doc, output_path: Path) -> Path:
         save_action=lambda path: doc.save(str(path)),
         logger=logger,
         lock_message=(
-            "%s is locked (possibly open in another program). "
-            "Saving with timestamp suffix."
+            "%s is locked (possibly open in another program). Saving with timestamp suffix."
         ),
     )
 
@@ -297,7 +270,7 @@ class IBReportConverter:
         # ── Stage 1: Parse ──────────────────────────────────────────────────
         logger.info("Parsing: %s", self.md_file_path.name)
         try:
-            model = parse_markdown_file(str(self.md_file_path))
+            model = parse_markdown_file(str(self.md_file_path), profile=self.render_options.profile)
         except UnicodeDecodeError as e:
             raise RuntimeError(
                 f"Failed to decode file (encoding issue): {e}\nTry saving the file as UTF-8."
@@ -327,78 +300,12 @@ class IBReportConverter:
         return str(saved_path)
 
     def _render(self, model: DocumentModel):
-        """
-        Render the document model to a Word document, respecting render options.
-
-        Args:
-            model: Parsed DocumentModel
-
-        Returns:
-            python-docx Document object
-        """
-        renderer = IBDocumentRenderer(separator_mode=self.render_options.separator_mode)
-
-        # Setup
-        renderer.styler.setup_document()
-        renderer.styler.create_styles()
-
-        # Cover page
-        if self.render_options.include_cover:
-            renderer.cover_renderer.render(model.metadata)
-        else:
-            logger.info("Skipping cover page")
-
-        # Table of contents
-        if self.render_options.include_toc:
-            renderer.toc_renderer.render(model)
-        else:
-            logger.info("Skipping table of contents")
-
-        # Render all elements (with per-element error resilience)
-        rendered_count = 0
-        error_count = 0
-
-        for idx, element in enumerate(model.elements):
-            try:
-                renderer._render_element(element)
-                rendered_count += 1
-            except Exception as e:
-                error_count += 1
-                logger.warning(
-                    "Element %d (type=%s) render failed: %s — inserting error marker",
-                    idx,
-                    element.element_type.name,
-                    e,
-                )
-                # Error marker is already inserted by renderer's try-except,
-                # but we log here for converter-level awareness
-                from ib_renderer import STYLE as IB_STYLE
-                from ib_renderer import FontStyler
-
-                p = renderer.doc.add_paragraph(style=IB_STYLE.STYLE_IB_BODY)
-                err_run = p.add_run(f"[Render Error: {element.element_type.name}]")
-                FontStyler.apply_run_style(err_run, italic=True, color=IB_STYLE.RED)
-
-        logger.info(
-            "Rendered %d/%d elements%s",
-            rendered_count,
-            len(model.elements),
-            f" ({error_count} errors)" if error_count else "",
-        )
-
-        # Footnotes
-        if model.footnotes:
-            renderer.footnote_renderer.render(model.footnotes)
-
-        # Disclaimer
-        if self.render_options.include_disclaimer:
-            renderer.disclaimer_renderer.render(model.metadata.company)
-        else:
-            logger.info("Skipping disclaimer")
-
-        renderer.apply_generator_signature()
-
-        return renderer.doc
+        """Use the same composition service as the Python API and registry."""
+        renderer = IBDocumentRenderer(options=self.render_options)
+        document = renderer.render(model)
+        for issue in renderer.errors:
+            logger.warning("%s", issue)
+        return document
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -424,7 +331,7 @@ def interactive_select(md_files: List[Path]) -> Optional[Path]:
 def build_parser() -> argparse.ArgumentParser:
     """Build CLI argument parser"""
     parser = argparse.ArgumentParser(
-        description="Convert Markdown files to IB-style Word documents",
+        description="Convert Markdown to IB reports and Korean business Word documents",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -502,6 +409,22 @@ Examples:
         help="Print DeepResearch cleaner summary",
     )
 
+    parser.add_argument(
+        "--profile", choices=list(PROFILES), help="Document type (overrides frontmatter)"
+    )
+    parser.add_argument("--theme", help="default, mono, or a YAML theme file")
+    parser.add_argument("--list-profiles", action="store_true", help="List document profiles")
+    parser.add_argument(
+        "--strict", action="store_true", default=None, help="Fail on input loss or rendering errors"
+    )
+    parser.add_argument(
+        "--no-confidential",
+        action="store_false",
+        dest="confidential",
+        default=None,
+        help="Omit confidentiality label",
+    )
+
     # Section toggles
     section_group = parser.add_argument_group("section options")
     section_group.add_argument(
@@ -524,7 +447,7 @@ Examples:
     section_group.add_argument(
         "--separator-mode",
         choices=["auto", "rule", "page-break"],
-        default="auto",
+        default=None,
         help="Render separators as horizontal rules, page breaks, or auto (`## ---` => page break)",
     )
 
@@ -552,10 +475,14 @@ def run_conversion(input_path: Path, args) -> int:
     """
     # Build render options
     render_options = RenderOptions(
-        include_cover=not args.no_cover,
-        include_toc=not args.no_toc,
-        include_disclaimer=not args.no_disclaimer,
-        separator_mode=getattr(args, "separator_mode", "auto"),
+        include_cover=False if args.no_cover else None,
+        include_toc=False if args.no_toc else None,
+        include_disclaimer=False if args.no_disclaimer else None,
+        separator_mode=getattr(args, "separator_mode", None),
+        profile=getattr(args, "profile", None),
+        theme=getattr(args, "theme", None),
+        strict=getattr(args, "strict", None),
+        confidential=getattr(args, "confidential", None),
     )
 
     # Auto-format / cleaner if requested
@@ -674,6 +601,10 @@ def main():
 
     # Setup logging
     configure_logging(verbose=args.verbose)
+
+    if args.list_profiles:
+        logger.info("Available profiles: %s", ", ".join(PROFILES))
+        return
 
     # ── List mode ───────────────────────────────────────────────────────────
     if args.list:

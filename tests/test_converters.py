@@ -6,18 +6,13 @@ from pathlib import Path
 import pytest
 
 from converters import (
-    BaseConverter,
     ConverterRegistry,
-    DocxInputConverter,
     DocxOutputConverter,
     InputConverter,
     MarkdownInputConverter,
-    MarkdownOutputConverter,
-    OutputConverter,
     get_default_registry,
 )
 from md_parser import DocumentMetadata, DocumentModel, Element, ElementType, Heading
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # HELPERS
@@ -104,7 +99,7 @@ class TestConverterRegistry:
         """converters property returns a copy of the list."""
         registry = ConverterRegistry()
         registry.register(MarkdownInputConverter())
-        registry.register(DocxInputConverter())
+        registry.register(DocxOutputConverter())
         converters = registry.converters
         assert len(converters) == 2
         # Mutation doesn't affect internal list
@@ -140,11 +135,6 @@ class TestInputConverter:
         converter = MarkdownInputConverter()
         assert converter.accepts(Path("test.md")) is True
 
-    def test_docx_accepts(self):
-        converter = DocxInputConverter()
-        assert converter.accepts("report.docx") is True
-        assert converter.accepts("report.md") is False
-
     def test_case_insensitive_extension(self):
         converter = MarkdownInputConverter()
         assert converter.accepts("REPORT.MD") is True
@@ -172,11 +162,6 @@ class TestOutputConverter:
         converter = DocxOutputConverter()
         assert converter.accepts("file.docx", output_format="docx") is False
 
-    def test_markdown_output_accepts(self):
-        converter = MarkdownOutputConverter()
-        model = _minimal_model()
-        assert converter.accepts(model, output_format="md") is True
-
     def test_rejects_without_format_kwarg(self):
         converter = DocxOutputConverter()
         model = _minimal_model()
@@ -192,7 +177,9 @@ class TestMarkdownInputConversion:
     """Test actual Markdown file parsing via converter."""
 
     def test_parse_md_file(self, tmp_path):
-        md_file = _write_md(tmp_path, """
+        md_file = _write_md(
+            tmp_path,
+            """
             ---
             title: Test Report
             ---
@@ -200,39 +187,13 @@ class TestMarkdownInputConversion:
             # Introduction
 
             Hello world.
-        """)
+        """,
+        )
         converter = MarkdownInputConverter()
         model = converter.convert(str(md_file))
         assert isinstance(model, DocumentModel)
         assert model.metadata.title == "Test Report"
         assert len(model.elements) > 0
-
-
-class TestMarkdownOutputConversion:
-    """Test DocumentModel rendering to Markdown."""
-
-    def test_render_to_string(self):
-        model = _minimal_model()
-        converter = MarkdownOutputConverter()
-        result = converter.convert(model, output_format="md")
-        assert isinstance(result, str)
-        assert "# Hello" in result
-
-    def test_render_to_file(self, tmp_path):
-        model = _minimal_model()
-        converter = MarkdownOutputConverter()
-        out_path = tmp_path / "output.md"
-        result = converter.convert(model, output_format="md", output_path=str(out_path))
-        assert result == str(out_path)
-        assert out_path.exists()
-        content = out_path.read_text(encoding="utf-8")
-        assert "# Hello" in content
-
-    def test_strip_formatting_option(self):
-        model = _minimal_model()
-        converter = MarkdownOutputConverter()
-        result = converter.convert(model, output_format="md", strip_formatting=True)
-        assert isinstance(result, str)
 
 
 class TestDocxOutputConversion:
@@ -251,9 +212,7 @@ class TestDocxOutputConversion:
         model = _minimal_model()
         converter = DocxOutputConverter()
         out_path = tmp_path / "output.docx"
-        result = converter.convert(
-            model, output_format="docx", output_path=str(out_path)
-        )
+        result = converter.convert(model, output_format="docx", output_path=str(out_path))
         assert result == str(out_path)
         assert out_path.exists()
 
@@ -266,9 +225,9 @@ class TestDocxOutputConversion:
 class TestDefaultRegistry:
     """Test the default registry with all built-in converters."""
 
-    def test_has_four_builtins(self):
+    def test_has_two_builtins(self):
         registry = get_default_registry()
-        assert len(registry.converters) == 4
+        assert len(registry.converters) == 2
 
     def test_finds_md_input(self):
         registry = get_default_registry()
@@ -279,8 +238,7 @@ class TestDefaultRegistry:
     def test_finds_docx_input(self):
         registry = get_default_registry()
         converter = registry.find_converter("test.docx")
-        assert converter is not None
-        assert converter.name == "docx-input"
+        assert converter is None
 
     def test_finds_docx_output(self):
         registry = get_default_registry()
@@ -293,12 +251,13 @@ class TestDefaultRegistry:
         registry = get_default_registry()
         model = _minimal_model()
         converter = registry.find_converter(model, output_format="md")
-        assert converter is not None
-        assert converter.name == "markdown-output"
+        assert converter is None
 
-    def test_end_to_end_md_roundtrip(self, tmp_path):
-        """MD file -> DocumentModel -> MD string."""
-        md_file = _write_md(tmp_path, """
+    def test_end_to_end_md_to_docx(self, tmp_path):
+        """MD file -> DocumentModel -> DOCX."""
+        md_file = _write_md(
+            tmp_path,
+            """
             ---
             title: Round Trip
             ---
@@ -306,14 +265,14 @@ class TestDefaultRegistry:
             # Section One
 
             This is a test.
-        """)
+        """,
+        )
         registry = get_default_registry()
         model = registry.convert(str(md_file))
         assert isinstance(model, DocumentModel)
 
-        md_text = registry.convert(model, output_format="md")
-        assert isinstance(md_text, str)
-        assert "# Section One" in md_text
+        doc = registry.convert(model, output_format="docx")
+        assert any(p.text == "Section One" for p in doc.paragraphs)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -325,23 +284,18 @@ class TestBackwardCompatibility:
     """Verify existing APIs still work directly (not through registry)."""
 
     def test_parse_markdown_file_direct(self, tmp_path):
-        md_file = _write_md(tmp_path, """
+        md_file = _write_md(
+            tmp_path,
+            """
             # Direct Call
 
             Works fine.
-        """)
+        """,
+        )
         from md_parser import parse_markdown_file
 
         model = parse_markdown_file(str(md_file))
         assert isinstance(model, DocumentModel)
-
-    def test_render_to_markdown_direct(self):
-        from md_renderer import render_to_markdown
-
-        model = _minimal_model()
-        result = render_to_markdown(model)
-        assert isinstance(result, str)
-        assert "# Hello" in result
 
     def test_ib_renderer_direct(self):
         from ib_renderer import IBDocumentRenderer
