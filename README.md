@@ -2,9 +2,53 @@
 
 Markdown → editable Word for investment-banking reports and Korean business documents.
 
-[한국어 설명](README.ko.md) · [Implementation plan](docs/implementation-plan-20260914.md) · [Verification](docs/verification-20260914.md)
+[한국어 설명](README.ko.md) · [Current integration record](docs/pr-consolidation-20260926.md) · [Release checklist](#release-checklist)
 
-Latest: [letter quality improvement plan](docs/improvement-plan-20260915.md) · [verification](docs/verification-20260915.md).
+## Status and documentation map
+
+Repository review on **2026-09-27**: the default branch is `main`, the README calls the writer-only architecture **2.0**, and [package metadata](pyproject.toml) declares **2.0.0 (Beta)**. GitHub showed **0 tags and no published releases**. These version labels describe source/package metadata, not an already published or newly certified v2.0 release.
+
+- **Current usage and implementation:** this README, [Korean usage](README.ko.md), [runnable profiles](samples/profiles), [CLI source](md_to_word.py), [profile definitions](document_profiles.py), and [tests](tests). The built-in direction is Markdown to DOCX; Word-to-Markdown remains retired.
+- **Latest integration and reported verification:** [2026-09-26 consolidation](docs/pr-consolidation-20260926.md), including promoted functionality and deliberately deferred old-PR features. It reports 311 tests passed at product-code commit `cadc0ae515d2f5757d5006e64bec1acaff56ccba`, package/install checks, and nine synthetic documents / 16 pages of Word evidence. These are that record's results, not tests rerun during this documentation review or human/business approval.
+- **Design and earlier evidence:** [September implementation plan](docs/implementation-plan-20260914.md), [September 14 verification](docs/verification-20260914.md), [letter improvement plan](docs/improvement-plan-20260915.md), and [September 15 verification](docs/verification-20260915.md). Plans explain intended work; dated verification records describe only their recorded scope and environment.
+- **Preserved historical plans:** [stability plan](plan.md), [upgrade plan](plan_upgrade.md), [next steps](next_step.md), and [roadmap](roadmap.md). Their bidirectional features, old test counts, and checkmarks are not the current feature list or a release guarantee.
+- **Preserved upload checklist:** [git_checklist.md](git_checklist.md) is an older repository-upload guide, not evidence that release gates have passed. Use the release checklist below for a future release. Do not reinitialize this repository or blindly stage all local files.
+- **Change history:** [CHANGELOG.md](CHANGELOG.md). A dated entry or completed plan alone does not prove a tag, published artifact, or successful validation of today's checkout.
+
+## Release checklist
+
+This is a **pending maintainer workflow**, not a completed deployment. This documentation-only review did not run tests, build/install packages, render Word pages, publish packages, or create tags/releases.
+
+### Local validation commands
+
+Run from a clean, isolated checkout of the exact proposed release commit, using Python 3.12 for comparison with the recorded environment. Preserve command output, tool versions, exit codes, and artifact hashes. These commands are instructions, not fresh pass results:
+
+```sh
+uv sync --locked --extra dev
+uv run pytest tests/
+uv run ruff check .
+uv run mypy .
+uv run md-to-word --help
+uv run md-to-word --list-profiles
+uv run md-to-word samples/profiles/office-letter.md release-letter.docx --strict
+uv run docx-audit release-letter.docx
+uv build
+```
+
+Keep generated output local and outside commits. For repeated runs, choose a new output path. Inspect the audit JSON; successful DOCX generation is not proof of acceptable page layout. See [Word page QA on Windows](#word-page-qa-on-windows) for native rendering with new/empty evidence directories and separate visual review.
+
+- [ ] Record the exact release commit and reconcile both READMEs, package version and changelog with its implemented scope, not historical plans.
+- [ ] Run the checks above; investigate every failure. Recheck the declared Python/OS support on actual target runtimes; Python 3.8 syntax checks alone are not runtime validation.
+- [ ] Inspect wheel/sdist contents for missing engine modules and accidental credentials, private reports, generated DOCX files, or retired inverse-conversion modules. Install the built wheel in a separate clean environment and smoke-test its installed CLI outside the source checkout.
+- [ ] Regenerate representative synthetic samples; inspect structural audit results and every rendered Word page. Record Word/font environment, manifests, hashes, and separate visual-review/business-approval status.
+- [ ] Resolve the rights and notice gate below, including third-party dependencies, fonts, images, diagrams and sample content.
+- [ ] Only after those gates pass, have the maintainer choose a version consistent with package metadata and changelog, create a tag on the **validated commit**, and publish release notes with the exact validation evidence, limitations and artifact hashes. Do not infer or create `v2.0`/`v2.0.0` merely from the README heading. Never move an existing release tag to hide a failed validation; document a corrected release instead.
+
+### License and rights gate
+
+[pyproject.toml](pyproject.toml) already explicitly declares `license = {text = "MIT"}` and the MIT classifier; its author field is `DCM Team`. The reviewed repository root has **no LICENSE file**. This is an existing MIT declaration, not a newly selected license, and an author field alone does not establish the complete copyright notice or ownership of every asset.
+
+**[blocked] Release rights sign-off and complete license notice:** the rights holder must confirm the applicable copyright holder/year and authority to distribute included material. Then reconcile a LICENSE notice with the existing MIT declaration and verify that intended distributions carry the required notice. Do not invent copyright ownership, select a different license on the owner's behalf, or treat dependency/asset licenses as the project's license. No license file, source, CI, or deployment configuration is changed by this documentation update.
 
 ## Product direction
 
