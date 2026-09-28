@@ -10,6 +10,8 @@ Current plan: `docs/implementation-plan-20260914.md`. Verification: `docs/verifi
 
 Production-quality follow-up: `docs/improvement-plan-20260915.md` and `docs/verification-20260915.md`.
 
+Next-step research roadmap (owner decisions D1–D5 and candidate work E1–E17; not active requirements until approved): `docs/improvement-roadmap-20260929.md`.
+
 ## Quick reference
 
 ```sh
