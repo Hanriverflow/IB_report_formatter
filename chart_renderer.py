@@ -4,6 +4,7 @@ Changelog (feature port):
     - Preserve PR #5 chart_type/y_label and cumulative waterfall semantics.
     - Add type alias, unit and presentation-only number formats.
     - Avoid pyplot, rcParams mutation, temporary files and cached theme values.
+    - Resolve installed raster fonts and diagnose missing CJK glyph coverage.
 """
 
 import math
@@ -14,7 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
 from document_model import ChartSeries, ChartSpec
-from render_styles import STYLE
+from render_styles import STYLE, RasterFontPolicy
 
 
 class ChartSpecError(ValueError):
@@ -186,9 +187,12 @@ def render_chart_png(
     from matplotlib.text import Text
     from matplotlib.ticker import FuncFormatter
 
-    from ib_renderer import FontPolicy
-
-    font = FontProperties(family=FontPolicy.resolve_korean_font())
+    texts = [spec.title or "", *spec.labels, spec.y_label or spec.unit or "", spec.source or ""]
+    if len(spec.series) > 1:
+        texts.extend(series.name for series in spec.series)
+    if spec.chart_type == "waterfall":
+        texts.append(spec.total_label or "Total")
+    font = FontProperties(family=RasterFontPolicy.resolve(STYLE.KOREAN_FONT, "\n".join(texts)))
     navy, dark, medium = (f"#{value}" for value in (STYLE.NAVY, STYLE.DARK_GRAY, STYLE.MEDIUM_GRAY))
     palette = [navy, dark, medium]
     fig = Figure(figsize=(width_inches, height_inches), dpi=dpi, facecolor=f"#{STYLE.WHITE}")

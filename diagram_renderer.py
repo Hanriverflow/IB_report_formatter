@@ -7,6 +7,7 @@ Requires: matplotlib (optional dependency, graceful fallback to text placeholder
 Changelog (hardening):
     - Use independent Agg figures and explicit fonts without changing rcParams.
     - Release figures and unsuccessful temporary images on every exit path.
+    - Share installed raster font selection and CJK glyph-loss diagnostics.
 """
 
 import importlib
@@ -17,6 +18,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches
+
+from render_styles import STYLE, RasterFontPolicy
 
 if TYPE_CHECKING:
     from docx.document import Document as DocxDocument
@@ -41,8 +44,6 @@ def _matplotlib_available() -> bool:
 
 class DiagramRenderer:
     """Renders Diagram objects as matplotlib images in Word documents."""
-
-    FONT = "Malgun Gothic"
 
     def __init__(self, doc: "DocxDocument", theme_colors: Optional[Dict[str, str]] = None):
         self.doc = doc
@@ -70,8 +71,8 @@ class DiagramRenderer:
             finally:
                 try:
                     os.unlink(image_path)
-                except OSError:
-                    pass
+                except OSError as exc:
+                    logger.debug("Cannot remove diagram image: %s", exc)
         else:
             self._placeholder(diagram.title)
             return False
@@ -87,7 +88,9 @@ class DiagramRenderer:
             from matplotlib.patches import FancyBboxPatch
 
             # ── Font setup ──────────────────────────────────────────────
-            korean_font = self._find_korean_font()
+            texts = [diagram.title, *(box.label for box in diagram.boxes),
+                     *(arrow.label for arrow in diagram.arrows), *diagram.notes]
+            korean_font = RasterFontPolicy.resolve(STYLE.KOREAN_FONT, "\n".join(texts))
 
             boxes = diagram.boxes
             arrows = diagram.arrows
@@ -297,17 +300,6 @@ class DiagramRenderer:
         else:
             t = hh / abs(dy)
         return cx + dx * t, cy + dy * t
-
-    @staticmethod
-    def _find_korean_font() -> Optional[str]:
-        try:
-            import matplotlib.font_manager as fm
-            for name in ["Malgun Gothic", "NanumGothic", "AppleGothic"]:
-                if fm.findfont(name, fallback_to_default=False):
-                    return name
-        except Exception:
-            pass
-        return None
 
     def _insert(self, file_path: str, title: str, notes: List[str]):
         """Insert diagram image centered with caption and notes."""

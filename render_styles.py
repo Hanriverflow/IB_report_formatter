@@ -1,11 +1,110 @@
-"""Immutable styles scoped to a render request; legacy helpers share no mutable state."""
+"""Immutable styles scoped to a render request; legacy helpers share no mutable state.
 
+Changelog (raster fonts):
+    - Resolve installed image fonts independently of Word font declarations.
+    - Cache font inventory/coverage only; collect glyph-loss diagnostics per render.
+"""
+
+import logging
+import re
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Iterator
 
 from docx.shared import Inches, Pt, RGBColor
+
+logger = logging.getLogger(__name__)
+
+_RASTER_FONT_DIAGNOSTICS: ContextVar[list[str] | None] = ContextVar(
+    "raster_font_diagnostics", default=None,
+)
+
+
+@lru_cache(maxsize=128)
+def _installed_raster_font(family: str) -> str | None:
+    """Look up an installed family without Matplotlib's silent default fallback."""
+    from matplotlib import font_manager
+
+    try:
+        return str(font_manager.findfont(
+            font_manager.FontProperties(family=[family]), fallback_to_default=False,
+        ))
+    except (ValueError, OSError) as exc:
+        logger.debug("Raster font %s is unavailable: %s", family, exc)
+        return None
+
+
+@lru_cache(maxsize=128)
+def _raster_font_codepoints(path: str) -> frozenset[int]:
+    """Cache actual glyph coverage, including custom theme fonts with Latin names."""
+    from matplotlib.ft2font import FT2Font
+
+    try:
+        return frozenset(FT2Font(path).get_charmap())
+    except (OSError, RuntimeError, ValueError) as exc:
+        logger.debug("Cannot inspect raster font %s: %s", path, exc)
+        return frozenset()
+
+
+class RasterFontPolicy:
+    """Choose installed fonts for images; never alter a Word font declaration."""
+
+    FALLBACKS = (
+        "Malgun Gothic", "Apple SD Gothic Neo", "AppleGothic", "NanumGothic",
+        "NanumBarunGothic", "Noto Sans CJK KR", "Noto Sans KR", "Source Han Sans KR", "UnDotum",
+    )
+    _CJK_RE = re.compile(
+        "[\u1100-\u11ff\u2e80-\ua4cf\ua960-\ua97f\uac00-\ud7ff"
+        "\uf900-\ufaff\ufe30-\ufe4f\uff65-\uffdc"
+        "\U0001b000-\U0001b2ff\U00020000-\U000323af]"
+    )
+
+    @classmethod
+    def resolve(cls, preferred: str, text: str) -> str:
+        """Resolve a family for this raster operation and diagnose CJK glyph loss.
+
+        Args:
+            preferred: Current theme's family, supplied anew by each caller.
+            text: Text actually drawn into the image.
+
+        Returns:
+            First installed candidate covering the text's CJK characters, or
+            DejaVu Sans with a diagnostic when none can render those characters.
+        """
+        candidates = tuple(dict.fromkeys((preferred, *cls.FALLBACKS)))
+        required = {ord(character) for character in cls._CJK_RE.findall(text)}
+        for family in candidates:
+            path = _installed_raster_font(family)
+            if path is not None and (not required or required <= _raster_font_codepoints(path)):
+                return family
+        if required:
+            message = (
+                "No installed CJK raster font covers this image's text; missing glyphs. "
+                "Install a font with the required CJK glyphs. Tried: " + ", ".join(candidates)
+            )
+            diagnostics = _RASTER_FONT_DIAGNOSTICS.get()
+            if diagnostics is None or message not in diagnostics:
+                logger.warning("%s", message)
+                if diagnostics is not None:
+                    diagnostics.append(message)
+        return "DejaVu Sans"
+
+
+@contextmanager
+def collect_raster_font_diagnostics() -> Iterator[list[str]]:
+    """Collect image glyph-loss messages only for the current render request.
+
+    Yields:
+        Unique warning messages for the orchestrator's visible/strict diagnostics.
+    """
+    diagnostics: list[str] = []
+    token = _RASTER_FONT_DIAGNOSTICS.set(diagnostics)
+    try:
+        yield diagnostics
+    finally:
+        _RASTER_FONT_DIAGNOSTICS.reset(token)
 
 
 @dataclass(frozen=True)
