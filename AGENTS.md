@@ -100,8 +100,8 @@ Regression coverage is in `tests/test_md_parser.py` (soft wrap merge, hard-break
 ## Code Style Guidelines
 
 ### Python Version
-- **Python 3.8+ compatible** - Do NOT use features like `Path.with_stem()` (3.9+)
-- Use `Path.with_name()` patterns instead for 3.8 compatibility
+- **Python 3.12+**
+- Python floor raised to 3.12 by owner decision D1 on 2026-09-29
 
 ### Type Hints
 ```python
@@ -331,11 +331,10 @@ SENTENCE_END_RE = re.compile(
 
 ## Common Pitfalls
 
-1. **Path.with_stem()** - Not available in Python 3.8. Use `with_name()` pattern
-2. **Empty catch blocks** - Always log or handle errors explicitly
-3. **Regex without compile** - Compile patterns as class attributes
-4. **Missing type hints** - All public functions should have type hints
-5. **Print vs logging** - Use logging module for all output
+1. **Empty catch blocks** - Always log or handle errors explicitly
+2. **Regex without compile** - Compile patterns as class attributes
+3. **Missing type hints** - All public functions should have type hints
+4. **Print vs logging** - Use logging module for all output
 
 ---
 

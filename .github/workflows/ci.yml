@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python-version: ["3.12"]
+        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -52,8 +52,8 @@ jobs:
               )
           assert actual == expected, f"Wheel payload differs: expected {expected}, got {actual}"
           logging.info("Wheel payload verified: %d engine modules", len(actual))
-      - name: Verify Python 3.8 syntax
-        id: python38
+      - name: Verify Python 3.12 syntax
+        id: python312
         shell: uv run python {0}
         run: |
           import ast
@@ -64,5 +64,5 @@ jobs:
           sources = sorted(Path(".").glob("*.py"))
           assert sources, "No top-level Python modules found"
           for source in sources:
-              ast.parse(source.read_text(encoding="utf-8-sig"), filename=str(source), feature_version=(3, 8))
-          logging.info("Python 3.8 syntax verified: %d modules", len(sources))
+              ast.parse(source.read_text(encoding="utf-8-sig"), filename=str(source), feature_version=(3, 12))
+          logging.info("Python 3.12 syntax verified: %d modules", len(sources))
