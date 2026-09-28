@@ -328,7 +328,11 @@ def test_ci_workflow_config_and_python312_gate():
     assert steps[0]["uses"] == "actions/checkout@v4"
     assert steps[1]["uses"] == "astral-sh/setup-uv@v6"
     assert steps[1]["with"]["python-version"] == "${{ matrix.python-version }}"
-    commands = [step["run"] for step in steps if "run" in step]
+    fonts = next(step for step in steps if step.get("name") == "Install Korean fonts")
+    assert fonts["if"] == "runner.os == 'Linux'"
+    assert fonts["run"] == "sudo apt-get update && sudo apt-get install -y fonts-nanum"
+    assert steps.index(fonts) < next(i for i, step in enumerate(steps) if step.get("name") == "Test")
+    commands = [step["run"] for step in steps if "run" in step and step is not fonts]
     assert commands[:5] == [
         "uv sync --locked --extra dev", "uv run ruff check .", "uv run mypy .",
         "uv run pytest tests/ -q", "uv build",

@@ -3,6 +3,7 @@ IB Renderer Module for Word Report Generation
 Handles styling and rendering of document elements in IB Bank style.
 
 Changelog (hardening):
+    - Diagnose CJK raster glyph loss without changing Word font declarations.
     - Preserve semantic numeric-cell runs and record equation/image failures.
     - Validate structure without the full audit observation pass.
     - Render equations on independent Agg figures with unconditional cleanup.
@@ -82,7 +83,7 @@ from office_layout import (
     render_office_opening,
     setup_letter_styles,
 )
-from render_styles import STYLE, use_style
+from render_styles import STYLE, RasterFontPolicy, collect_raster_font_diagnostics, use_style
 from render_styles import IBStyle as IBStyle
 
 logger = logging.getLogger(__name__)
@@ -286,7 +287,7 @@ class FontStyler:
 
 
 class FontPolicy:
-    """Resolve platform-aware East Asian font defaults."""
+    """Declare Word fonts for the reader's machine, independently of raster fonts."""
 
     @classmethod
     def resolve_korean_font(cls, system_name: Optional[str] = None) -> str:
@@ -2795,7 +2796,7 @@ class IBDocumentRenderer:
         self._reset_document()
         self.separator_mode = resolved.separator_mode
         self.charts = resolved.charts
-        with use_style(load_style(resolved.profile, resolved.theme)):
+        with use_style(load_style(resolved.profile, resolved.theme)), collect_raster_font_diagnostics() as font_warnings:
             self.styler.setup_document()
             self.styler.create_styles()
             if resolved.profile.name == "office-letter":
@@ -2868,6 +2869,12 @@ class IBDocumentRenderer:
             )
             from docx_audit import inspect_document_issues
 
+            for warning in font_warnings:
+                self.errors.append(warning)
+                paragraph = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
+                FontStyler.apply_run_style(
+                    paragraph.add_run(f"[Render Warning: {warning}]"), italic=True, color=STYLE.RED,
+                )
             issues = inspect_document_issues(self.doc)
             self.errors.extend(issue for issue in issues if issue not in self.errors)
             if resolved.strict and self.errors:
@@ -3504,7 +3511,7 @@ class LaTeXRenderer:
             FigureCanvasAgg(fig)
             fig.patch.set_facecolor("white")
             fig.patch.set_alpha(1)
-            font_props = FontProperties(family=FontPolicy.resolve_korean_font())
+            font_props = FontProperties(family=RasterFontPolicy.resolve(STYLE.KOREAN_FONT, display_text))
 
             fig.text(
                 0.5,
