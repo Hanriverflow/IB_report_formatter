@@ -3,7 +3,7 @@ name = "ib-report-formatter"
 version = "2.0.0"
 description = "Markdown to Word for IB reports and Korean business documents"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
     {name = "DCM Team"}
@@ -15,12 +15,8 @@ classifiers = [
     "Intended Audience :: Financial and Insurance Industry",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Office/Business :: Financial",
     "Topic :: Text Processing :: Markup :: Markdown",
 ]
@@ -55,6 +51,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 only-include = [
+    "chart_renderer.py",
     "cli_utils.py", "converters.py", "deep_md_cleaner.py", "diagram_renderer.py",
     "document_model.py", "document_profiles.py", "docx_audit.py", "ib_renderer.py",
     "md_formatter.py", "md_parser.py", "md_to_word.py", "office_layout.py",
@@ -63,18 +60,19 @@ only-include = [
 
 [tool.hatch.build.targets.sdist]
 include = [
+    "/chart_renderer.py",
     "/cli_utils.py", "/converters.py", "/deep_md_cleaner.py", "/diagram_renderer.py",
     "/document_model.py", "/document_profiles.py", "/docx_audit.py", "/ib_renderer.py",
     "/md_formatter.py", "/md_parser.py", "/md_to_word.py", "/office_layout.py",
     "/render_styles.py", "/stream_utils.py", "/pyproject.toml", "/uv.lock",
-    "/README.md", "/README.ko.md", "/CHANGELOG.md", "/AGENTS.md",
+    "/README.md", "/README.ko.md", "/CHANGELOG.md", "/AGENTS.md", "/LICENSE",
     "/samples/profiles/**", "/samples/qa/**", "/scripts/word_visual_qa.ps1", "/docs/implementation-plan-20260914.md",
     "/docs/verification-20260914.md",
     "/docs/improvement-plan-20260915.md", "/docs/verification-20260915.md",
 ]
 
 [tool.ruff]
-target-version = "py38"
+target-version = "py312"
 line-length = 100
 
 [tool.ruff.lint]
@@ -90,10 +88,17 @@ select = [
 ignore = [
     "E501",   # line too long (handled by formatter)
     "B008",   # do not perform function calls in argument defaults
+    # Enabled by the Python 3.12 target; modernize in a follow-up PR.
+    "B905",   # zip without explicit strict
+    "UP006",  # use built-in collection annotations
+    "UP007",  # use union operator annotations
+    "UP035",  # deprecated typing imports
+    "UP045",  # use union operator for Optional annotations
 ]
 
 [tool.ruff.lint.isort]
 known-first-party = [
+    "chart_renderer",
     "cli_utils",
     "deep_md_cleaner",
     "ib_renderer",
@@ -110,7 +115,7 @@ known-first-party = [
 ]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true

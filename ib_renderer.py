@@ -2,6 +2,18 @@
 IB Renderer Module for Word Report Generation
 Handles styling and rendering of document elements in IB Bank style.
 
+Changelog (cover-free title):
+    - Render the IB report title, subtitle and memo-style metadata without a cover.
+    - Place the cover-free report opening before the TOC on the first page.
+    - Keep the body title and inferred subtitle out of the report's TOC.
+
+Changelog (hardening):
+    - Diagnose CJK raster glyph loss without changing Word font declarations.
+    - Preserve semantic numeric-cell runs and record equation/image failures.
+    - Validate structure without the full audit observation pass.
+    - Render equations on independent Agg figures with unconditional cleanup.
+    - Omit inferred IB subtitle headings from the body and TOC only with a cover.
+
 Changelog (v2):
     - Fixed header row styling (p.clear() + add_run pattern)
     - Compatible with md_parser v2 heading levels (1-4)
@@ -21,6 +33,7 @@ import time
 from copy import deepcopy
 from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast
 from uuid import uuid4
@@ -41,6 +54,7 @@ from docx.oxml.ns import qn
 from docx.oxml.parser import parse_xml
 from docx.shared import Inches, Mm, Pt, RGBColor
 
+from document_model import Chart
 from document_profiles import (
     RenderOptions,
     default_metadata,
@@ -74,7 +88,7 @@ from office_layout import (
     render_office_opening,
     setup_letter_styles,
 )
-from render_styles import STYLE, use_style
+from render_styles import STYLE, RasterFontPolicy, collect_raster_font_diagnostics, use_style
 from render_styles import IBStyle as IBStyle
 
 logger = logging.getLogger(__name__)
@@ -278,19 +292,12 @@ class FontStyler:
 
 
 class FontPolicy:
-    """Resolve platform-aware East Asian font defaults."""
-
-    _resolved_fonts: Dict[str, str] = {}
+    """Declare Word fonts for the reader's machine, independently of raster fonts."""
 
     @classmethod
     def resolve_korean_font(cls, system_name: Optional[str] = None) -> str:
         """Return the preferred Korean font for the current platform."""
         system = system_name or platform.system() or "Unknown"
-        cache_key = system + ":" + STYLE.KOREAN_FONT
-        cached = cls._resolved_fonts.get(cache_key)
-        if cached:
-            return cached
-
         if system == "Darwin":
             candidates = ("Apple SD Gothic Neo", STYLE.KOREAN_FONT, "NanumGothic")
         elif system == "Windows":
@@ -305,7 +312,6 @@ class FontPolicy:
             chosen,
             ", ".join(candidates[1:]) or "none",
         )
-        cls._resolved_fonts[cache_key] = chosen
         return chosen
 
 
@@ -786,6 +792,13 @@ class TextRenderer:
             italic=True,
             color=STYLE.DARK_GRAY,
         )
+        message = "Inline LaTeX could not be rendered: " + expression
+        logger.warning("%s", message)
+        # The document part owns this sink, so concurrent renders and reusable
+        # static text helpers never share diagnostic state.
+        errors = getattr(paragraph.part, "_ib_render_errors", None)
+        if errors is not None:
+            errors.append(message)
 
     @staticmethod
     def render_text_with_bold(
@@ -1883,22 +1896,24 @@ class TableRenderer:
                 )
 
             # ── Format content (financial number formatting) ───────────────
-            raw_content = (
-                "".join(run.text for run in cell_data.runs) if cell_data.runs else cell_data.content
-            )
-            display_content = raw_content
             role = column_types[c_idx] if column_types else None
-            if role and role not in {"text", "code", "date"}:
-                display_content = self._format_financial_number(raw_content)
-                suffix = {"percent": "%", "bps": " bps", "multiple": "x"}.get(role, "")
-                if suffix and self._PURE_NUMBER_RE.fullmatch(raw_content.strip()):
-                    display_content += suffix
-            elif not role and table_type == TableType.FINANCIAL and cell_data.is_numeric:
-                if self._NUMERIC_LIKE_RE.fullmatch(raw_content.strip()):
-                    display_content = self._format_financial_number(raw_content)
+            format_numbers = (
+                role not in {None, "text", "code", "date"}
+                or (not role and table_type == TableType.FINANCIAL and cell_data.is_numeric)
+            )
+            display_content = cell_data.content
             display_runs = cell_data.runs
-            if display_runs and display_content != raw_content:
-                display_runs = [replace(display_runs[0], text=display_content)]
+            if format_numbers:
+                display_content = self._format_numeric_text(display_content, role)
+                # Semantic runs are independent of the amount. In particular, a
+                # footnote's displayed number must never enter numeric formatting.
+                display_runs = [
+                    run if (
+                        run.footnote_id is not None or run.is_latex
+                        or run.superscript or run.subscript
+                    ) else replace(run, text=self._format_numeric_text(run.text, role))
+                    for run in display_runs
+                ]
 
             # ── Render content ──────────────────────────────────────────────
             if cell_data.runs:
@@ -1924,6 +1939,27 @@ class TableRenderer:
             # ── Alternating row colors (unless special styling applied) ─────
             if STYLE.TABLE_ZEBRA and row_idx % 2 == 1 and not cell_data.is_base_case:
                 TableStyler.set_cell_background(cell, STYLE.LIGHT_GRAY_HEX)
+
+    @classmethod
+    def _format_numeric_text(cls, text: str, role: Optional[str]) -> str:
+        """Format a numeric text run without changing its semantic metadata.
+
+        Args:
+            text: One text run, excluding footnote and equation runs.
+            role: Explicit column presentation role, if configured.
+
+        Returns:
+            Formatted number with its original scale, or unchanged nonnumeric text.
+        """
+        if not cls._NUMERIC_LIKE_RE.fullmatch(text.strip()):
+            return text
+        formatted = cls._format_financial_number(text)
+        suffix = {"percent": "%", "bps": " bps", "multiple": "x"}.get(role or "", "")
+        if suffix and cls._PURE_NUMBER_RE.fullmatch(text.strip()):
+            formatted += suffix
+        leading = text[:len(text) - len(text.lstrip())]
+        trailing = text[len(text.rstrip()):]
+        return leading + formatted + trailing
 
     @staticmethod
     def _configure_cell_paragraph(paragraph) -> None:
@@ -2244,7 +2280,7 @@ class ImageRenderer:
     def __init__(self, doc: DocxDocument):
         self.doc = doc
 
-    def render(self, image: Image):
+    def render(self, image: Image) -> bool:
         """
         Render an image to the Word document.
 
@@ -2252,6 +2288,9 @@ class ImageRenderer:
             image: Image object with either base64_data or path
 
         Attempts to insert actual image; falls back to placeholder on failure.
+
+        Returns:
+            Whether an image was inserted successfully.
         """
         import base64
         import os
@@ -2324,6 +2363,7 @@ class ImageRenderer:
         # ── Fallback: Placeholder ──────────────────────────────────────────────
         if not inserted:
             self._render_placeholder(image.alt_text)
+        return inserted
 
     def _insert_image(self, file_path: str, alt_text: str):
         """
@@ -2654,6 +2694,45 @@ class DisclaimerRenderer:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+class ChartRenderer:
+    """Insert a validated chart from memory, respecting the active section width."""
+
+    def __init__(self, doc: DocxDocument) -> None:
+        self.doc = doc
+
+    def render(self, chart: Chart) -> None:
+        """Render an enabled chart; the orchestrator handles diagnostic fallbacks.
+
+        Args:
+            chart: Parsed specification and original fence source.
+
+        Raises:
+            ValueError: Invalid chart data or unusable page geometry.
+        """
+        from chart_renderer import render_chart_png
+
+        if chart.error or chart.spec is None:
+            raise ValueError(chart.error or "chart specification is missing")
+        section = self.doc.sections[-1]
+        page_width = section.page_width
+        left_margin, right_margin = section.left_margin, section.right_margin
+        if page_width is None or left_margin is None or right_margin is None:
+            raise ValueError("chart requires explicit page width and margins")
+        width = min(6.0, (page_width - left_margin - right_margin) / 914400)
+        if width <= 0:
+            raise ValueError("chart requires a positive content width")
+        png = render_chart_png(chart.spec, width_inches=width)
+        paragraph = self.doc.add_paragraph()
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        try:
+            with BytesIO(png) as buffer:
+                shape = paragraph.add_run().add_picture(buffer, width=Inches(width))
+            ImageRenderer._apply_alt_text(shape, chart.spec.title or chart.label)
+        except Exception:
+            paragraph._p.getparent().remove(paragraph._p)
+            raise
+
+
 class IBDocumentRenderer:
     """Main renderer that orchestrates all component renderers"""
 
@@ -2674,10 +2753,12 @@ class IBDocumentRenderer:
         )
         self.separator_mode = separator_mode
         self.errors: List[str] = []
+        self.charts = False
         self._reset_document()
 
     def _reset_document(self) -> None:
         self.doc: DocxDocument = Document()
+        cast(Any, self.doc.part)._ib_render_errors = self.errors
         self._bookmark_id = 0
         self.styler = DocumentStyler(self.doc)
         self.cover_renderer = CoverRenderer(self.doc)
@@ -2690,6 +2771,7 @@ class IBDocumentRenderer:
         self.image_renderer = ImageRenderer(self.doc)
         self.footnote_renderer = FootnoteRenderer(self.doc)
         self.disclaimer_renderer = DisclaimerRenderer(self.doc)
+        self.chart_renderer = ChartRenderer(self.doc)
 
     def render(self, model: DocumentModel) -> DocxDocument:
         """Render through one composition path, using request-local settings."""
@@ -2709,13 +2791,32 @@ class IBDocumentRenderer:
             model.metadata.profile = resolved.profile.name
         if not resolved.profile.is_ib:
             validate_office_metadata(model.metadata)
+        report_title_block = (
+            not resolved.cover and resolved.profile.name == "ib-report"
+            and bool(model.metadata.title.strip())
+        )
+        if (resolved.cover and resolved.profile.is_ib) or report_title_block:
+            # Filter the private render copy so the TOC and body share the same outline.
+            model.elements = [element for element in model.elements if not element.inferred_subtitle]
+        if report_title_block:
+            # Transfer the first matching body H1 to the non-outline title block.
+            # Filtering before the TOC also prevents a stale preview title entry.
+            for index, element in enumerate(model.elements):
+                if (
+                    element.element_type == ElementType.HEADING_1
+                    and isinstance(element.content, Heading)
+                    and element.content.text == model.metadata.title
+                ):
+                    model.elements.pop(index)
+                    break
         appendix_index = letter_appendix_index(model)
         if resolved.strict and model.warnings:
             raise ValueError("Input validation failed: " + "; ".join(model.warnings))
         self.errors = list(model.warnings)
         self._reset_document()
         self.separator_mode = resolved.separator_mode
-        with use_style(load_style(resolved.profile, resolved.theme)):
+        self.charts = resolved.charts
+        with use_style(load_style(resolved.profile, resolved.theme)), collect_raster_font_diagnostics() as font_warnings:
             self.styler.setup_document()
             self.styler.create_styles()
             if resolved.profile.name == "office-letter":
@@ -2729,12 +2830,14 @@ class IBDocumentRenderer:
             if resolved.cover:
                 self.cover_renderer.include_disclaimer = resolved.disclaimer
                 self.cover_renderer.render(model.metadata)
+            title_inserted = (
+                render_office_opening(self.doc, model.metadata) if report_title_block else False
+            )
             if resolved.toc:
                 self.toc_renderer.render(model)
-            title_inserted = (
-                render_office_opening(self.doc, model.metadata) if not resolved.cover else False
-            )
-            skipped_title = False
+            if not resolved.cover and not report_title_block:
+                title_inserted = render_office_opening(self.doc, model.metadata)
+            skipped_title = report_title_block
             office_closed = False
             for idx, element in enumerate(model.elements):
                 if idx == appendix_index:
@@ -2786,9 +2889,15 @@ class IBDocumentRenderer:
             self.apply_generator_signature(
                 "ib_generated" if resolved.profile.name == "ib-report" else resolved.profile.name
             )
-            from docx_audit import inspect_document
+            from docx_audit import inspect_document_issues
 
-            issues = inspect_document(self.doc).issues
+            for warning in font_warnings:
+                self.errors.append(warning)
+                paragraph = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
+                FontStyler.apply_run_style(
+                    paragraph.add_run(f"[Render Warning: {warning}]"), italic=True, color=STYLE.RED,
+                )
+            issues = inspect_document_issues(self.doc)
             self.errors.extend(issue for issue in issues if issue not in self.errors)
             if resolved.strict and self.errors:
                 raise ValueError("Document validation failed: " + "; ".join(self.errors))
@@ -2887,7 +2996,8 @@ class IBDocumentRenderer:
             self.callout_renderer.render(cast(Blockquote, element.content))
 
         elif etype == ElementType.IMAGE:
-            self.image_renderer.render(cast(Image, element.content))
+            if not self.image_renderer.render(cast(Image, element.content)):
+                self.errors.append("Image could not be rendered")
 
         elif etype == ElementType.LATEX_BLOCK:
             self._render_latex_block(cast(LaTeXEquation, element.content))
@@ -2900,6 +3010,19 @@ class IBDocumentRenderer:
 
         elif etype == ElementType.CODE_BLOCK:
             self._render_code_block(cast(CodeBlock, element.content))
+
+        elif etype == ElementType.CHART:
+            chart = cast(Chart, element.content)
+            if self.charts:
+                try:
+                    self.chart_renderer.render(chart)
+                    self._add_semantic_bookmark(self.doc.paragraphs[-1], ElementType.CHART.name)
+                    return
+                except Exception as exc:
+                    message = f"{chart.label}: {exc}"
+                    self.errors.append(message)
+                    logger.warning("%s; rendering original code panel", message)
+            self._render_code_block(CodeBlock(chart.code, "chart", CodeBlock.detect_ascii_art(chart.code)))
 
         elif etype == ElementType.DIAGRAM:
             from diagram_renderer import DiagramRenderer
@@ -2981,7 +3104,7 @@ class IBDocumentRenderer:
 
         cell = table.rows[0].cells[0]
         cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
-        TableStyler.set_cell_background(cell, "F8F9FA")
+        TableStyler.set_cell_background(cell, str(STYLE.CODE_BG))
         self._style_code_block_table(table)
 
         lines = code_block.code.splitlines() or [""]
@@ -3140,14 +3263,18 @@ class IBDocumentRenderer:
             self._render_latex_fallback(latex_eq.expression)
 
     def _render_latex_inline(self, latex_eq):
-        """Render inline LaTeX (fallback to text for now)."""
+        """Render a standalone inline equation through the common text path."""
         from md_parser import LaTeXEquation
 
         if isinstance(latex_eq, LaTeXEquation):
-            self._render_latex_fallback(latex_eq.expression, inline=True)
+            paragraph = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
+            TextRenderer._render_inline_latex(paragraph, latex_eq.expression, STYLE.BODY_SIZE)
 
     def _render_latex_fallback(self, expression: str, inline: bool = False):
         """Render LaTeX as styled text when image rendering fails."""
+        message = "LaTeX could not be rendered: " + expression
+        self.errors.append(message)
+        logger.warning("%s", message)
         p = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
         if not inline:
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -3184,6 +3311,7 @@ class LaTeXRenderer:
     _TEXT_COMMAND_RE = re.compile(r"\\(?:text|mathrm|operatorname)\{([^{}]*)\}")
     _FRAC_RE = re.compile(r"\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}")
     _MULTISPACE_RE = re.compile(r"\s+")
+    _UNRESOLVED_COMMAND_RE = re.compile(r"\\[A-Za-z]+")
     _LATEX_SYMBOL_REPLACEMENTS: Tuple[Tuple[str, str], ...] = (
         (r"\Leftrightarrow", "⇔"),
         (r"\Leftarrow", "⇐"),
@@ -3284,6 +3412,8 @@ class LaTeXRenderer:
 
         if cls._NON_ASCII_RE.search(expression):
             display_text = cls.to_display_text(expression)
+            if cls._UNRESOLVED_COMMAND_RE.search(display_text):
+                return None
             image_path = cls._render_plain_text_to_image(display_text, fontsize=fontsize, dpi=dpi)
             if image_path:
                 return image_path
@@ -3292,10 +3422,8 @@ class LaTeXRenderer:
         if image_path:
             return image_path
 
-        display_text = cls.to_display_text(expression)
-        if display_text != expression:
-            return cls._render_plain_text_to_image(display_text, fontsize=fontsize, dpi=dpi)
-
+        # A failed mathtext parse is a rendering failure. Removing braces and
+        # drawing the remaining command as text cannot establish success.
         return None
 
     @classmethod
@@ -3329,15 +3457,18 @@ class LaTeXRenderer:
         dpi: int,
     ) -> Optional[str]:
         """Render mathtext-compatible LaTeX to a PNG image."""
+        fig = None
+        temp_path = None
+        succeeded = False
         try:
-            import matplotlib
-
-            matplotlib.use("Agg")  # Non-interactive backend
             import tempfile
 
-            import matplotlib.pyplot as plt
+            from matplotlib.backends.backend_agg import FigureCanvasAgg
+            from matplotlib.figure import Figure
 
-            fig, ax = plt.subplots(figsize=(0.01, 0.01))
+            fig = Figure(figsize=(0.01, 0.01))
+            FigureCanvasAgg(fig)
+            ax = fig.subplots()
             fig.patch.set_alpha(0)
             ax.set_axis_off()
 
@@ -3364,14 +3495,21 @@ class LaTeXRenderer:
                 transparent=False,
                 facecolor="white",
             )
-            plt.close(fig)
-
+            succeeded = True
             logger.debug("Rendered LaTeX to: %s", temp_path)
             return temp_path
 
         except Exception as err:
             logger.warning("LaTeX rendering failed: %s", err)
             return None
+        finally:
+            if fig is not None:
+                fig.clear()
+            if temp_path is not None and not succeeded:
+                try:
+                    os.unlink(temp_path)
+                except OSError as err:
+                    logger.warning("Cannot remove unsuccessful equation image: %s", err)
 
     @classmethod
     def _render_plain_text_to_image(
@@ -3381,19 +3519,21 @@ class LaTeXRenderer:
         dpi: int,
     ) -> Optional[str]:
         """Render a readable unicode fallback image for non-ASCII equations."""
+        fig = None
+        temp_path = None
+        succeeded = False
         try:
-            import matplotlib
-
-            matplotlib.use("Agg")  # Non-interactive backend
             import tempfile
 
-            import matplotlib.pyplot as plt
+            from matplotlib.backends.backend_agg import FigureCanvasAgg
+            from matplotlib.figure import Figure
             from matplotlib.font_manager import FontProperties
 
-            fig = plt.figure(figsize=(0.01, 0.01))
+            fig = Figure(figsize=(0.01, 0.01))
+            FigureCanvasAgg(fig)
             fig.patch.set_facecolor("white")
             fig.patch.set_alpha(1)
-            font_props = FontProperties(family=FontPolicy.resolve_korean_font())
+            font_props = FontProperties(family=RasterFontPolicy.resolve(STYLE.KOREAN_FONT, display_text))
 
             fig.text(
                 0.5,
@@ -3416,11 +3556,18 @@ class LaTeXRenderer:
                 transparent=False,
                 facecolor="white",
             )
-            plt.close(fig)
-
+            succeeded = True
             logger.debug("Rendered unicode equation to: %s", temp_path)
             return temp_path
 
         except Exception as err:
             logger.warning("Unicode equation rendering failed: %s", err)
             return None
+        finally:
+            if fig is not None:
+                fig.clear()
+            if temp_path is not None and not succeeded:
+                try:
+                    os.unlink(temp_path)
+                except OSError as err:
+                    logger.warning("Cannot remove unsuccessful equation image: %s", err)

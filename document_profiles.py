@@ -1,8 +1,16 @@
-"""Document profiles, validated metadata and request-local rendering options."""
+"""Document profiles, validated metadata and request-local rendering options.
 
-from dataclasses import dataclass, replace
+Changelog (feature port):
+    - Immutable section presets and opt-in charts resolved in the shared path.
+    - Typed presentation themes, including PR #5's uppercase field names.
+"""
+
+import math
+import re
+from dataclasses import dataclass, fields, replace
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from types import MappingProxyType
+from typing import Any, Dict, List, Mapping, Optional
 
 import yaml
 from docx.shared import Inches, Pt, RGBColor
@@ -60,6 +68,32 @@ class RenderOptions:
     theme: Optional[str] = None
     strict: Optional[bool] = None
     confidential: Optional[bool] = None
+    charts: Optional[bool] = None
+    preset: Optional[str] = None
+
+
+PRESETS: Mapping[str, RenderOptions] = MappingProxyType({
+    "ib-report": RenderOptions(),
+    "termsheet": RenderOptions(include_cover=False, include_toc=False, include_disclaimer=False),
+    "legal-memo": RenderOptions(include_cover=False, include_toc=True, include_disclaimer=False),
+    "lecture-note": RenderOptions(include_cover=True, include_toc=True, include_disclaimer=False),
+})
+
+
+def get_preset(name: Optional[str]) -> RenderOptions:
+    """Resolve an immutable section bundle, with None supplying no overrides.
+
+    Args:
+        name: Built-in preset name, independent of the document profile.
+
+    Returns:
+        An immutable bundle of optional section toggles.
+    """
+    if name is None:
+        return RenderOptions()
+    if not isinstance(name, str) or name not in PRESETS:
+        raise ValueError("Unknown preset {!r}; choose {}".format(name, ", ".join(PRESETS)))
+    return PRESETS[name]
 
 
 @dataclass(frozen=True)
@@ -74,6 +108,7 @@ class ResolvedOptions:
     separator_mode: str
     theme: Optional[str]
     strict: bool
+    charts: bool
 
 
 def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> ResolvedOptions:
@@ -87,8 +122,19 @@ def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> Resol
     if unknown:
         raise ValueError("Unknown layout settings: {}".format(", ".join(sorted(unknown))))
 
+    caller_preset = get_preset(options.preset)
+    yaml_preset = get_preset(metadata.extra.get("preset"))
+
     def flag(key: str, override: Optional[bool], default: bool) -> bool:
-        value = override if override is not None else layout.get(key, default)
+        attribute = "include_" + key
+        caller_value = getattr(caller_preset, attribute, None)
+        yaml_value = getattr(yaml_preset, attribute, None)
+        value = default if yaml_value is None else yaml_value
+        value = layout.get(key, value)
+        if caller_value is not None:
+            value = caller_value
+        if override is not None:
+            value = override
         if not isinstance(value, bool):
             raise ValueError(f"layout.{key} must be true or false")
         return value
@@ -99,6 +145,9 @@ def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> Resol
     theme = options.theme if options.theme is not None else metadata.extra.get("theme")
     if theme is not None and not isinstance(theme, str):
         raise ValueError("theme must be a name or YAML file path")
+    charts = options.charts if options.charts is not None else metadata.extra.get("charts", False)
+    if not isinstance(charts, bool):
+        raise ValueError("charts must be true or false")
     return ResolvedOptions(
         profile=profile,
         cover=flag("cover", options.include_cover, profile.cover),
@@ -108,11 +157,20 @@ def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> Resol
         separator_mode=separator,
         theme=theme,
         strict=flag("strict", options.strict, False),
+        charts=charts,
     )
 
 
 def load_style(profile: DocumentProfile, theme: Optional[str] = None) -> IBStyle:
-    """Build an isolated style from a profile and optional small YAML theme."""
+    """Build an isolated style from a profile and a validated presentation theme.
+
+    Args:
+        profile: Profile defaults, including its numbering policy.
+        theme: default, mono, or a YAML path with typed presentation fields.
+
+    Returns:
+        A new immutable style; no global values are changed.
+    """
     style = IBStyle()
     if profile.name == "ib-memo":
         style = replace(
@@ -147,6 +205,7 @@ def load_style(profile: DocumentProfile, theme: Optional[str] = None) -> IBStyle
             TOC_TITLE="목차",
             PAGE_LABEL="",
             PAGE_OF_LABEL=" / ",
+            CHART_NEGATIVE_COLOR=RGBColor(64, 64, 64),
         )
     if profile.name == "office-letter":
         style = replace(style, BODY_LINE_SPACING=1.45, BODY_SPACE_AFTER=Pt(8))
@@ -156,7 +215,7 @@ def load_style(profile: DocumentProfile, theme: Optional[str] = None) -> IBStyle
     data = yaml.safe_load(path.read_text(encoding="utf-8-sig"))
     if not isinstance(data, dict):
         raise ValueError("Theme must be a YAML mapping")
-    allowed = {
+    aliases = {
         "body_font",
         "heading_font",
         "korean_font",
@@ -164,9 +223,11 @@ def load_style(profile: DocumentProfile, theme: Optional[str] = None) -> IBStyle
         "primary_color",
         "margin_mm",
     }
-    if set(data) - allowed:
+    attributes = {field.name for field in fields(IBStyle)
+                  if not field.name.startswith("STYLE_") and field.name != "NATIVE_NUMBERING"}
+    if set(data) - (aliases | attributes):
         raise ValueError(
-            "Unknown theme settings: {}".format(", ".join(sorted(set(data) - allowed)))
+            "Unknown theme settings: {}".format(", ".join(sorted(map(str, set(data) - (aliases | attributes)))))
         )
     values: Dict[str, Any] = {}
     for key, attribute in [
@@ -186,9 +247,7 @@ def load_style(profile: DocumentProfile, theme: Optional[str] = None) -> IBStyle
             raise ValueError("body_size must be between 6 and 30 points")
         values["BODY_SIZE"] = Pt(size)
     if "primary_color" in data:
-        color = str(data["primary_color"]).lstrip("#")
-        if len(color) != 6 or any(c not in "0123456789abcdefABCDEF" for c in color):
-            raise ValueError("primary_color must be a six-digit hexadecimal color")
+        color = _ThemeSchema.color("primary_color", data["primary_color"])
         values.update(NAVY=RGBColor.from_string(color.upper()), NAVY_HEX=color.upper())
         if profile.is_ib:
             values["TABLE_HEADER_BG"] = color.upper()
@@ -202,7 +261,77 @@ def load_style(profile: DocumentProfile, theme: Optional[str] = None) -> IBStyle
             raise ValueError("margin_mm must be between 5 and 60")
         for key in ["TOP_MARGIN", "BOTTOM_MARGIN", "LEFT_MARGIN", "RIGHT_MARGIN"]:
             values[key] = Inches(margin / 25.4)
+    explicit = {}
+    for key in data:
+        if key in attributes:
+            explicit[key] = _ThemeSchema.convert(key, data[key], getattr(style, key))
+    conflicts = set(values) & set(explicit)
+    if any(values[key] != explicit[key] for key in conflicts):
+        raise ValueError("Conflicting theme aliases: " + ", ".join(sorted(conflicts)))
+    values.update(explicit)
+    # Keep RGB/OOXML representations aligned unless both are explicitly supplied.
+    for rgb, hex_key in (("NAVY", "NAVY_HEX"), ("LIGHT_GRAY", "LIGHT_GRAY_HEX"),
+                         ("ACCENT_BLUE", "ACCENT_BLUE_HEX")):
+        if rgb in values and hex_key not in values:
+            values[hex_key] = str(values[rgb])
+        elif hex_key in values and rgb not in values:
+            values[rgb] = RGBColor.from_string(values[hex_key])
+    if profile.is_ib and "NAVY" in values and "TABLE_HEADER_BG" not in values:
+        values["TABLE_HEADER_BG"] = str(values["NAVY"])
+    if "RED" in values and "CHART_NEGATIVE_COLOR" not in values:
+        values["CHART_NEGATIVE_COLOR"] = values["RED"]
     return replace(style, **values)
+
+
+class _ThemeSchema:
+    """Strict scalar conversion for presentation fields, without shared mutation."""
+
+    COLOR = re.compile(r"^#?([0-9a-fA-F]{6})$")
+
+    @classmethod
+    def color(cls, key: str, value: Any) -> str:
+        if not isinstance(value, str) or not cls.COLOR.fullmatch(value):
+            raise ValueError(f"{key} must be a six-digit hexadecimal color string")
+        return value.lstrip("#").upper()
+
+    @classmethod
+    def convert(cls, key: str, value: Any, current: Any) -> Any:
+        if isinstance(current, RGBColor):
+            return RGBColor.from_string(cls.color(key, value))
+        if key.endswith("_HEX") or key == "TABLE_HEADER_BG":
+            return cls.color(key, value)
+        if isinstance(current, bool):
+            if not isinstance(value, bool):
+                raise ValueError(f"{key} must be a boolean")
+            return value
+        if isinstance(current, (Pt, Inches, int, float)):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"{key} must be numeric")
+            try:
+                finite = math.isfinite(value)
+            except OverflowError:
+                finite = False
+            if not finite:
+                raise ValueError(f"{key} must be finite")
+            if isinstance(current, Pt):
+                minimum = 0 if "SPACE" in key else 1
+                if not minimum <= value <= 144:
+                    raise ValueError(f"{key} must be between {minimum} and 144 points")
+                return Pt(value)
+            if isinstance(current, Inches):
+                if not 0 <= value <= 3:
+                    raise ValueError(f"{key} must be between 0 and 3 inches")
+                return Inches(value)
+            if isinstance(current, int):
+                if not isinstance(value, int) or not 0 <= value <= 9:
+                    raise ValueError(f"{key} must be an integer between 0 and 9")
+                return value
+            if not 0 < value <= 5:
+                raise ValueError(f"{key} must be greater than 0 and at most 5")
+            return float(value)
+        if not isinstance(value, str) or (key.endswith("_FONT") and not value.strip()):
+            raise ValueError(f"{key} must be a string (font names must be non-empty)")
+        return value
 
 
 def string_list(extra: Dict[str, Any], key: str) -> List[str]:

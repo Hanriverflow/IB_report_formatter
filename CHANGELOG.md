@@ -2,7 +2,40 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased] - 2026-09-15
+## [Unreleased] - 2026-09-29
+
+### Title block without a cover (owner decision, 2026-09-29)
+- When the cover is not rendered (`--no-cover`, `termsheet`/`legal-memo` presets), `ib-report` now starts with a title block (title, subtitle, date/author) before the TOC instead of omitting the title. The block is not a TOC entry; a matching H1 or inferred subtitle appears once. Cover-on output is unchanged.
+
+### Korean glyphs in chart, equation and diagram images
+- Rasterized images now use an installed CJK-capable font (preferred theme font first, then Malgun Gothic, Apple SD Gothic Neo, Nanum, Noto/Source Han Sans KR). Previously Linux fell back to DejaVu Sans and dropped every Hangul glyph. DOCX font declarations are unchanged.
+- If Hangul must be rasterized and no CJK font is installed, strict mode rejects before saving; non-strict mode warns. Linux CI installs `fonts-nanum`.
+
+### Python 3.12 floor (owner decision D1, 2026-09-29)
+- Require Python 3.12+ (`requires-python >=3.12`); CI tests Ubuntu/Windows on Python 3.12 and 3.13, and the syntax gate checks 3.12. The lock file only drops old-Python resolution forks; dependency versions are unchanged.
+- Python 3.8–3.11 are no longer supported; use an earlier source revision for those runtimes.
+
+### Themes, section presets and opt-in charts
+- Port PR #5 chart fences as proper model elements through the shared renderer: grouped bar, line and cumulative waterfall, retained YAML syntax plus `type`, `unit` and unscaled number formats. Charts default off; CLI/API options override frontmatter.
+- Render charts to in-memory PNGs with Figure/Agg and per-artist Korean fonts/colors, without pyplot or rcParams mutation. Strict failures reject before saving; non-strict failures retain the source code panel and a named diagnostic.
+- Add immutable `ib-report`, `termsheet`, `legal-memo` and `lecture-note` section bundles, `--preset` / `--list-presets`, and frontmatter `preset`. Explicit fields override caller presets, then YAML fields/presets, then profile defaults.
+- Extend request-local themes with typed uppercase presentation fields, stricter color/size validation, paired RGB/hex handling, and themed code-panel backgrounds. Preserve the default/mono output and general-profile semantics.
+- Package the chart engine explicitly and add a fictional Korean chart sample, usage documentation and parse/render/CLI regressions. No retired Word-to-Markdown code or global-style loader is restored.
+
+### Input-loss and correctness hardening (2026-09-29)
+- Stop silent content loss: escaped dollars (`\$5`), escaped emphasis, prose/tables after a `References` list, unrecognized leading `**Label:** value` paragraphs, dash-only table body rows, list continuation lines, and CRLF list items.
+- Numeric table cells keep native footnote references and are no longer re-formatted from concatenated run text (`1234[^1]` stays `1,234` plus the footnote).
+- Equation rendering failures are renderer errors: strict mode rejects them before saving; non-strict keeps visible fallback text.
+- Shared fence scanner (backtick/tilde, 4+ fences, paragraph interruption); setext `===` H1; HTML comments are not printed; reference-style links resolve to hyperlinks; image titles and `<angle-bracket>` destinations parse correctly; literal `[^n]` inside code is not a footnote.
+- Consecutive leading metadata lines (`**Date:**`/`**Analyst:**`) populate separate fields. Recognized header labels are canonicalized (`date`, `analysis_period`, `analysis_basis`). An inferred IB subtitle stays on the cover and becomes a body heading when the cover is disabled.
+- Nested ordered lists restart under each parent item; start overrides target the actual level.
+
+### Robustness and performance (2026-09-29)
+- Atomic saves through a sibling temp file and replace (existing reports survive failed writes; file mode preserved); exclusive, collision-resistant locked-file fallback names.
+- Batch mode rejects colliding output names before writing and exits non-zero when any input fails. Missing qualified input paths no longer fall back to an unrelated same-named file.
+- Thread-safe default converter registry initialization. Diagram/equation rendering no longer mutates global Matplotlib state and releases figures/temp files on failure.
+- Render-path structural validation no longer resolves styles per paragraph: a 2,000-element document renders about 60% faster. `docx-audit` validates numbering references and reports placeholder-like user text as warnings.
+- GitHub Actions workflow (Ubuntu/Windows): ruff, mypy, pytest, build, exact wheel payload, Python 3.8 syntax gate.
 
 ### Office-letter production quality
 - Render inline HTML breaks in paragraphs, emphasis, headings, lists and tables while preserving escaped/code literals and link destinations.

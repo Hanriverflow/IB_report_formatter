@@ -3,6 +3,11 @@ MD Parser Module for IB Style Word Report Converter
 Handles parsing of Markdown files including frontmatter, elements, tables,
 LaTeX equations, Base64 images, and footnotes.
 
+Changelog (2026-09-29):
+    - FIXED: Preserve escaped inline syntax and non-reference body content.
+    - FIXED: Share fence boundaries and normalize Markdown block input.
+    - FIXED: Retain inferred IB subtitle headings and separate header metadata lines.
+
 Changelog (v3):
     - NEW: LaTeX block equation parsing ($$ ... $$, multi-line)
     - NEW: LaTeX inline equation detection within paragraphs ($ ... $)
@@ -29,16 +34,18 @@ Dependencies:
 import logging
 import re
 from pathlib import Path
-from typing import BinaryIO, Dict, List, Optional, Set, Tuple, Union, cast
+from typing import BinaryIO, Dict, List, Match, Optional, Set, Tuple, Union, cast
 
 import yaml
 
+from chart_renderer import ChartSpecError, parse_chart_spec
 from document_model import (
     Blockquote as Blockquote,
 )
 from document_model import (
     BulletList as BulletList,
 )
+from document_model import Chart as Chart
 from document_model import (
     CodeBlock as CodeBlock,
 )
@@ -120,6 +127,7 @@ class FrontmatterParser:
     _MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+")
     _BOLD_LABEL_RE = re.compile(r"\*\*[^*]+:\*\*")
     _SIMPLE_KEY_VALUE_RE = re.compile(r"^[A-Za-z0-9_.-]+\s*:\s*.*$")
+    _DECLARED_RE = re.compile(r"^(profile|layout|tables|sender|charts|preset):", re.IGNORECASE)
 
     @staticmethod
     def parse(
@@ -152,7 +160,7 @@ class FrontmatterParser:
         if content_start_idx == 0:
             return metadata, lines
 
-        declared = any(re.match(r"^(profile|layout|tables|sender):", line, re.IGNORECASE) for line in frontmatter_lines)
+        declared = any(FrontmatterParser._DECLARED_RE.match(line) for line in frontmatter_lines)
         if not declared and not FrontmatterParser._is_valid_frontmatter(frontmatter_lines):
             logger.debug("Frontmatter markers found, but content is not YAML frontmatter")
             return metadata, lines
@@ -196,7 +204,7 @@ class FrontmatterParser:
 
         # Store extra fields
         known_keys = {"title", "subtitle", "company", "ticker", "sector", "analyst", "profile"}
-        structured = {"layout", "tables", "sender", "recipients", "cc", "attachments", "attendees", "letter"}
+        structured = {"layout", "tables", "sender", "recipients", "cc", "attachments", "attendees", "letter", "charts", "preset"}
         metadata.extra = {
             k: v if k in structured else str(v) for k, v in data.items() if k not in known_keys
         }
@@ -284,10 +292,10 @@ class TextParser:
     """Parses inline text formatting (bold, italic, inline LaTeX, etc.)"""
 
     # Compiled once — used by cleanup_text
-    _ESCAPE_RE = re.compile(r'\\([~.*"\'()\[\]{}|_-])')
+    _ESCAPE_RE = re.compile(r'\\([\\$`^~.*"\'()\[\]{}|_-])')
     _HTML_BREAK_RE = re.compile(r"(?<!\\)<br\s*/?>", re.IGNORECASE)
     _ESCAPED_HTML_BREAK_RE = re.compile(r"\\(<br\s*/?>)", re.IGNORECASE)
-    _CODE_SPAN_RE = re.compile(r"(`+)(.+?)\1", re.DOTALL)
+    _CODE_SPAN_RE = re.compile(r"(?<![\\`])(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.DOTALL)
 
     # Inline formatting patterns
     _SUBSCRIPT_PATTERN = r"(?<!~)~[A-Za-z0-9]{1,8}~(?!~)"
@@ -303,7 +311,7 @@ class TextParser:
     _COLOR_STYLE_RE = re.compile(r"color\s*:\s*(#[0-9A-Fa-f]{6})", re.IGNORECASE)
 
     # Inline LaTeX: $...$ but not $$...$$
-    _INLINE_LATEX_RE = re.compile(r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)")
+    _INLINE_LATEX_RE = re.compile(r"(?<![\\$])\$(?!\$)((?:\\.|[^$\\\n])+?)\$(?!\$)")
 
     @classmethod
     def parse_runs(cls, text: str) -> List[TextRun]:
@@ -314,11 +322,8 @@ class TextParser:
         runs: List[TextRun] = []
         text, code_spans = cls._protect_code_spans(text)
 
-        # Normalize escaped asterisks to regular bold markers
-        normalized_text = text.replace(r"\*\*", "**")
-
         # ── Phase 1: Split on color spans, then inline LaTeX boundaries ─────
-        color_segments = cls._split_on_color_spans(normalized_text)
+        color_segments = cls._split_on_color_spans(text)
 
         for segment_text, color_hex in color_segments:
             inline_segments = cls._split_on_inline_latex(segment_text)
@@ -381,9 +386,8 @@ class TextParser:
         (e.g., table cells with currency values).
         """
         text, code_spans = cls._protect_code_spans(text)
-        normalized = text.replace(r"\*\*", "**")
         runs: List[TextRun] = []
-        for segment_text, color_hex in cls._split_on_color_spans(normalized):
+        for segment_text, color_hex in cls._split_on_color_spans(text):
             runs.extend(cls._apply_color(cls._parse_inline_formatting(segment_text), color_hex))
         return cls._restore_code_spans(runs, code_spans)
 
@@ -401,6 +405,21 @@ class TextParser:
             return token
 
         return cls._CODE_SPAN_RE.sub(replace, text), literals
+
+    @classmethod
+    def _protect_escapes(cls, text: str) -> Tuple[str, Dict[str, str]]:
+        """Keep escaped punctuation literal until inline tokenization finishes."""
+        literals: Dict[str, str] = {}
+        prefix = "\ue000ESC"
+        while prefix in text:
+            prefix += "X"
+
+        def replace(match: Match[str]) -> str:
+            token = prefix + str(len(literals)) + "\ue001"
+            literals[token] = match.group(1)
+            return token
+
+        return cls._ESCAPE_RE.sub(replace, text), literals
 
     @staticmethod
     def _restore_code_spans(runs: List[TextRun], literals: Dict[str, str]) -> List[TextRun]:
@@ -463,6 +482,7 @@ class TextParser:
     @classmethod
     def _parse_inline_formatting(cls, text: str) -> List[TextRun]:
         """Parse links and numeric footnote references alongside inline emphasis."""
+        text, literals = cls._protect_escapes(text)
         runs: List[TextRun] = []
         offset = 0
         for match in cls._INLINE_REFERENCE_RE.finditer(text):
@@ -476,7 +496,12 @@ class TextParser:
                 runs.extend(labels)
             offset = match.end()
         runs.extend(cls._parse_plain_formatting(text[offset:]))
-        return runs
+        # Destination strings are opaque; Markdown escapes apply to visible text.
+        for run in runs:
+            if run.hyperlink:
+                for token, literal in literals.items():
+                    run.hyperlink = run.hyperlink.replace(token, "\\" + literal)
+        return cls._restore_code_spans(runs, literals)
 
     @classmethod
     def _parse_plain_formatting(cls, text: str) -> List[TextRun]:
@@ -527,6 +552,7 @@ class TextParser:
     @classmethod
     def has_inline_latex(cls, text: str) -> bool:
         """Check if text contains inline LaTeX expressions"""
+        text, _ = cls._protect_code_spans(text)
         return bool(cls._INLINE_LATEX_RE.search(text))
 
     @staticmethod
@@ -556,6 +582,73 @@ class TextParser:
         part = cls._HTML_BREAK_RE.sub("\n", text[offset:])
         pieces.append(cls._ESCAPED_HTML_BREAK_RE.sub(r"\1", part))
         return "".join(pieces)
+
+
+class FenceScanner:
+    """Share fenced-code boundaries across block parsing and metadata scanning."""
+
+    OPEN_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})([^\r\n]*)$")
+    CLOSE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})[ \t]*$")
+
+    @classmethod
+    def opening(cls, line: str) -> Optional[Tuple[str, str]]:
+        """Read an opening delimiter and info string.
+
+        Args:
+            line: A source line with its indentation preserved.
+
+        Returns:
+            Delimiter and info string, or None for ordinary text.
+        """
+        match = cls.OPEN_RE.match(line)
+        if not match or (match.group(1)[0] == "`" and "`" in match.group(2)):
+            return None
+        return match.group(1), match.group(2).strip()
+
+    @classmethod
+    def scan(cls, lines: List[str], start: int) -> Optional[Tuple[str, List[str], int]]:
+        """Read a fence through a matching close or the end of the document.
+
+        Args:
+            lines: Source lines.
+            start: Index of the possible opening fence.
+
+        Returns:
+            Info string, literal body lines and next index, or None.
+        """
+        opening = cls.opening(lines[start])
+        if opening is None:
+            return None
+        delimiter, language = opening
+        end = start + 1
+        while end < len(lines):
+            close = cls.CLOSE_RE.match(lines[end])
+            if close and close.group(1)[0] == delimiter[0] and len(close.group(1)) >= len(delimiter):
+                return language, lines[start + 1:end], end + 1
+            end += 1
+        return language, lines[start + 1:end], end
+
+    @classmethod
+    def protected_indices(cls, lines: List[str]) -> Set[int]:
+        """Find all fence lines, including delimiters, for non-code processing.
+
+        Args:
+            lines: Source lines.
+
+        Returns:
+            Indices that must remain literal.
+        """
+        indices: Set[int] = set()
+        index = 0
+        while index < len(lines):
+            block = cls.scan(lines, index)
+            if block is None:
+                index += 1
+            else:
+                end = block[2]
+                indices.update(range(index, end))
+                index = end
+        return indices
 
 
 class FootnoteParser:
@@ -702,11 +795,11 @@ class TableParser:
         """
         table = Table()
 
-        # Filter out separator lines (|---|---|)
+        # Only the second line can be the structural delimiter row.
         data_lines = [
             line
-            for line in lines
-            if not ("-" in line and set(line.strip()).issubset({"|", "-", " ", ":"}))
+            for index, line in enumerate(lines)
+            if not (index == 1 and TableParser._is_delimiter_row(line))
         ]
 
         if not data_lines:
@@ -796,11 +889,16 @@ class TableParser:
         return cells
 
     @staticmethod
+    def _is_delimiter_row(line: str) -> bool:
+        """Recognize a structural table delimiter without classifying body rows."""
+        return "-" in line and set(line.strip()).issubset({"|", "-", " ", "\t", ":"})
+
+    @staticmethod
     def _parse_alignments(lines: List[str]) -> List[str]:
         """Parse column alignments from separator line"""
         alignments: List[str] = []
-        for line in lines:
-            if "-" in line and set(line.strip()).issubset({"|", "-", " ", ":"}):
+        for line in lines[1:2]:
+            if TableParser._is_delimiter_row(line):
                 cells = line.split("|")
                 for cell in cells:
                     cell = cell.strip()
@@ -902,7 +1000,7 @@ class LaTeXParser:
     BLOCK_DELIMITER_RE = re.compile(r"^\$\$\s*$")
 
     # Inline LaTeX: $...$ but not $$...$$, not escaped \$
-    INLINE_RE = re.compile(r"(?<!\$)(?<!\\)\$(?!\$)(.+?)(?<!\$)(?<!\\)\$(?!\$)")
+    INLINE_RE = TextParser._INLINE_LATEX_RE
 
     @classmethod
     def is_block_start(cls, line: str) -> bool:
@@ -924,7 +1022,7 @@ class LaTeXParser:
     @classmethod
     def has_inline(cls, text: str) -> bool:
         """Check if text contains inline LaTeX"""
-        return bool(cls.INLINE_RE.search(text))
+        return TextParser.has_inline_latex(text)
 
     @classmethod
     def extract_inline_segments(cls, text: str) -> List[Tuple[str, bool]]:
@@ -934,24 +1032,12 @@ class LaTeXParser:
         Returns:
             List of (text, is_latex) tuples preserving source order
         """
-        segments: List[Tuple[str, bool]] = []
-        last_end = 0
-
-        for m in cls.INLINE_RE.finditer(text):
-            before = text[last_end : m.start()]
-            if before:
-                segments.append((before, False))
-            segments.append((m.group(1), True))
-            last_end = m.end()
-
-        after = text[last_end:]
-        if after:
-            segments.append((after, False))
-
-        if not segments:
-            segments.append((text, False))
-
-        return segments
+        protected, literals = TextParser._protect_code_spans(text)
+        segments = TextParser._split_on_inline_latex(protected)
+        return [
+            (TextParser._restore_code_spans([TextRun(text=value)], literals)[0].text, is_math)
+            for value, is_math in segments
+        ]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1097,10 +1183,13 @@ class MarkdownParser:
 
     # ── Other patterns ──────────────────────────────────────────────────────
     BLOCKQUOTE_PATTERN = re.compile(r"^>\s+(.+)$")
-    IMAGE_PATTERN = re.compile(r"^!\[(.*?)\]\((.*?)\)$")
+    IMAGE_PATTERN = re.compile(
+        r"^!\[(.*?)\]\(\s*(?:<([^>\n]+)>|([^\s]+?))"
+        r"(?:\s+(?:\"[^\"\n]*\"|'[^'\n]*'))?\s*\)$"
+    )
     TABLE_START_PATTERN = re.compile(r"^\|")
     SEPARATOR_PATTERN = re.compile(r"^(---|## ---)$")
-    CODE_FENCE_PATTERN = re.compile(r"^```([\w.:-]*)\s*$")
+    CODE_FENCE_PATTERN = FenceScanner.OPEN_RE
 
     # Reference section keywords
     _REFERENCE_KEYWORDS = frozenset(
@@ -1124,6 +1213,13 @@ class MarkdownParser:
     _CLOSE_PAREN_SPACE_RE = re.compile(r"\s+\)")
 
     _EXT_FOOTNOTE_DEF_RE = re.compile(r"^\[\^(\d+)\]:\s*(.+)$")
+    _SETEXT_H1_RE = re.compile(r"^=+\s*$")
+    _LINK_DEFINITION_RE = re.compile(
+        r"^[ \t]*\[(?!\^)([^\]\n]+)\]:[ \t]*(?:<([^>\n]+)>|(\S+))"
+        r"(?:[ \t]+(?:\"[^\"\n]*\"|'[^'\n]*'))?[ \t]*$", re.MULTILINE
+    )
+    _REFERENCE_LINK_RE = re.compile(r"(?<!!)(?<!\\)\[(?!\^)([^\]\n]+)\](?:\[([^\]\n]*)\])?(?!\()")
+    _REFERENCE_LABEL_SPACE_RE = re.compile(r"\s+")
 
     def __init__(
         self, preserve_trailing_double_space_break: bool = False, profile: Optional[str] = None
@@ -1150,7 +1246,7 @@ class MarkdownParser:
         Returns:
             A DocumentModel with all parsed elements
         """
-        lines = content.split("\n")
+        lines = content.replace("\r\n", "\n").replace("\r", "\n").split("\n")
 
         # Parse frontmatter
         metadata, remaining_lines = FrontmatterParser.parse(lines, self.profile)
@@ -1158,19 +1254,33 @@ class MarkdownParser:
 
         # Detect whether YAML frontmatter was present
         has_frontmatter = len(remaining_lines) < len(lines)
+        remaining_lines = self._strip_comments(remaining_lines)
+        remaining_lines = self._resolve_reference_links(remaining_lines)
 
         # Extract footnotes/references
+        fenced_indices = FenceScanner.protected_indices(remaining_lines)
+        prose_lines = [
+            line if index not in fenced_indices else ""
+            for index, line in enumerate(remaining_lines)
+        ]
+        # Preserve line indices while masking code spans that cross source lines.
+        scan_lines = TextParser._CODE_SPAN_RE.sub(
+            lambda match: "CODE" + "\n" * match.group(0).count("\n"),
+            "\n".join(prose_lines),
+        ).split("\n")
         footnotes = (
-            FootnoteParser.extract_references(remaining_lines) if self._financial_rules else {}
+            FootnoteParser.extract_references(prose_lines) if self._financial_rules else {}
         )
         input_warnings: List[str] = []
         explicit_references: Set[int] = set()
         content_lines: List[str] = []
-        in_fence = False
-        for raw_line in remaining_lines:
-            if self.CODE_FENCE_PATTERN.match(raw_line.strip()):
-                in_fence = not in_fence
-            match = self._EXT_FOOTNOTE_DEF_RE.match(raw_line.strip()) if not in_fence else None
+        for index, raw_line in enumerate(remaining_lines):
+            if index in fenced_indices:
+                content_lines.append(raw_line)
+                continue
+            match = self._EXT_FOOTNOTE_DEF_RE.match(raw_line.strip())
+            if not self._EXT_FOOTNOTE_DEF_RE.match(scan_lines[index].strip()):
+                match = None
             if match:
                 number = int(match.group(1))
                 if number <= 0:
@@ -1179,8 +1289,10 @@ class MarkdownParser:
                     input_warnings.append(f"Duplicate footnote definition: {number}")
                 footnotes[number] = match.group(2)
             else:
-                if not in_fence:
-                    explicit_references.update(int(n) for n in re.findall(r"\[\^(\d+)\]", raw_line))
+                explicit_references.update(
+                    run.footnote_id for run in TextParser.parse_runs(scan_lines[index])
+                    if run.footnote_id is not None
+                )
                 content_lines.append(raw_line)
         remaining_lines = content_lines
 
@@ -1222,6 +1334,91 @@ class MarkdownParser:
         )
         return model
 
+    @staticmethod
+    def _strip_comments(lines: List[str]) -> List[str]:
+        """Omit HTML comments while retaining fenced and inline code verbatim."""
+        text = "\n".join(lines)
+        offsets: List[int] = []
+        offset = 0
+        for line in lines:
+            offsets.append(offset)
+            offset += len(line) + 1
+        line_starts = {start: index for index, start in enumerate(offsets)}
+        pieces: List[str] = []
+        position = 0
+        while position < len(text):
+            if position in line_starts:
+                block = FenceScanner.scan(lines, line_starts[position])
+                if block:
+                    end = offsets[block[2]] if block[2] < len(offsets) else len(text)
+                    pieces.append(text[position:end])
+                    position = end
+                    continue
+            code = TextParser._CODE_SPAN_RE.match(text, position) if text[position] == "`" else None
+            if code:
+                pieces.append(code.group(0))
+                position = code.end()
+                continue
+            if text.startswith("<!--", position) and (position == 0 or text[position - 1] != "\\"):
+                close = text.find("-->", position + 4)
+                end = close + 3 if close >= 0 else len(text)
+                pieces.append("\n" * text[position:end].count("\n"))
+                position = end
+                continue
+            pieces.append(text[position])
+            position += 1
+        return "".join(pieces).split("\n")
+
+    @classmethod
+    def _resolve_reference_links(cls, lines: List[str]) -> List[str]:
+        """Collect link definitions and expand resolved references outside code."""
+        literals: Dict[str, str] = {}
+        prefix = "\ue000REF"
+        source = "\n".join(lines)
+        while prefix in source:
+            prefix += "X"
+
+        def protect(value: str) -> str:
+            token = prefix + str(len(literals)) + "\ue001"
+            literals[token] = value
+            return token
+
+        pieces: List[str] = []
+        index = 0
+        while index < len(lines):
+            block = FenceScanner.scan(lines, index)
+            if block:
+                pieces.append(protect("\n".join(lines[index:block[2]])))
+                index = block[2]
+            else:
+                pieces.append(lines[index])
+                index += 1
+        source = TextParser._CODE_SPAN_RE.sub(lambda match: protect(match.group(0)), "\n".join(pieces))
+        source = TextParser._ESCAPE_RE.sub(lambda match: protect(match.group(0)), source)
+        source = TextParser._INLINE_REFERENCE_RE.sub(lambda match: protect(match.group(0)), source)
+        definitions: Dict[str, str] = {}
+
+        def label(value: str) -> str:
+            return cls._REFERENCE_LABEL_SPACE_RE.sub(" ", value.strip()).casefold()
+
+        def define(match: Match[str]) -> str:
+            definitions.setdefault(label(match.group(1)), match.group(2) or match.group(3))
+            return ""
+
+        source = cls._LINK_DEFINITION_RE.sub(define, source)
+
+        def resolve(match: Match[str]) -> str:
+            destination = definitions.get(label(match.group(2) or match.group(1)))
+            if destination is None:
+                return match.group(0)
+            return f"[{match.group(1)}]({destination})"
+
+        source = cls._REFERENCE_LINK_RE.sub(resolve, source)
+        # Later protection layers may contain tokens from earlier layers.
+        for token, value in reversed(list(literals.items())):
+            source = source.replace(token, value)
+        return source.split("\n")
+
     # ── Element-level parsing ───────────────────────────────────────────────
 
     def _parse_elements(self, lines: List[str]) -> List[Element]:
@@ -1229,6 +1426,7 @@ class MarkdownParser:
         elements: List[Element] = []
         i = 0
         in_references = False
+        chart_number = 0
 
         while i < len(lines):
             raw_line = lines[i]
@@ -1244,11 +1442,7 @@ class MarkdownParser:
                 if FootnoteParser.REFERENCE_PATTERN.match(line) or not line:
                     i += 1
                     continue
-                if self._looks_like_heading(line):
-                    in_references = False
-                else:
-                    i += 1
-                    continue
+                in_references = False
 
             # ── Empty line ──────────────────────────────────────────────────
             if not line:
@@ -1268,19 +1462,22 @@ class MarkdownParser:
                 continue
 
             # ── Fenced code block ───────────────────────────────────────────
-            code_match = self.CODE_FENCE_PATTERN.match(line)
-            if code_match:
-                language = code_match.group(1).strip()
-                code_lines: List[str] = []
-                i += 1
-                while i < len(lines):
-                    if self.CODE_FENCE_PATTERN.match(lines[i].strip()):
-                        i += 1
-                        break
-                    code_lines.append(lines[i].rstrip("\n"))
-                    i += 1
-
+            code_block = FenceScanner.scan(lines, i)
+            if code_block:
+                language, code_lines, i = code_block
                 code_text = "\n".join(code_lines).rstrip()
+
+                if language == "chart":
+                    chart_number += 1
+                    chart = Chart(code=code_text, label=f"Chart {chart_number}")
+                    try:
+                        chart.spec = parse_chart_spec(code_text)
+                        if chart.spec.title:
+                            chart.label += f" ({chart.spec.title})"
+                    except ChartSpecError as exc:
+                        chart.error = str(exc)
+                    elements.append(Element(ElementType.CHART, chart, raw_line))
+                    continue
 
                 # ── diagram:flow → Diagram object ──────────────────────
                 if language.startswith("diagram:"):
@@ -1383,6 +1580,15 @@ class MarkdownParser:
                 continue
 
             # ── Headings (must be checked before numbered list) ─────────────
+            if i + 1 < len(lines) and self._SETEXT_H1_RE.fullmatch(lines[i + 1].strip()):
+                if not self._starts_new_block(line):
+                    elements.append(Element(
+                        element_type=ElementType.HEADING_1,
+                        content=Heading(level=1, text=line),
+                        raw_text=raw_line + "\n" + lines[i + 1],
+                    ))
+                    i += 2
+                    continue
             element = self._try_parse_heading(line)
             if element:
                 elements.append(element)
@@ -1415,7 +1621,7 @@ class MarkdownParser:
             match = self.BULLET_PATTERN.match(raw_line)
             if match:
                 indent_level = self._get_indent_level(match.group(1))
-                text = match.group(2)
+                text, next_idx = self._collect_paragraph(lines, i, first_line=match.group(2))
                 item = ListItem(
                     text=text,
                     runs=TextParser.parse_runs(text),
@@ -1425,10 +1631,10 @@ class MarkdownParser:
                     Element(
                         element_type=ElementType.BULLET_LIST,
                         content=item,
-                        raw_text=raw_line,
+                        raw_text="\n".join(lines[i:next_idx]),
                     )
                 )
-                i += 1
+                i = next_idx
                 continue
 
             # ── Numbered list ───────────────────────────────────────────────
@@ -1436,7 +1642,7 @@ class MarkdownParser:
             if match and not self._is_numbered_heading(line):
                 indent_level = self._get_indent_level(match.group(1))
                 number = match.group(2)
-                text = match.group(3)
+                text, next_idx = self._collect_paragraph(lines, i, first_line=match.group(3))
                 item = ListItem(
                     text=text,
                     runs=TextParser.parse_runs(text),
@@ -1446,10 +1652,10 @@ class MarkdownParser:
                     Element(
                         element_type=ElementType.NUMBERED_LIST,
                         content=(number, item),
-                        raw_text=raw_line,
+                        raw_text="\n".join(lines[i:next_idx]),
                     )
                 )
-                i += 1
+                i = next_idx
                 continue
 
             # ── Numbered heading fallback (e.g. "1. 서론") ─────────────────
@@ -1471,7 +1677,7 @@ class MarkdownParser:
                 elements.append(
                     Element(
                         element_type=ElementType.IMAGE,
-                        content=Image(alt_text=match.group(1), path=match.group(2)),
+                        content=Image(alt_text=match.group(1), path=match.group(2) or match.group(3)),
                         raw_text=line,
                     )
                 )
@@ -1481,12 +1687,16 @@ class MarkdownParser:
             # ── Paragraph (with inline LaTeX detection) ─────────────────────
             paragraph_text, next_idx = self._collect_paragraph(lines, i)
             para_element = self._parse_paragraph(paragraph_text)
+            # Header metadata needs source line boundaries before soft-wrap merging.
+            para_element.raw_text = "\n".join(lines[i:next_idx])
             elements.append(para_element)
             i = next_idx
 
         return elements
 
-    def _collect_paragraph(self, lines: List[str], start_idx: int) -> Tuple[str, int]:
+    def _collect_paragraph(
+        self, lines: List[str], start_idx: int, first_line: Optional[str] = None
+    ) -> Tuple[str, int]:
         """
         Collect contiguous paragraph lines and normalize Markdown line breaks.
 
@@ -1499,13 +1709,15 @@ class MarkdownParser:
         use_hard_break = False
 
         while i < len(lines):
-            raw_line = lines[i]
+            raw_line = first_line if i == start_idx and first_line is not None else lines[i]
             line = self._strip_html_anchors(raw_line).strip()
 
             if not line:
                 break
 
             if i > start_idx and self._starts_new_block(line):
+                break
+            if i > start_idx and i + 1 < len(lines) and self._SETEXT_H1_RE.fullmatch(lines[i + 1].strip()):
                 break
 
             normalized, hard_break = self._normalize_paragraph_line(raw_line)
@@ -1524,6 +1736,7 @@ class MarkdownParser:
         """Return True when line should start a new non-paragraph block."""
         return bool(
             self.SEPARATOR_PATTERN.match(line)
+            or FenceScanner.opening(line)
             or LaTeXParser.is_block_single_line(line) is not None
             or LaTeXParser.is_block_start(line)
             or Base64ImageParser.is_base64_image(line)
@@ -1559,10 +1772,11 @@ class MarkdownParser:
         if not text:
             return text
 
+        text, literals = TextParser._protect_code_spans(text)
         normalized = cls._MULTISPACE_RE.sub(" ", text)
         normalized = cls._OPEN_PAREN_SPACE_RE.sub("(", normalized)
         normalized = cls._CLOSE_PAREN_SPACE_RE.sub(")", normalized)
-        return normalized.strip()
+        return TextParser._restore_code_spans([TextRun(text=normalized.strip())], literals)[0].text
 
     @classmethod
     def _strip_html_anchors(cls, text: str) -> str:
@@ -1619,7 +1833,7 @@ class MarkdownParser:
         # H4 (check longer prefixes first to avoid partial match)
         match = self.H4_PATTERN.match(line)
         if match:
-            text = TextParser.cleanup_text(match.group(1))
+            text = match.group(1).strip()
             return Element(
                 element_type=ElementType.HEADING_4,
                 content=Heading(level=4, text=text),
@@ -1629,7 +1843,7 @@ class MarkdownParser:
         # H3
         match = self.H3_PATTERN.match(line)
         if match:
-            text = TextParser.cleanup_text(match.group(1))
+            text = match.group(1).strip()
             return Element(
                 element_type=ElementType.HEADING_3,
                 content=Heading(level=3, text=text),
@@ -1639,7 +1853,7 @@ class MarkdownParser:
         # H2
         match = self.H2_PATTERN.match(line)
         if match:
-            text = TextParser.cleanup_text(match.group(1))
+            text = match.group(1).strip()
             return Element(
                 element_type=ElementType.HEADING_2,
                 content=Heading(level=2, text=text),
@@ -1649,7 +1863,7 @@ class MarkdownParser:
         # H1
         match = self.H1_PATTERN.match(line)
         if match:
-            text = TextParser.cleanup_text(match.group(1))
+            text = match.group(1).strip()
             return Element(
                 element_type=ElementType.HEADING_1,
                 content=Heading(level=1, text=text),
@@ -1694,6 +1908,34 @@ class MarkdownParser:
 
     # Matches **key**: value  OR  **key:** value (colon inside or outside bold)
     _BOLD_KV_PATTERN = re.compile(r"^\*\*([^*:：]+)[:：]?\*\*\s*[:：]?\s*(.+)$")
+    # Only fields actually consumed by CoverRenderer / office metadata rendering.
+    _HEADER_METADATA_FIELDS = {
+        "기준일": ("extra", "date"),
+        "as of": ("extra", "date"),
+        "작성일": ("extra", "date"),
+        "report date": ("extra", "date"),
+        "date": ("extra", "date"),
+        "분석 대상 기간": ("extra", "analysis_period"),
+        "analysis period": ("extra", "analysis_period"),
+        "analysis_period": ("extra", "analysis_period"),
+        "분석 기준": ("extra", "analysis_basis"),
+        "analysis basis": ("extra", "analysis_basis"),
+        "analysis_basis": ("extra", "analysis_basis"),
+        "prepared by": ("analyst", ""),
+        "작성자": ("analyst", ""),
+        "analyst": ("analyst", ""),
+        "institution": ("company", ""),
+        "company": ("company", ""),
+        "기관": ("company", ""),
+        "sector": ("sector", ""),
+        "업종": ("sector", ""),
+        "ticker": ("ticker", ""),
+        "prepared for": ("extra", "recipient"),
+        "recipient": ("extra", "recipient"),
+        "수신": ("extra", "recipient"),
+        "subject_company": ("extra", "subject_company"),
+        "report_type": ("extra", "report_type"),
+    }
 
     def _parse_diagram(self, language: str, code_text: str) -> Optional[Diagram]:
         """Parse a diagram:flow YAML block into a Diagram object."""
@@ -1732,11 +1974,18 @@ class MarkdownParser:
     def _extract_header_metadata(
         self, metadata: DocumentMetadata, elements: List[Element]
     ) -> List[Element]:
-        """Extract title, subtitle, and bold key-value metadata from document header."""
+        """Extract IB header metadata while retaining body content.
+
+        Args:
+            metadata: Metadata to populate when YAML frontmatter is absent.
+            elements: Parsed elements retaining paragraph source line boundaries.
+
+        Returns:
+            Body elements, including the marked inferred subtitle and unknown labels.
+        """
         filtered: List[Element] = []
         in_header = True
         title_found = False
-        subtitle_found = False
 
         # Clear defaults that don't make sense without frontmatter
         metadata.company = ""
@@ -1757,29 +2006,55 @@ class MarkdownParser:
                     title_found = True
                     continue
 
-                # First H2 after H1 → subtitle
+                # Retain the inferred subtitle heading for cover-free rendering.
                 if (
                     title_found
-                    and not subtitle_found
+                    and not metadata.subtitle
                     and elem.element_type == ElementType.HEADING_2
                     and isinstance(elem.content, Heading)
                 ):
                     metadata.subtitle = elem.content.text
-                    subtitle_found = True
+                    elem.inferred_subtitle = True
+                    filtered.append(elem)
                     continue
 
-                # Bold key-value lines → metadata.extra
+                if elem.element_type == ElementType.HEADING_2:
+                    in_header = False
+
+                # Each leading bold key-value source line is a separate field.
                 if elem.element_type == ElementType.PARAGRAPH:
-                    raw = elem.raw_text.strip()
-                    kv_match = self._BOLD_KV_PATTERN.match(raw)
-                    if kv_match:
+                    source_lines = elem.raw_text.split("\n")
+                    line_index = 0
+                    while line_index < len(source_lines):
+                        normalized, _ = self._normalize_paragraph_line(source_lines[line_index])
+                        kv_match = self._BOLD_KV_PATTERN.match(normalized)
+                        if not kv_match:
+                            break
                         key = kv_match.group(1).strip()
                         value = kv_match.group(2).strip()
-                        metadata.extra[key] = value
-
+                        mapped = self._HEADER_METADATA_FIELDS.get(key.lower())
+                        if mapped:
+                            field_name, extra_key = mapped
+                            if field_name == "extra":
+                                metadata.extra[extra_key] = value
+                            else:
+                                setattr(metadata, field_name, value)
+                        else:
+                            if line_index + 1 < len(source_lines):
+                                following, _ = self._normalize_paragraph_line(source_lines[line_index + 1])
+                                if not self._BOLD_KV_PATTERN.match(following):
+                                    # Unknown labels remain ordinary prose, including soft wraps.
+                                    break
+                            filtered.append(self._parse_paragraph(normalized))
+                        line_index += 1
+                    if line_index == len(source_lines):
                         continue
-                    else:
-                        in_header = False
+                    if line_index:
+                        # Ordinary prose ends the header and retains normal soft wrapping.
+                        text, _ = self._collect_paragraph(source_lines, line_index)
+                        elem = self._parse_paragraph(text)
+                        elem.raw_text = "\n".join(source_lines[line_index:])
+                    in_header = False
             else:
                 if in_header:
                     in_header = False

@@ -3,6 +3,11 @@ Diagram Renderer for IB Report Formatter
 Renders flow diagrams as high-quality matplotlib images inserted into Word.
 
 Requires: matplotlib (optional dependency, graceful fallback to text placeholder).
+
+Changelog (hardening):
+    - Use independent Agg figures and explicit fonts without changing rcParams.
+    - Release figures and unsuccessful temporary images on every exit path.
+    - Share installed raster font selection and CJK glyph-loss diagnostics.
 """
 
 import importlib
@@ -13,6 +18,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches
+
+from render_styles import STYLE, RasterFontPolicy
 
 if TYPE_CHECKING:
     from docx.document import Document as DocxDocument
@@ -37,8 +44,6 @@ def _matplotlib_available() -> bool:
 
 class DiagramRenderer:
     """Renders Diagram objects as matplotlib images in Word documents."""
-
-    FONT = "Malgun Gothic"
 
     def __init__(self, doc: "DocxDocument", theme_colors: Optional[Dict[str, str]] = None):
         self.doc = doc
@@ -66,25 +71,26 @@ class DiagramRenderer:
             finally:
                 try:
                     os.unlink(image_path)
-                except OSError:
-                    pass
+                except OSError as exc:
+                    logger.debug("Cannot remove diagram image: %s", exc)
         else:
             self._placeholder(diagram.title)
             return False
 
     def _render_image(self, diagram: "Diagram") -> Optional[str]:
         """Render the diagram to a temporary PNG."""
+        fig = None
+        temp_path = None
+        succeeded = False
         try:
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
+            from matplotlib.backends.backend_agg import FigureCanvasAgg
+            from matplotlib.figure import Figure
             from matplotlib.patches import FancyBboxPatch
 
             # ── Font setup ──────────────────────────────────────────────
-            korean_font = self._find_korean_font()
-            if korean_font:
-                plt.rcParams["font.family"] = korean_font
-            plt.rcParams["axes.unicode_minus"] = False
+            texts = [diagram.title, *(box.label for box in diagram.boxes),
+                     *(arrow.label for arrow in diagram.arrows), *diagram.notes]
+            korean_font = RasterFontPolicy.resolve(STYLE.KOREAN_FONT, "\n".join(texts))
 
             boxes = diagram.boxes
             arrows = diagram.arrows
@@ -100,7 +106,9 @@ class DiagramRenderer:
             # Figure size — large for readability
             fig_w = max(16, x_range * 4.0 + 5)
             fig_h = max(10, y_range * 3.5 + 4)
-            fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+            fig = Figure(figsize=(fig_w, fig_h))
+            FigureCanvasAgg(fig)
+            ax = fig.subplots()
             fig.patch.set_facecolor("white")
 
             margin = 1.0
@@ -181,6 +189,7 @@ class DiagramRenderer:
                         arrow.label,
                         ha="center", va="center",
                         fontsize=16, color=_DARK_GRAY,
+                        fontfamily=korean_font,
                         linespacing=1.3,
                         bbox={
                             "boxstyle": "round,pad=0.25",
@@ -230,6 +239,7 @@ class DiagramRenderer:
                         cx, ly, line_text,
                         ha="center", va="center",
                         fontsize=size, fontweight=weight,
+                        fontfamily=korean_font,
                         color=s["text"], zorder=3,
                     )
 
@@ -238,6 +248,7 @@ class DiagramRenderer:
                 ax.set_title(
                     diagram.title,
                     fontsize=24, fontweight="bold",
+                    fontfamily=korean_font,
                     color=_DARK_GRAY, pad=25,
                 )
 
@@ -248,24 +259,31 @@ class DiagramRenderer:
                     0.5, 0.02, note_text,
                     ha="center", va="bottom",
                     fontsize=14, color=_MEDIUM_GRAY,
+                    fontfamily=korean_font,
                     style="italic",
                 )
 
-            plt.tight_layout(rect=(0, 0.05, 1, 0.95))
+            fig.tight_layout(rect=(0, 0.05, 1, 0.95))
 
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False, mode="wb") as f:
                 temp_path = f.name
 
             fig.savefig(temp_path, dpi=200, bbox_inches="tight",
                         facecolor="white", edgecolor="none")
-            plt.close(fig)
+            succeeded = True
             return temp_path
 
         except Exception as e:
             logger.warning("Diagram rendering failed: %s", e)
-            import traceback
-            traceback.print_exc()
             return None
+        finally:
+            if fig is not None:
+                fig.clear()
+            if temp_path is not None and not succeeded:
+                try:
+                    os.unlink(temp_path)
+                except OSError as err:
+                    logger.warning("Cannot remove unsuccessful diagram image: %s", err)
 
     # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -282,17 +300,6 @@ class DiagramRenderer:
         else:
             t = hh / abs(dy)
         return cx + dx * t, cy + dy * t
-
-    @staticmethod
-    def _find_korean_font() -> Optional[str]:
-        try:
-            import matplotlib.font_manager as fm
-            for name in ["Malgun Gothic", "NanumGothic", "AppleGothic"]:
-                if fm.findfont(name, fallback_to_default=False):
-                    return name
-        except Exception:
-            pass
-        return None
 
     def _insert(self, file_path: str, title: str, notes: List[str]):
         """Insert diagram image centered with caption and notes."""

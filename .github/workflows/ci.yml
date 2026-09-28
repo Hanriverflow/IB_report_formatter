@@ -1,0 +1,71 @@
+name: Quality checks
+
+"on":
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+      - name: Lint
+        run: uv run ruff check .
+      - name: Type check
+        run: uv run mypy .
+      - name: Install Korean fonts
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y fonts-nanum
+      - name: Test
+        run: uv run pytest tests/ -q
+      - name: Build distributions
+        run: uv build
+      - name: Verify wheel contents
+        id: wheel_contents
+        shell: uv run python {0}
+        run: |
+          import logging
+          import tomllib
+          import zipfile
+          from pathlib import Path
+
+          logging.basicConfig(level=logging.INFO)
+          with Path("pyproject.toml").open("rb") as config_file:
+              config = tomllib.load(config_file)
+          expected = sorted(config["tool"]["hatch"]["build"]["targets"]["wheel"]["only-include"])
+          wheels = list(Path("dist").glob("*.whl"))
+          assert len(wheels) == 1, f"Expected one wheel, found {wheels}"
+          with zipfile.ZipFile(wheels[0]) as wheel:
+              actual = sorted(
+                  name for name in wheel.namelist()
+                  if not name.endswith("/") and not name.split("/", 1)[0].endswith(".dist-info")
+              )
+          assert actual == expected, f"Wheel payload differs: expected {expected}, got {actual}"
+          logging.info("Wheel payload verified: %d engine modules", len(actual))
+      - name: Verify Python 3.12 syntax
+        id: python312
+        shell: uv run python {0}
+        run: |
+          import ast
+          import logging
+          from pathlib import Path
+
+          logging.basicConfig(level=logging.INFO)
+          sources = sorted(Path(".").glob("*.py"))
+          assert sources, "No top-level Python modules found"
+          for source in sources:
+              ast.parse(source.read_text(encoding="utf-8-sig"), filename=str(source), feature_version=(3, 12))
+          logging.info("Python 3.12 syntax verified: %d modules", len(sources))

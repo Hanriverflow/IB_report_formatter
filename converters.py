@@ -4,6 +4,9 @@ Plugin/converter architecture for IB Report Formatter.
 Inspired by Microsoft's markitdown project. Provides BaseConverter
 and ConverterRegistry for extensible format support.
 
+Changelog (hardening):
+    - Publish the default registry only after locked, complete initialization.
+
 Usage:
     from converters import get_default_registry
 
@@ -24,6 +27,7 @@ Usage:
 """
 
 import logging
+import threading
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, BinaryIO, List, Optional, Union, cast
@@ -190,6 +194,8 @@ class DocxOutputConverter(OutputConverter):
                 "theme",
                 "strict",
                 "confidential",
+                "charts",
+                "preset",
             }
             options = RenderOptions(**{key: value for key, value in kwargs.items() if key in keys})
         if not isinstance(options, RenderOptions):
@@ -215,14 +221,22 @@ class DocxOutputConverter(OutputConverter):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _default_registry: Optional[ConverterRegistry] = None
+_default_registry_lock = threading.Lock()
 
 
 def get_default_registry() -> ConverterRegistry:
-    """Get (and lazily initialize) the default converter registry."""
+    """Get the default registry, initializing its built-ins once across threads.
+
+    Returns:
+        The shared registry with all built-in converters registered.
+    """
     global _default_registry
     if _default_registry is None:
-        _default_registry = ConverterRegistry()
-        _register_builtin_converters(_default_registry)
+        with _default_registry_lock:
+            if _default_registry is None:
+                registry = ConverterRegistry()
+                _register_builtin_converters(registry)
+                _default_registry = registry
     return _default_registry
 
 

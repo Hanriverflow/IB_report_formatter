@@ -1,6 +1,11 @@
-"""Office document composition and editable Word numbering."""
+"""Office document composition and editable Word numbering.
 
-from typing import Dict, Optional
+Changelog (hardening):
+    - Scope native list instances to their parent item and override the actual level.
+    - Reuse memo title/metadata typography for cover-free IB reports, adding subtitles.
+"""
+
+from typing import Dict, Optional, Tuple
 
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -71,9 +76,17 @@ def letter_appendix_index(model: DocumentModel) -> Optional[int]:
 
 
 def render_office_opening(doc, metadata: DocumentMetadata) -> bool:
-    """Render profile metadata; return whether a title was already inserted."""
+    """Render profile metadata at the start of the body when there is no cover.
+
+    Args:
+        doc: Document with request-scoped styles already initialized.
+        metadata: Profile metadata, including an optional IB report subtitle.
+
+    Returns:
+        Whether a title was inserted and a matching body H1 should be skipped.
+    """
     name = metadata.profile
-    if name in {"plain", "ib-report"}:
+    if name == "plain" or (name == "ib-report" and not metadata.title.strip()):
         return False
     extra = metadata.extra
     sender = extra.get("sender", {})
@@ -94,6 +107,8 @@ def render_office_opening(doc, metadata: DocumentMetadata) -> bool:
     title.runs[0].font.size = STYLE.H1_SIZE
     title.paragraph_format.space_before = Pt(12)
     title.paragraph_format.space_after = Pt(12)
+    if name == "ib-report" and metadata.subtitle.strip():
+        add_text(doc, metadata.subtitle, keep_next=True)
     rows = []
     for label, value in [
         ("작성일", extra.get("date")),
@@ -153,22 +168,33 @@ class NativeNumbering:
 
     def __init__(self, doc) -> None:
         self.doc = doc
-        self.ids: Dict[str, int] = {}
+        self.ids: Dict[Tuple[int, str], int] = {}
 
     def reset(self) -> None:
         """Start a fresh list after a non-list block."""
         self.ids.clear()
 
     def apply(self, paragraph, level: int, bullet: bool = False, start: int = 1) -> None:
-        """Attach real numbering properties instead of inserting number text."""
-        kind = "bullet" if bullet else "number"
-        if kind not in self.ids:
-            self.ids[kind] = self._create(bullet, start)
-        num_pr = paragraph._p.get_or_add_pPr().get_or_add_numPr()
-        num_pr.get_or_add_ilvl().val = min(max(level, 0), 8)
-        num_pr.get_or_add_numId().val = self.ids[kind]
+        """Attach native numbering, restarting descendants under each new parent.
 
-    def _create(self, bullet: bool, start: int) -> int:
+        Args:
+            paragraph: Destination Word paragraph.
+            level: Zero-based nesting level, clamped to Word's supported range.
+            bullet: Whether the list uses bullets instead of numbers.
+            start: First value for a newly encountered ordered-list scope.
+        """
+        level = min(max(level, 0), 8)
+        # A new item at this level ends any child list owned by the previous item.
+        self.ids = {key: value for key, value in self.ids.items() if key[0] <= level}
+        kind = "bullet" if bullet else "number"
+        key = (level, kind)
+        if key not in self.ids:
+            self.ids[key] = self._create(bullet, start, level)
+        num_pr = paragraph._p.get_or_add_pPr().get_or_add_numPr()
+        num_pr.get_or_add_ilvl().val = level
+        num_pr.get_or_add_numId().val = self.ids[key]
+
+    def _create(self, bullet: bool, start: int, start_level: int) -> int:
         numbering = self.doc.part.numbering_part.element
         abstract_ids = [
             int(e.get(qn("w:abstractNumId"))) for e in numbering.findall(qn("w:abstractNum"))
@@ -212,9 +238,9 @@ class NativeNumbering:
         abstract_ref = OxmlElement("w:abstractNumId")
         abstract_ref.set(qn("w:val"), str(abstract_id))
         num.append(abstract_ref)
-        if not bullet and start != 1:
+        if not bullet and (start != 1 or start_level > 0):
             override = OxmlElement("w:lvlOverride")
-            override.set(qn("w:ilvl"), "0")
+            override.set(qn("w:ilvl"), str(start_level))
             start_override = OxmlElement("w:startOverride")
             start_override.set(qn("w:val"), str(start))
             override.append(start_override)

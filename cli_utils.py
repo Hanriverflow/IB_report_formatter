@@ -1,9 +1,17 @@
 """
 Shared CLI helpers for converter entry points.
+
+Changelog (hardening):
+    - Save through sibling temporary files to preserve existing reports on failure.
+    - Reserve locked-file fallback names exclusively, including concurrent saves.
+    - Limit project-directory input fallback to bare filenames.
 """
 
 import logging
+import os
+import stat
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence
@@ -60,14 +68,23 @@ def setup_logging(verbose: bool = False) -> None:
 
 
 def resolve_input_path(input_file: str, parent_dir: Path, script_path: Path) -> Path:
-    """Resolve an input path using the project's standard search order."""
+    """Resolve explicit paths as given and search project locations for bare names.
+
+    Args:
+        input_file: User-provided filename or path.
+        parent_dir: Fallback directory for bare filenames.
+        script_path: Entry point whose directory is the final bare-name fallback.
+
+    Returns:
+        Resolved candidate, which may not exist and must be checked by the caller.
+    """
     input_path = Path(input_file)
 
     if input_path.is_absolute():
         return input_path
 
     cwd_path = Path.cwd() / input_file
-    if cwd_path.exists():
+    if cwd_path.exists() or input_file != input_path.name:
         return cwd_path
 
     parent_path = parent_dir / input_path.name
@@ -101,25 +118,96 @@ def generate_output_path(
     return input_path.with_suffix(suffix)
 
 
+def _target_mode(output_path: Path) -> int:
+    """Return the existing destination mode, or the umask default for a new file.
+
+    Args:
+        output_path: Destination that may or may not exist.
+
+    Returns:
+        Permission bits to apply before replacing the destination.
+    """
+    try:
+        return stat.S_IMODE(output_path.stat().st_mode)
+    except FileNotFoundError:
+        umask = os.umask(0)
+        os.umask(umask)
+        return 0o666 & ~umask
+
+
+def _atomic_save(output_path: Path, save_action: Callable[[Path], None]) -> None:
+    """Serialize beside the destination and replace it only after success.
+
+    Args:
+        output_path: Destination in an existing directory.
+        save_action: Callback that serializes the complete output to a path.
+    """
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{output_path.stem}_", suffix=output_path.suffix, dir=str(output_path.parent)
+    )
+    temp_path = Path(temp_name)
+    try:
+        os.close(fd)
+        save_action(temp_path)
+        # mkstemp creates 0600 files; keep the mode a direct save would have produced.
+        os.chmod(temp_path, _target_mode(output_path))
+        os.replace(temp_path, output_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def _reserve_fallback_path(output_path: Path) -> Path:
+    """Exclusively reserve an unused timestamped sibling destination.
+
+    Args:
+        output_path: Original destination whose stem and extension are retained.
+
+    Returns:
+        Path to an empty file owned by this save operation.
+    """
+    timestamp = int(time.time())
+    counter = 0
+    while True:
+        suffix = f"_{timestamp}" if counter == 0 else f"_{timestamp}_{counter}"
+        candidate = output_path.with_name(f"{output_path.stem}{suffix}{output_path.suffix}")
+        try:
+            with candidate.open("xb"):
+                return candidate
+        except FileExistsError:
+            counter += 1
+
+
 def safe_save(
     output_path: Path,
     save_action: Callable[[Path], None],
     logger: logging.Logger,
     lock_message: str,
 ) -> Path:
-    """Save output, falling back to a timestamped filename on permission errors."""
+    """Save atomically, falling back to a timestamped path on permission errors.
+
+    Args:
+        output_path: Requested destination.
+        save_action: Callback that serializes the complete output to a path.
+        logger: Logger for save and lock messages.
+        lock_message: Warning format with one filename placeholder.
+
+    Returns:
+        Path containing the successfully saved output.
+    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        save_action(output_path)
+        _atomic_save(output_path, save_action)
         logger.info("Saved: %s", output_path)
         return output_path
     except PermissionError:
         logger.warning(lock_message, output_path.name)
-        timestamp = int(time.time())
-        new_name = f"{output_path.stem}_{timestamp}{output_path.suffix}"
-        new_path = output_path.with_name(new_name)
-        save_action(new_path)
+        new_path = _reserve_fallback_path(output_path)
+        try:
+            _atomic_save(new_path, save_action)
+        except BaseException:
+            new_path.unlink(missing_ok=True)
+            raise
         logger.info("Saved: %s", new_path)
         return new_path
 

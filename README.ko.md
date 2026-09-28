@@ -98,6 +98,88 @@ CLI에서는 `--profile`, `--theme`, `--strict`, `--no-cover`, `--no-toc`, `--no
 
 테마는 `default`, `mono`, 또는 [회사 테마 YAML](samples/profiles/company-theme.yaml)을 지원합니다. 설정 항목은 본문·제목·한글 글꼴, 본문 크기, 주색, 여백입니다. YAML 안의 테마 경로는 입력 MD 폴더 기준, CLI 경로는 실행 폴더 기준입니다. 임의의 회사 DOCX 양식을 자동 해석하는 기능은 아닙니다.
 
+## 차트 사용 (기본 비활성)
+
+```sh
+md-to-word report.md report.docx --charts --strict
+md-to-word samples/qa/charts.md charts.docx --strict
+md-to-word report.md code-panels.docx --no-charts
+```
+
+6개 프로파일 모두 기본값은 비활성입니다. `--charts`, `RenderOptions(charts=True)` 또는 최상위 frontmatter `charts: true`로 활성화합니다. 명시한 CLI/API 값이 YAML보다 우선하며 `--no-charts` / `charts=False`로 코드 패널 출력을 강제할 수 있습니다. 파서는 원문을 차트 모델 요소에 보존하므로 같은 모델에서도 출력 방식을 선택할 수 있습니다.
+
+````markdown
+```chart
+chart_type: bar
+title: 가상 매출
+labels: [상반기, 하반기]
+series:
+  - name: 매출
+    values: [100, 120]
+y_label: 백만원
+source: 기능 검증용 가상 자료
+number_format: ',.1f'
+```
+````
+
+`bar`는 계열별 묶은 막대, `line`은 선, `waterfall`은 누적 증감 차트입니다. PR #5의 `chart_type`, `y_label`, `title`, `labels`, `series`, `source`, `total_label` 문법을 유지합니다. `type`도 `chart_type` 대신 사용할 수 있으며 두 값이 충돌하면 오류입니다. `unit`은 `y_label`이 없을 때 세로축 라벨로 사용합니다.
+
+계열마다 문자열 `name`과 라벨 수에 맞는 유한 숫자 `values`가 필요합니다. 라벨은 문자열·숫자를 지원하며 불리언은 거부합니다. `number_format`은 `number`(기존 기본 형식), `percent`, `bps`, `multiple`, `',.2f'`나 `'.1f'` 같은 고정소수점 형식을 지원합니다. **수치를 환산하지 않으므로** `12.5`는 `percent` 형식에서 `12.5%`입니다.
+
+Waterfall은 계열 하나만 지원하며 0부터 모든 값을 차례로 더합니다. `[100, -30, 20]`이면 마지막에 합계 `90` 막대를 추가합니다. 음수 합계도 지원하고 `total_label`로 합계 라벨을 지정합니다. 이미 계산한 합계를 증감값에 다시 넣지 마십시오.
+
+잘못된 YAML·차트 사양·렌더 실패는 차트를 식별하는 진단을 남깁니다. Strict 모드는 새 파일 생성이나 기존 파일 교체 전에 거부하고, 일반 모드는 경고와 함께 원문 코드 패널을 표시합니다. 비활성 상태에서는 잘못된 YAML도 기존 코드 패널로 출력합니다. 차트는 본문 폭에 맞춘 PNG이며 요청별 색상과 한글 글꼴 정책을 사용합니다. 한글 출력에는 지정 글꼴이 설치되어 있어야 합니다(Windows 기본: 맑은 고딕). [가상 자료 예제](samples/qa/charts.md)는 세 차트 유형을 모두 포함합니다.
+
+## 문서 구성 프리셋
+
+```sh
+md-to-word --list-presets
+md-to-word report.md terms.docx --preset termsheet
+md-to-word notes.md notes.docx --profile plain --preset lecture-note --no-cover
+```
+
+| 프리셋 | 표지 | 목차 | 면책 |
+|---|---|---|---|
+| `ib-report` | 상속 | 상속 | 상속 |
+| `termsheet` | 끔 | 끔 | 끔 |
+| `legal-memo` | 끔 | 켬 | 끔 |
+| `lecture-note` | 켬 | 켬 | 끔 |
+
+`RenderOptions(preset="termsheet")` 또는 최상위 frontmatter `preset: termsheet`로도 지정합니다. 항목별 우선순위는 **명시한 CLI/API 개별 값 > CLI/API 프리셋 값 > YAML `layout` 개별 값 > YAML 프리셋 값 > 프로파일 기본값**입니다. `ib-report` 프리셋은 값을 재정의하지 않습니다. 알 수 없는 이름은 저장 없이 오류로 종료합니다.
+
+모든 프리셋을 6개 프로파일과 조합할 수 있습니다. 표지·목차·면책만 바꾸므로 일반 프로파일의 중립 메타데이터, 네이티브 번호, 일반 표 의미는 유지합니다. `termsheet`는 `ib-report`/`ib-memo`, `legal-memo`는 `ib-memo`/`plain`, `lecture-note`는 `plain`/`business-report`와 조합하면 유용합니다. 공문이나 짧은 회의록에는 보통 표지·목차가 필요하지 않습니다. 프리셋이 법률 문구나 문서별 메타데이터를 생성하지는 않습니다.
+
+표지를 끄면(`--no-cover`, API `include_cover=False`, YAML `layout.cover: false`, `termsheet`/`legal-memo`) `ib-report`는 문서 맨 앞에 테마를 반영한 제목·부제와 `ib-memo`와 같은 작성일·작성자 행을 표시하고, 목차가 있으면 같은 페이지에서 이어 표시한 뒤 기존 페이지 나누기로 본문을 시작합니다. 제목과 일치하는 본문 H1 및 추출된 부제는 이 블록에만 한 번 표시하고 목차에서는 제외하며, 표지를 켠 출력과 다른 프로파일의 제목 처리는 유지합니다.
+
+## 테마 확장 키
+
+기존 소문자 키 6개 외에 다음 `IBStyle` 대문자 표현 필드(PR #5 표기)를 YAML 테마에서 사용할 수 있습니다.
+
+| 종류 | 키 / 단위 |
+|---|---|
+| 색상 | `NAVY`, `DARK_GRAY`, `LIGHT_GRAY`, `ACCENT_BLUE`, `WHITE`, `RED`, `GREEN`, `ORANGE`, `MEDIUM_GRAY`, `CODE_BG`, `CHART_NEGATIVE_COLOR`, `TABLE_HEADER_COLOR` |
+| OOXML 색상 | `NAVY_HEX`, `LIGHT_GRAY_HEX`, `ACCENT_BLUE_HEX`, `GRAY_BORDER_HEX`, `YELLOW_HEX`, `TABLE_HEADER_BG` |
+| 글꼴 | `HEADING_FONT`, `BODY_FONT`, `KOREAN_FONT`, `COVER_FONT`, `TOC_FONT` |
+| 크기(pt) | `H1_SIZE`–`H4_SIZE`, `BODY_SIZE`, `SMALL_SIZE`, `TABLE_HEADER_SIZE`, `TABLE_BODY_SIZE` |
+| 간격(pt) | `H1_SPACE_BEFORE/AFTER`, `H2_SPACE_BEFORE/AFTER`, `H3_SPACE_BEFORE/AFTER`, `BODY_SPACE_AFTER`, `BULLET_SPACE_AFTER` |
+| 길이(inch) | `TOP_MARGIN`, `BOTTOM_MARGIN`, `LEFT_MARGIN`, `RIGHT_MARGIN`, `BULLET_INDENT`, `DEEP_LIST_INDENT`, `MAX_LIST_INDENT` |
+| 기타 | `BODY_LINE_SPACING`(양수 배수), `FULL_LIST_INDENT_LEVELS`(0–9 정수), `BULLET_CHAR`, `TABLE_ZEBRA`, `BODY_JUSTIFY`, `HEADING_BORDER`(불리언), `TOC_TITLE`, `PAGE_LABEL`, `PAGE_OF_LABEL`(문자열) |
+
+```yaml
+NAVY: "234567"
+H1_SIZE: 18
+BODY_FONT: Calibri
+KOREAN_FONT: Malgun Gothic
+BODY_SPACE_AFTER: 6
+TOP_MARGIN: 0.8
+CHART_NEGATIVE_COLOR: "995544"
+TABLE_ZEBRA: false
+```
+
+색상은 따옴표로 감싼 6자리 16진 문자열입니다(`"#234567"`도 허용). 숫자 색상, 크기의 불리언 값, 비유한 숫자, 알 수 없는 키, 별칭 충돌은 저장 전에 거부합니다. 크기는 1–144pt, 간격은 0–144pt, inch 길이는 0–3, 줄 간격은 0 초과 5 이하입니다. 기존 `body_size`는 6–30pt, `margin_mm`는 5–60mm 범위를 유지합니다. 글꼴 이름은 비어 있을 수 없습니다. 내부 `STYLE_*` 식별자와 프로파일의 `NATIVE_NUMBERING` 정책은 테마 키가 아닙니다.
+
+RGB/hex 쌍은 한쪽만 지정하면 함께 반영되며, 양쪽을 명시하면 각각 적용합니다. `NAVY`는 별도 `TABLE_HEADER_BG`가 없을 때 IB 표 머리 배경에도 적용합니다. `RED`는 별도 `CHART_NEGATIVE_COLOR`가 없을 때 waterfall 음수 색상에도 적용합니다. 일반/mono 차트의 기본 색상은 무채색입니다. 제목·콜아웃·코드 패널·차트는 요청별 불변 스타일을 읽으며 기존 `default`·`mono` 문서 출력은 유지합니다.
+
 ## IB 금융표 고도화
 
 ```yaml
@@ -138,7 +220,7 @@ tables:
 
 - 완전한 CommonMark/GFM·복잡한 중첩 문법·임의 HTML 지원
 - 회사 DOCX 원본 양식 자동 복제, HWP/HWPX 출력
-- 신규 차트 엔진·편집형 차트·재무모델 계산·법적 적합성 판단
+- 네이티브 편집형 차트·재무모델 계산·법적 적합성 판단
 - 자동 PDF 배포, Word와 다른 렌더러 간 완전한 페이지 일치
 
 수식·도식은 기존 방식대로 이미지가 될 수 있습니다. 목차·쪽번호는 Word에서 필드 업데이트가 필요할 수 있습니다. 매우 긴 표, 글꼴 대체, 실제 인쇄 페이지는 사용 전 눈으로 확인하십시오.
@@ -169,8 +251,12 @@ uv run pytest tests/
 uv build
 ```
 
-Python 3.8 문법 호환을 유지하며 이번 실제 테스트 환경은 Python 3.12입니다. 모델은 `document_model.py`로 분리했으며 기존 `md_parser` 모델 import는 유지합니다. CLI·API·레지스트리는 하나의 조립 경로를 사용합니다. API에서는 파싱 단계부터 원하는 프로파일을 전달하십시오. 파싱된 모델은 적용한 프로파일을 기록하며, 렌더링 시 다른 프로파일을 요청하면 strict 여부와 무관하게 `ValueError`를 발생시킵니다. 원하는 프로파일로 Markdown을 다시 파싱해야 합니다. 파싱 이력이 없는 직접 구성 모델은 렌더 프로파일을 선택할 수 있습니다.
+Python 3.12 이상을 지원하며 CI는 Ubuntu와 Windows의 Python 3.12 및 3.13에서 검사합니다. 모델은 `document_model.py`로 분리했으며 기존 `md_parser` 모델 import는 유지합니다. CLI·API·레지스트리는 하나의 조립 경로를 사용합니다. API에서는 파싱 단계부터 원하는 프로파일을 전달하십시오. 파싱된 모델은 적용한 프로파일을 기록하며, 렌더링 시 다른 프로파일을 요청하면 strict 여부와 무관하게 `ValueError`를 발생시킵니다. 원하는 프로파일로 Markdown을 다시 파싱해야 합니다. 파싱 이력이 없는 직접 구성 모델은 렌더 프로파일을 선택할 수 있습니다.
 
 역변환 모듈과 `roundtrip-audit` 명령은 제거되었습니다. 제거 전 코드는 `d819bbb` 및 로컬 `codex/archive-word-to-md-d819bbb` 브랜치에서 복구할 수 있습니다. 기본 IB 경로는 유지하되 빈칸·숫자 출력·머리말/쪽번호·면책 설정 오류를 고쳤으므로 해당 결과는 의도적으로 달라집니다.
 
 과거 계획서의 양방향 변환 계획보다 이 문서와 2026-09-14 구현계획이 우선합니다.
+
+## 라이선스
+
+[MIT License](LICENSE) — Copyright (c) 2026 Hank. 의존성·글꼴·이미지·샘플 등 제3자 자료의 라이선스는 별도이며 공개 릴리스 전에 확인합니다.
