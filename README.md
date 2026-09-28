@@ -123,6 +123,84 @@ Configuration precedence is **explicit CLI/API option > YAML > profile default**
 
 Themes: `default`, `mono`, or a small YAML file using `body_font`, `heading_font`, `korean_font`, `body_size`, `primary_color`, `margin_mm`. See [company-theme.yaml](samples/profiles/company-theme.yaml). YAML theme paths are relative to the input Markdown; CLI paths are relative to the working directory. This is not an arbitrary DOCX template importer.
 
+## Charts (opt-in)
+
+```sh
+md-to-word report.md report.docx --charts --strict
+md-to-word samples/qa/charts.md charts.docx --strict
+md-to-word report.md code-panels.docx --no-charts
+```
+
+Charts are **off by default for all six profiles**. Enable with `--charts`, `RenderOptions(charts=True)`, or top-level frontmatter `charts: true`. An explicit CLI/API value wins over frontmatter; `--no-charts` / `charts=False` forces code panels. The parser retains the original fence in a chart model element so the same parsed model supports either setting.
+
+````markdown
+```chart
+chart_type: bar
+title: 가상 매출
+labels: [상반기, 하반기]
+series:
+  - name: 매출
+    values: [100, 120]
+y_label: 백만원
+source: 기능 검증용 가상 자료
+number_format: ',.1f'
+```
+````
+
+Supported types are `bar` (grouped series), `line`, and `waterfall` (exactly one series). PR #5's `chart_type`, `y_label`, `title`, `labels`, `series`, `source`, and `total_label` fields remain supported. `type` aliases `chart_type`; conflicting values are rejected. Optional `unit` supplies the axis label when `y_label` is absent. `number_format` adds `number` (the legacy default), `percent`, `bps`, `multiple`, or fixed-point formats such as `',.2f'` / `'.1f'`. Formats never rescale values: `12.5` with `percent` displays `12.5%`.
+
+Each series needs a text `name` and finite numeric `values` matching the label count. Labels accept text or numbers; booleans are rejected. Waterfalls start at zero, cumulatively add **every** supplied value, then append a total: `[100, -30, 20]` ends at `90`. Negative totals work; `total_label` names the appended bar. Do not supply a precomputed total as another delta.
+
+Invalid YAML/specifications and rendering failures name the chart in diagnostics. Strict mode rejects before creating/replacing the output; non-strict mode displays the original code panel and logs a warning. Disabled charts remain ordinary code panels even if their YAML is invalid. Charts are PNG images, sized to the page content width, with request-local colors and Korean font policy. Korean text needs the configured font installed (Windows default: Malgun Gothic). See the [fictional three-chart sample](samples/qa/charts.md).
+
+## Section presets
+
+```sh
+md-to-word --list-presets
+md-to-word report.md terms.docx --preset termsheet
+md-to-word notes.md notes.docx --profile plain --preset lecture-note --no-cover
+```
+
+| Preset | Cover | TOC | Disclaimer |
+|---|---|---|---|
+| `ib-report` | Inherit | Inherit | Inherit |
+| `termsheet` | Off | Off | Off |
+| `legal-memo` | Off | On | Off |
+| `lecture-note` | On | On | Off |
+
+Also available through `RenderOptions(preset="termsheet")` or top-level frontmatter `preset: termsheet`. Resolution **per section** is: explicit CLI/API field > CLI/API preset field > individual YAML `layout` field > YAML preset field > profile default. `ib-report` supplies no overrides. Unknown preset names fail without saving.
+
+All presets work with all six profiles; they change only sections. The general profiles retain neutral metadata, native numbering and general table semantics. `termsheet` is useful with `ib-report`/`ib-memo`, `legal-memo` with `ib-memo`/`plain`, and `lecture-note` with `plain`/`business-report`. Covers/TOCs are usually unnecessary for an `office-letter` or short `meeting-minutes` document. Presets supply no legal wording or document-type metadata.
+
+## Extended themes
+
+The six existing lowercase theme keys remain supported. YAML themes also accept these typed, uppercase presentation fields from `IBStyle` (PR #5 spelling):
+
+| Category | Keys / units |
+|---|---|
+| Colors | `NAVY`, `DARK_GRAY`, `LIGHT_GRAY`, `ACCENT_BLUE`, `WHITE`, `RED`, `GREEN`, `ORANGE`, `MEDIUM_GRAY`, `CODE_BG`, `CHART_NEGATIVE_COLOR`, `TABLE_HEADER_COLOR` |
+| OOXML colors | `NAVY_HEX`, `LIGHT_GRAY_HEX`, `ACCENT_BLUE_HEX`, `GRAY_BORDER_HEX`, `YELLOW_HEX`, `TABLE_HEADER_BG` |
+| Fonts | `HEADING_FONT`, `BODY_FONT`, `KOREAN_FONT`, `COVER_FONT`, `TOC_FONT` |
+| Point sizes | `H1_SIZE`–`H4_SIZE`, `BODY_SIZE`, `SMALL_SIZE`, `TABLE_HEADER_SIZE`, `TABLE_BODY_SIZE` |
+| Point spacing | `H1_SPACE_BEFORE/AFTER`, `H2_SPACE_BEFORE/AFTER`, `H3_SPACE_BEFORE/AFTER`, `BODY_SPACE_AFTER`, `BULLET_SPACE_AFTER` |
+| Inch lengths | `TOP_MARGIN`, `BOTTOM_MARGIN`, `LEFT_MARGIN`, `RIGHT_MARGIN`, `BULLET_INDENT`, `DEEP_LIST_INDENT`, `MAX_LIST_INDENT` |
+| Other | `BODY_LINE_SPACING` (positive multiplier), `FULL_LIST_INDENT_LEVELS` (integer 0–9), `BULLET_CHAR`, `TABLE_ZEBRA`, `BODY_JUSTIFY`, `HEADING_BORDER` (booleans), `TOC_TITLE`, `PAGE_LABEL`, `PAGE_OF_LABEL` (text) |
+
+```yaml
+NAVY: "234567"
+H1_SIZE: 18
+BODY_FONT: Calibri
+KOREAN_FONT: Malgun Gothic
+BODY_SPACE_AFTER: 6
+TOP_MARGIN: 0.8
+CHART_NEGATIVE_COLOR: "995544"
+TABLE_ZEBRA: false
+```
+
+Quote six-digit hex colors (`"#234567"` also works). Numeric colors, booleans used as sizes, nonfinite numbers, unknown fields and conflicting aliases are rejected before saving. Sizes allow 1–144 pt; spacing allows 0–144 pt; inch lengths allow 0–3; line spacing allows greater than 0 through 5. The existing `body_size` alias retains its 6–30 pt range and `margin_mm` retains 5–60 mm. Font names must be nonempty. Internal `STYLE_*` identifiers and the profile's `NATIVE_NUMBERING` policy are not theme fields.
+
+RGB/hex color pairs are synchronized when only one is supplied; both may be set independently. `NAVY` also colors IB table headers unless `TABLE_HEADER_BG` is specified. `RED` supplies the waterfall negative color unless `CHART_NEGATIVE_COLOR` is specified. General/mono charts use a neutral palette by default. Headings, callouts, code panels and charts read the immutable style for the current request; `default` and `mono` retain their existing document output.
+
 ## Explicit financial tables
 
 ```yaml
@@ -151,7 +229,7 @@ Sensitivity highlighting is **explicit only**: row 1 is the first data row; colu
 - Soft-wrapped paragraph lines merge with spaces. `<br>`, `<br/>`, `<BR />` work inside paragraphs, emphasis, headings, lists and table cells. A trailing backslash also preserves a paragraph hard break. Escaped `\<br>` and code remain literal; link destinations are not rewritten. Trailing two spaces require the parser's opt-in legacy flag.
 - IB legacy reference-section extraction remains, but only actual reference labels trigger it. General documents keep References as ordinary content.
 - This is not a full CommonMark/GFM implementation, a financial calculation engine, a compliance validator, or a lossless layout converter. Raw HTML, complex nested Markdown and arbitrary Word templates are not guaranteed.
-- Existing math/diagram output may be images, not editable equations/charts. New valuation models, chart engines and PDF distribution are outside this release.
+- Math/diagram/chart output may be images, not editable equations/charts. New valuation models, native editable charts and PDF distribution are outside this release.
 - Update fields/TOC in Word if necessary. Pagination, font substitution and very tall/wide tables still require a visual review. Strict mode is **not** visual QA.
 
 ## API

@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased] - 2026-09-29
 
+### Themes, section presets and opt-in charts
+- Port PR #5 chart fences as proper model elements through the shared renderer: grouped bar, line and cumulative waterfall, retained YAML syntax plus `type`, `unit` and unscaled number formats. Charts default off; CLI/API options override frontmatter.
+- Render charts to in-memory PNGs with Figure/Agg and per-artist Korean fonts/colors, without pyplot or rcParams mutation. Strict failures reject before saving; non-strict failures retain the source code panel and a named diagnostic.
+- Add immutable `ib-report`, `termsheet`, `legal-memo` and `lecture-note` section bundles, `--preset` / `--list-presets`, and frontmatter `preset`. Explicit fields override caller presets, then YAML fields/presets, then profile defaults.
+- Extend request-local themes with typed uppercase presentation fields, stricter color/size validation, paired RGB/hex handling, and themed code-panel backgrounds. Preserve the default/mono output and general-profile semantics.
+- Package the chart engine explicitly and add a fictional Korean chart sample, usage documentation and parse/render/CLI regressions. No retired Word-to-Markdown code or global-style loader is restored.
+
 ### Input-loss and correctness hardening (2026-09-29)
 - Stop silent content loss: escaped dollars (`\$5`), escaped emphasis, prose/tables after a `References` list, unrecognized leading `**Label:** value` paragraphs, dash-only table body rows, list continuation lines, and CRLF list items.
 - Numeric table cells keep native footnote references and are no longer re-formatted from concatenated run text (`1234[^1]` stays `1,234` plus the footnote).

@@ -23,6 +23,7 @@ class IBStyle:
     ORANGE: RGBColor = RGBColor(255, 165, 0)
     MEDIUM_GRAY: RGBColor = RGBColor(128, 128, 128)
     CODE_BG: RGBColor = RGBColor(248, 249, 250)
+    CHART_NEGATIVE_COLOR: RGBColor = RGBColor(192, 0, 0)
 
     # ── Colors (Hex for OOXML) ──────────────────────────────────────────────
     NAVY_HEX: str = "003366"

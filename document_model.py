@@ -2,6 +2,7 @@
 
 Changelog (quality hardening):
     - Preserve inferred IB subtitle headings for cover-free rendering.
+    - Add chart specifications with retained source for opt-in rendering.
 """
 
 from dataclasses import dataclass, field
@@ -31,6 +32,7 @@ class ElementType(Enum):
     LATEX_INLINE = auto()  # standalone inline math rendered as paragraph
     # ── NEW (v5) ────────────────────────────────────────────────────────────
     DIAGRAM = auto()  # ```diagram:type ... ``` code block
+    CHART = auto()  # ```chart YAML with lossless code-panel fallback
 
 
 class TableType(Enum):
@@ -96,6 +98,43 @@ class DiagramBox:
     label: str
     pos: List[float] = field(default_factory=lambda: [0, 0])
     style: str = "default"
+
+
+@dataclass
+class ChartSeries:
+    """One named sequence of chart values, in the supplied units."""
+
+    name: str
+    values: List[float]
+
+
+@dataclass
+class ChartSpec:
+    """Validated chart data; waterfall values are deltas from zero."""
+
+    chart_type: str
+    title: Optional[str]
+    labels: List[str]
+    series: List[ChartSeries]
+    y_label: Optional[str] = None
+    source: Optional[str] = None
+    total_label: Optional[str] = None
+    unit: Optional[str] = None
+    number_format: Optional[str] = None
+
+
+@dataclass
+class Chart:
+    """Chart fence with its source and any deferred validation diagnostic.
+
+    Parsing recognizes charts independently of rendering policy. Disabled charts
+    always use the original code panel, including invalid specifications.
+    """
+
+    code: str
+    spec: Optional[ChartSpec] = None
+    error: Optional[str] = None
+    label: str = "Chart"
 
 
 @dataclass
@@ -229,6 +268,7 @@ ElementContent = Union[
     Blockquote,
     Image,
     CodeBlock,
+    Chart,
     LaTeXEquation,  # NEW (v3)
     "Diagram",  # NEW (v5)
     None,
