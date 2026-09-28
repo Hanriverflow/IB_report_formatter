@@ -315,12 +315,13 @@ def _ci_workflow():
     return yaml.safe_load((root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
 
 
-def test_ci_workflow_config_and_python38_gate():
+def test_ci_workflow_config_and_python312_gate():
     workflow = _ci_workflow()
     assert set(workflow["on"]) == {"push", "pull_request"}
     job = workflow["jobs"]["quality"]
+    assert job["strategy"]["fail-fast"] is False
     assert job["strategy"]["matrix"] == {
-        "os": ["ubuntu-latest", "windows-latest"], "python-version": ["3.12"],
+        "os": ["ubuntu-latest", "windows-latest"], "python-version": ["3.12", "3.13"],
     }
     assert job["runs-on"] == "${{ matrix.os }}"
     steps = job["steps"]
@@ -332,9 +333,29 @@ def test_ci_workflow_config_and_python38_gate():
         "uv sync --locked --extra dev", "uv run ruff check .", "uv run mypy .",
         "uv run pytest tests/ -q", "uv build",
     ]
-    gate = next(step for step in steps if step.get("id") == "python38")
+    gate = next(step for step in steps if step.get("id") == "python312")
+    assert gate["name"] == "Verify Python 3.12 syntax"
     assert gate["shell"] == "uv run python {0}"
-    exec(compile(gate["run"], "ci-python38", "exec"), {})
+    assert "feature_version=(3, 12)" in gate["run"]
+    exec(compile(gate["run"], "ci-python312", "exec"), {})
+
+
+@pytest.mark.parametrize("source, supported", [
+    pytest.param("type Alias[T] = list[T]\n", True, id="python312-type-alias"),
+    pytest.param("type Alias[T = int] = list[T]\n", False, id="python313-type-default"),
+])
+def test_ci_syntax_gate_enforces_python312(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str, supported: bool
+) -> None:
+    gate = next(step for step in _ci_workflow()["jobs"]["quality"]["steps"]
+                if step.get("name", "").startswith("Verify Python "))
+    (tmp_path / "engine.py").write_text(source, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    if supported:
+        exec(compile(gate["run"], "ci-python312", "exec"), {})
+    else:
+        with pytest.raises(SyntaxError):
+            exec(compile(gate["run"], "ci-python312", "exec"), {})
 
 
 @pytest.mark.parametrize("contents", ["valid", "missing", "report", "extra_module"])

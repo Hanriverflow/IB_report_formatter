@@ -21,7 +21,7 @@ This is a **pending maintainer workflow**, not a completed deployment. This docu
 
 ### Local validation commands
 
-Run from a clean, isolated checkout of the exact proposed release commit, using Python 3.12 for comparison with the recorded environment. Preserve command output, tool versions, exit codes, and artifact hashes. These commands are instructions, not fresh pass results:
+Run from a clean, isolated checkout of the exact proposed release commit, using both Python 3.12 and 3.13. Preserve command output, tool versions, exit codes, and artifact hashes. These commands are instructions, not fresh pass results:
 
 ```sh
 uv sync --locked --extra dev
@@ -38,7 +38,7 @@ uv build
 Keep generated output local and outside commits. For repeated runs, choose a new output path. Inspect the audit JSON; successful DOCX generation is not proof of acceptable page layout. See [Word page QA on Windows](#word-page-qa-on-windows) for native rendering with new/empty evidence directories and separate visual review.
 
 - [ ] Record the exact release commit and reconcile both READMEs, package version and changelog with its implemented scope, not historical plans.
-- [ ] Run the checks above; investigate every failure. Recheck the declared Python/OS support on actual target runtimes; Python 3.8 syntax checks alone are not runtime validation.
+- [ ] Run the checks above; investigate every failure. Recheck the declared Python/OS support on actual target runtimes; Python 3.12 syntax checks alone are not runtime validation.
 - [ ] Inspect wheel/sdist contents for missing engine modules and accidental credentials, private reports, generated DOCX files, or retired inverse-conversion modules. Install the built wheel in a separate clean environment and smoke-test its installed CLI outside the source checkout.
 - [ ] Regenerate representative synthetic samples; inspect structural audit results and every rendered Word page. Record Word/font environment, manifests, hashes, and separate visual-review/business-approval status.
 - [ ] Resolve the rights and notice gate below, including third-party dependencies, fonts, images, diagrams and sample content.
@@ -56,7 +56,7 @@ This is a **Markdown-to-Word-only engine**. In-house Word→Markdown development
 
 ## Quick start
 
-Requires Python 3.8+ syntax support; current verification uses Python 3.12. Install with [uv](https://docs.astral.sh/uv/):
+Requires Python 3.12+. CI checks Python 3.12 and 3.13 on Ubuntu and Windows. Install with [uv](https://docs.astral.sh/uv/):
 
 ```sh
 uv sync

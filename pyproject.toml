@@ -3,7 +3,7 @@ name = "ib-report-formatter"
 version = "2.0.0"
 description = "Markdown to Word for IB reports and Korean business documents"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
     {name = "DCM Team"}
@@ -15,12 +15,8 @@ classifiers = [
     "Intended Audience :: Financial and Insurance Industry",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Office/Business :: Financial",
     "Topic :: Text Processing :: Markup :: Markdown",
 ]
@@ -76,7 +72,7 @@ include = [
 ]
 
 [tool.ruff]
-target-version = "py38"
+target-version = "py312"
 line-length = 100
 
 [tool.ruff.lint]
@@ -92,6 +88,12 @@ select = [
 ignore = [
     "E501",   # line too long (handled by formatter)
     "B008",   # do not perform function calls in argument defaults
+    # Enabled by the Python 3.12 target; modernize in a follow-up PR.
+    "B905",   # zip without explicit strict
+    "UP006",  # use built-in collection annotations
+    "UP007",  # use union operator annotations
+    "UP035",  # deprecated typing imports
+    "UP045",  # use union operator for Optional annotations
 ]
 
 [tool.ruff.lint.isort]
@@ -113,7 +115,7 @@ known-first-party = [
 ]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true

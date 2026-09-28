@@ -1,6 +1,7 @@
 """Release regressions for real office and IB authoring inputs."""
 
 import base64
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,26 @@ from document_profiles import RenderOptions
 from docx_audit import inspect_document
 from ib_renderer import IBDocumentRenderer
 from md_parser import MarkdownParser, parse_markdown_file
+
+
+def test_package_declares_python312_floor_and_supported_classifiers() -> None:
+    root = Path(__file__).resolve().parents[1]
+    config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    assert config["project"]["requires-python"] == ">=3.12"
+    assert [
+        value for value in config["project"]["classifiers"]
+        if value.startswith("Programming Language :: Python ::")
+    ] == ["Programming Language :: Python :: 3.12", "Programming Language :: Python :: 3.13"]
+
+
+@pytest.mark.parametrize("tool, setting, expected", [
+    ("ruff", "target-version", "py312"),
+    ("mypy", "python_version", "3.12"),
+])
+def test_tooling_targets_python312(tool: str, setting: str, expected: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    assert config["tool"][tool][setting] == expected
 
 
 def test_valid_long_yaml_metadata_keeps_selected_profile():

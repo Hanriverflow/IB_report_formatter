@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased] - 2026-09-29
 
+### Python 3.12 floor (owner decision D1, 2026-09-29)
+- Require Python 3.12+ (`requires-python >=3.12`); CI tests Ubuntu/Windows on Python 3.12 and 3.13, and the syntax gate checks 3.12. The lock file only drops old-Python resolution forks; dependency versions are unchanged.
+- Python 3.8–3.11 are no longer supported; use an earlier source revision for those runtimes.
+
 ### Themes, section presets and opt-in charts
 - Port PR #5 chart fences as proper model elements through the shared renderer: grouped bar, line and cumulative waterfall, retained YAML syntax plus `type`, `unit` and unscaled number formats. Charts default off; CLI/API options override frontmatter.
 - Render charts to in-memory PNGs with Figure/Agg and per-artist Korean fonts/colors, without pyplot or rcParams mutation. Strict failures reject before saving; non-strict failures retain the source code panel and a named diagnostic.
