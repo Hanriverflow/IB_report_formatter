@@ -10,6 +10,8 @@ Current plan: `docs/implementation-plan-20260914.md`. Verification: `docs/verifi
 
 Production-quality follow-up: `docs/improvement-plan-20260915.md` and `docs/verification-20260915.md`.
 
+Input-loss, save-safety and performance hardening: `docs/verification-20260929.md`.
+
 ## Quick reference
 
 ```sh
