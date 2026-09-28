@@ -220,10 +220,11 @@ def test_d1_inferred_subtitle_follows_cover_and_toc(
     renderer.render(model).save(str(target))
     doc = Document(str(target))
     matches = [p for p in doc.paragraphs if p.text == "투자 검토 요약"]
+    subtitle_in_block = cover or profile == "ib-report"
     assert [p.text for p in matches if p.style.name == "Heading 2"] == (
-        [] if cover else ["투자 검토 요약"]
+        [] if subtitle_in_block else ["투자 검토 요약"]
     )
-    assert len(matches) == (1 if cover or not toc else 2)
+    assert len(matches) == (1 if subtitle_in_block or not toc else 2)
     assert model.metadata.subtitle == "투자 검토 요약"
     assert sum(
         isinstance(e.content, Heading) and e.content.text == "투자 검토 요약"
@@ -231,13 +232,13 @@ def test_d1_inferred_subtitle_follows_cover_and_toc(
     ) == 1
     assert _texts(doc).count("본문 범위") == (2 if toc else 1)
     assert not any("**" in text for text in _texts(doc))
-    # Rendering the same model with the other cover setting must retain the H2.
+    # Rendering must not mutate the source model; memo keeps its existing body H2.
     other = IBDocumentRenderer(options=RenderOptions(
         profile=profile, strict=True, include_cover=not cover,
         include_toc=False, include_disclaimer=False,
     )).render(model)
     assert sum(p.text == "투자 검토 요약" and p.style.name == "Heading 2"
-               for p in other.paragraphs) == int(cover)
+               for p in other.paragraphs) == int(cover and profile == "ib-memo")
 
 
 @pytest.mark.parametrize("profile", ["ib-report", "ib-memo"])
@@ -249,7 +250,7 @@ def test_d1_explicit_yaml_subtitle_keeps_h2_in_body(profile: str, cover: bool) -
     )
     assert model.metadata.subtitle == "명시적 부제"
     assert [p.text for p in doc.paragraphs if p.style.name == "Heading 2"] == ["투자 검토 요약"]
-    assert _texts(doc).count("명시적 부제") == int(cover)
+    assert _texts(doc).count("명시적 부제") == int(cover or profile == "ib-report")
 
 
 @pytest.mark.parametrize("profile", ["plain", "office-letter", "business-report", "meeting-minutes"])

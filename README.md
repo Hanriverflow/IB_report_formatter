@@ -172,6 +172,8 @@ Also available through `RenderOptions(preset="termsheet")` or top-level frontmat
 
 All presets work with all six profiles; they change only sections. The general profiles retain neutral metadata, native numbering and general table semantics. `termsheet` is useful with `ib-report`/`ib-memo`, `legal-memo` with `ib-memo`/`plain`, and `lecture-note` with `plain`/`business-report`. Covers/TOCs are usually unnecessary for an `office-letter` or short `meeting-minutes` document. Presets supply no legal wording or document-type metadata.
 
+Without a cover (`--no-cover`, API `include_cover=False`, YAML `layout.cover: false`, or `termsheet`/`legal-memo`), `ib-report` begins the document with a theme-aware title, optional subtitle, and the same date/author rows as `ib-memo`; any TOC follows on the same page, retaining its page break before the body. A matching body H1 and inferred subtitle appear only in that block and do not enter the TOC; cover-on output and other profiles keep their existing title behavior.
+
 ## Extended themes
 
 The six existing lowercase theme keys remain supported. YAML themes also accept these typed, uppercase presentation fields from `IBStyle` (PR #5 spelling):

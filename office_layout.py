@@ -2,6 +2,7 @@
 
 Changelog (hardening):
     - Scope native list instances to their parent item and override the actual level.
+    - Reuse memo title/metadata typography for cover-free IB reports, adding subtitles.
 """
 
 from typing import Dict, Optional, Tuple
@@ -75,9 +76,17 @@ def letter_appendix_index(model: DocumentModel) -> Optional[int]:
 
 
 def render_office_opening(doc, metadata: DocumentMetadata) -> bool:
-    """Render profile metadata; return whether a title was already inserted."""
+    """Render profile metadata at the start of the body when there is no cover.
+
+    Args:
+        doc: Document with request-scoped styles already initialized.
+        metadata: Profile metadata, including an optional IB report subtitle.
+
+    Returns:
+        Whether a title was inserted and a matching body H1 should be skipped.
+    """
     name = metadata.profile
-    if name in {"plain", "ib-report"}:
+    if name == "plain" or (name == "ib-report" and not metadata.title.strip()):
         return False
     extra = metadata.extra
     sender = extra.get("sender", {})
@@ -98,6 +107,8 @@ def render_office_opening(doc, metadata: DocumentMetadata) -> bool:
     title.runs[0].font.size = STYLE.H1_SIZE
     title.paragraph_format.space_before = Pt(12)
     title.paragraph_format.space_after = Pt(12)
+    if name == "ib-report" and metadata.subtitle.strip():
+        add_text(doc, metadata.subtitle, keep_next=True)
     rows = []
     for label, value in [
         ("작성일", extra.get("date")),
