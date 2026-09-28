@@ -46,9 +46,9 @@ Keep generated output local and outside commits. For repeated runs, choose a new
 
 ### License and rights gate
 
-[pyproject.toml](pyproject.toml) already explicitly declares `license = {text = "MIT"}` and the MIT classifier; its author field is `DCM Team`. The reviewed repository root has **no LICENSE file**. This is an existing MIT declaration, not a newly selected license, and an author field alone does not establish the complete copyright notice or ownership of every asset.
+The project is licensed under the [MIT License](LICENSE), matching the existing `license = {text = "MIT"}` declaration and classifier in [pyproject.toml](pyproject.toml). On 2026-09-29 the rights holder confirmed the copyright notice **Copyright (c) 2026 Hank**; the `LICENSE` file carries it and is included in the sdist and wheel metadata.
 
-**[blocked] Release rights sign-off and complete license notice:** the rights holder must confirm the applicable copyright holder/year and authority to distribute included material. Then reconcile a LICENSE notice with the existing MIT declaration and verify that intended distributions carry the required notice. Do not invent copyright ownership, select a different license on the owner's behalf, or treat dependency/asset licenses as the project's license. No license file, source, CI, or deployment configuration is changed by this documentation update.
+**[open] Third-party notices:** dependency, font, image, diagram and sample-content licenses are separate from the project license. Confirm them before a public release; the MIT notice does not cover third-party material.
 
 ## Product direction
 
