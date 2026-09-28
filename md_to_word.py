@@ -19,14 +19,18 @@ Changelog (v2):
     - Added conversion timing information
     - Improved error handling with per-stage reporting
     - Unified output path resolution logic
+
+Changelog (hardening):
+    - Preflight batch destinations and reject all sources sharing an output path.
 """
 
 import argparse
 import logging
+import os
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional, Set
 
 from cli_utils import (
     generate_output_path as build_output_path,
@@ -568,8 +572,16 @@ def run_conversion(input_path: Path, args) -> int:
         return 1
 
 
-def run_batch_conversion(input_dir: Path, args) -> int:
-    """Execute conversion for every .md file in a directory."""
+def run_batch_conversion(input_dir: Path, args: argparse.Namespace) -> int:
+    """Convert a directory after rejecting inputs with colliding destinations.
+
+    Args:
+        input_dir: Directory containing Markdown inputs.
+        args: Parsed CLI arguments; output_file is an optional output directory.
+
+    Returns:
+        Zero if every input succeeds, otherwise one.
+    """
     input_files = sorted(input_dir.glob("*.md"))
     if not input_files:
         logger.error("No .md files found in: %s", input_dir)
@@ -578,19 +590,39 @@ def run_batch_conversion(input_dir: Path, args) -> int:
     output_dir = Path(args.output_file) if args.output_file else input_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    planned_outputs = {
+        source: output_dir / generate_output_path(source).name for source in input_files
+    }
+    output_sources: Dict[str, List[Path]] = {}
+    for source, destination in planned_outputs.items():
+        key = os.path.normcase(str(destination.resolve()))
+        output_sources.setdefault(key, []).append(source)
+
+    colliding_inputs: Set[Path] = set()
+    for sources in output_sources.values():
+        if len(sources) > 1:
+            colliding_inputs.update(sources)
+            logger.error(
+                "Batch output collision at %s; inputs will not be converted: %s",
+                planned_outputs[sources[0]],
+                ", ".join(str(source) for source in sources),
+            )
+
     success_count = 0
-    failure_count = 0
+    failure_count = len(colliding_inputs)
 
     for input_file in input_files:
+        if input_file in colliding_inputs:
+            continue
         batch_args = argparse.Namespace(**vars(args))
-        batch_args.output_file = str(output_dir / generate_output_path(input_file).name)
+        batch_args.output_file = str(planned_outputs[input_file])
         exit_code = run_conversion(input_file, batch_args)
         if exit_code == 0:
             success_count += 1
         else:
             failure_count += 1
 
-    print(f"[BATCH] Completed: {success_count} succeeded, {failure_count} failed")
+    logger.info("[BATCH] Completed: %d succeeded, %d failed", success_count, failure_count)
     return 0 if failure_count == 0 else 1
 
 
