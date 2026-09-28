@@ -27,6 +27,7 @@ import time
 from copy import deepcopy
 from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast
 from uuid import uuid4
@@ -47,6 +48,7 @@ from docx.oxml.ns import qn
 from docx.oxml.parser import parse_xml
 from docx.shared import Inches, Mm, Pt, RGBColor
 
+from document_model import Chart
 from document_profiles import (
     RenderOptions,
     default_metadata,
@@ -286,17 +288,10 @@ class FontStyler:
 class FontPolicy:
     """Resolve platform-aware East Asian font defaults."""
 
-    _resolved_fonts: Dict[str, str] = {}
-
     @classmethod
     def resolve_korean_font(cls, system_name: Optional[str] = None) -> str:
         """Return the preferred Korean font for the current platform."""
         system = system_name or platform.system() or "Unknown"
-        cache_key = system + ":" + STYLE.KOREAN_FONT
-        cached = cls._resolved_fonts.get(cache_key)
-        if cached:
-            return cached
-
         if system == "Darwin":
             candidates = ("Apple SD Gothic Neo", STYLE.KOREAN_FONT, "NanumGothic")
         elif system == "Windows":
@@ -311,7 +306,6 @@ class FontPolicy:
             chosen,
             ", ".join(candidates[1:]) or "none",
         )
-        cls._resolved_fonts[cache_key] = chosen
         return chosen
 
 
@@ -2694,6 +2688,45 @@ class DisclaimerRenderer:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+class ChartRenderer:
+    """Insert a validated chart from memory, respecting the active section width."""
+
+    def __init__(self, doc: DocxDocument) -> None:
+        self.doc = doc
+
+    def render(self, chart: Chart) -> None:
+        """Render an enabled chart; the orchestrator handles diagnostic fallbacks.
+
+        Args:
+            chart: Parsed specification and original fence source.
+
+        Raises:
+            ValueError: Invalid chart data or unusable page geometry.
+        """
+        from chart_renderer import render_chart_png
+
+        if chart.error or chart.spec is None:
+            raise ValueError(chart.error or "chart specification is missing")
+        section = self.doc.sections[-1]
+        page_width = section.page_width
+        left_margin, right_margin = section.left_margin, section.right_margin
+        if page_width is None or left_margin is None or right_margin is None:
+            raise ValueError("chart requires explicit page width and margins")
+        width = min(6.0, (page_width - left_margin - right_margin) / 914400)
+        if width <= 0:
+            raise ValueError("chart requires a positive content width")
+        png = render_chart_png(chart.spec, width_inches=width)
+        paragraph = self.doc.add_paragraph()
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        try:
+            with BytesIO(png) as buffer:
+                shape = paragraph.add_run().add_picture(buffer, width=Inches(width))
+            ImageRenderer._apply_alt_text(shape, chart.spec.title or chart.label)
+        except Exception:
+            paragraph._p.getparent().remove(paragraph._p)
+            raise
+
+
 class IBDocumentRenderer:
     """Main renderer that orchestrates all component renderers"""
 
@@ -2714,6 +2747,7 @@ class IBDocumentRenderer:
         )
         self.separator_mode = separator_mode
         self.errors: List[str] = []
+        self.charts = False
         self._reset_document()
 
     def _reset_document(self) -> None:
@@ -2731,6 +2765,7 @@ class IBDocumentRenderer:
         self.image_renderer = ImageRenderer(self.doc)
         self.footnote_renderer = FootnoteRenderer(self.doc)
         self.disclaimer_renderer = DisclaimerRenderer(self.doc)
+        self.chart_renderer = ChartRenderer(self.doc)
 
     def render(self, model: DocumentModel) -> DocxDocument:
         """Render through one composition path, using request-local settings."""
@@ -2759,6 +2794,7 @@ class IBDocumentRenderer:
         self.errors = list(model.warnings)
         self._reset_document()
         self.separator_mode = resolved.separator_mode
+        self.charts = resolved.charts
         with use_style(load_style(resolved.profile, resolved.theme)):
             self.styler.setup_document()
             self.styler.create_styles()
@@ -2946,6 +2982,19 @@ class IBDocumentRenderer:
         elif etype == ElementType.CODE_BLOCK:
             self._render_code_block(cast(CodeBlock, element.content))
 
+        elif etype == ElementType.CHART:
+            chart = cast(Chart, element.content)
+            if self.charts:
+                try:
+                    self.chart_renderer.render(chart)
+                    self._add_semantic_bookmark(self.doc.paragraphs[-1], ElementType.CHART.name)
+                    return
+                except Exception as exc:
+                    message = f"{chart.label}: {exc}"
+                    self.errors.append(message)
+                    logger.warning("%s; rendering original code panel", message)
+            self._render_code_block(CodeBlock(chart.code, "chart", CodeBlock.detect_ascii_art(chart.code)))
+
         elif etype == ElementType.DIAGRAM:
             from diagram_renderer import DiagramRenderer
             from md_parser import Diagram
@@ -3026,7 +3075,7 @@ class IBDocumentRenderer:
 
         cell = table.rows[0].cells[0]
         cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
-        TableStyler.set_cell_background(cell, "F8F9FA")
+        TableStyler.set_cell_background(cell, str(STYLE.CODE_BG))
         self._style_code_block_table(table)
 
         lines = code_block.code.splitlines() or [""]

@@ -194,6 +194,8 @@ class DocxOutputConverter(OutputConverter):
                 "theme",
                 "strict",
                 "confidential",
+                "charts",
+                "preset",
             }
             options = RenderOptions(**{key: value for key, value in kwargs.items() if key in keys})
         if not isinstance(options, RenderOptions):

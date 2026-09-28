@@ -364,7 +364,11 @@ def test_ordered_list_scope_preserves_sibling_and_top_level_continuity() -> None
     assert override.find(qn("w:startOverride")).get(qn("w:val")) == "3"
 
 
-@pytest.mark.parametrize("markdown", [DIAGRAM, r"$$ x^2 + y^2 = z^2 $$", r"$$ \text{가용자본} + \alpha $$"])
+@pytest.mark.parametrize("markdown", [
+    DIAGRAM, r"$$ x^2 + y^2 = z^2 $$", r"$$ \text{가용자본} + \alpha $$",
+    "---\ncharts: true\n---\n```chart\ntype: bar\nlabels: [상반기, 하반기]\n"
+    "series: [{name: 매출, values: [100, -30]}]\n```",
+])
 def test_rendered_diagrams_and_equations_do_not_mutate_matplotlib(
     markdown: str, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

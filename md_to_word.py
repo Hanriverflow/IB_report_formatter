@@ -50,7 +50,7 @@ from cli_utils import (
 from cli_utils import (
     setup_logging as configure_logging,
 )
-from document_profiles import PROFILES
+from document_profiles import PRESETS, PROFILES
 from document_profiles import RenderOptions as RenderOptions
 from ib_renderer import IBDocumentRenderer
 from md_parser import DocumentModel, parse_markdown_file
@@ -417,6 +417,13 @@ Examples:
         "--profile", choices=list(PROFILES), help="Document type (overrides frontmatter)"
     )
     parser.add_argument("--theme", help="default, mono, or a YAML theme file")
+    parser.add_argument("--preset", choices=list(PRESETS), help="Named section bundle (overrides frontmatter)")
+    parser.add_argument("--list-presets", action="store_true", help="List section presets")
+    chart_group = parser.add_mutually_exclusive_group()
+    chart_group.add_argument("--charts", action="store_true", default=None,
+                             help="Render chart fences as images (default: code panels)")
+    chart_group.add_argument("--no-charts", action="store_false", dest="charts",
+                             help="Render chart fences as code panels, overriding frontmatter")
     parser.add_argument("--list-profiles", action="store_true", help="List document profiles")
     parser.add_argument(
         "--strict", action="store_true", default=None, help="Fail on input loss or rendering errors"
@@ -487,6 +494,8 @@ def run_conversion(input_path: Path, args) -> int:
         theme=getattr(args, "theme", None),
         strict=getattr(args, "strict", None),
         confidential=getattr(args, "confidential", None),
+        charts=getattr(args, "charts", None),
+        preset=getattr(args, "preset", None),
     )
 
     # Auto-format / cleaner if requested
@@ -636,6 +645,10 @@ def main():
 
     if args.list_profiles:
         logger.info("Available profiles: %s", ", ".join(PROFILES))
+        return
+
+    if args.list_presets:
+        logger.info("Available presets: %s", ", ".join(PRESETS))
         return
 
     # ── List mode ───────────────────────────────────────────────────────────

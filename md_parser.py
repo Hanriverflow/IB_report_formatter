@@ -38,12 +38,14 @@ from typing import BinaryIO, Dict, List, Match, Optional, Set, Tuple, Union, cas
 
 import yaml
 
+from chart_renderer import ChartSpecError, parse_chart_spec
 from document_model import (
     Blockquote as Blockquote,
 )
 from document_model import (
     BulletList as BulletList,
 )
+from document_model import Chart as Chart
 from document_model import (
     CodeBlock as CodeBlock,
 )
@@ -125,6 +127,7 @@ class FrontmatterParser:
     _MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+")
     _BOLD_LABEL_RE = re.compile(r"\*\*[^*]+:\*\*")
     _SIMPLE_KEY_VALUE_RE = re.compile(r"^[A-Za-z0-9_.-]+\s*:\s*.*$")
+    _DECLARED_RE = re.compile(r"^(profile|layout|tables|sender|charts|preset):", re.IGNORECASE)
 
     @staticmethod
     def parse(
@@ -157,7 +160,7 @@ class FrontmatterParser:
         if content_start_idx == 0:
             return metadata, lines
 
-        declared = any(re.match(r"^(profile|layout|tables|sender):", line, re.IGNORECASE) for line in frontmatter_lines)
+        declared = any(FrontmatterParser._DECLARED_RE.match(line) for line in frontmatter_lines)
         if not declared and not FrontmatterParser._is_valid_frontmatter(frontmatter_lines):
             logger.debug("Frontmatter markers found, but content is not YAML frontmatter")
             return metadata, lines
@@ -201,7 +204,7 @@ class FrontmatterParser:
 
         # Store extra fields
         known_keys = {"title", "subtitle", "company", "ticker", "sector", "analyst", "profile"}
-        structured = {"layout", "tables", "sender", "recipients", "cc", "attachments", "attendees", "letter"}
+        structured = {"layout", "tables", "sender", "recipients", "cc", "attachments", "attendees", "letter", "charts", "preset"}
         metadata.extra = {
             k: v if k in structured else str(v) for k, v in data.items() if k not in known_keys
         }
@@ -1423,6 +1426,7 @@ class MarkdownParser:
         elements: List[Element] = []
         i = 0
         in_references = False
+        chart_number = 0
 
         while i < len(lines):
             raw_line = lines[i]
@@ -1462,6 +1466,18 @@ class MarkdownParser:
             if code_block:
                 language, code_lines, i = code_block
                 code_text = "\n".join(code_lines).rstrip()
+
+                if language == "chart":
+                    chart_number += 1
+                    chart = Chart(code=code_text, label=f"Chart {chart_number}")
+                    try:
+                        chart.spec = parse_chart_spec(code_text)
+                        if chart.spec.title:
+                            chart.label += f" ({chart.spec.title})"
+                    except ChartSpecError as exc:
+                        chart.error = str(exc)
+                    elements.append(Element(ElementType.CHART, chart, raw_line))
+                    continue
 
                 # ── diagram:flow → Diagram object ──────────────────────
                 if language.startswith("diagram:"):
