@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased] - 2026-09-29
 
+### Title block without a cover (owner decision, 2026-09-29)
+- When the cover is not rendered (`--no-cover`, `termsheet`/`legal-memo` presets), `ib-report` now starts with a title block (title, subtitle, date/author) before the TOC instead of omitting the title. The block is not a TOC entry; a matching H1 or inferred subtitle appears once. Cover-on output is unchanged.
+
 ### Korean glyphs in chart, equation and diagram images
 - Rasterized images now use an installed CJK-capable font (preferred theme font first, then Malgun Gothic, Apple SD Gothic Neo, Nanum, Noto/Source Han Sans KR). Previously Linux fell back to DejaVu Sans and dropped every Hangul glyph. DOCX font declarations are unchanged.
 - If Hangul must be rasterized and no CJK font is installed, strict mode rejects before saving; non-strict mode warns. Linux CI installs `fonts-nanum`.

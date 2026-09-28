@@ -146,5 +146,7 @@ def test_extended_theme_cli_overrides_yaml_and_preserves_failed_destination(tmp_
     else:
         assert exc.value.code == 0
         heading = next(p for p in Document(output).paragraphs if p.text == "Heading")
+        # A cover-free report now uses memo typography: colour comes from Title.
+        assert heading.style.name == "Title"
         assert heading.runs[0].font.size == Pt(21)
-        assert str(heading.runs[0].font.color.rgb) == "123456"
+        assert str(heading.style.font.color.rgb) == "123456"

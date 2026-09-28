@@ -2,6 +2,11 @@
 IB Renderer Module for Word Report Generation
 Handles styling and rendering of document elements in IB Bank style.
 
+Changelog (cover-free title):
+    - Render the IB report title, subtitle and memo-style metadata without a cover.
+    - Place the cover-free report opening before the TOC on the first page.
+    - Keep the body title and inferred subtitle out of the report's TOC.
+
 Changelog (hardening):
     - Diagnose CJK raster glyph loss without changing Word font declarations.
     - Preserve semantic numeric-cell runs and record equation/image failures.
@@ -2786,9 +2791,24 @@ class IBDocumentRenderer:
             model.metadata.profile = resolved.profile.name
         if not resolved.profile.is_ib:
             validate_office_metadata(model.metadata)
-        if resolved.cover and resolved.profile.is_ib:
+        report_title_block = (
+            not resolved.cover and resolved.profile.name == "ib-report"
+            and bool(model.metadata.title.strip())
+        )
+        if (resolved.cover and resolved.profile.is_ib) or report_title_block:
             # Filter the private render copy so the TOC and body share the same outline.
             model.elements = [element for element in model.elements if not element.inferred_subtitle]
+        if report_title_block:
+            # Transfer the first matching body H1 to the non-outline title block.
+            # Filtering before the TOC also prevents a stale preview title entry.
+            for index, element in enumerate(model.elements):
+                if (
+                    element.element_type == ElementType.HEADING_1
+                    and isinstance(element.content, Heading)
+                    and element.content.text == model.metadata.title
+                ):
+                    model.elements.pop(index)
+                    break
         appendix_index = letter_appendix_index(model)
         if resolved.strict and model.warnings:
             raise ValueError("Input validation failed: " + "; ".join(model.warnings))
@@ -2810,12 +2830,14 @@ class IBDocumentRenderer:
             if resolved.cover:
                 self.cover_renderer.include_disclaimer = resolved.disclaimer
                 self.cover_renderer.render(model.metadata)
+            title_inserted = (
+                render_office_opening(self.doc, model.metadata) if report_title_block else False
+            )
             if resolved.toc:
                 self.toc_renderer.render(model)
-            title_inserted = (
-                render_office_opening(self.doc, model.metadata) if not resolved.cover else False
-            )
-            skipped_title = False
+            if not resolved.cover and not report_title_block:
+                title_inserted = render_office_opening(self.doc, model.metadata)
+            skipped_title = report_title_block
             office_closed = False
             for idx, element in enumerate(model.elements):
                 if idx == appendix_index:

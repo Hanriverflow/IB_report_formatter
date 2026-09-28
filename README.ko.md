@@ -149,6 +149,8 @@ md-to-word notes.md notes.docx --profile plain --preset lecture-note --no-cover
 
 모든 프리셋을 6개 프로파일과 조합할 수 있습니다. 표지·목차·면책만 바꾸므로 일반 프로파일의 중립 메타데이터, 네이티브 번호, 일반 표 의미는 유지합니다. `termsheet`는 `ib-report`/`ib-memo`, `legal-memo`는 `ib-memo`/`plain`, `lecture-note`는 `plain`/`business-report`와 조합하면 유용합니다. 공문이나 짧은 회의록에는 보통 표지·목차가 필요하지 않습니다. 프리셋이 법률 문구나 문서별 메타데이터를 생성하지는 않습니다.
 
+표지를 끄면(`--no-cover`, API `include_cover=False`, YAML `layout.cover: false`, `termsheet`/`legal-memo`) `ib-report`는 문서 맨 앞에 테마를 반영한 제목·부제와 `ib-memo`와 같은 작성일·작성자 행을 표시하고, 목차가 있으면 같은 페이지에서 이어 표시한 뒤 기존 페이지 나누기로 본문을 시작합니다. 제목과 일치하는 본문 H1 및 추출된 부제는 이 블록에만 한 번 표시하고 목차에서는 제외하며, 표지를 켠 출력과 다른 프로파일의 제목 처리는 유지합니다.
+
 ## 테마 확장 키
 
 기존 소문자 키 6개 외에 다음 `IBStyle` 대문자 표현 필드(PR #5 표기)를 YAML 테마에서 사용할 수 있습니다.
