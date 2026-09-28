@@ -65,7 +65,7 @@ include = [
     "/document_model.py", "/document_profiles.py", "/docx_audit.py", "/ib_renderer.py",
     "/md_formatter.py", "/md_parser.py", "/md_to_word.py", "/office_layout.py",
     "/render_styles.py", "/stream_utils.py", "/pyproject.toml", "/uv.lock",
-    "/README.md", "/README.ko.md", "/CHANGELOG.md", "/AGENTS.md",
+    "/README.md", "/README.ko.md", "/CHANGELOG.md", "/AGENTS.md", "/LICENSE",
     "/samples/profiles/**", "/samples/qa/**", "/scripts/word_visual_qa.ps1", "/docs/implementation-plan-20260914.md",
     "/docs/verification-20260914.md",
     "/docs/improvement-plan-20260915.md", "/docs/verification-20260915.md",
