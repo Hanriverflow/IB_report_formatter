@@ -2,7 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased] - 2026-09-15
+## [Unreleased] - 2026-09-29
+
+### Input-loss and correctness hardening (2026-09-29)
+- Stop silent content loss: escaped dollars (`\$5`), escaped emphasis, prose/tables after a `References` list, unrecognized leading `**Label:** value` paragraphs, dash-only table body rows, list continuation lines, and CRLF list items.
+- Numeric table cells keep native footnote references and are no longer re-formatted from concatenated run text (`1234[^1]` stays `1,234` plus the footnote).
+- Equation rendering failures are renderer errors: strict mode rejects them before saving; non-strict keeps visible fallback text.
+- Shared fence scanner (backtick/tilde, 4+ fences, paragraph interruption); setext `===` H1; HTML comments are not printed; reference-style links resolve to hyperlinks; image titles and `<angle-bracket>` destinations parse correctly; literal `[^n]` inside code is not a footnote.
+- Consecutive leading metadata lines (`**Date:**`/`**Analyst:**`) populate separate fields. Recognized header labels are canonicalized (`date`, `analysis_period`, `analysis_basis`). An inferred IB subtitle stays on the cover and becomes a body heading when the cover is disabled.
+- Nested ordered lists restart under each parent item; start overrides target the actual level.
+
+### Robustness and performance (2026-09-29)
+- Atomic saves through a sibling temp file and replace (existing reports survive failed writes; file mode preserved); exclusive, collision-resistant locked-file fallback names.
+- Batch mode rejects colliding output names before writing and exits non-zero when any input fails. Missing qualified input paths no longer fall back to an unrelated same-named file.
+- Thread-safe default converter registry initialization. Diagram/equation rendering no longer mutates global Matplotlib state and releases figures/temp files on failure.
+- Render-path structural validation no longer resolves styles per paragraph: a 2,000-element document renders about 60% faster. `docx-audit` validates numbering references and reports placeholder-like user text as warnings.
+- GitHub Actions workflow (Ubuntu/Windows): ruff, mypy, pytest, build, exact wheel payload, Python 3.8 syntax gate.
 
 ### Office-letter production quality
 - Render inline HTML breaks in paragraphs, emphasis, headings, lists and tables while preserving escaped/code literals and link destinations.
