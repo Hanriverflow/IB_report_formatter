@@ -579,6 +579,6 @@ def test_parse_markdown_file_infers_title_and_date_from_leading_content(tmp_path
 
     assert model.metadata.title == "일동제약 주식회사 수익성 변화 분석 보고서"
     assert model.metadata.company == ""  # cleared when no frontmatter
-    assert model.metadata.extra["분석 대상 기간"] == "제9기→제10기"
-    assert model.metadata.extra["분석 기준"] == "연결재무제표 기준"
-    assert model.metadata.extra["작성일"] == "2026년 3월 20일"
+    assert model.metadata.extra["analysis_period"] == "제9기→제10기"
+    assert model.metadata.extra["analysis_basis"] == "연결재무제표 기준"
+    assert model.metadata.extra["date"] == "2026년 3월 20일"

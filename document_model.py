@@ -1,4 +1,8 @@
-"""Shared document model for Markdown-to-Word rendering."""
+"""Shared document model for Markdown-to-Word rendering.
+
+Changelog (quality hardening):
+    - Preserve inferred IB subtitle headings for cover-free rendering.
+"""
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -238,6 +242,7 @@ class Element:
     element_type: ElementType
     content: ElementContent
     raw_text: str = ""
+    inferred_subtitle: bool = False  # Render in the body unless used on an IB cover.
 
 
 @dataclass
