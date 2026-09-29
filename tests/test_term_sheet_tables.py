@@ -396,6 +396,15 @@ def test_term_sheet_frame_borders_margins_and_header_repeat() -> None:
     assert owners and all(attr(tc, "./w:tcPr/w:vAlign") == ["center"] for tc in owners)
 
 
+def test_header_row_paragraphs_keep_with_the_first_body_row() -> None:
+    _, saved = render(ts_markdown(KEY_VALUE + "\n" + GRID), strict=True)
+    for table in tables(saved):
+        header, *body = rows(table)
+        header_paragraphs = header.xpath("./w:tc/w:p")
+        assert header_paragraphs and all(p.xpath("./w:pPr/w:keepNext") for p in header_paragraphs)
+        assert not any(p.xpath("./w:pPr/w:keepNext") for row in body for p in row.xpath("./w:tc/w:p"))
+
+
 def test_key_value_label_hierarchy_and_content_cells() -> None:
     _, saved = render(ts_markdown(KEY_VALUE), strict=True)
     abcp_row = rows(tables(saved)[0])[2]

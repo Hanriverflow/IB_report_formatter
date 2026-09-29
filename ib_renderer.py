@@ -1786,6 +1786,9 @@ class TableRenderer:
             paragraph = word_cell.paragraphs[0] if index == 0 else word_cell.add_paragraph()
             configure_cell_paragraph(paragraph)
             paragraph.alignment = alignment
+            if role == "header":
+                # Never strand the header row alone at the foot of a page.
+                paragraph.paragraph_format.keep_with_next = True
             text = line_text(line)
             line_size = apply_marker_layout(paragraph, text) if role == "content" else None
             TextRenderer.render_runs(
