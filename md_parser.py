@@ -45,11 +45,12 @@ Dependencies:
 """
 
 import logging
+import os
 import re
 from dataclasses import replace
 from pathlib import Path
 from typing import BinaryIO, Callable, Dict, List, Match, Optional, Set, Tuple, Union, cast
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlsplit
 
 import yaml
 
@@ -330,6 +331,77 @@ class FrontmatterParser:
         return data
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# LOCAL LINK TARGETS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_DRIVE_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")
+_URI_DRIVE_PATH_RE = re.compile(r"^/[A-Za-z]:/")
+_URI_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+
+
+def file_uri(path: str) -> str:
+    """Return the `file:` URI of an absolute local path; `%` and `#` are literal.
+
+    Args:
+        path: Absolute Windows (`C:\\...`, `C:/...`) or POSIX (`/...`) path.
+
+    Returns:
+        The percent-encoded URI, as `Path.as_uri()` writes it.
+    """
+    if _DRIVE_PATH_RE.match(path):
+        normalized = path.replace("\\", "/")
+        return "file:///" + normalized[:2] + quote(normalized[2:], safe="/")
+    return "file://" + quote(path, safe="/")
+
+
+def rebase_link_target(target: str, source_dir: Path, output_dir: Path) -> str:
+    """Re-express a parsed link target for a DOCX saved in `output_dir`.
+
+    A relative target refers to the source folder, so it is rewritten to reach
+    the same file from the output folder (a `file:` URI when no relative path
+    exists, e.g. on another drive); its `#` fragment is kept. An absolute
+    `file:` target becomes relative only when the file lies inside the output
+    folder, so the author's directory is not exposed; otherwise it is kept and
+    a warning says recipients may not be able to open it. Other URLs and
+    in-document anchors are returned unchanged.
+
+    Args:
+        target: Hyperlink target produced by `TextParser.link_target`.
+        source_dir: Folder of the source Markdown file.
+        output_dir: Folder of the saved DOCX.
+
+    Returns:
+        The target to store in the saved document.
+    """
+    if target[:5].lower() == "file:":
+        parts = urlsplit(target)
+        location = unquote(parts.path)
+        if _URI_DRIVE_PATH_RE.match(location):
+            location = location[1:]
+        path = Path(location)
+        if parts.netloc not in ("", "localhost") or not path.is_absolute():
+            return target  # a network share, or another platform's path
+        try:
+            relative = path.resolve().relative_to(output_dir.resolve())
+        except (OSError, ValueError):
+            logger.warning(
+                "Link points to a local path outside the output folder; recipients "
+                "may not be able to open it: %s", location,
+            )
+            return target
+        return quote(relative.as_posix(), safe="/")
+    if not target or target[:1] == "#" or _URI_SCHEME_RE.match(target):
+        return target
+    location, hash_mark, fragment = target.partition("#")
+    local = (source_dir / unquote(location)).resolve()
+    try:
+        reached = Path(os.path.relpath(local, output_dir.resolve())).as_posix()
+    except ValueError:
+        return file_uri(str(local)) + hash_mark + fragment
+    return quote(reached, safe="/") + hash_mark + fragment
+
+
 class TextParser:
     """Parses inline text formatting (bold, italic, inline LaTeX, etc.)"""
 
@@ -391,7 +463,7 @@ class TextParser:
                         cls._apply_color(cls._parse_inline_formatting(inline_text), color_hex)
                     )
 
-        return cls._split_code_runs(runs, code_spans)
+        return cls._encode_link_targets(cls._split_code_runs(runs, code_spans))
 
     @classmethod
     def _split_on_inline_latex(cls, text: str) -> List[Tuple[str, bool]]:
@@ -436,7 +508,7 @@ class TextParser:
         runs: List[TextRun] = []
         for segment_text, color_hex in cls._split_on_color_spans(text):
             runs.extend(cls._apply_color(cls._parse_inline_formatting(segment_text), color_hex))
-        return cls._split_code_runs(runs, code_spans)
+        return cls._encode_link_targets(cls._split_code_runs(runs, code_spans))
 
     @classmethod
     def _protect_code_spans(cls, text: str) -> Tuple[str, Dict[str, str]]:
@@ -575,19 +647,19 @@ class TextParser:
         r"|https?://[^\s)]+|mailto:[^\s)]+"
         r"|(?:[A-Za-z]:[\\/]|\.{1,2}[\\/])[^\s()<>]*"
         r"|[^\s()<>]+\.(?i:md|markdown|docx?|xlsx?|xlsm|pptx?|pdf|hwpx?|txt|csv|png|jpe?g|gif|svg)"
+        r"(?:#[^\s()<>]*)?"
     )
     _INLINE_REFERENCE_RE = re.compile(
         r"(?<!!)\[([^\]\n]+)\]\((" + _LINK_DESTINATION + r")\)|\[\^(\d+)\]"
     )
-    _WINDOWS_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")
-    _URL_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
-
     @classmethod
     def link_target(cls, destination: str) -> str:
         """Return a Word relationship target for a Markdown link destination.
 
-        URLs are kept as written. A Windows absolute path becomes a `file:///`
-        URI; any other path stays relative to the document's folder. Spaces and
+        URLs are kept as written. An absolute local path (`C:\\...` or `/...`)
+        is a file name, so it becomes a `file:///` URI in which `%` and `#` are
+        literal characters. A relative path is a URL reference to the source
+        folder: existing `%` escapes and a `#` fragment are kept. Spaces and
         non-ASCII characters are percent-encoded.
 
         Args:
@@ -597,9 +669,9 @@ class TextParser:
             The hyperlink target.
         """
         target = destination[1:-1] if destination[:1] == "<" and destination[-1:] == ">" else destination
-        if cls._WINDOWS_PATH_RE.match(target):
-            return "file:///" + quote(target.replace("\\", "/"), safe="/:%")
-        if cls._URL_SCHEME_RE.match(target):
+        if _DRIVE_PATH_RE.match(target) or target[:1] == "/":
+            return file_uri(target)
+        if _URI_SCHEME_RE.match(target):
             return target
         return quote(target.replace("\\", "/"), safe="/#%")
 
@@ -625,7 +697,11 @@ class TextParser:
             if run.hyperlink:
                 for token, literal in literals.items():
                     run.hyperlink = run.hyperlink.replace(token, "\\" + literal)
-        runs = cls._restore_code_spans(runs, literals)
+        return cls._restore_code_spans(runs, literals)
+
+    @classmethod
+    def _encode_link_targets(cls, runs: List[TextRun]) -> List[TextRun]:
+        """Encode destinations once every protected literal is back in place."""
         for run in runs:
             if run.hyperlink:
                 run.hyperlink = cls.link_target(run.hyperlink)
@@ -1657,7 +1733,8 @@ class MarkdownParser:
         """
         self.preserve_trailing_double_space_break = preserve_trailing_double_space_break
         self.profile = profile
-        # Folder of the source file: local link paths inside it become relative.
+        # Folder of the source file: relative link paths are resolved against it
+        # when the document is saved (see `rebase_local_links`).
         self.base_dir = base_dir
         self._financial_rules = True
         self._term_sheet = False
@@ -1693,7 +1770,7 @@ class MarkdownParser:
         # Detect whether YAML frontmatter was present
         has_frontmatter = len(remaining_lines) < len(lines)
         remaining_lines = self._strip_comments(remaining_lines)
-        remaining_lines = self._resolve_reference_links(remaining_lines, self.base_dir)
+        remaining_lines = self._resolve_reference_links(remaining_lines)
 
         # Extract footnotes/references
         fenced_indices = FenceScanner.protected_indices(remaining_lines)
@@ -1756,6 +1833,7 @@ class MarkdownParser:
             footnotes=footnotes,
             warnings=input_warnings,
             parsed_profile=metadata.profile,
+            source_dir=self.base_dir,
         )
         if not self._financial_rules:
             first_heading = next(
@@ -1900,53 +1978,15 @@ class MarkdownParser:
             position += 1
         return "".join(pieces).split("\n")
 
-    _WRAP_DESTINATION_RE = re.compile(r"[\s()]")
-
-    @classmethod
-    def _wrap_destination(cls, destination: str) -> str:
-        """Angle-bracket a destination with spaces or parentheses (CommonMark form)."""
-        if destination[:1] == "<" or not cls._WRAP_DESTINATION_RE.search(destination):
+    @staticmethod
+    def _wrap_destination(destination: str) -> str:
+        """Angle-bracket a definition's destination so any path form stays a link."""
+        if any(character in destination for character in "<>\n"):
             return destination
         return "<" + destination + ">"
 
     @classmethod
-    def _relative_destination(cls, destination: str, base_dir: Optional[Path]) -> str:
-        """Rewrite an absolute local path inside the document folder as a relative one.
-
-        A relative link opens for colleagues when the folder is shared and does
-        not expose the author's local directory. Paths elsewhere are kept.
-
-        Args:
-            destination: Link destination as written (angle brackets allowed).
-            base_dir: Folder of the source Markdown file, if known.
-
-        Returns:
-            The (possibly relative) destination without angle brackets.
-        """
-        raw = destination[1:-1] if destination[:1] == "<" and destination[-1:] == ">" else destination
-        if base_dir is None or not (TextParser._WINDOWS_PATH_RE.match(raw) or raw.startswith("/")):
-            return raw
-        try:
-            return Path(raw).resolve().relative_to(base_dir.resolve()).as_posix()
-        except (OSError, ValueError):
-            logger.warning(
-                "Link points to a local path outside the document folder; recipients "
-                "may not be able to open it: %s", raw,
-            )
-            return raw
-
-    @classmethod
-    def _relative_inline_link(cls, match: Match[str], base_dir: Optional[Path]) -> str:
-        """Return an inline link with a local absolute destination made relative."""
-        if not match.group(2) or base_dir is None:
-            return match.group(0)
-        destination = cls._relative_destination(match.group(2), base_dir)
-        return f"[{match.group(1)}]({cls._wrap_destination(destination)})"
-
-    @classmethod
-    def _resolve_reference_links(
-        cls, lines: List[str], base_dir: Optional[Path] = None
-    ) -> List[str]:
+    def _resolve_reference_links(cls, lines: List[str]) -> List[str]:
         """Collect link definitions and expand resolved references outside code."""
         literals: Dict[str, str] = {}
         prefix = "\ue000REF"
@@ -1971,17 +2011,14 @@ class MarkdownParser:
                 index += 1
         source = TextParser._CODE_SPAN_RE.sub(lambda match: protect(match.group(0)), "\n".join(pieces))
         source = TextParser._ESCAPE_RE.sub(lambda match: protect(match.group(0)), source)
-        source = TextParser._INLINE_REFERENCE_RE.sub(
-            lambda match: protect(cls._relative_inline_link(match, base_dir)), source
-        )
+        source = TextParser._INLINE_REFERENCE_RE.sub(lambda match: protect(match.group(0)), source)
         definitions: Dict[str, str] = {}
 
         def label(value: str) -> str:
             return cls._REFERENCE_LABEL_SPACE_RE.sub(" ", value.strip()).casefold()
 
         def define(match: Match[str]) -> str:
-            destination = cls._relative_destination(match.group(2) or match.group(3), base_dir)
-            definitions.setdefault(label(match.group(1)), destination)
+            definitions.setdefault(label(match.group(1)), match.group(2) or match.group(3))
             return ""
 
         source = cls._LINK_DEFINITION_RE.sub(define, source)

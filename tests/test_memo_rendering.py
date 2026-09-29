@@ -1,6 +1,7 @@
 """Improvements found on a real internal memo: inline code, local file links, Korean spacing."""
 
 import logging
+import sys
 from io import BytesIO
 from pathlib import Path
 
@@ -61,6 +62,32 @@ def test_rendered_code_has_no_backticks_and_uses_the_code_font() -> None:
     assert code_run.font.name == "Consolas"
 
 
+def _code_texts(element) -> list:
+    return [
+        "".join(run.xpath("./w:t/text()"))
+        for run in element.iter(qn("w:r"))
+        if run.xpath('./w:rPr/w:rFonts[@w:ascii="Consolas"]')
+    ]
+
+
+def test_plain_callout_renders_code_and_links_like_body_text() -> None:
+    doc = _render("# 메모\n\n> 계좌 `022-1` 와 [안내](https://example.com/a) 참고\n")
+    assert "`" not in "".join(doc.element.body.xpath(".//w:t/text()"))
+    assert _code_texts(doc.element.body) == ["022-1"]
+    assert _hyperlink_targets(doc) == [("안내", "https://example.com/a")]
+
+
+def test_term_sheet_line_splitting_keeps_code_whitespace() -> None:
+    markdown = (
+        "---\nprofile: term-sheet\ntitle: 가나다머티리얼즈㈜ 조건 검토\n"
+        "prepared_by: 라마바은행 자본시장부\ndisclaimer: 가상 조건 검토용입니다.\n---\n\n"
+        "## 1. 개요\n\n앞<br>`  b  `<br>끝\n\n"
+        "| 구 분 | 내 용 |\n|---|---|\n| 코드 | 앞<br>`  c  `<br>`   `<br>끝 |\n"
+    )
+    doc = _render(markdown, profile="term-sheet")
+    assert _code_texts(doc.element.body) == [" b ", " c ", "   "]
+
+
 def test_code_in_a_money_column_keeps_its_literal_digits() -> None:
     markdown = (
         "---\nprofile: business-report\ntitle: 가상 메모\n"
@@ -97,25 +124,104 @@ def test_non_path_parentheses_stay_literal(source: str) -> None:
     assert not any(run.hyperlink for run in runs)
 
 
-def test_file_links_inside_the_folder_become_relative(tmp_path: Path, caplog) -> None:
+def test_parsed_links_keep_absolute_file_targets_until_saved(tmp_path: Path) -> None:
     inside = tmp_path / "sub" / "가상 정리.md"
-    outside = "C:/elsewhere/other.md"
     source = tmp_path / "memo.md"
     source.write_text(
         "# 메모\n\n[안쪽][in] · [바깥][out] · [인라인](<" + inside.as_posix() + ">)\n\n"
-        "[in]: <" + inside.as_posix() + ">\n[out]: <" + outside + ">\n",
+        "[in]: <" + inside.as_posix() + ">\n[out]: <C:/elsewhere/other.md>\n",
         encoding="utf-8",
     )
-    with caplog.at_level(logging.WARNING):
-        model = parse_markdown_file(str(source))
+    model = parse_markdown_file(str(source))
+    assert model.source_dir == tmp_path.resolve()
     runs = model.elements[-1].content.runs
     assert [(run.text, run.hyperlink) for run in runs if run.hyperlink] == [
-        ("안쪽", "sub/%EA%B0%80%EC%83%81%20%EC%A0%95%EB%A6%AC.md"),
+        ("안쪽", inside.as_uri()),
         ("바깥", "file:///C:/elsewhere/other.md"),
-        ("인라인", "sub/%EA%B0%80%EC%83%81%20%EC%A0%95%EB%A6%AC.md"),
+        ("인라인", inside.as_uri()),
     ]
-    assert any("outside the document folder" in record.message for record in caplog.records)
     assert not model.warnings
+
+
+def _write_memo(folder: Path, body: str) -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    source = folder / "memo.md"
+    source.write_text(
+        "---\nprofile: business-report\ntitle: 가상 메모\n---\n\n# 메모\n\n" + body + "\n",
+        encoding="utf-8",
+    )
+    return source
+
+
+def _convert(entrypoint: str, source: Path, output: Path) -> None:
+    """Save through the converter (CLI/API) or the registry, the two save paths."""
+    if entrypoint == "converter":
+        from md_to_word import IBReportConverter
+
+        IBReportConverter(str(source), str(output), render_options=RenderOptions(strict=True)).convert()
+    else:
+        from converters import get_default_registry
+
+        registry = get_default_registry()
+        registry.convert(registry.convert(str(source)), output_format="docx", output_path=str(output), strict=True)
+
+
+@pytest.mark.parametrize("entrypoint", ["converter", "registry"])
+def test_saved_links_are_rebased_on_the_docx_folder(tmp_path: Path, entrypoint: str, caplog) -> None:
+    source_dir = tmp_path / "source"
+    attachment = source_dir / "첨부.pdf"
+    source = _write_memo(
+        source_dir,
+        "[절대](<" + attachment.as_posix() + ">) · [상대](sub/정리.md) · [웹](https://example.com/a)",
+    )
+    same, export = source_dir / "same.docx", tmp_path / "export" / "export.docx"
+    _convert(entrypoint, source, same)
+    with caplog.at_level(logging.WARNING):
+        _convert(entrypoint, source, export)
+    assert _hyperlink_targets(Document(str(same))) == [
+        ("절대", "%EC%B2%A8%EB%B6%80.pdf"),
+        ("상대", "sub/%EC%A0%95%EB%A6%AC.md"),
+        ("웹", "https://example.com/a"),
+    ]
+    assert _hyperlink_targets(Document(str(export))) == [
+        ("절대", attachment.as_uri()),
+        ("상대", "../source/sub/%EC%A0%95%EB%A6%AC.md"),
+        ("웹", "https://example.com/a"),
+    ]
+    assert any("outside the output folder" in record.message for record in caplog.records)
+
+
+def test_file_uris_angle_destinations_and_file_hashes_survive_saving(tmp_path: Path) -> None:
+    source = _write_memo(
+        tmp_path,
+        "[URI](" + (tmp_path / "b.pdf").as_uri() + ") · [안내](<README>) · [정의][d] · "
+        "[데이터](<" + (tmp_path / "data.json").as_posix() + ">) · "
+        "[해시](<" + (tmp_path / "a#b.pdf").as_posix() + ">) · [조각](정리.md#개요)\n\n[d]: <README>",
+    )
+    output = tmp_path / "memo.docx"
+    _convert("registry", source, output)
+    assert _hyperlink_targets(Document(str(output))) == [
+        ("URI", "b.pdf"),
+        ("안내", "README"),
+        ("정의", "README"),
+        ("데이터", "data.json"),
+        ("해시", "a%23b.pdf"),
+        ("조각", "%EC%A0%95%EB%A6%AC.md#%EA%B0%9C%EC%9A%94"),
+    ]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows path syntax")
+def test_windows_path_with_markdown_escape_characters_is_rebased(tmp_path: Path) -> None:
+    target = tmp_path / "_a.pdf"
+    source = _write_memo(tmp_path, "[윈도](" + str(target) + ")")
+    output = tmp_path / "memo.docx"
+    _convert("registry", source, output)
+    assert _hyperlink_targets(Document(str(output))) == [("윈도", "_a.pdf")]
+
+
+@pytest.mark.parametrize("parse", [TextParser.parse_runs, TextParser.parse_runs_plain])
+def test_code_span_inside_a_destination_is_restored_before_encoding(parse) -> None:
+    assert [(run.text, run.hyperlink) for run in parse("[x](a`b`.pdf)")] == [("x", "a%60b%60.pdf")]
 
 
 def test_rendered_local_link_is_an_external_hyperlink_showing_only_its_label() -> None:

@@ -52,7 +52,7 @@ from cli_utils import (
 )
 from document_profiles import PRESETS, PROFILES
 from document_profiles import RenderOptions as RenderOptions
-from ib_renderer import IBDocumentRenderer
+from ib_renderer import IBDocumentRenderer, rebase_local_links
 from md_parser import DocumentModel, parse_markdown_file
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -295,6 +295,7 @@ class IBReportConverter:
 
         # ── Stage 3: Save ───────────────────────────────────────────────────
         output_path = generate_output_path(self.md_file_path, self.output_path)
+        rebase_local_links(doc, model.source_dir, output_path)
         saved_path = safe_save(doc, output_path)
 
         # ── Done ────────────────────────────────────────────────────────────

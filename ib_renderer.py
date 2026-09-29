@@ -108,6 +108,7 @@ from md_parser import (
     TableType,
     TextParser,
     TextRun,
+    rebase_link_target,
 )
 from office_layout import (
     NativeNumbering,
@@ -928,6 +929,7 @@ class TextRenderer:
         parsed_runs = TextParser.parse_runs_plain(text)
         if any(
             run.bold or run.italic or run.superscript or run.subscript or run.color_hex
+            or run.code or run.hyperlink
             for run in parsed_runs
         ):
             TextRenderer.render_runs(
@@ -3211,6 +3213,33 @@ class DisclaimerRenderer:
         """Split disclaimer content into non-empty logical paragraphs."""
         lines = [line.strip() for line in content.split("\n")]
         return [line for line in lines if line]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SAVING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def rebase_local_links(document: DocxDocument, source_dir: Optional[Path], output_path: Path) -> None:
+    """Point local hyperlinks of a rendered document at its output folder.
+
+    Relative links written against the Markdown folder then open from wherever
+    the DOCX is saved, and files inside the output folder are linked relatively
+    (see `rebase_link_target`). Call once per rendered document, right before it
+    is saved; a document without a source folder is left unchanged.
+
+    Args:
+        document: Rendered document, not yet saved.
+        source_dir: `DocumentModel.source_dir` of the rendered model.
+        output_path: Requested DOCX path; a lock fallback stays in its folder.
+    """
+    if source_dir is None:
+        return
+    output_dir = Path(output_path).resolve().parent
+    for part in document.part.package.iter_parts():
+        for relationship in part.rels.values():
+            if relationship.reltype == RT.HYPERLINK and relationship.is_external:
+                relationship._target = rebase_link_target(relationship.target_ref, source_dir, output_dir)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

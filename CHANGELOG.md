@@ -5,8 +5,8 @@ All notable changes to this project are documented in this file.
 ## [Unreleased] - 2026-09-29
 
 ### Internal memo rendering (found on a real memo)
-- Inline code is rendered without its backticks in the code font (`CODE_FONT`); its text stays literal and outside table number formatting.
-- Local file links (angle-bracket destinations, drive or `./`/`../` paths, document extensions) become Word hyperlinks. When converting a file, absolute paths inside the Markdown folder become relative links; other absolute paths stay `file:///` links with a log warning. Reference definitions with spaces or brackets resolve correctly.
+- Inline code is rendered without its backticks in the code font (`CODE_FONT`); its text, including edge spaces in term-sheet lines, stays literal and outside table number formatting. Plain-profile callouts render inline code and links like body text.
+- Local file links (angle-bracket destinations, drive or `./`/`../` paths, document extensions) become Word hyperlinks. Saving through the CLI, converter or registry rebases links on the DOCX folder: relative links keep reaching their file, absolute paths inside the DOCX folder become relative, and other absolute paths stay `file:///` links with a log warning. `#` and `%` in absolute paths are literal; a `#` after a document extension in a relative link is a fragment. Reference definitions with spaces, brackets or any path form resolve correctly.
 - General profiles turn off Word's automatic Korean/Latin and Korean/number spacing (`SPC는`, `제2종`, `300억원`), as the term-sheet profile already did.
 
 ### Existing-output fixes (schema order, forced TOC, audit encoding)
