@@ -292,8 +292,13 @@ def _generated_term_values(doc: DocxDocument) -> Dict[str, str]:
         if not isinstance(prop.tag, str):
             continue  # comments and processing instructions
         name = prop.get("name") or ""
-        if name.startswith(TERM_PROPERTY_PREFIX):
-            values[name[len(TERM_PROPERTY_PREFIX):]] = _visible("".join(prop.itertext()))
+        if not name.startswith(TERM_PROPERTY_PREFIX):
+            continue
+        # The value is the text of the typed value element (vt:lpwstr); the
+        # property's own whitespace is only XML indentation.
+        value = next((child for child in prop if isinstance(child.tag, str)), None)
+        text = (value.text or "") if value is not None else ""
+        values[name[len(TERM_PROPERTY_PREFIX):]] = _visible(text)
     return values
 
 

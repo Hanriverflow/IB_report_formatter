@@ -331,6 +331,22 @@ def test_controls_without_a_snapshot_are_still_compared() -> None:
     assert len(term_warnings(result)) == 1
 
 
+def test_snapshot_value_comes_from_the_value_element_only() -> None:
+    doc = generate("{{spaced}} and {{amount}}", {"spaced": " A-B ", "amount": "500"})
+    part = doc.part.package.part_related_by(RT.CUSTOM_PROPERTIES)
+    root = etree.fromstring(part.blob)
+    part._blob = etree.tostring(
+        root, pretty_print=True, xml_declaration=True, encoding="UTF-8", standalone=True,
+    )
+    assert b"\n  <property" in part._blob
+    _, untouched = audit(doc)
+    assert untouched == TermAudit()
+    type_value(controls(doc, "spaced")[0], "A-B")
+    _, edited = audit(doc)
+    assert edited is not None
+    assert edited.changed == {"spaced": {"generated": " A-B ", "current": "A-B"}}
+
+
 def test_other_content_controls_are_ignored() -> None:
     doc = generate()
     [tenor] = controls(doc, "tenor")
