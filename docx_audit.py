@@ -1,5 +1,10 @@
 """Inspect generated DOCX structure without an inverse Word-to-Markdown parser.
 
+Changelog (term variables):
+    - Compare tagged term values with each other and with the generation
+      snapshot (`terms`); mismatches and missing controls are warnings only.
+    - Serialize reports explicitly so documents without terms keep their JSON.
+
 Changelog (hardening):
     - Index styles once per audit and separate render validation from observations.
     - Treat placeholder-like text as warnings and validate native numbering references.
@@ -8,8 +13,9 @@ Changelog (hardening):
 import argparse
 import json
 import logging
+import re
 from dataclasses import asdict, dataclass, field
-from typing import Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from docx import Document
 from docx.document import Document as DocxDocument
@@ -20,6 +26,8 @@ from docx.parts.numbering import NumberingPart
 from docx.styles.style import ParagraphStyle
 from docx.text.paragraph import Paragraph
 from lxml import etree
+
+from term_variables import TERM_PROPERTY_PREFIX, TERM_TAG_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +45,34 @@ class DocumentAudit:
     warnings: List[str] = field(default_factory=list)
     pagination_marked_paragraphs: int = 0
     visual_review: str = "not_performed"
+
+
+@dataclass
+class TermAudit:
+    """Consistency of tagged term values after editing, not their financial validity.
+
+    Attributes:
+        mismatched: Key -> distinct current values in document order, when the
+            key's controls disagree (for example, only one place was edited).
+        changed: Key -> generated snapshot value and the first current value
+            that differs from it, for copying back into the `terms:` YAML.
+        missing: Snapshot keys none of whose controls remain in the document.
+        indicative: Keys with a current value containing a bracketed `[...]` part.
+    """
+
+    mismatched: Dict[str, List[str]] = field(default_factory=dict)
+    changed: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    missing: List[str] = field(default_factory=list)
+    indicative: List[str] = field(default_factory=list)
+
+
+# Text nodes of a control's current value; None means the node's own text.
+_TERM_TEXT: Dict[str, Optional[str]] = {
+    qn("w:t"): None, qn("w:tab"): "\t", qn("w:br"): "\n", qn("w:cr"): "\n",
+}
+_REMOVED_CONTENT = frozenset({qn("w:del"), qn("w:moveFrom")})
+_TERM_TAG_PATH = qn("w:sdtPr") + "/" + qn("w:tag")
+_INDICATIVE_RE = re.compile(r"\[[^\[\]]*\]")
 
 
 _PAGINATION_FLAGS = (
@@ -102,6 +138,7 @@ def inspect_document(doc: DocxDocument) -> DocumentAudit:
 
     Returns:
         Structural issues and descriptive counts, warnings and review status.
+        Inconsistent or missing term values are warnings, never issues.
     """
     styles = _StyleLookup(doc)
     paragraph_styles = (styles.paragraph_style(p) for p in doc.paragraphs)
@@ -131,7 +168,125 @@ def inspect_document(doc: DocxDocument) -> DocumentAudit:
     for text in doc.element.xpath(".//w:t/text()"):
         if "[Render Error:" in text or text.startswith(("[Image:", "[Diagram:")):
             result.warnings.append("Possible rendering placeholder (may be literal user text): " + text)
+    terms = inspect_terms(doc)
+    if terms is not None:
+        result.warnings.extend(_term_warnings(terms))
     return result
+
+
+def inspect_terms(doc: DocxDocument) -> Optional[TermAudit]:
+    """Compare tagged term values with each other and with the generation snapshot.
+
+    Only the tagged values are compared; numbers typed outside a control and
+    the financial validity of the terms are not checked.
+
+    Args:
+        doc: Open python-docx document to inspect without modifying it.
+
+    Returns:
+        Term results when the body has term controls or the package has a term
+        snapshot; None otherwise, so a report without terms is unchanged.
+    """
+    current = _current_term_values(doc)
+    generated = _generated_term_values(doc)
+    if not current and not generated:
+        return None
+    result = TermAudit()
+    for key, values in sorted(current.items()):
+        distinct = list(dict.fromkeys(values))
+        if len(distinct) > 1:
+            result.mismatched[key] = distinct
+        if any(_INDICATIVE_RE.search(value) for value in values):
+            result.indicative.append(key)
+    for key, value in sorted(generated.items()):
+        if key not in current:
+            result.missing.append(key)
+            continue
+        differing = [text for text in current[key] if text != value]
+        if differing:
+            result.changed[key] = {"generated": value, "current": differing[0]}
+    return result
+
+
+def _current_term_values(doc: DocxDocument) -> Dict[str, List[str]]:
+    """Read each remaining term control's current text in document order."""
+    values: Dict[str, List[str]] = {}
+    for control in doc.element.body.iter(qn("w:sdt")):
+        tag = control.find(_TERM_TAG_PATH)
+        name = tag.get(qn("w:val"), "") if tag is not None else ""
+        if not name.startswith(TERM_TAG_PREFIX) or _is_removed(control):
+            continue
+        content = control.find(qn("w:sdtContent"))
+        text = _current_text(content, control) if content is not None else ""
+        values.setdefault(name[len(TERM_TAG_PREFIX):], []).append(text)
+    return values
+
+
+def _current_text(content: Any, control: Any) -> str:
+    """Join text, tabs and breaks, including insertions but not deletions or moves away."""
+    parts: List[str] = []
+    for node in content.iter(*_TERM_TEXT):
+        if _is_removed(node, stop=control):
+            continue
+        replacement = _TERM_TEXT[node.tag]
+        parts.append((node.text or "") if replacement is None else replacement)
+    return "".join(parts)
+
+
+def _is_removed(node: Any, stop: Any = None) -> bool:
+    """Whether a deletion or move-away ancestor (below `stop`) hides the node."""
+    for ancestor in node.iterancestors():
+        if ancestor is stop:
+            return False
+        if ancestor.tag in _REMOVED_CONTENT:
+            return True
+    return False
+
+
+def _generated_term_values(doc: DocxDocument) -> Dict[str, str]:
+    """Read the `ibrep.term.` snapshot written when the document was generated."""
+    try:
+        part = doc.part.package.part_related_by(RT.CUSTOM_PROPERTIES)
+    except KeyError:
+        return {}
+    values: Dict[str, str] = {}
+    for prop in etree.fromstring(part.blob):
+        if not isinstance(prop.tag, str):
+            continue  # comments and processing instructions
+        name = prop.get("name") or ""
+        if name.startswith(TERM_PROPERTY_PREFIX):
+            values[name[len(TERM_PROPERTY_PREFIX):]] = "".join(prop.itertext())
+    return values
+
+
+def _term_warnings(terms: TermAudit) -> List[str]:
+    """Human-readable warnings for inconsistent and missing term values."""
+    warnings = [
+        f"Term {key!r} has inconsistent values in the document: "
+        + ", ".join(repr(value) for value in values)
+        for key, values in terms.mismatched.items()
+    ]
+    warnings.extend(
+        f"Term {key!r} was generated but none of its content controls remain in the document"
+        for key in terms.missing
+    )
+    return warnings
+
+
+def audit_to_dict(result: DocumentAudit, terms: Optional[TermAudit] = None) -> Dict[str, Any]:
+    """Serialize an audit report; documents without terms keep the previous schema.
+
+    Args:
+        result: Structural audit from inspect_document.
+        terms: Term results from inspect_terms, if any.
+
+    Returns:
+        The audit fields, plus `terms` only when term results exist.
+    """
+    data = asdict(result)
+    if terms is not None:
+        data["terms"] = asdict(terms)
+    return data
 
 
 def inspect_document_issues(doc: DocxDocument) -> List[str]:
@@ -212,17 +367,19 @@ def audit_file(path: str) -> DocumentAudit:
 
 
 def main() -> None:
-    """Print a JSON audit result and return nonzero on structural errors."""
+    """Print a JSON audit result and return nonzero on structural errors only."""
     parser = argparse.ArgumentParser(description="Inspect generated Word document structure")
     parser.add_argument("input_file")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     try:
-        result = audit_file(args.input_file)
+        document = Document(args.input_file)
+        result = inspect_document(document)
+        terms = inspect_terms(document)
     except Exception as exc:
         logger.error("Cannot inspect DOCX: %s", exc)
         raise SystemExit(1) from exc
-    logger.info(json.dumps(asdict(result), ensure_ascii=False, indent=2))
+    logger.info(json.dumps(audit_to_dict(result, terms), ensure_ascii=False, indent=2))
     raise SystemExit(1 if result.issues else 0)
 
 
