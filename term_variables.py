@@ -10,11 +10,17 @@ Word content controls and snapshotted in custom document properties so
 Changelog (term variables):
     - NEW: `validate_terms` schema for the `terms:` frontmatter mapping.
     - NEW: `TermResolver` reference diagnostics and private-use token helpers.
+    - NEW: Render-scoped term-run collector and plain-text content controls.
 """
 
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import replace
-from typing import Any, Callable, Dict, List, Mapping, Optional, Pattern, Set, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Pattern, Set, Tuple
+
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 
 from document_model import TextRun
 
@@ -227,3 +233,128 @@ def restore_terms(
 def _token_pattern(tokens: TokenMap) -> Pattern[str]:
     """Match any token of one field, capturing it for `re.split`."""
     return re.compile("(" + "|".join(re.escape(token) for token in tokens) + ")")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONTENT CONTROLS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TermRunCollector:
+    """Value runs rendered in one request, tagged only after run post-processing.
+
+    Renderer post-processing (negative colours, risk colours, base-case bold,
+    native footnotes) reads `Paragraph.runs`, which does not see runs inside a
+    content control, so runs are registered while rendering and wrapped last.
+    """
+
+    def __init__(self) -> None:
+        """Start with no registered runs."""
+        self._runs: Dict[Any, Tuple[str, str]] = {}
+
+    def register(self, run: Any, key: str, value: str) -> None:
+        """Remember a rendered `w:r` element and the term value it shows."""
+        self._runs[run] = (key, value)
+
+    def get(self, run: Any) -> Optional[Tuple[str, str]]:
+        """Return the key and value registered for a `w:r` element, if any."""
+        return self._runs.get(run)
+
+    def __len__(self) -> int:
+        """Number of registered runs."""
+        return len(self._runs)
+
+
+_TERM_RUNS: ContextVar[Optional[TermRunCollector]] = ContextVar("term_runs", default=None)
+# Children of a rendered value run that a plain-text content control may hold.
+_CONTROL_RUN_CHILDREN = frozenset(qn(tag) for tag in ("w:rPr", "w:t", "w:tab", "w:br", "w:cr"))
+
+
+@contextmanager
+def collect_term_runs(enabled: bool) -> Iterator[Optional[TermRunCollector]]:
+    """Collect value runs for one render; nothing is collected when tags are off.
+
+    Args:
+        enabled: Resolved `term_tags` option of the render.
+
+    Yields:
+        The render's collector, or None when values stay plain text.
+    """
+    collector = TermRunCollector() if enabled else None
+    token = _TERM_RUNS.set(collector)
+    try:
+        yield collector
+    finally:
+        _TERM_RUNS.reset(token)
+
+
+def register_term_run(run: Any, key: str, value: str) -> None:
+    """Register a rendered value run; a no-op outside a tagging render.
+
+    Args:
+        run: The `w:r` element that shows the value.
+        key: Term key.
+        value: Rendered value text.
+    """
+    collector = _TERM_RUNS.get()
+    if collector is not None:
+        collector.register(run, key, value)
+
+
+def wrap_term_controls(document: Any, collector: TermRunCollector) -> Dict[str, str]:
+    """Wrap registered runs still in the body in unlocked plain-text content controls.
+
+    Each control holds one run, in `w:sdtPr` order alias, tag, id and text, with
+    no lock or data binding, so Word edits it like ordinary text.
+
+    Args:
+        document: The rendered python-docx document.
+        collector: Runs registered while rendering this document.
+
+    Returns:
+        Tagged key -> value in key order, for the generation snapshot.
+    """
+    if not len(collector):
+        return {}
+    root = document.element
+    used_ids = {
+        int(value) for value in root.xpath("//@w:id | //w:sdtPr/w:id/@w:val")
+        if value.lstrip("-").isdigit()
+    }
+    control_id = 0
+    tagged: Dict[str, str] = {}
+    # Materialize first: wrapping moves runs later in document order.
+    for run in list(root.body.iter(qn("w:r"))):
+        entry = collector.get(run)
+        if entry is None:
+            continue
+        parent = run.getparent()
+        if parent is None or parent.tag != qn("w:p"):
+            continue
+        if any(child.tag not in _CONTROL_RUN_CHILDREN for child in run):
+            continue  # e.g. converted into a native footnote reference
+        control_id += 1
+        while control_id in used_ids:
+            control_id += 1
+        key, value = entry
+        control = _plain_text_control(key, control_id)
+        run.addprevious(control)
+        control[-1].append(run)
+        tagged.setdefault(key, value)
+    return dict(sorted(tagged.items()))
+
+
+def _plain_text_control(key: str, control_id: int) -> Any:
+    """Build an empty run-level `w:sdt` tagged for one term key."""
+    control = OxmlElement("w:sdt")
+    properties = OxmlElement("w:sdtPr")
+    for tag, value in (
+        ("w:alias", key), ("w:tag", TERM_TAG_PREFIX + key), ("w:id", str(control_id)),
+    ):
+        element = OxmlElement(tag)
+        element.set(qn("w:val"), value)
+        properties.append(element)
+    properties.append(OxmlElement("w:text"))
+    control.append(properties)
+    control.append(OxmlElement("w:sdtContent"))
+    return control
