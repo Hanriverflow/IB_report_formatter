@@ -210,12 +210,28 @@ def test_band_tables_become_headings_and_other_tables_stay() -> None:
         "<table>\n<caption>지급 조건 요약</caption>\n<tr><th>조건</th></tr>\n</table>\n",
         "<table><tr><td>별첨</td><!-- 메모 --></tr></table>\n",
         "<table><tr><td>&lt;br&gt;</td><td>*강조 아님*</td></tr></table>\n",
+        "<table><tr><td>DSCR < 1.2 and LTV > 60%</td></tr></table>\n",
+        "<table><tr><td>A^12^</td></tr></table>\n",
+        "| USD $100 | USD $200 |\n|---|---|\n",  # joined cells would open inline LaTeX
     ],
 )
-def test_html_one_row_tables_that_a_heading_would_change_stay_tables(source: str) -> None:
+def test_one_row_tables_that_a_heading_would_change_stay_tables(source: str) -> None:
     cleaned, report = clean_converted_term_sheet(FRONT + source)
     assert cleaned == FRONT + "\n" + source
     assert not any("band table" in line for line in report.lines())
+
+
+def test_html_band_text_keeps_inline_runs_together() -> None:
+    cleaned, _ = clean_converted_term_sheet(FRONT + "<table><tr><td>별첨 1<span>0</span></td><td><p>상환</p></td></tr></table>\n")
+    assert cleaned == FRONT + "\n## 별첨 10 | 상환\n"
+
+
+def test_a_quote_right_after_a_title_line_stays_a_quote() -> None:
+    cleaned, report = clean_converted_term_sheet("**초안**\n> Strictly Confidential\n- 목록 항목\n\n## 1. 조건\n")
+    front, body = _split(cleaned)
+    assert front == {"profile": "term-sheet", "title": "초안"}
+    assert body == "> Strictly Confidential\n- 목록 항목\n\n## 1. 조건\n"
+    assert "lines 2-3: kept a list or quote block before the first chapter" in report.lines()
 
 
 def test_list_and_quote_blocks_in_the_cover_stay() -> None:

@@ -60,13 +60,16 @@ _ORDERED_ITEM_RE = re.compile(r"^ {0,3}\d{1,9}[.)](?:\s|$)")
 _TABLE_OPEN_RE = re.compile(r"<table\b", re.IGNORECASE)
 # Comments first, then whole tags (quoted attribute values may hold `>` or `</table>`).
 _HTML_TOKEN_RE = re.compile(r"<!--.*?-->|<(/?)([A-Za-z][\w:-]*)(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", re.DOTALL)
-_MARKUP_CHAR_RE = re.compile(r"[<>*_`\[\]\\|$~]|&[#\w]+;")
+# Characters the inline parser may read as syntax (emphasis, LaTeX, super/subscript, code,
+# links, escapes, HTML); a band heading holding any of them could change meaning.
+_INLINE_SYNTAX_RE = re.compile(r"[<>*_`\[\]\\|$~^]|&[#\w]+;")
 _BLOCK_KEY_RE = re.compile(r"^[^\s{\[#][^:]*:(?:\s|$)")  # `key:` at column 0 (block-style YAML)
 _HTML_ROW_RE = re.compile(r"<tr\b", re.IGNORECASE)
 _HTML_CELL_RE = re.compile(
     r"<t([dh])\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>(.*?)</t\1\s*>", re.IGNORECASE | re.DOTALL
 )
-_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_HTML_TAG_RE = re.compile(r"<!--.*?-->|</?[A-Za-z][^>]*>", re.DOTALL)  # `a < b` is text
+_HTML_SPACING_TAG_RE = re.compile(r"<br\s*/?>|</?(?:p|div|li|tr|td|th)\b[^>]*>", re.IGNORECASE)
 
 _CONFIDENTIAL_MAX_CHARS = 40
 _DISCLAIMER_MIN_CHARS = 80
@@ -334,7 +337,15 @@ def _split_blocks(lines: List[str]) -> Tuple[List[_Block], List[str]]:
             kind = "pipe"
         else:
             if not _ATX_RE.match(line):  # a heading is a block of its own
-                while end < len(lines) and lines[end].strip() and not _starts_block(lines, end):
+                # A quote or bullet line starts its own (container) block, which
+                # keeps following quote/bullet lines and lazy continuations.
+                in_container = bool(_CONTAINER_RE.match(line))
+                while (
+                    end < len(lines)
+                    and lines[end].strip()
+                    and not _starts_block(lines, end)
+                    and (in_container or not _CONTAINER_RE.match(lines[end]))
+                ):
                     end += 1
             kind = "text"
         blocks.append(_Block(kind, index, lines[index:end], gap))
@@ -417,17 +428,19 @@ def _convert_band_tables(blocks: List[_Block], offset: int, report: ConvertedCle
         if not texts:
             report.add(first, "kept a one-row table without text", last)
             continue
-        if block.kind == "html" and any(_MARKUP_CHAR_RE.search(text) for text in texts):
-            # Decoded HTML text would be read as Markdown or HTML in a heading.
-            report.add(first, "kept a one-row HTML table: its text has Markdown or HTML characters", last)
-            continue
         heading = "## " + " | ".join(texts)
+        if _INLINE_SYNTAX_RE.search(heading[3:].replace(" | ", " ")):
+            # Joined cells (or decoded HTML) could open emphasis, LaTeX or markup in a heading.
+            report.add(first, "kept a one-row table: its text has Markdown or HTML characters", last)
+            continue
         block.kind, block.lines, block.removed = "text", [heading], [False]
         report.add(first, f"band table -> {_quote(heading)}", last)
 
 
 def _html_text(fragment: str) -> str:
-    return " ".join(html.unescape(_HTML_TAG_RE.sub(" ", fragment)).split())
+    """Visible text: inline tags vanish (`1<span>00</span>` is `100`), block tags and breaks separate words."""
+    spaced = _HTML_SPACING_TAG_RE.sub(" ", fragment)
+    return " ".join(html.unescape(_HTML_TAG_RE.sub("", spaced)).split())
 
 
 def _html_band_cells(source: str) -> Optional[List[str]]:
