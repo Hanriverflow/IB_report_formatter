@@ -13,6 +13,9 @@ Changelog (house style):
     - NEW: `style:` house/frontmatter options (cover page, logo, boxed disclaimer,
       header/footer rules, label colour, page number format, dark header,
       open-sided tables); the defaults keep the standard layout.
+    - FIXED: a null style value is a setting error instead of a later render
+      failure; `page_number` rejects every line break, carriage returns and
+      Unicode line separators included; `label_color: ""` keeps the default grey.
 
 Changelog (A2 rendering):
     - Schema-ordered single cell fills shared with generic merged-table emission.
@@ -114,6 +117,8 @@ class ConfirmationText:
 class TermSheetStyle:
     """House layout choices (`style:`); the defaults are the profile's standard layout.
 
+    An omitted key keeps its default; `validate_style` rejects null values.
+
     Attributes:
         cover: `inline` opens the first page with the title block; `page` gives
             the title block, logo and disclaimer a cover page of their own.
@@ -165,7 +170,8 @@ def validate_style(value: Any, base_dir: Optional[Path] = None) -> Dict[str, Any
         The supplied settings, with `logo` made absolute when possible.
 
     Raises:
-        ValueError: A key is unknown or a value is malformed.
+        ValueError: A key is unknown, a value is null (omit the key for the
+            default) or a value is malformed.
     """
     if not isinstance(value, dict):
         raise ValueError("style must be a mapping")
@@ -174,6 +180,10 @@ def validate_style(value: Any, base_dir: Optional[Path] = None) -> Dict[str, Any
     if unknown:
         raise ValueError("Unknown style settings: " + ", ".join(sorted(map(str, unknown))))
     settings = dict(value)
+    # A YAML null is not the default: it would reach the renderer as None.
+    nulls = sorted(key for key, item in settings.items() if item is None)
+    if nulls:
+        raise ValueError(", ".join(f"style.{key}" for key in nulls) + " must not be null; omit it for the default")
     for key, choices in _STYLE_CHOICES.items():
         if key in settings and settings[key] not in choices:
             raise ValueError(f"style.{key} must be one of: " + ", ".join(choices))
@@ -184,21 +194,22 @@ def validate_style(value: Any, base_dir: Optional[Path] = None) -> Dict[str, Any
     if width is not None and (isinstance(width, bool) or not isinstance(width, (int, float)) or not 5 <= width <= 150):
         raise ValueError("style.logo_width_mm must be a number from 5 to 150")
     color = settings.get("label_color")
-    if color is not None and (not isinstance(color, str) or not _HEX_COLOR_RE.fullmatch(color)):
-        raise ValueError("style.label_color must be #RRGGBB")
+    if color is not None and (not isinstance(color, str) or (color and not _HEX_COLOR_RE.fullmatch(color))):
+        raise ValueError("style.label_color must be #RRGGBB, or empty for the default grey")
     page = settings.get("page_number")
     if page is not None and (
         not isinstance(page, str)
         or "{page}" not in page
         or re.sub(r"\{page\}|\{pages\}", "", page).count("{")
-        or "\n" in page
+        or page.splitlines() != [page]  # any line break, including \r and Unicode separators
     ):
         raise ValueError("style.page_number must be one line with {page} and optional {pages}")
     logo = settings.get("logo")
     if logo is not None:
-        if not isinstance(logo, str) or not logo.strip():
-            raise ValueError("style.logo must be an image path or a data: URI")
-        if not logo.lower().startswith("data:") and base_dir is not None and not Path(logo).is_absolute():
+        # "" is an explicit "no logo", so frontmatter can remove a house logo.
+        if not isinstance(logo, str) or (logo and not logo.strip()):
+            raise ValueError("style.logo must be an image path, a data: URI, or empty for no logo")
+        if logo and not logo.lower().startswith("data:") and base_dir is not None and not Path(logo).is_absolute():
             settings["logo"] = str((base_dir / logo).resolve())
     return settings
 

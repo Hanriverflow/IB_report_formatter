@@ -123,19 +123,19 @@ tables:
 ```yaml
 style:
   cover: page            # inline(기본) | page: 제목·로고·고지문을 별도 표지 쪽에 배치
-  logo: assets/logo.png  # 이미지 경로(house 파일 기준, frontmatter면 Markdown 기준) 또는 data: URI
+  logo: assets/logo.png  # 이미지 경로(house 파일 기준, frontmatter면 Markdown 기준) 또는 data: URI, ""이면 house 로고 제거
   logo_width_mm: 40
   disclaimer: box        # rules(기본) | box
   header_rule: true      # 머리글 아래 강조선
   footer_rule: true      # 바닥글 위 강조선
-  label_color: "#C00000" # 대외비 표시 색
+  label_color: "#C00000" # 대외비 표시 색, ""이면 기본 회색
   page_number: "- {page} -"   # 기본 "{page} / {pages}"
   page_number_align: center  # right(기본) | center
   table_header: dark     # light(기본) | dark: 강조색 바탕에 흰 글씨
   table_sides: open      # closed(기본) | open: 표 바깥 좌우 세로선 생략
 ```
 
-로고를 불러오지 못하면 렌더 진단으로 기록하며 strict에서 거부합니다. 실제 기관 로고는 실제 house 파일처럼 저장소 밖에 보관하십시오.
+기본값을 쓰려면 항목을 생략합니다. null 값은 설정 오류로 거부합니다. 로고를 불러오지 못하면 렌더 진단으로 기록하며 strict에서 거부합니다. 실제 기관 로고는 실제 house 파일처럼 저장소 밖에 보관하십시오.
 
 실제 딜 문서와 실제 기관 house 파일은 **저장소 밖**에 보관하십시오. Frontmatter의 `house` 상대 경로는 원본 Markdown 폴더 기준입니다. `--house /absolute/path/to/house.yaml`로 파일을 재지정할 수 있으며 CLI의 상대 경로는 실행 폴더 기준입니다. 원본 경로가 없는 문자열·스트림 입력은 절대 house 경로가 필요합니다. 저장소에 포함된 house는 새로 작성한 가상 문구입니다.
 

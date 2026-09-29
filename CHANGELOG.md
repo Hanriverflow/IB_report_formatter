@@ -6,6 +6,8 @@ All notable changes to this project are documented in this file.
 
 ### Term-sheet house style (found on a second real term sheet)
 - House (and frontmatter) `style` options: a cover page (`cover: page`) with an optional logo (path or `data:` URI), a boxed disclaimer, header and footer accent rules, the confidentiality label colour, the footer page format (`- {page} -`) and position, a dark table header and open-sided tables. Frontmatter settings override the house file key by key; the defaults keep the standard layout unchanged.
+- A null `style` value is a setting error (omit the key for the default), so it no longer passes validation and then stops the footer or drops the logo. `page_number` rejects every line break, including carriage returns. `label_color: ""` keeps the default grey, and frontmatter `logo: ""` removes a house logo.
+- A landscape table that directly follows a lone page break (cover page, TOC) drops that page break, because its section break already starts a new page. Word 16 rendered the same pages before and after; the redundant break could show as a blank page in other viewers. A paragraph with several page breaks is kept.
 
 ### Numeric checks (found on a second real term sheet)
 - `checks:` declares relations between term values (`all_in = issue_rate + credit_fee + running_cost`, `facility = amount * 1.05`). Values are read as displayed: Korean money units, `%`/`%p`, bp, `개월`/`년` and plain numbers. The default tolerance is half of the left value's display step, and failures are warnings that strict mode rejects.

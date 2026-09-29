@@ -2,6 +2,10 @@
 IB Renderer Module for Word Report Generation
 Handles styling and rendering of document elements in IB Bank style.
 
+Changelog (house style fixes):
+    - A landscape table right after a bare page break (cover, TOC) turns the
+      page once: the section break replaces the page break.
+
 Changelog (memo rendering):
     - Render inline code runs in the code font; keep them out of number formatting.
     - General (non-IB) profiles print Korean next to Latin text and digits tight.
@@ -1723,17 +1727,41 @@ class TableRenderer:
         self._end_landscape(previous_geometry)
 
     def _begin_landscape(self, table: Table) -> Optional[Tuple[Any, int, int]]:
-        """Open a landscape section for a landscape table; return the prior geometry."""
+        """Open a landscape section for a landscape table; return the prior geometry.
+
+        The new section already starts on a new page, so a lone page break
+        right before it (a cover's or TOC's) is redundant and is dropped. Word
+        ignores such a break, but other viewers may show it as a blank page.
+        """
         if not table.landscape:
             return None
         section = self.doc.sections[-1]
         assert section.page_width is not None and section.page_height is not None
         previous_geometry = (section.orientation, section.page_width, section.page_height)
+        self._drop_trailing_page_break()
         section = self.doc.add_section(WD_SECTION_START.NEW_PAGE)
         section.orientation = WD_ORIENT.LANDSCAPE
         section.page_width = Emu(max(previous_geometry[1:]))
         section.page_height = Emu(min(previous_geometry[1:]))
         return previous_geometry
+
+    def _drop_trailing_page_break(self) -> None:
+        """Remove the last body paragraph when it holds nothing but one page break.
+
+        Several breaks in one paragraph ask for blank pages and are kept.
+        """
+        body = self.doc.element.body
+        last = body[-1] if len(body) else None
+        if last is not None and last.tag == qn("w:sectPr"):
+            last = last.getprevious()
+        if (
+            last is not None
+            and last.tag == qn("w:p")
+            and len(last.xpath('./w:r/w:br[@w:type="page"]')) == 1
+            and not last.xpath("./*[not(self::w:pPr or self::w:r)] | ./w:pPr/w:sectPr")
+            and not last.xpath('./w:r/*[not(self::w:rPr or self::w:br[@w:type="page"])]')
+        ):
+            body.remove(last)
 
     def _end_landscape(self, previous_geometry: Optional[Tuple[Any, int, int]]) -> None:
         """Restore the page geometry that preceded a landscape table."""

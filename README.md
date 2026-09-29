@@ -148,19 +148,19 @@ tables:
 ```yaml
 style:
   cover: page            # inline (default) | page: title block, logo and disclaimer on a cover page
-  logo: assets/logo.png  # image path (relative to the house file, or to the Markdown in frontmatter) or data: URI
+  logo: assets/logo.png  # image path (relative to the house file, or to the Markdown in frontmatter) or data: URI; "" removes a house logo
   logo_width_mm: 40
   disclaimer: box        # rules (default) | box
   header_rule: true      # accent rule under the header
   footer_rule: true      # accent rule over the footer
-  label_color: "#C00000" # confidentiality label colour
+  label_color: "#C00000" # confidentiality label colour; "" keeps the default grey
   page_number: "- {page} -"   # default "{page} / {pages}"
   page_number_align: center  # right (default) | center
   table_header: dark     # light (default) | dark: accent fill, white text
   table_sides: open      # closed (default) | open: no outer left/right borders
 ```
 
-A logo that cannot be loaded is a render diagnostic that strict mode rejects. Keep real institution logos outside the repository, like real house files.
+Omit a key to keep its default; a null value is rejected. A logo that cannot be loaded is a render diagnostic that strict mode rejects. Keep real institution logos outside the repository, like real house files.
 
 Keep real deal documents and real institution house files **outside the repository**. Frontmatter `house` paths resolve relative to the source Markdown; `--house /absolute/path/to/house.yaml` overrides that file, with relative CLI paths resolved from the working directory. String/stream input without a source path needs an absolute house path. The checked-in house file contains fictional wording only.
 
