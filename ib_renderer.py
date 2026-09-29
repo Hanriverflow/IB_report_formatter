@@ -1831,7 +1831,7 @@ class TableRenderer:
         impose no minimum (see `_required_minimums` for the graceful fallback).
         """
         natural = self._term_sheet_natural_widths(table, column_kinds)
-        if sum(natural) <= available:
+        if natural is not None and sum(natural) <= available:
             spare = (available - sum(natural)) // table.col_count
             fitted = [width + spare for width in natural]
             fitted[-1] += available - sum(fitted)
@@ -1850,12 +1850,13 @@ class TableRenderer:
         )
         return [int(Inches(width)) for width in widths]
 
-    def _term_sheet_natural_widths(self, table: Table, column_kinds: List[str]) -> List[int]:
+    def _term_sheet_natural_widths(self, table: Table, column_kinds: List[str]) -> Optional[List[int]]:
         """Per-column widths (EMU) that keep every cell line on one line.
 
         Header lines are measured bold in the header size and body lines as
         displayed (formatted amounts, marker indents). A cell merged across
-        columns spreads any extra width it needs evenly over them.
+        columns spreads any extra width it needs evenly over them, and every
+        column keeps at least the estimator's numeric minimum.
 
         Args:
             table: Term-sheet grid table.
@@ -1863,7 +1864,8 @@ class TableRenderer:
                 kept for symmetry with the content estimate).
 
         Returns:
-            One width per column.
+            One width per column, or None when a cell holds an image, whose
+            width text measurement cannot know.
         """
         natural = [0] * table.col_count
         spanning: List[Tuple[int, int, int]] = []
@@ -1884,6 +1886,8 @@ class TableRenderer:
                     content, runs = self._display_content(cell, role, table.table_type)
                     runs = runs or TextParser.parse_runs_plain(content)
                     size, bold, markers = STYLE.TABLE_BODY_SIZE, False, True
+                if any(run.image is not None for run in runs):
+                    return None
                 width = natural_cell_width(
                     [line_text(line) for line in split_run_lines(runs)], size, bold=bold, markers=markers,
                 )
@@ -1891,6 +1895,8 @@ class TableRenderer:
                     natural[index] = max(natural[index], width)
                 else:
                     spanning.append((index, right, width))
+        floor = int(Inches(self._MIN_COLUMN_WIDTH_INCHES))
+        natural = [max(width, floor) for width in natural]
         for left, right, width in spanning:
             missing = width - sum(natural[left:right + 1])
             if missing > 0:

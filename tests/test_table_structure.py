@@ -177,7 +177,8 @@ def test_term_sheet_grid_columns_fit_their_content_and_share_the_rest() -> None:
     # Short columns share the spare width: none is starved, none balloons, and
     # the column with the longest content (일 자) stays the widest.
     assert max(widths) / min(widths) < 2.2
-    assert widths[1] == max(widths)
+    # Content decides the order: the date column is strictly the widest.
+    assert all(widths[1] > width + 2 for index, width in enumerate(widths) if index != 1)
 
 
 def test_text_heavy_grid_tables_keep_the_content_estimate() -> None:
@@ -187,6 +188,51 @@ def test_text_heavy_grid_tables_keep_the_content_estimate() -> None:
     )
     widths = grid_mm(body_table(render(markdown(body)), "신용공여"))
     assert widths[1] > widths[0] * 2  # the long text column still takes the room
+
+
+def test_grid_columns_with_images_keep_a_usable_width() -> None:
+    import base64
+    from io import BytesIO as Buffer
+
+    from PIL import Image as PILImage
+
+    buffer = Buffer()
+    PILImage.new("RGB", (100, 100), "navy").save(buffer, format="PNG")
+    uri = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+    body = f"| A | | C |\n|---|---|---|\n| {'X' * 97} | ![]({uri}) | Y |\n"
+    table = body_table(render(markdown(body)), "XXXX")
+    widths = grid_mm(table)
+    assert min(widths) >= 16  # the estimator's numeric minimum (0.65 in)
+    extent = int(table.xpath(".//wp:extent/@cx")[0]) / 36000
+    assert extent <= widths[1]
+
+
+def test_zebra_shading_starts_on_the_first_body_row_after_header_rows() -> None:
+    from document_profiles import get_profile, load_style
+
+    style = load_style(get_profile("ib-report"), None)
+    assert style.TABLE_ZEBRA
+    body = "| 구분 | 금액 | << |\n|---|---|---|\n| ^^ | 1차 | 2차 |\n| 가 | 10 | 11 |\n| 나 | 12 | 13 |\n"
+    table = body_table(render(markdown(body, "ib-report", tables=[{"header_rows": 2, "spans": True}]), strict=False), "1차")
+    first, second = table.xpath("./w:tr")[2:4]
+    assert attr(cells(first)[2], "./w:tcPr/w:shd", "w:fill") == [style.LIGHT_GRAY_HEX]
+    assert attr(cells(second)[2], "./w:tcPr/w:shd", "w:fill") != [style.LIGHT_GRAY_HEX]
+
+
+def test_type_detection_reads_every_header_row_and_merged_labels() -> None:
+    from document_model import TableType
+
+    html = (
+        "<table><tr><th rowspan=\"2\">Risk</th><th>Assessment</th></tr><tr><th>Probability</th></tr>"
+        "<tr><td>Delay</td><td>High</td></tr></table>\n"
+    )
+    table = MarkdownParser(profile="ib-report").parse(html).elements[-1].content
+    assert table.table_type == TableType.RISK_MATRIX and table.rows[2].cells[1].risk_level == "high"
+    body = "| Risk | Impact | << |\n|---|---|---|\n| ^^ | A | B |\n| X | High | Low |\n"
+    spec = [{"type": "risk", "header_rows": 2, "spans": True}]
+    model = MarkdownParser().parse(markdown(body, "business-report", tables=spec))
+    risk_row = model.elements[-1].content.rows[2]
+    assert [cell.risk_level for cell in risk_row.cells] == [None, "high", "low"]
 
 
 def test_dash_placeholders_do_not_make_an_amount_column_text() -> None:

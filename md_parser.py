@@ -163,6 +163,7 @@ from document_profiles import (
     apply_table_specs,
     default_metadata,
     get_profile,
+    header_labels,
     validate_term_sheet_metadata,
 )
 from term_variables import (
@@ -1409,12 +1410,16 @@ class TableParser:
             alignments if len(alignments) == table.col_count else ["left"] * table.col_count
         )
 
-        # Header semantics follow the values the reader sees; cells keep raw content.
-        header_cells = [
-            "".join(run.text for run in source.runs) if isinstance(source, TableCell)
-            else source if terms is None else _substitute_text(source, terms)
-            for source in first_row_cells
-        ]
+        # Header semantics follow the values the reader sees across every header
+        # row, merged labels included; cells keep raw content.
+        header_cells = header_labels([
+            [
+                "".join(run.text for run in source.runs) if isinstance(source, TableCell)
+                else source if terms is None else _substitute_text(source, terms)
+                for source in header_row
+            ]
+            for header_row in rows[:table.header_rows]
+        ])
 
         # Detect table type
         header_text = " ".join(header_cells).lower()

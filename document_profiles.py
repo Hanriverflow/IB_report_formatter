@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass, fields, replace
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import yaml
 from docx.shared import Inches, Pt, RGBColor
@@ -447,6 +447,40 @@ def validate_office_metadata(metadata: DocumentMetadata) -> None:
             raise ValueError("letter.appendix_label requires appendix_heading")
 
 
+def header_labels(rows: Sequence[Sequence[str]]) -> List[str]:
+    """Each column's header text across all header rows, following span markers.
+
+    A `<<` cell takes the label of its owner to the left and a `^^` cell the one
+    above, so every column under a merged header shares its label; distinct
+    labels of one column are joined top to bottom with a space.
+
+    Args:
+        rows: Header rows as cell texts (span markers not yet resolved).
+
+    Returns:
+        One label per column of the widest row.
+    """
+    width = max((len(row) for row in rows), default=0)
+    labels: List[str] = []
+    for column in range(width):
+        parts: List[str] = []
+        for row_index in range(len(rows)):
+            row, position = row_index, column
+            text = ""
+            while position < len(rows[row]):
+                text = rows[row][position].strip()
+                if text == "<<" and position > 0:
+                    position -= 1
+                elif text == "^^" and row > 0:
+                    row -= 1
+                else:
+                    break
+            if text and text not in ("<<", "^^") and text not in parts:
+                parts.append(text)
+        labels.append(" ".join(parts))
+    return labels
+
+
 def apply_table_specs(model: DocumentModel) -> None:
     """Apply explicit table semantics in document order, never infer a base case."""
     tables = [
@@ -530,15 +564,18 @@ def apply_table_specs(model: DocumentModel) -> None:
                 cell.is_base_case = False
                 cell.risk_level = None
         if table.table_type == TableType.RISK_MATRIX:
+            column_labels = header_labels([
+                [
+                    cell.content if (shown := term_cell_text(cell)) is None else shown
+                    for cell in header_row.cells
+                ]
+                for header_row in table.rows[:table.header_rows]
+            ])
             for body_row in table.rows[table.header_rows:]:
                 for column_index, cell in enumerate(body_row.cells):
-                    header_labels = []
-                    for header_row in table.rows[:table.header_rows]:
-                        if column_index < len(header_row.cells):
-                            header_cell = header_row.cells[column_index]
-                            shown = term_cell_text(header_cell)
-                            header_labels.append(header_cell.content if shown is None else shown)
-                    header = " ".join(header_labels).lower()
+                    header = (
+                        column_labels[column_index].lower() if column_index < len(column_labels) else ""
+                    )
                     if any(
                         key in header
                         for key in ("impact", "probability", "영향", "확률", "등급", "level")
