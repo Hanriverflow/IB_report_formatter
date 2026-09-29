@@ -12,6 +12,7 @@ Production-quality follow-up: `docs/improvement-plan-20260915.md` and `docs/veri
 
 Next-step research roadmap (owner decisions D1–D5 and candidate work E1–E17; not active requirements until approved): `docs/improvement-roadmap-20260929.md`.
 Input-loss, save-safety and performance hardening: `docs/verification-20260929.md`.
+Term-sheet profile and term variables: design `docs/term-sheet-design-20260929.md`, plan `docs/term-sheet-plan-20260929.md` (§2 decisions override the design), verification `docs/verification-term-sheet-20260929.md`.
 
 ## Quick reference
 
