@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased] - 2026-09-29
 
+### Term-sheet profile, explicit cell spans and house boilerplate
+- Add the seventh profile, `term-sheet`, with validated house/frontmatter text, source-relative house paths and a `--house` override. Real deal documents and institution wording stay outside the repository.
+- Resolve explicit `^^`/`<<` cell spans and label columns; support escaped literal markers, rectangular merge validation and per-table opt-in for other profiles.
+- Add a fictional Korean ABCP sample, repayment schedule and freshly written house boilerplate, plus bilingual authoring documentation. Term-table formatting, the opening/header/footer, the confirmation box and table `note` output require the parallel A2 renderer integration; this documentation entry is not a visual-validation result.
+
 ### Title block without a cover (owner decision, 2026-09-29)
 - When the cover is not rendered (`--no-cover`, `termsheet`/`legal-memo` presets), `ib-report` now starts with a title block (title, subtitle, date/author) before the TOC instead of omitting the title. The block is not a TOC entry; a matching H1 or inferred subtitle appears once. Cover-on output is unchanged.
 

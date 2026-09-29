@@ -2,7 +2,7 @@
 
 IB 보고서와 회사 업무문서를 위한 **Markdown → 편집 가능한 Word 전용 엔진**입니다.
 
-[구현계획](docs/implementation-plan-20260914.md) · [검증 결과](docs/verification-20260914.md) · [예제 6종](samples/profiles) · [English / API 상세](README.md)
+[구현계획](docs/implementation-plan-20260914.md) · [검증 결과](docs/verification-20260914.md) · [예제 7종](samples/profiles) · [English / API 상세](README.md)
 
 ## 제품 방향
 
@@ -32,6 +32,7 @@ uv run docx-audit 공문.docx
 | `office-letter` | 회사명·문서번호·수신·참조·제목·붙임·발신 | A4 |
 | `business-report` | 제목·작성일·부서·작성자·본문 | A4 |
 | `meeting-minutes` | 제목·일시·장소·참석자·작성자·본문 | A4 |
+| `term-sheet` | 거래 첫머리·기관 문구·병합 조건표·고객확인란 | A4 |
 
 일반 문서 4종에는 IB 브랜드·면책문구를 자동 삽입하지 않습니다. 짧은 번호 항목을 제목으로 오인하거나 숫자 코드를 금융 수치로 추정하지 않습니다. 목록은 Word에서 수정 가능한 다단계 번호 `1. → 가. → (1)`로 생성합니다. 하위 목록은 **4칸씩 들여쓰기**합니다. IB 프로파일의 기존 목록 방식은 유지됩니다.
 
@@ -98,6 +99,48 @@ CLI에서는 `--profile`, `--theme`, `--strict`, `--no-cover`, `--no-toc`, `--no
 
 테마는 `default`, `mono`, 또는 [회사 테마 YAML](samples/profiles/company-theme.yaml)을 지원합니다. 설정 항목은 본문·제목·한글 글꼴, 본문 크기, 주색, 여백입니다. YAML 안의 테마 경로는 입력 MD 폴더 기준, CLI 경로는 실행 폴더 기준입니다. 임의의 회사 DOCX 양식을 자동 해석하는 기능은 아닙니다.
 
+## 텀싯 (Term sheet)
+
+국내 구조화금융 조건서는 `profile: term-sheet`로 작성합니다. [가상 ABCP 예제](samples/profiles/term-sheet.md)와 [가상 기관 문구 파일](samples/profiles/term-sheet-house.yaml)을 참고하십시오. 아래 출력 서식은 A2 렌더러 통합 후 적용됩니다. 현재 기반·문서 브랜치에서는 `note`를 거부하고 고객확인 펜스를 진단 코드 패널로 출력하므로 전체 예제의 strict 생성은 아직 통과하지 못합니다.
+
+```yaml
+---
+profile: term-sheet
+title: "가나다머티리얼즈㈜ ABCP 300억원"
+date: "2026-10-16"
+version: v1
+house: term-sheet-house.yaml
+tables:
+  - {}
+  - {columns: [text, date, date, number, number, number], unit: 억원}
+---
+```
+
+`title`은 필수이며 `subtitle` 기본값은 `Term Sheet`입니다. 선택 항목인 `date`는 입력한 표기대로 표시하고 `version`은 바닥글에 씁니다. `prepared_by`와 `disclaimer`는 frontmatter나 house 중 한 곳에 공백이 아닌 문구로 있어야 합니다. House YAML은 `prepared_by`, `disclaimer`, `confidential_label`, `confirmation`(`intro`, `items` 목록, `signature`)만 받습니다. 같은 키를 frontmatter에 지정하면 빈 값도 house보다 우선합니다. 기관 문구에는 `( *주요내용* )` 같은 인라인 강조를 쓸 수 있습니다.
+
+실제 딜 문서와 실제 기관 house 파일은 **저장소 밖**에 보관하십시오. Frontmatter의 `house` 상대 경로는 원본 Markdown 폴더 기준입니다. `--house /absolute/path/to/house.yaml`로 파일을 재지정할 수 있으며 CLI의 상대 경로는 실행 폴더 기준입니다. 원본 경로가 없는 문자열·스트림 입력은 절대 house 경로가 필요합니다. 저장소에 포함된 house는 새로 작성한 가상 문구입니다.
+
+장 번호는 `## 1. 본건 개요`처럼 직접 쓰고 소제목은 `###`를 사용합니다. `tables`는 본문 표 순서에 맞추며 설정이 없는 표도 `{}`로 자리를 유지합니다. 위 코드는 표 두 개의 작성 예시이며, 전체 예제를 복사할 때는 예제 파일의 표 사양 순서를 사용하십시오.
+
+- 셀 내용 전체가 `^^`이면 위로, `<<`이면 왼쪽으로 병합합니다. 병합 영역은 직사각형이어야 하며 머리행과 본문 사이를 넘을 수 없습니다. 빈칸은 병합하지 않습니다. 기호를 그대로 쓰려면 `\^^`, `\<<`로 이스케이프합니다. 잘못된 병합 묶음은 원문과 경고를 남기며 strict에서 거부합니다.
+- 텀싯은 병합이 기본 활성화됩니다. `spans: false`로 끌 수 있고, 다른 프로파일은 `spans: true`로 명시해야 활성화됩니다.
+- `label_columns`는 선행 라벨 열 수를 재지정합니다(0 이상, 전체 열 수 미만의 정수). 생략하면 병합 후 첫 머리 셀의 폭을 사용하되 전체 열 수−1을 넘지 않습니다. `| 구 분 | << | 내 용 |`은 2개, `| 구 분 | 내 용 |`은 1개입니다.
+- 라벨 1~2개 뒤에 내용 열 하나가 오는 조건표는 첫 라벨 폭 33.5mm, 음영·굵은 글씨를 씁니다. 둘째 라벨은 30mm, 흰 바탕·보통 굵기·회색 글씨입니다. 그 밖의 격자 표는 내용에 따라 폭을 정하고 라벨에 음영과 보통 굵기를 적용합니다. `label_columns: 0`이면 라벨 음영이 없습니다.
+- `columns`로 날짜·코드·숫자 역할을 정하고 `unit`으로 표 위 단위를 표시합니다. 선택 문자열 `note`는 표 아래 오른쪽에 8pt 회색으로 표시하며 렌더러 통합 후 모든 프로파일에서 지원합니다. 금융 의미를 추론하거나 상환스케줄을 계산하지는 않습니다.
+
+셀 안 줄바꿈은 `<br>`를 사용합니다. 텀싯 본문 문단의 `<br>`도 줄마다 별도 Word 문단으로 만듭니다. 줄 앞 `•`, `-`, `·`는 각각 0/3/6mm에서 시작하고 3mm 내어쓰기, `①`–`⑳`는 0mm 시작·4.5mm 내어쓰기, `※`는 0mm 시작·4mm 내어쓰기와 8pt 글씨를 적용합니다. 이어지는 줄은 기호 뒤 본문에 맞춰 정렬됩니다. 본문의 Markdown `-` 목록은 기존 목록 처리를 유지합니다.
+
+고객확인란을 넣을 위치에 비어 있고 닫힌 펜스를 둡니다.
+
+````markdown
+```confirmation
+```
+````
+
+House/frontmatter 문구로 안내·체크 항목 행과 음영·가운데 정렬 서명 행을 만들고 한 페이지에 모읍니다. 문구 누락, 내용이 있는 펜스, 닫히지 않은 펜스는 원문을 진단 코드 패널로 보존하며 strict에서 거부합니다. 다른 프로파일에서는 일반 코드 블록입니다.
+
+모든 페이지 머리글에 `confidential_label`(기본 `Strictly Confidential`)을 표시합니다. 빈 라벨, `layout.confidential: false`, `--no-confidential`로 끌 수 있습니다. 바닥글 왼쪽은 `version`이 있을 때 `subtitle version`, 오른쪽은 `PAGE / NUMPAGES`입니다. 첫머리 면책은 `--no-disclaimer`와 무관하게 필수입니다. 기존 **`termsheet` 프리셋**은 표지·목차·끝 면책만 전환하며, 텀싯 프로파일 선택·기관 문구 로딩·조건표 서식은 적용하지 않습니다.
+
 ## 차트 사용 (기본 비활성)
 
 ```sh
@@ -106,7 +149,7 @@ md-to-word samples/qa/charts.md charts.docx --strict
 md-to-word report.md code-panels.docx --no-charts
 ```
 
-6개 프로파일 모두 기본값은 비활성입니다. `--charts`, `RenderOptions(charts=True)` 또는 최상위 frontmatter `charts: true`로 활성화합니다. 명시한 CLI/API 값이 YAML보다 우선하며 `--no-charts` / `charts=False`로 코드 패널 출력을 강제할 수 있습니다. 파서는 원문을 차트 모델 요소에 보존하므로 같은 모델에서도 출력 방식을 선택할 수 있습니다.
+7개 프로파일 모두 기본값은 비활성입니다. `--charts`, `RenderOptions(charts=True)` 또는 최상위 frontmatter `charts: true`로 활성화합니다. 명시한 CLI/API 값이 YAML보다 우선하며 `--no-charts` / `charts=False`로 코드 패널 출력을 강제할 수 있습니다. 파서는 원문을 차트 모델 요소에 보존하므로 같은 모델에서도 출력 방식을 선택할 수 있습니다.
 
 ````markdown
 ```chart
@@ -147,7 +190,7 @@ md-to-word notes.md notes.docx --profile plain --preset lecture-note --no-cover
 
 `RenderOptions(preset="termsheet")` 또는 최상위 frontmatter `preset: termsheet`로도 지정합니다. 항목별 우선순위는 **명시한 CLI/API 개별 값 > CLI/API 프리셋 값 > YAML `layout` 개별 값 > YAML 프리셋 값 > 프로파일 기본값**입니다. `ib-report` 프리셋은 값을 재정의하지 않습니다. 알 수 없는 이름은 저장 없이 오류로 종료합니다.
 
-모든 프리셋을 6개 프로파일과 조합할 수 있습니다. 표지·목차·면책만 바꾸므로 일반 프로파일의 중립 메타데이터, 네이티브 번호, 일반 표 의미는 유지합니다. `termsheet`는 `ib-report`/`ib-memo`, `legal-memo`는 `ib-memo`/`plain`, `lecture-note`는 `plain`/`business-report`와 조합하면 유용합니다. 공문이나 짧은 회의록에는 보통 표지·목차가 필요하지 않습니다. 프리셋이 법률 문구나 문서별 메타데이터를 생성하지는 않습니다.
+모든 프리셋을 7개 프로파일과 조합할 수 있습니다. 표지·목차·면책만 바꾸므로 일반 프로파일의 중립 메타데이터, 네이티브 번호, 일반 표 의미는 유지합니다. `termsheet`는 `ib-report`/`ib-memo`, `legal-memo`는 `ib-memo`/`plain`, `lecture-note`는 `plain`/`business-report`와 조합하면 유용합니다. 공문이나 짧은 회의록에는 보통 표지·목차가 필요하지 않습니다. 프리셋이 법률 문구나 문서별 메타데이터를 생성하지는 않습니다.
 
 표지를 끄면(`--no-cover`, API `include_cover=False`, YAML `layout.cover: false`, `termsheet`/`legal-memo`) `ib-report`는 문서 맨 앞에 테마를 반영한 제목·부제와 `ib-memo`와 같은 작성일·작성자 행을 표시하고, 목차가 있으면 같은 페이지에서 이어 표시한 뒤 기존 페이지 나누기로 본문을 시작합니다. 제목과 일치하는 본문 H1 및 추출된 부제는 이 블록에만 한 번 표시하고 목차에서는 제외하며, 표지를 켠 출력과 다른 프로파일의 제목 처리는 유지합니다.
 

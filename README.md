@@ -79,12 +79,13 @@ The existing `uv run md_to_word.py ...` and `uv run ib-report ...` commands stil
 | `office-letter` | Company, document number, recipients, title, attachments, sender | A4 |
 | `business-report` | Title, date, department, author, body | A4 |
 | `meeting-minutes` | Title, time, place, attendees, author, body | A4 |
+| `term-sheet` | Deal opening, house boilerplate, merged term tables, confirmation box | A4 |
 
 Profile defaults do not supply factual document content. The four general profiles do not infer financial tables or turn short numbered items into headings. They use neutral styling and editable Word multilevel numbering (decimal → Korean 가나다 → parenthesized decimal). Nest lists using four spaces per level. Legacy IB list behaviour is retained.
 
 ## Frontmatter
 
-Use [the six runnable examples](samples/profiles) as starting points:
+Use [the profile examples](samples/profiles) as starting points:
 
 ```yaml
 ---
@@ -123,6 +124,48 @@ Configuration precedence is **explicit CLI/API option > YAML > profile default**
 
 Themes: `default`, `mono`, or a small YAML file using `body_font`, `heading_font`, `korean_font`, `body_size`, `primary_color`, `margin_mm`. See [company-theme.yaml](samples/profiles/company-theme.yaml). YAML theme paths are relative to the input Markdown; CLI paths are relative to the working directory. This is not an arbitrary DOCX template importer.
 
+## Term sheet
+
+Use `profile: term-sheet` for Korean structured-finance terms. See the [fictional ABCP sample](samples/profiles/term-sheet.md) and [fictional house file](samples/profiles/term-sheet-house.yaml). The rendering behavior below requires the A2 renderer integration; this foundation/docs branch still rejects `note` and renders a confirmation fence as a diagnostic code panel, so the complete sample cannot yet pass strict rendering.
+
+```yaml
+---
+profile: term-sheet
+title: "가나다머티리얼즈㈜ ABCP 300억원"
+date: "2026-10-16"
+version: v1
+house: term-sheet-house.yaml
+tables:
+  - {}
+  - {columns: [text, date, date, number, number, number], unit: 억원}
+---
+```
+
+`title` is required; `subtitle` defaults to `Term Sheet`. Optional `date` is displayed as written and `version` labels the footer. `prepared_by` and `disclaimer` must be nonblank in frontmatter or the house file. House YAML accepts only `prepared_by`, `disclaimer`, `confidential_label`, and `confirmation` (`intro`, a list of `items`, `signature`). Frontmatter keys override house values, including an explicitly empty value. House prose supports inline emphasis such as `( *주요내용* )`.
+
+Keep real deal documents and real institution house files **outside the repository**. Frontmatter `house` paths resolve relative to the source Markdown; `--house /absolute/path/to/house.yaml` overrides that file, with relative CLI paths resolved from the working directory. String/stream input without a source path needs an absolute house path. The checked-in house file contains fictional wording only.
+
+Write numbered sections explicitly with `##` and subsections with `###`. Table specifications follow body-table order; retain `{}` for tables with no overrides. The snippet above illustrates a two-table document; use the complete sample's ordered specifications when copying its tables.
+
+- A cell containing only `^^` merges upward; `<<` merges left. Merges must form rectangles and cannot cross the header/body boundary. Empty cells stay empty. Use `\^^` and `\<<` for literal markers. Invalid groups retain their source markers with warnings; strict mode rejects them.
+- Spans default on for `term-sheet`; `spans: false` disables them. Other profiles enable them only with `spans: true`.
+- `label_columns` overrides the leading label count (integer from 0 to one less than the column count). Otherwise the first header cell's resolved span determines it, capped at column count minus one. Thus `| 구 분 | << | 내 용 |` gives two labels; `| 구 분 | 내 용 |` gives one.
+- Key-value tables have one or two label columns and exactly one content column. The first label is shaded/bold, with a fixed 33.5 mm width; the second is white, regular/muted, 30 mm wide. Other grid tables use content-based widths and regular-weight shaded labels. Use `label_columns: 0` for no label shading.
+- Use `columns` roles for dates, codes and numeric values, and `unit` for units above the table. `note` is optional text placed below the table, right-aligned and muted (8 pt); it is supported across profiles after renderer integration. Financial meanings and repayment schedules are not inferred or calculated.
+
+Use `<br>` inside cells; in term-sheet body paragraphs it also starts a separate Word paragraph. Line markers receive hanging indents: `•`, `-`, `·` start at 0/3/6 mm with a 3 mm hang; `①`–`⑳` start at 0 with a 4.5 mm hang; `※` starts at 0 with a 4 mm hang and 8 pt text. Wrapped text aligns after the marker. A body Markdown `-` list retains normal list handling.
+
+Place an empty, closed fence where the house/frontmatter confirmation should appear:
+
+````markdown
+```confirmation
+```
+````
+
+The box has an introduction/checklist row and a shaded, centred signature row kept on one page. Missing text, a nonempty fence or an unclosed fence preserves the source in a diagnostic code panel; strict rendering rejects it. Other profiles treat the fence as code.
+
+Every page uses `confidential_label` (default `Strictly Confidential`) in the header. An empty label, `layout.confidential: false`, or `--no-confidential` suppresses it. The footer shows `subtitle version` when `version` is present, plus `PAGE / NUMPAGES`. The opening disclaimer remains required even with `--no-disclaimer`. The existing **`termsheet` preset** only toggles cover/TOC/end-disclaimer sections; it does not select this profile, load house text or apply term-sheet table formatting.
+
 ## Charts (opt-in)
 
 ```sh
@@ -131,7 +174,7 @@ md-to-word samples/qa/charts.md charts.docx --strict
 md-to-word report.md code-panels.docx --no-charts
 ```
 
-Charts are **off by default for all six profiles**. Enable with `--charts`, `RenderOptions(charts=True)`, or top-level frontmatter `charts: true`. An explicit CLI/API value wins over frontmatter; `--no-charts` / `charts=False` forces code panels. The parser retains the original fence in a chart model element so the same parsed model supports either setting.
+Charts are **off by default for all seven profiles**. Enable with `--charts`, `RenderOptions(charts=True)`, or top-level frontmatter `charts: true`. An explicit CLI/API value wins over frontmatter; `--no-charts` / `charts=False` forces code panels. The parser retains the original fence in a chart model element so the same parsed model supports either setting.
 
 ````markdown
 ```chart
@@ -170,7 +213,7 @@ md-to-word notes.md notes.docx --profile plain --preset lecture-note --no-cover
 
 Also available through `RenderOptions(preset="termsheet")` or top-level frontmatter `preset: termsheet`. Resolution **per section** is: explicit CLI/API field > CLI/API preset field > individual YAML `layout` field > YAML preset field > profile default. `ib-report` supplies no overrides. Unknown preset names fail without saving.
 
-All presets work with all six profiles; they change only sections. The general profiles retain neutral metadata, native numbering and general table semantics. `termsheet` is useful with `ib-report`/`ib-memo`, `legal-memo` with `ib-memo`/`plain`, and `lecture-note` with `plain`/`business-report`. Covers/TOCs are usually unnecessary for an `office-letter` or short `meeting-minutes` document. Presets supply no legal wording or document-type metadata.
+All presets work with all seven profiles; they change only sections. The general profiles retain neutral metadata, native numbering and general table semantics. `termsheet` is useful with `ib-report`/`ib-memo`, `legal-memo` with `ib-memo`/`plain`, and `lecture-note` with `plain`/`business-report`. Covers/TOCs are usually unnecessary for an `office-letter` or short `meeting-minutes` document. Presets supply no legal wording or document-type metadata.
 
 Without a cover (`--no-cover`, API `include_cover=False`, YAML `layout.cover: false`, or `termsheet`/`legal-memo`), `ib-report` begins the document with a theme-aware title, optional subtitle, and the same date/author rows as `ib-memo`; any TOC follows on the same page, retaining its page break before the body. A matching body H1 and inferred subtitle appear only in that block and do not enter the TOC; cover-on output and other profiles keep their existing title behavior.
 

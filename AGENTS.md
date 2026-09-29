@@ -37,11 +37,13 @@ Existing `md_to_word.py` and `ib-report` remain entry points. On Windows, use a 
 | Module | Responsibility |
 |---|---|
 | `document_model.py` | Shared data classes and enums; re-exported by `md_parser` for compatibility |
-| `document_profiles.py` | Six profiles, immutable options, YAML validation, table semantics, themes |
+| `document_profiles.py` | Seven profiles, immutable options, YAML validation, table semantics, themes |
 | `render_styles.py` | Immutable style values and render-scoped ContextVar |
 | `md_parser.py` | Profile-aware Markdown parsing, frontmatter, tables, images, equations |
 | `ib_renderer.py` | One composition path for all callers; reusable element renderers |
 | `office_layout.py` | Letter/report/minutes metadata and native Korean numbering |
+| `term_sheet.py` | House texts and term-sheet composition; must not import `ib_renderer` |
+| `term_variables.py` | Term variables, content-control tags and snapshots |
 | `docx_audit.py` | Structural diagnostics, not reverse conversion or visual QA |
 | `md_to_word.py` | CLI, file/batch conversion and safe save |
 | `converters.py` | Registry with Markdown input and DOCX output only |
@@ -51,7 +53,8 @@ Existing `md_to_word.py` and `ib-report` remain entry points. On Windows, use a 
 
 ## Profiles and configuration
 
-- Profiles: `ib-report` (legacy default), `ib-memo`, `plain`, `office-letter`, `business-report`, `meeting-minutes`.
+- Seven profiles: `ib-report` (legacy default), `ib-memo`, `plain`, `office-letter`, `business-report`, `meeting-minutes`, `term-sheet`.
+- Keep real deal documents and real institution house files outside the repository; samples and tests use fictional names and freshly written boilerplate only.
 - Explicit CLI/API options override YAML, then profile defaults. Pass profile to the parser as well as renderer when overriding.
 - Four general profiles use A4, neutral metadata and native numbered lists with four-space nesting. They must not infer IB financial table semantics or promote short numbered text to headings.
 - Keep styles immutable and scoped. Do not replace a process-global style instance, capture theme-dependent values in default arguments, or cache styles across requests.
