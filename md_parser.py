@@ -648,6 +648,9 @@ class TextParser:
             return text
         resolver.reserve(text)
         protected, code_spans = cls._protect_code_spans(text)
+        # Inline math is split before links are parsed, so a `$` in a URL could
+        # otherwise expose part of the destination as text.
+        protected, destinations = cls._protect_link_destinations(protected)
         pieces: List[str] = []
         last = 0
         for match in cls._COLOR_SPAN_RE.finditer(protected):
@@ -662,9 +665,38 @@ class TextParser:
             last = match.end()
         pieces.append(cls._tokenize_segment(protected[last:], code_spans, resolver, tokens, latex))
         result = "".join(pieces)
+        for token, literal in destinations.items():
+            result = result.replace(token, literal)
         for token, literal in code_spans.items():
             result = result.replace(token, literal)
         return result
+
+    @classmethod
+    def _protect_link_destinations(cls, text: str) -> Tuple[str, Dict[str, str]]:
+        """Shield each complete inline-link destination; labels stay visible.
+
+        Args:
+            text: Text whose code spans are already protected.
+
+        Returns:
+            Text with destinations replaced by tokens, and token -> destination.
+        """
+        literals: Dict[str, str] = {}
+        prefix = "\ue000URL"
+        while prefix in text:
+            prefix += "X"
+
+        def replace(match: Match[str]) -> str:
+            index = match.start()
+            while index and text[index - 1] == "\\":
+                index -= 1
+            if not match.group(2) or (match.start() - index) % 2:
+                return match.group(0)  # a footnote reference or an escaped bracket
+            token = prefix + str(len(literals)) + "\ue001"
+            literals[token] = match.group(2)
+            return f"[{match.group(1)}]({token})"
+
+        return cls._INLINE_REFERENCE_RE.sub(replace, text), literals
 
     @classmethod
     def _tokenize_segment(

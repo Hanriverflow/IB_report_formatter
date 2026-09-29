@@ -209,6 +209,33 @@ def test_code_math_fences_and_link_destinations_are_not_substituted() -> None:
     assert model.warnings == []
 
 
+MATH_LINK = "[X](https://example.com/{{amount}}?q=$foo$)"
+
+
+def test_link_destination_with_math_stays_literal_and_unchecked() -> None:
+    assert parse("---\nterms: {}\n---\n" + MATH_LINK).warnings == []
+    model = parse(front({"amount": "500"}) + MATH_LINK)
+    assert first(model, ElementType.PARAGRAPH).runs == TextParser.parse_runs(MATH_LINK)
+    assert model.warnings == []
+
+
+def test_escaped_link_syntax_is_prose_so_its_reference_is_substituted() -> None:
+    paragraph = first(
+        parse(front({"amount": "500"}) + r"\[X](https://example.com/{{amount}})"), ElementType.PARAGRAPH,
+    )
+    assert keyed(paragraph.runs) == [
+        ("[X](https://example.com/", None), ("500", "amount"), (")", None),
+    ]
+
+
+def test_label_value_beside_a_math_destination_is_the_only_substitution() -> None:
+    model = parse(front({"amount": "500"}) + "[{{amount}}](https://example.com/{{amount}}?q=$foo$)")
+    runs = first(model, ElementType.PARAGRAPH).runs
+    assert [run.text for run in runs if run.term_key] == ["500"]
+    assert "https://example.com/{{amount}}?q=" in "".join(texts(runs))
+    assert model.warnings == []
+
+
 def test_value_containing_reference_syntax_is_not_substituted_again() -> None:
     model = parse(front({"a": "{{b}}", "b": "X"}) + "# Head {{a}}\n\nBody {{a}} and {{b}}.")
     heading = first(model, ElementType.HEADING_1)
