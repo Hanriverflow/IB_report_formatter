@@ -141,7 +141,26 @@ tables:
 ---
 ```
 
-`title` is required; `subtitle` defaults to `Term Sheet`. Optional `date` is displayed as written and `version` labels the footer. `prepared_by` and `disclaimer` must be nonblank in frontmatter or the house file. House YAML accepts only `prepared_by`, `disclaimer`, `confidential_label`, and `confirmation` (`intro`, a list of `items`, `signature`). Frontmatter keys override house values, including an explicitly empty value. House prose supports inline emphasis such as `( *주요내용* )`.
+`title` is required; `subtitle` defaults to `Term Sheet`. Optional `date` is displayed as written and `version` labels the footer. `prepared_by` and `disclaimer` must be nonblank in frontmatter or the house file. House YAML accepts only `prepared_by`, `disclaimer`, `confidential_label`, `confirmation` (`intro`, a list of `items`, `signature`) and `style`. Frontmatter keys override house values, including an explicitly empty value; `style` settings override key by key. House prose supports inline emphasis such as `( *주요내용* )`.
+
+`style` sets the house layout; every key is optional and the defaults are the standard layout:
+
+```yaml
+style:
+  cover: page            # inline (default) | page: title block, logo and disclaimer on a cover page
+  logo: assets/logo.png  # image path (relative to the house file, or to the Markdown in frontmatter) or data: URI
+  logo_width_mm: 40
+  disclaimer: box        # rules (default) | box
+  header_rule: true      # accent rule under the header
+  footer_rule: true      # accent rule over the footer
+  label_color: "#C00000" # confidentiality label colour
+  page_number: "- {page} -"   # default "{page} / {pages}"
+  page_number_align: center  # right (default) | center
+  table_header: dark     # light (default) | dark: accent fill, white text
+  table_sides: open      # closed (default) | open: no outer left/right borders
+```
+
+A logo that cannot be loaded is a render diagnostic that strict mode rejects. Keep real institution logos outside the repository, like real house files.
 
 Keep real deal documents and real institution house files **outside the repository**. Frontmatter `house` paths resolve relative to the source Markdown; `--house /absolute/path/to/house.yaml` overrides that file, with relative CLI paths resolved from the working directory. String/stream input without a source path needs an absolute house path. The checked-in house file contains fictional wording only.
 

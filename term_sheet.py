@@ -9,6 +9,11 @@ injects its run-rendering callback, so run output stays identical everywhere).
 Changelog (A1 foundation):
     - Validate immutable house boilerplate with presence-based frontmatter precedence.
 
+Changelog (house style):
+    - NEW: `style:` house/frontmatter options (cover page, logo, boxed disclaimer,
+      header/footer rules, label colour, page number format, dark header,
+      open-sided tables); the defaults keep the standard layout.
+
 Changelog (A2 rendering):
     - Schema-ordered single cell fills shared with generic merged-table emission.
     - Per-line runs with marker hanging indents; row-split estimation; fixed label
@@ -17,9 +22,12 @@ Changelog (A2 rendering):
       two-row confirmation box and per-section header/footer.
 """
 
+import base64
 import math
+import re
 import unicodedata
 from dataclasses import dataclass, replace
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -77,8 +85,20 @@ _RPR_AFTER_SZ_CS = (
 _HEADING_RULE_SIZE = "8"  # 1pt accent rule under Heading 2
 _CHECKBOX = "□"
 _CHECKBOX_LAYOUT_MM = 4.5  # hanging indent of confirmation check items
-_HOUSE_KEYS = frozenset({"prepared_by", "disclaimer", "confidential_label", "confirmation"})
+_COVER_TITLE_SPACE = Mm(60)  # sets the cover title block about a third down the page
+_COVER_DISCLAIMER_SPACE = Mm(30)
+_HOUSE_KEYS = frozenset({"prepared_by", "disclaimer", "confidential_label", "confirmation", "style"})
 _CONFIRMATION_KEYS = frozenset({"intro", "items", "signature"})
+_STYLE_CHOICES = {
+    "cover": ("inline", "page"),
+    "disclaimer": ("rules", "box"),
+    "page_number_align": ("right", "center"),
+    "table_header": ("light", "dark"),
+    "table_sides": ("closed", "open"),
+}
+_STYLE_FLAGS = ("header_rule", "footer_rule")
+_HEX_COLOR_RE = re.compile(r"#[0-9A-Fa-f]{6}")
+_PAGE_FIELD_RE = re.compile(r"(\{page\}|\{pages\})")
 
 
 @dataclass(frozen=True)
@@ -91,6 +111,38 @@ class ConfirmationText:
 
 
 @dataclass(frozen=True)
+class TermSheetStyle:
+    """House layout choices (`style:`); the defaults are the profile's standard layout.
+
+    Attributes:
+        cover: `inline` opens the first page with the title block; `page` gives
+            the title block, logo and disclaimer a cover page of their own.
+        logo: Absolute image path or `data:` URI, centred in the opening.
+        logo_width_mm: Logo width.
+        disclaimer: `rules` (thin rules above and below) or `box` (a frame).
+        header_rule: Accent rule under the header.
+        footer_rule: Accent rule over the footer.
+        label_color: `#RRGGBB` of the confidentiality label; empty keeps grey.
+        page_number: Footer page text with `{page}` and optional `{pages}`.
+        page_number_align: `right` or `center` in the footer.
+        table_header: `light` (tinted, accent text) or `dark` (accent fill, white text).
+        table_sides: `closed` draws the outer left and right borders; `open` omits them.
+    """
+
+    cover: str = "inline"
+    logo: str = ""
+    logo_width_mm: float = 40.0
+    disclaimer: str = "rules"
+    header_rule: bool = False
+    footer_rule: bool = False
+    label_color: str = ""
+    page_number: str = "{page} / {pages}"
+    page_number_align: str = "right"
+    table_header: str = "light"
+    table_sides: str = "closed"
+
+
+@dataclass(frozen=True)
 class TermSheetTexts:
     """Resolved boilerplate for one render; empty labels intentionally remain empty."""
 
@@ -98,6 +150,57 @@ class TermSheetTexts:
     disclaimer: str
     confidential_label: str = "Strictly Confidential"
     confirmation: Optional[ConfirmationText] = None
+    style: TermSheetStyle = TermSheetStyle()
+
+
+def validate_style(value: Any, base_dir: Optional[Path] = None) -> Dict[str, Any]:
+    """Validate a `style:` mapping and resolve a relative logo path.
+
+    Args:
+        value: The mapping from a house file or frontmatter.
+        base_dir: Folder a relative `logo` path is resolved against (the house
+            file's or the Markdown file's); None keeps it as written.
+
+    Returns:
+        The supplied settings, with `logo` made absolute when possible.
+
+    Raises:
+        ValueError: A key is unknown or a value is malformed.
+    """
+    if not isinstance(value, dict):
+        raise ValueError("style must be a mapping")
+    known = set(_STYLE_CHOICES) | set(_STYLE_FLAGS) | {"logo", "logo_width_mm", "label_color", "page_number"}
+    unknown = set(value) - known
+    if unknown:
+        raise ValueError("Unknown style settings: " + ", ".join(sorted(map(str, unknown))))
+    settings = dict(value)
+    for key, choices in _STYLE_CHOICES.items():
+        if key in settings and settings[key] not in choices:
+            raise ValueError(f"style.{key} must be one of: " + ", ".join(choices))
+    for key in _STYLE_FLAGS:
+        if key in settings and not isinstance(settings[key], bool):
+            raise ValueError(f"style.{key} must be true or false")
+    width = settings.get("logo_width_mm")
+    if width is not None and (isinstance(width, bool) or not isinstance(width, (int, float)) or not 5 <= width <= 150):
+        raise ValueError("style.logo_width_mm must be a number from 5 to 150")
+    color = settings.get("label_color")
+    if color is not None and (not isinstance(color, str) or not _HEX_COLOR_RE.fullmatch(color)):
+        raise ValueError("style.label_color must be #RRGGBB")
+    page = settings.get("page_number")
+    if page is not None and (
+        not isinstance(page, str)
+        or "{page}" not in page
+        or re.sub(r"\{page\}|\{pages\}", "", page).count("{")
+        or "\n" in page
+    ):
+        raise ValueError("style.page_number must be one line with {page} and optional {pages}")
+    logo = settings.get("logo")
+    if logo is not None:
+        if not isinstance(logo, str) or not logo.strip():
+            raise ValueError("style.logo must be an image path or a data: URI")
+        if not logo.lower().startswith("data:") and base_dir is not None and not Path(logo).is_absolute():
+            settings["logo"] = str((base_dir / logo).resolve())
+    return settings
 
 
 def _confirmation_text(value: Any) -> ConfirmationText:
@@ -135,6 +238,8 @@ def _validate_house_fields(data: Dict[str, Any]) -> None:
             raise ValueError(f"{key} must be a string")
     if "confirmation" in data:
         _confirmation_text(data["confirmation"])
+    if "style" in data:
+        validate_style(data["style"])
 
 
 def load_house(path: Union[str, Path]) -> Dict[str, Any]:
@@ -157,6 +262,9 @@ def load_house(path: Union[str, Path]) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("house must be a YAML mapping")
     _validate_house_fields(data)
+    if "style" in data:
+        # A house logo path is relative to the house file.
+        data["style"] = validate_style(data["style"], Path(path).resolve().parent)
     return data
 
 
@@ -186,19 +294,27 @@ def resolve_term_sheet_texts(
         house = load_house(house_path)
     values = {
         key: metadata.extra[key] if key in metadata.extra else house[key]
-        for key in _HOUSE_KEYS
+        for key in _HOUSE_KEYS - {"style"}
         if key in metadata.extra or key in house
     }
     _validate_house_fields(values)
     for key in ("prepared_by", "disclaimer"):
         if key not in values or not values[key].strip():
             raise ValueError(f"term-sheet requires non-empty {key}")
+    # Style settings merge key by key: frontmatter `style` overrides the house file's.
+    style = dict(house.get("style", {}))
+    if "style" in metadata.extra:
+        style.update(validate_style(metadata.extra["style"]))
+    logo = style.get("logo")
+    if logo and not logo.lower().startswith("data:") and not Path(logo).is_absolute():
+        raise ValueError("style.logo must be absolute for input without a source file")
     return TermSheetTexts(
         prepared_by=values["prepared_by"],
         disclaimer=values["disclaimer"],
         confidential_label=values.get("confidential_label", "Strictly Confidential"),
         confirmation=_confirmation_text(values["confirmation"])
         if "confirmation" in values else None,
+        style=TermSheetStyle(**style),
     )
 
 
@@ -475,18 +591,20 @@ def _measure(tag: str, twips: int) -> Any:
     return element
 
 
-def apply_table_frame(word_table: Any, width: int) -> None:
+def apply_table_frame(word_table: Any, width: int, open_sides: bool = False) -> None:
     """Apply the term-sheet table frame in schema order.
 
     The grid is fixed and spans `width`. In compatibility mode 14 Word draws the
     left border at the table indent minus the left cell margin, so an indent equal
-    to that margin puts both outer borders on the text margins. All six border
-    edges are 0.5pt `TS_BORDER_HEX`; cell margins are 70 (top/bottom) and 100
-    (left/right) twips.
+    to that margin puts both outer borders on the text margins. The border edges
+    are 0.5pt `TS_BORDER_HEX`, except the outer left and right edges of an
+    open-sided table (`style.table_sides: open`); cell margins are 70
+    (top/bottom) and 100 (left/right) twips.
 
     Args:
         word_table: python-docx table whose grid widths are already set.
         width: Total grid width in EMU.
+        open_sides: Omit the outer left and right borders.
     """
     word_table.alignment = WD_TABLE_ALIGNMENT.LEFT
     word_table.autofit = False
@@ -504,6 +622,10 @@ def apply_table_frame(word_table: Any, width: int) -> None:
     borders = OxmlElement("w:tblBorders")
     for edge in _BORDER_EDGES:
         border = OxmlElement(f"w:{edge}")
+        if open_sides and edge in ("left", "right"):
+            border.set(qn("w:val"), "nil")
+            borders.append(border)
+            continue
         border.set(qn("w:val"), "single")
         border.set(qn("w:sz"), _BORDER_SIZE)
         border.set(qn("w:space"), "0")
@@ -731,14 +853,17 @@ def _paragraph_rules(paragraph: Any, edges: Sequence[str]) -> None:
 def render_term_sheet_opening(
     doc: Any, metadata: DocumentMetadata, texts: TermSheetTexts, render_runs: RenderRuns
 ) -> bool:
-    """Render the first-page block: title, subtitle, date, prepared_by, disclaimer.
+    """Render the first-page block: title, subtitle, date, prepared_by, logo, disclaimer.
 
     The title uses the non-outline `Title` style, so it stays out of the
     navigation pane and any TOC. Title and subtitle are bold accent-coloured and
-    centred; date and preparer are centred meta lines; the disclaimer is a
-    justified 7pt muted block between thin rules. It is rendered regardless of
-    the end-disclaimer switch. House and frontmatter texts are parsed for inline
-    emphasis; `metadata.display_runs` wins for title, subtitle and date.
+    centred; date and preparer are centred meta lines; an optional house logo
+    follows; the disclaimer is a justified 7pt muted block between thin rules or
+    in a frame (`style.disclaimer`). With `style.cover: page` the block is set
+    lower on a cover page of its own and the body starts on the next page. It
+    is rendered regardless of the end-disclaimer switch. House and frontmatter
+    texts are parsed for inline emphasis; `metadata.display_runs` wins for
+    title, subtitle and date.
 
     Args:
         doc: Document with request-scoped styles already created.
@@ -749,9 +874,11 @@ def render_term_sheet_opening(
     Returns:
         True, so the caller skips the first body H1 that repeats the title.
     """
+    style = texts.style
+    cover = style.cover == "page"
     title = doc.add_paragraph(style="Title")
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title.paragraph_format.space_before = Pt(0)
+    title.paragraph_format.space_before = _COVER_TITLE_SPACE if cover else Pt(0)
     title.paragraph_format.space_after = Pt(2)
     render_runs(
         title, _bold(_display_runs(metadata, "title", metadata.title)),
@@ -772,19 +899,42 @@ def render_term_sheet_opening(
         _opening_paragraph(doc, Pt(8)), TextParser.parse_runs(texts.prepared_by.strip()),
         font_size=STYLE.TS_META_SIZE,
     )
+    if style.logo:
+        _add_logo(doc, style)
+    edges = ("top", "left", "bottom", "right") if style.disclaimer == "box" else ("top", "bottom")
     lines = split_run_lines(TextParser.parse_runs(texts.disclaimer.strip()))
     for index, line in enumerate(lines):
         paragraph = doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
         paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        paragraph.paragraph_format.space_before = Pt(0)
+        paragraph.paragraph_format.space_before = _COVER_DISCLAIMER_SPACE if cover and index == 0 else Pt(0)
         paragraph.paragraph_format.space_after = Pt(6) if index == len(lines) - 1 else Pt(0)
-        _paragraph_rules(paragraph, ("top", "bottom"))
+        _paragraph_rules(paragraph, edges)
         render_runs(
             paragraph, line, default_color=_rgb(STYLE.TS_MUTED_HEX), font_size=STYLE.TS_DISCLAIMER_SIZE
         )
+    if cover:
+        doc.add_page_break()
     doc.core_properties.title = metadata.title
     doc.core_properties.subject = metadata.subtitle
     return True
+
+
+def _add_logo(doc: Any, style: TermSheetStyle) -> None:
+    """Centre the house logo; a logo that cannot be loaded is a render diagnostic."""
+    paragraph = _opening_paragraph(doc, Pt(8))
+    try:
+        source: Union[str, BytesIO] = style.logo
+        if style.logo.lower().startswith("data:"):
+            header, _, payload = style.logo.partition(",")
+            if not header.lower().endswith(";base64"):
+                raise ValueError("only base64 data: URIs are supported")
+            source = BytesIO(base64.b64decode(payload))
+        paragraph.add_run().add_picture(source, width=Mm(style.logo_width_mm))
+    except Exception as error:  # a missing or unreadable file must not break the opening
+        paragraph._p.getparent().remove(paragraph._p)
+        errors = getattr(doc.part, "_ib_render_errors", None)
+        if errors is not None:
+            errors.append(f"House logo could not be rendered: {error}")
 
 
 def render_term_sheet_heading(doc: Any, heading: Heading, render_runs: RenderRuns) -> None:
@@ -955,6 +1105,16 @@ def _reset_story(story: Any) -> Any:
     return paragraph
 
 
+def _accent_rule(paragraph: Any, edge: str) -> None:
+    """A 1.5pt accent rule on one edge of a header or footer paragraph."""
+    rules = OxmlElement("w:pBdr")
+    border = OxmlElement(f"w:{edge}")
+    for name, value in (("val", "single"), ("sz", "12"), ("space", "4"), ("color", STYLE.NAVY_HEX)):
+        border.set(qn(f"w:{name}"), value)
+    rules.append(border)
+    paragraph._p.get_or_add_pPr().insert_element_before(rules, *_PPR_AFTER_PBDR)
+
+
 def _add_field(paragraph: Any, instruction: str, color: RGBColor, size: Length) -> None:
     """Append a simple field run (e.g. PAGE) styled like the surrounding text."""
     run = paragraph.add_run()
@@ -981,10 +1141,12 @@ def setup_term_sheet_header_footer(
     """Set the header and footer of every section once all sections exist.
 
     Header: right-aligned italic 7.5pt `TS_CONFIDENTIAL_HEX` confidentiality
-    label; empty when `confidential` is off or the label is blank (plan §2-10).
-    Footer: `"{subtitle} {version}"` at left (empty without a version) and
-    `PAGE / NUMPAGES` at a right tab on each section's own printable width, so
-    portrait and landscape sections both align.
+    label (or `style.label_color`); empty when `confidential` is off or the
+    label is blank (plan §2-10). Footer: `"{subtitle} {version}"` at left (empty
+    without a version) and the page text (`style.page_number`, default
+    `{page} / {pages}`) at a right or centre tab on each section's own printable
+    width, so portrait and landscape sections both align. `style.header_rule`
+    and `style.footer_rule` add accent rules under the header and over the footer.
 
     Args:
         doc: Document whose sections are final.
@@ -994,23 +1156,36 @@ def setup_term_sheet_header_footer(
         render_runs: Injected run renderer.
     """
     label = texts.confidential_label if texts is not None and confidential else ""
+    style = texts.style if texts is not None else TermSheetStyle()
     version = str(metadata.extra.get("version") or "").strip()
     left = f"{metadata.subtitle} {version}" if version else ""
     grey = _rgb(STYLE.TS_CONFIDENTIAL_HEX)
+    label_color = _rgb(style.label_color[1:]) if style.label_color else grey
     size = STYLE.TS_HEADER_FOOTER_SIZE
     for section in doc.sections:
         width = printable_width(section)
         header = _reset_story(section.header)
         header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         if label.strip():
-            render_runs(header, [TextRun(text=label, italic=True)], default_color=grey, font_size=size)
+            render_runs(header, [TextRun(text=label, italic=True)], default_color=label_color, font_size=size)
+        if style.header_rule:
+            _accent_rule(header, "bottom")
         footer = _reset_story(section.footer)
         if footer.style is not None:
             footer.style.paragraph_format.tab_stops.clear_all()
         if width > 0:  # a section without printable width is reported by the structural audit
-            footer.paragraph_format.tab_stops.add_tab_stop(Emu(width), WD_TAB_ALIGNMENT.RIGHT)
+            if style.page_number_align == "center":
+                footer.paragraph_format.tab_stops.add_tab_stop(Emu(width // 2), WD_TAB_ALIGNMENT.CENTER)
+            else:
+                footer.paragraph_format.tab_stops.add_tab_stop(Emu(width), WD_TAB_ALIGNMENT.RIGHT)
+        if style.footer_rule:
+            _accent_rule(footer, "top")
         runs = ([TextRun(text=left)] if left else []) + [TextRun(text="\t")]
         render_runs(footer, runs, default_color=grey, font_size=size)
-        _add_field(footer, "PAGE", grey, size)
-        render_runs(footer, [TextRun(text=" / ")], default_color=grey, font_size=size)
-        _add_field(footer, "NUMPAGES", grey, size)
+        for part in _PAGE_FIELD_RE.split(style.page_number):
+            if part == "{page}":
+                _add_field(footer, "PAGE", grey, size)
+            elif part == "{pages}":
+                _add_field(footer, "NUMPAGES", grey, size)
+            elif part:
+                render_runs(footer, [TextRun(text=part)], default_color=grey, font_size=size)

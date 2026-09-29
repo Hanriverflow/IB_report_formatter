@@ -139,6 +139,7 @@ from render_styles import STYLE, RasterFontPolicy, collect_raster_font_diagnosti
 from render_styles import IBStyle as IBStyle
 from term_sheet import (
     ROW_SPLIT_THRESHOLD,
+    TermSheetStyle,
     TermSheetTexts,
     add_table_heading,
     add_table_note,
@@ -1626,10 +1627,13 @@ class TableRenderer:
     _MAX_NUMERIC_COLUMN_WIDTH_INCHES = 1.35
     _MAX_TEXT_COLUMN_SHARE = 0.55
 
-    def __init__(self, doc: DocxDocument, term_sheet: bool = False):
+    def __init__(
+        self, doc: DocxDocument, term_sheet: bool = False, house_style: Optional[TermSheetStyle] = None,
+    ):
         self.doc = doc
         # Profile-only layout; merge emission itself is shared by every profile.
         self.term_sheet = term_sheet
+        self.house_style = house_style or TermSheetStyle()
 
     def render(self, table: Table):
         """Render a table"""
@@ -1781,7 +1785,7 @@ class TableRenderer:
         rectangles = self._merge_cells(word_table, table)
         covered = self._covered_cells(rectangles)
         extents = {(top, left): (bottom, right) for top, left, bottom, right in rectangles}
-        apply_table_frame(word_table, sum(widths))
+        apply_table_frame(word_table, sum(widths), open_sides=self.house_style.table_sides == "open")
 
         line_counts = [0] * row_count
         for row_index, row in enumerate(table.rows):
@@ -1958,7 +1962,10 @@ class TableRenderer:
                 replace(run, bold=True, color_hex=None)
                 for run in cell_data.runs or TextParser.parse_runs_plain(cell_data.content)
             ]
-            fill, color = STYLE.TABLE_HEADER_BG, STYLE.NAVY
+            if self.house_style.table_header == "dark":
+                fill, color = STYLE.NAVY_HEX, RGBColor(0xFF, 0xFF, 0xFF)
+            else:
+                fill, color = STYLE.TABLE_HEADER_BG, STYLE.NAVY
             font_name, size = STYLE.HEADING_FONT, STYLE.TABLE_HEADER_SIZE
         else:
             content, runs = self._display_content(cell_data, column_role, table.table_type)
@@ -3538,7 +3545,11 @@ class IBDocumentRenderer:
         self.heading_renderer = HeadingRenderer(self.doc)
         self.paragraph_renderer = ParagraphRenderer(self.doc)
         self.list_renderer = ListRenderer(self.doc)
-        self.table_renderer = TableRenderer(self.doc, term_sheet=self._term_sheet)
+        self.table_renderer = TableRenderer(
+            self.doc,
+            term_sheet=self._term_sheet,
+            house_style=self.term_sheet_texts.style if self.term_sheet_texts is not None else None,
+        )
         self.callout_renderer = CalloutRenderer(self.doc)
         self.image_renderer = ImageRenderer(self.doc)
         self.footnote_renderer = FootnoteRenderer(self.doc)
