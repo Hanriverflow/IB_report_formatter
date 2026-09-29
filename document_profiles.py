@@ -62,11 +62,13 @@ def default_metadata(profile: str = "ib-report") -> DocumentMetadata:
     return DocumentMetadata(title="Document", company="", sector="", analyst="", profile=profile)
 
 
-def validate_term_sheet_metadata(metadata: DocumentMetadata) -> None:
+def validate_term_sheet_metadata(metadata: DocumentMetadata, check_length: bool = True) -> None:
     """Validate term-sheet display text before generic title inference.
 
     Args:
         metadata: Parsed or caller-built metadata; other profiles are unchanged.
+        check_length: Apply Word's 255-character property limit. The parser skips
+            it before `{{term}}` substitution, then validates the displayed text.
 
     Raises:
         ValueError: A required title is absent, not text, or exceeds Word's limit.
@@ -76,14 +78,16 @@ def validate_term_sheet_metadata(metadata: DocumentMetadata) -> None:
     title = metadata.title
     if not isinstance(title, str) or title.strip() in {"", "Document", "IB Report"}:
         raise ValueError("term-sheet title must be an explicit non-empty string")
-    if len(title) > 255:
+    if check_length and len(title) > 255:
         raise ValueError("term-sheet title must not exceed 255 characters")
     if not isinstance(metadata.subtitle, str):
         raise ValueError("term-sheet subtitle must be a string")
-    if len(metadata.subtitle) > 255:
+    if check_length and len(metadata.subtitle) > 255:
         raise ValueError("term-sheet subtitle must not exceed 255 characters")
     if not metadata.subtitle.strip():
         metadata.subtitle = "Term Sheet"
+        # A blank substituted subtitle falls back; its empty display runs are stale.
+        metadata.display_runs.pop("subtitle", None)
 
 
 @dataclass(frozen=True)

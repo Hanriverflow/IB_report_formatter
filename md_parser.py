@@ -1587,7 +1587,8 @@ class MarkdownParser:
 
         # Parse frontmatter
         metadata, remaining_lines = FrontmatterParser.parse(lines, self.profile)
-        validate_term_sheet_metadata(metadata)
+        # Required-text checks precede heading inference; length waits for terms.
+        validate_term_sheet_metadata(metadata, check_length=False)
         self._financial_rules = get_profile(metadata.profile).is_ib
         self._term_sheet = metadata.profile == "term-sheet"
         self._parse_warnings = []
@@ -1656,6 +1657,7 @@ class MarkdownParser:
         # Title inference follows what the author wrote, not a substituted value.
         written_title = metadata.title
         self._substitute_metadata(metadata)
+        validate_term_sheet_metadata(metadata)
         model = DocumentModel(
             metadata=metadata,
             elements=elements,
@@ -1752,7 +1754,7 @@ class MarkdownParser:
                 setattr(metadata, name, text)
 
     def _substitute_table_text(self, elements: List[Element]) -> None:
-        """Substitute table captions, units, sources and dates as untagged text.
+        """Substitute table captions, units, sources, dates and notes as untagged text.
 
         The renderer reads these fields as inline Markdown, so values are
         escaped to stay literal there.
@@ -1762,7 +1764,7 @@ class MarkdownParser:
         for element in elements:
             if element.element_type != ElementType.TABLE or not isinstance(element.content, Table):
                 continue
-            for name in ("caption", "unit", "source", "as_of"):
+            for name in ("caption", "unit", "source", "as_of", "note"):
                 tokens: TokenMap = {}
                 tokenized = TextParser.tokenize_terms(getattr(element.content, name), self._terms, tokens)
                 if tokens:
