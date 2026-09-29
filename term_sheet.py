@@ -2,8 +2,9 @@
 
 Called from `IBDocumentRenderer.render` (the single composition path) when the
 resolved profile is `term-sheet`. Design: docs/term-sheet-design-20260929.md.
-This module depends only on the model, styles, YAML and python-docx primitives;
-it must not import `ib_renderer` (the renderer injects run-rendering callbacks).
+This module depends only on the model, the inline `md_parser.TextParser`, styles,
+YAML and python-docx primitives; it must not import `ib_renderer` (the renderer
+injects its run-rendering callback, so run output stays identical everywhere).
 
 Changelog (A1 foundation):
     - Validate immutable house boilerplate with presence-based frontmatter precedence.
