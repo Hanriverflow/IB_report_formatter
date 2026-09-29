@@ -5,10 +5,12 @@ Values are read as displayed: Korean money units (`10억원`, `3,330만원`,
 `5억 3,000만원`, `1,076,175,000원`), percentages (`4.78%`, `1.10%p`), basis
 points and plain numbers (optionally `개월` or `년`). Brackets that mark
 indicative figures (`[4.90]%`) and the words 약, 총, 내외, 수준 and 정도 are
-ignored. A comparison passes within a tolerance: explicit, or by default half
-of the display step of the stated value, so `12.66억원` agrees with any amount
-that rounds to it. The checks only report disagreements; they never change a
-value and do not establish financial correctness.
+ignored; thousands separators must group three digits. A comparison passes
+within a tolerance: explicit, or by default half of the display step of the
+stated value, so `12.66억원` agrees with any amount that rounds to it. The
+checks only report disagreements; they never change a value and do not
+establish financial correctness. Arithmetic uses exact decimals with ample
+precision, and user input can never raise out of a check.
 
 Changelog:
     - NEW: `checks:` relations between term values (`total = a + b * 2`).
@@ -18,7 +20,7 @@ Changelog:
 import json
 import re
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Context, Decimal, DecimalException, localcontext
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -32,12 +34,15 @@ _MONEY_UNITS: Dict[str, Decimal] = {
 _SUFFIX_DIMENSIONS = {
     "%p": "percent", "%": "percent", "bps": "bp", "bp": "bp", "개월": "months", "년": "years",
 }
-_NUMBER = r"\d[\d,]*(?:\.\d+)?"
+# Thousands separators must group three digits (`1,234.5`, never `1,2` or `1,,000`).
+_NUMBER = r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
 _MONEY_PART_RE = re.compile(r"(" + _NUMBER + r")\s*(조|억|천만|백만|만|천)?\s*")
 _SUFFIX_RE = re.compile(r"^(" + _NUMBER + r")\s*(%p|%|bps|bp|개월|년)?$", re.IGNORECASE)
 _NOISE_RE = re.compile(r"[\[\]]|^\s*(?:약|총)\s*|\s*(?:내외|수준|정도)\s*$")
 _NEGATIVE_PREFIXES = ("-", "−", "△", "▲")
 _DASHES = frozenset("-‒–—―－")
+_MAX_DIGITS = 30  # far beyond any amount in 원; keeps arithmetic exact
+_CONTEXT = Context(prec=100)  # exact for sums and products of values with at most 30 digits
 
 
 @dataclass(frozen=True)
@@ -50,7 +55,10 @@ class Quantity:
 
 
 def _decimal(text: str) -> Decimal:
-    return Decimal(text.replace(",", ""))
+    digits = text.replace(",", "")
+    if sum(character.isdigit() for character in digits) > _MAX_DIGITS:
+        raise ValueError(f"{text!r} has more than {_MAX_DIGITS} digits")
+    return Decimal(digits)
 
 
 def _step(number: str) -> Decimal:
@@ -71,7 +79,7 @@ def read_quantity(text: str) -> Quantity:
     Raises:
         ValueError: The text is not a single readable value.
     """
-    cleaned = _NOISE_RE.sub("", text).strip()
+    cleaned = text.strip()
     while True:
         stripped = _NOISE_RE.sub("", cleaned).strip()
         if stripped == cleaned:
@@ -101,12 +109,13 @@ def _read_money(text: str) -> Optional[Quantity]:
         return None
     if any(unit is None for unit in units[:-1]):
         return None  # only the last part may lack a unit (`5억 3,000만원`, not `5 3억원`)
-    value = sum(
-        (_decimal(part.group(1)) * _MONEY_UNITS.get(part.group(2) or "", Decimal(1)) for part in parts),
-        Decimal(0),
-    )
-    last = parts[-1]
-    step = _step(last.group(1)) * _MONEY_UNITS.get(last.group(2) or "", Decimal(1))
+    with localcontext(_CONTEXT):
+        value = sum(
+            (_decimal(part.group(1)) * _MONEY_UNITS.get(part.group(2) or "", Decimal(1)) for part in parts),
+            Decimal(0),
+        )
+        last = parts[-1]
+        step = _step(last.group(1)) * _MONEY_UNITS.get(last.group(2) or "", Decimal(1))
     return Quantity(value, "money", step)
 
 
@@ -125,14 +134,16 @@ def read_cell_number(text: str) -> Optional[Tuple[Decimal, Decimal]]:
         text: Visible cell text.
 
     Returns:
-        (value, display step), or None for a blank, a dash placeholder or text
-        without digits (such as `대출실행`).
+        (value, display step); a dash placeholder reads as zero. None for a
+        blank or text without digits (such as `대출실행`), which states nothing.
 
     Raises:
         ValueError: The text has digits but is not one plain number.
     """
     cleaned = text.strip()
-    if not cleaned or set(cleaned) <= _DASHES or not any(char.isdigit() for char in cleaned):
+    if cleaned and set(cleaned) <= _DASHES:
+        return Decimal(0), Decimal(1)
+    if not any(char.isdigit() for char in cleaned):
         return None
     quantity = read_quantity(cleaned)
     if quantity.dimension != "plain":
@@ -142,10 +153,13 @@ def read_cell_number(text: str) -> Optional[Tuple[Decimal, Decimal]]:
 
 def format_quantity(quantity: Quantity) -> str:
     """Display a quantity for a diagnostic message (money in 원 with separators)."""
-    value = quantity.value.normalize()
-    if value == value.to_integral():
-        value = value.quantize(Decimal(1))
-    shown = format(value, ",f")
+    with localcontext(_CONTEXT):
+        value = quantity.value
+        if value == value.to_integral():
+            value = value.quantize(Decimal(1))
+        else:
+            value = value.quantize(Decimal("0.000001")).normalize()
+        shown = format(value, ",f")
     suffix = {"money": "원", "percent": "%", "bp": "bp", "months": "개월", "years": "년"}
     return shown + suffix.get(quantity.dimension, "")
 
@@ -166,6 +180,8 @@ def money_unit(unit_text: str) -> Optional[Decimal]:
 CHECKS_PROPERTY = "ibrep.checks"
 
 _TOKEN_RE = re.compile(r"\s*(?:(?P<number>\d+(?:\.\d+)?)|(?P<name>[a-z][a-z0-9_]*)|(?P<op>[-+*/()=]))")
+_MAX_TOKENS = 200  # bounds parsing and evaluation depth
+_MAX_NESTING = 20
 
 Node = Tuple[Any, ...]  # ("number", Decimal), ("name", key), ("negate", node) or (op, left, right)
 
@@ -194,6 +210,8 @@ def _tokens(source: str) -> List[Tuple[str, str]]:
             raise ValueError(f"checks: unexpected text in {source!r} at {source[position:]!r}")
         kind = match.lastgroup or ""
         tokens.append((kind, match.group(kind)))
+        if len(tokens) > _MAX_TOKENS:
+            raise ValueError(f"checks: a relation side may have at most {_MAX_TOKENS} parts")
         position = match.end()
     return tokens
 
@@ -205,6 +223,7 @@ class _Parser:
         self.source = source
         self.tokens = _tokens(source)
         self.index = 0
+        self.depth = 0
 
     def peek(self) -> Tuple[str, str]:
         return self.tokens[self.index] if self.index < len(self.tokens) else ("end", "")
@@ -232,15 +251,19 @@ class _Parser:
     def factor(self) -> Node:
         kind, text = self.take()
         if kind == "number":
-            return ("number", Decimal(text))
+            return ("number", _decimal(text))
         if kind == "name":
             return ("name", text)
         if (kind, text) == ("op", "-"):
             return ("negate", self.factor())
         if (kind, text) == ("op", "("):
+            self.depth += 1
+            if self.depth > _MAX_NESTING:
+                raise ValueError(f"checks: parentheses nest more than {_MAX_NESTING} deep")
             node = self.expression()
             if self.take() != ("op", ")"):
                 raise self.fail()
+            self.depth -= 1
             return node
         raise self.fail()
 
@@ -307,7 +330,7 @@ def _evaluate(node: Node, values: Mapping[str, str]) -> Quantity:
             raise CheckError(f"cannot read {{{{{name}}}}} = {values[name]!r} as a number") from None
     if kind == "negate":
         inner = _evaluate(node[1], values)
-        return Quantity(-inner.value, inner.dimension)
+        return Quantity(-inner.value, inner.dimension, inner.step)
     left, right = _evaluate(node[1], values), _evaluate(node[2], values)
     if kind in "+-":
         if left.dimension != right.dimension:
@@ -339,25 +362,29 @@ def evaluate_check(check: Check, values: Mapping[str, str]) -> Optional[str]:
         None when both sides agree within the tolerance, else a diagnostic.
     """
     try:
-        left, right = _evaluate(check.left, values), _evaluate(check.right, values)
-        if left.dimension != right.dimension:
-            raise CheckError(f"the sides are {left.dimension} and {right.dimension}")
-        if check.tolerance is not None:
-            tolerance = read_quantity(check.tolerance)
-            if tolerance.dimension not in (left.dimension, "plain"):
-                raise CheckError(f"the tolerance is {tolerance.dimension}, not {left.dimension}")
-            allowed = abs(tolerance.value)
-        else:
-            allowed = left.step / 2
+        with localcontext(_CONTEXT):
+            left, right = _evaluate(check.left, values), _evaluate(check.right, values)
+            if left.dimension != right.dimension:
+                raise CheckError(f"the sides are {left.dimension} and {right.dimension}")
+            if check.tolerance is not None:
+                tolerance = read_quantity(check.tolerance)
+                if tolerance.dimension not in (left.dimension, "plain"):
+                    raise CheckError(f"the tolerance is {tolerance.dimension}, not {left.dimension}")
+                allowed = abs(tolerance.value)
+            else:
+                allowed = left.step / 2
+            difference = left.value - right.value
+            if abs(difference) <= allowed:
+                return None
+            return (
+                f"Check failed: {check.source} (left {format_quantity(left)}, "
+                f"right {format_quantity(right)}, "
+                f"difference {format_quantity(Quantity(difference, left.dimension))})"
+            )
     except CheckError as error:
         return f"Check cannot be evaluated: {check.source} ({error})"
-    difference = left.value - right.value
-    if abs(difference) <= allowed:
-        return None
-    return (
-        f"Check failed: {check.source} (left {format_quantity(left)}, right {format_quantity(right)}, "
-        f"difference {format_quantity(Quantity(difference, left.dimension))})"
-    )
+    except (DecimalException, ValueError) as error:
+        return f"Check cannot be evaluated: {check.source} ({error or 'arithmetic error'})"
 
 
 def evaluate_checks(checks: Sequence[Check], values: Mapping[str, str]) -> List[str]:
@@ -430,28 +457,33 @@ def checks_from_json(text: str) -> Tuple[List[Check], Dict[str, str]]:
 
 @dataclass(frozen=True)
 class ScheduleSpec:
-    """Zero-based columns and optional stated figures of a repayment schedule."""
+    """Zero-based columns and optional stated figures of a repayment schedule.
+
+    Amounts (principal, tolerance) are in table units; the average life is in years.
+    """
 
     repayment: int
     balance: int
     months: Optional[int] = None
-    principal: Optional[Decimal] = None  # opening principal in table units
+    principal: Optional[Decimal] = None
+    principal_step: Optional[Decimal] = None  # display step of the stated principal
     total: bool = False  # the last body row is a totals row, not a period
-    average_life: Optional[Quantity] = None  # stated weighted average life in years
-    tolerance: Optional[Decimal] = None
+    average_life: Optional[Quantity] = None
+    tolerance: Optional[Decimal] = None  # for amounts only
 
 
 def check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> List[str]:
     """Check a repayment schedule's arithmetic.
 
-    Each period's balance must equal the previous balance less that period's
+    Each stated balance must equal the previous balance less that period's
     repayment (the first period starts from the stated principal, or else from
     its own balance plus repayment); the last balance must be zero, the
     repayments must add up to the principal, a totals row must show their sum,
     and a stated weighted average life (in years, from a months column) must
-    agree. Blank cells, dash placeholders and text without digits (such as a
-    drawdown label) count as no repayment. Tolerances are half of the display
-    step of the stated value unless `tolerance` is given.
+    agree. A dash reads as zero; a blank or text without digits (such as a
+    drawdown label) states nothing, so it is no repayment and no balance.
+    Amount tolerances are half of the display step of the stated value unless
+    `tolerance` is given; the average life uses half of its own display step.
 
     Args:
         rows: Visible text of each body row's cells, in table order.
@@ -460,6 +492,14 @@ def check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> List[st
     Returns:
         One diagnostic per disagreement (row numbers count body rows from 1).
     """
+    try:
+        with localcontext(_CONTEXT):
+            return _check_schedule(rows, spec)
+    except DecimalException as error:
+        return [f"the schedule cannot be checked ({error or 'arithmetic error'})"]
+
+
+def _check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> List[str]:
     problems: List[str] = []
     periods = list(rows[:-1]) if spec.total and rows else list(rows)
     if not periods:
@@ -482,6 +522,7 @@ def check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> List[st
     repayments: List[Tuple[Decimal, Optional[Decimal]]] = []
     previous: Optional[Decimal] = spec.principal
     opening: Optional[Decimal] = spec.principal
+    opening_step: Decimal = spec.principal_step if spec.principal_step is not None else Decimal(1)
     last_balance: Optional[Tuple[Decimal, Decimal]] = None
     for index, row in enumerate(periods):
         repaid = number(index, row, spec.repayment, "repayment")
@@ -489,13 +530,11 @@ def check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> List[st
         months = number(index, row, spec.months, "months")
         amount = repaid[0] if repaid else Decimal(0)
         repayments.append((amount, months[0] if months else None))
-        if balance is None:
-            if repaid is not None or index == len(periods) - 1:
-                balance = (Decimal(0), Decimal(1))  # a dash balance means nothing is left
-            else:
-                continue
+        if balance is None:  # nothing stated: carry the expected balance forward
+            previous = previous - amount if previous is not None else None
+            continue
         if previous is None:
-            opening = balance[0] + amount
+            opening, opening_step = balance[0] + amount, balance[1]
         elif abs(previous - amount - balance[0]) > allowed(balance[1]):
             expected = previous - amount
             problems.append(
@@ -507,13 +546,15 @@ def check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> List[st
     if last_balance is not None and abs(last_balance[0]) > allowed(last_balance[1]):
         problems.append(f"the last balance is {_plain(last_balance[0])}, not 0")
     repaid_total = sum((amount for amount, _ in repayments), Decimal(0))
-    if opening is not None and abs(repaid_total - opening) > allowed(Decimal(1)):
+    if opening is not None and abs(repaid_total - opening) > allowed(opening_step):
         problems.append(
             f"repayments add up to {_plain(repaid_total)}, not the principal {_plain(opening)}"
         )
     if spec.total and rows:
         stated = number(len(rows) - 1, rows[-1], spec.repayment, "total repayment")
-        if stated is not None and abs(stated[0] - repaid_total) > allowed(stated[1]):
+        if stated is None:
+            problems.append("the totals row shows no repayment total")
+        elif abs(stated[0] - repaid_total) > allowed(stated[1]):
             problems.append(
                 f"the totals row shows {_plain(stated[0])}, "
                 f"but the repayments add up to {_plain(repaid_total)}"
@@ -528,10 +569,10 @@ def check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> List[st
                 weighted = sum((amount * (months or 0) for amount, months in repayments), Decimal(0))
                 years = weighted / repaid_total / 12
                 stated_life = spec.average_life
-                tolerance = spec.tolerance if spec.tolerance is not None else stated_life.step / 2
-                if abs(years - stated_life.value) > tolerance:
+                if abs(years - stated_life.value) > stated_life.step / 2:
+                    computed = Quantity(years.quantize(Decimal("0.001")), "years")
                     problems.append(
-                        f"the weighted average life is {years.quantize(Decimal('0.001'))}년, "
+                        f"the weighted average life is {format_quantity(computed)}, "
                         f"not the stated {format_quantity(stated_life)}"
                     )
     return problems

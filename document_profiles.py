@@ -12,9 +12,10 @@ Changelog (term-sheet foundation):
 import math
 import re
 from dataclasses import dataclass, fields, replace
+from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import yaml
 from docx.shared import Inches, Pt, RGBColor
@@ -674,21 +675,24 @@ def _stated(value: Any, terms: Mapping[str, Any]) -> Quantity:
     return read_quantity(text)
 
 
+def _table_amount(quantity: Quantity, table: Table, what: str) -> Tuple[Decimal, Decimal]:
+    """An amount and its display step in table units; money is converted with the table `unit`."""
+    if quantity.dimension == "plain":
+        return quantity.value, quantity.step
+    if quantity.dimension != "money":
+        raise ValueError(f"the {what} is {quantity.dimension}, not an amount")
+    unit = money_unit(table.unit)
+    if unit is None:
+        raise ValueError(f"a money {what} needs the table `unit` (for example 억원)")
+    return quantity.value / unit, quantity.step / unit
+
+
 def _resolved_schedule(table: Table, terms: Mapping[str, Any]) -> ScheduleSpec:
     """Build the schedule checker's spec, converting stated money to the table unit."""
     raw = table.schedule or {}
-    principal = None
+    principal = principal_step = None
     if raw.get("principal") is not None:
-        quantity = _stated(raw["principal"], terms)
-        if quantity.dimension == "money":
-            unit = money_unit(table.unit)
-            if unit is None:
-                raise ValueError("a money principal needs the table `unit` (for example 억원)")
-            principal = quantity.value / unit
-        elif quantity.dimension == "plain":
-            principal = quantity.value
-        else:
-            raise ValueError(f"the principal is {quantity.dimension}, not an amount")
+        principal, principal_step = _table_amount(_stated(raw["principal"], terms), table, "principal")
     average_life = None
     if raw.get("average_life") is not None:
         stated_life = _stated(raw["average_life"], terms)
@@ -699,10 +703,11 @@ def _resolved_schedule(table: Table, terms: Mapping[str, Any]) -> ScheduleSpec:
         average_life = stated_life
     tolerance = None
     if raw.get("tolerance") is not None:
-        tolerance = abs(_stated(raw["tolerance"], terms).value)
+        tolerance = abs(_table_amount(_stated(raw["tolerance"], terms), table, "tolerance")[0])
     return ScheduleSpec(
         repayment=raw["repayment"], balance=raw["balance"], months=raw.get("months"),
-        principal=principal, total=raw["total"], average_life=average_life, tolerance=tolerance,
+        principal=principal, principal_step=principal_step, total=raw["total"],
+        average_life=average_life, tolerance=tolerance,
     )
 
 

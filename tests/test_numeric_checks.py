@@ -215,6 +215,69 @@ def test_schedule_figures_that_cannot_be_read_are_reported() -> None:
     assert "Table 1 schedule: a money principal needs the table `unit` (for example 억원)" in _schedule_warnings(no_unit)
 
 
+def _plain_schedule(rows, spec, unit="억원") -> str:
+    body = "| 회차 | 상환액 | 잔액 |\n|---|---|---|\n" + "".join(
+        f"| {index} | {repaid} | {balance} |\n" for index, (repaid, balance) in enumerate(rows)
+    )
+    data = {
+        "profile": "business-report", "title": "가상 조건",
+        "tables": [{"schedule": {"repayment": 2, "balance": 3, **spec}, **({"unit": unit} if unit else {})}],
+    }
+    return "---\n" + yaml.safe_dump(data, allow_unicode=True) + "---\n" + body
+
+
+@pytest.mark.parametrize("rows,spec,expected", [
+    # A tolerance in 원 is converted into the table unit (억원), not read as 1억.
+    ([("99", "1")], {"principal": 100, "tolerance": "1원"}, "Table 1 schedule: the last balance is 1, not 0"),
+    # The principal's own precision decides the reconciliation tolerance.
+    ([("0.60", "0")], {"principal": "1.00"},
+     "Table 1 schedule: repayments add up to 0.6, not the principal 1"),
+    # A dash total is zero, and a totals row without a figure is reported.
+    ([("100", "0"), ("-", "-")], {"principal": 100, "total": True},
+     "Table 1 schedule: the totals row shows 0, but the repayments add up to 100"),
+    ([("100", "0"), ("합계", "")], {"principal": 100, "total": True},
+     "Table 1 schedule: the totals row shows no repayment total"),
+    # A dash balance is zero even when the repayment is a dash too.
+    ([("-", "-"), ("100", "-")], {"principal": 100}, "Table 1 schedule: row 1: balance 0 should be 100 − 0 = 100"),
+])
+def test_schedule_review_cases_are_reported(rows, spec, expected) -> None:
+    assert expected in _schedule_warnings(_plain_schedule(rows, spec))
+
+
+def test_large_and_malformed_numbers_never_pass_or_crash() -> None:
+    big = {"a": "10000000000000000000000000001원", "b": "10000000000000000000000000000원", "zero": "0"}
+    assert check("a = b", big) == [
+        "Check failed: a = b (left 10,000,000,000,000,000,000,000,000,001원, "
+        "right 10,000,000,000,000,000,000,000,000,000원, difference 1원)"
+    ]
+    assert check("b = zero", {**big, "b": "10000000000000000000000000000"})[0].startswith("Check failed")
+    too_long = {"a": "1" * 31 + "원", "b": "1원"}
+    assert check("a = b", too_long)[0].startswith("Check cannot be evaluated: a = b (cannot read {{a}}")
+    for text in ("1,2", "1,,000", "1,", "12,34원"):
+        with pytest.raises(ValueError):
+            read_quantity(text)
+    assert check("a = b", {"a": "1,2", "b": "12"})[0].startswith("Check cannot be evaluated")
+    months = "9" * 28
+    assert _schedule_warnings(_plain_schedule([("1", "0")], {"principal": 1})) == []
+    life = _schedule([("0", "대출실행", "300"), (months, "300", "-")], total="300",
+                     terms={"amount": "300억원", "life": "1.13년"})
+    assert any("weighted average life" in warning for warning in _schedule_warnings(life))
+
+
+def test_deep_or_long_relations_are_rejected_before_evaluation() -> None:
+    with pytest.raises(ValueError, match="nest"):
+        parse_checks(["a = " + "(" * 25 + "a" + ")" * 25])
+    with pytest.raises(ValueError, match="at most"):
+        parse_checks(["a = " + "(" * 400 + "a" + ")" * 400])
+    with pytest.raises(ValueError, match="at most"):
+        parse_checks(["a = " + " + ".join(["a"] * 1101)])
+
+
+def test_negation_keeps_the_display_tolerance() -> None:
+    values = {"a": "1.13", "b": "1.125"}
+    assert check("a = b", values) == [] and check("-a = -b", values) == []
+
+
 @pytest.mark.parametrize("spec", [
     {"repayment": 9}, {"balance": 3}, {"total": "yes"}, {"months": None, "average_life": 2},
     {"principal": [1]}, {"extra": 1},
