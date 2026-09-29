@@ -212,6 +212,112 @@ def test_html_text_that_cannot_be_placed_is_reported(source: str, message: str) 
     assert _cell_text(model.elements[0].content.rows[0].cells[0]) == "가"
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# REVIEW FOLLOW-UP: IMAGES ARE ONE UNIT, HTML TEXT IS LITERAL
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _png_bytes() -> bytes:
+    buffer = BytesIO()
+    PILImage.new("RGB", (4, 4), "navy").save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def test_image_syntax_inside_a_link_destination_stays_part_of_the_link() -> None:
+    runs = TextParser.parse_runs("[링크](<https://example.com/![x](a.png)>)")
+    assert [(run.text, run.image, run.hyperlink) for run in runs] == [
+        ("링크", None, "https://example.com/![x](a.png)"),
+    ]
+
+
+def test_dollar_signs_in_image_fields_are_not_math(tmp_path: Path) -> None:
+    _png(tmp_path / "cash$2026$x.png")
+    model = parse_markdown_file(str(_source(tmp_path, "앞 ![로고 $1$](cash$2026$x.png) 뒤")))
+    runs = model.elements[-1].content.runs
+    assert [(run.image.alt_text, run.image.path) for run in runs if run.image] == [("로고 $1$", "cash$2026$x.png")]
+    assert not any(run.is_latex for run in runs)
+    assert len(_render_model(model).element.body.xpath(".//w:drawing")) == 1
+
+
+def test_emphasis_around_an_image_keeps_its_formatting() -> None:
+    runs = TextParser.parse_runs("문단 **앞 ![x](icon.png) 뒤** 끝")
+    assert [(run.text, run.bold, run.image is not None) for run in runs] == [
+        ("문단 ", False, False), ("앞 ", True, False), ("", True, True), (" 뒤", True, False), (" 끝", False, False),
+    ]
+
+
+def test_term_references_in_image_fields_stay_literal() -> None:
+    front = "---\nprofile: business-report\ntitle: 가상 문서\nterms:\n  key: VALUE\n---\n\n"
+    model = MarkdownParser().parse(front + "글 ![{{key}}](icon.png) 과 ![대체]({{key}}.png) 끝, {{key}}\n")
+    runs = model.elements[-1].content.runs
+    assert [(run.image.alt_text, run.image.path) for run in runs if run.image] == [
+        ("{{key}}", "icon.png"), ("대체", "{{key}}.png"),
+    ]
+    assert [run.text for run in runs if run.term_key] == ["VALUE"]
+
+
+@pytest.mark.parametrize("source,shape,last_row", [
+    ('<table><tr><td rowspan="2">A</td><td>B</td></tr><tr></tr><tr><td>C</td><td>D</td></tr></table>',
+     (2, 2), ["C", "D"]),
+    ('<table><tr><th>H1</th><th>H2</th></tr><tr><td rowspan="2">A</td><td>B</td></tr><tr></tr>'
+     "<tr><td>C</td><td>D</td></tr></table>", (4, 2), ["C", "D"]),
+])
+def test_html_empty_rows_keep_spans_in_their_columns(source: str, shape: tuple, last_row: list) -> None:
+    table = _render(source, profile="plain").tables[0]
+    assert (len(table.rows), len(table.columns)) == shape
+    assert [cell.text for cell in table.rows[-1].cells] == last_row
+
+
+def test_html_literal_tags_and_markdown_characters_stay_text() -> None:
+    source = (
+        "<table><tr><td>셀</td></tr><tr><td>&lt;span style=\"color:#ff0000\"&gt;literal&lt;/span&gt; "
+        "&lt;br&gt; **x** [a](b.pdf) {{none}}</td></tr></table>"
+    )
+    doc = _render(source, profile="plain")
+    assert doc.tables[0].cell(1, 0).text == '<span style="color:#ff0000">literal</span> <br> **x** [a](b.pdf) {{none}}'
+
+
+def test_html_block_boundaries_and_nested_tables_break_lines() -> None:
+    source = (
+        "<table><tr><td>셀</td></tr><tr><td>A<div>B</div>C<p>D</p>E</td></tr>"
+        "<tr><td><table><tr><td>n1</td><td>n2</td></tr><tr><td>n3</td></tr></table>after</td></tr></table>"
+    )
+    table = MarkdownParser(profile="plain").parse(source).elements[0].content
+    assert _cell_text(table.rows[1].cells[0]) == "A\nB\nC\nD\nE"
+    assert _cell_text(table.rows[2].cells[0]) == "n1 n2\nn3\nafter"
+
+
+def test_html_nested_formatting_combines() -> None:
+    source = (
+        "<table><tr><td>셀</td></tr><tr><td><b><i>x</i></b> <b>a <b>b</b> c</b> "
+        '<a href="https://example.com"><b>링크</b></a></td></tr></table>'
+    )
+    runs = MarkdownParser(profile="plain").parse(source).elements[0].content.rows[1].cells[0].runs
+    assert [(run.text, run.bold, run.italic, run.hyperlink) for run in runs] == [
+        ("x", True, True, None), (" ", False, False, None), ("a ", True, False, None),
+        ("b", True, False, None), (" c", True, False, None), (" ", False, False, None),
+        ("링크", True, False, "https://example.com"),
+    ]
+
+
+def test_html_cells_substitute_terms() -> None:
+    front = "---\nprofile: business-report\ntitle: 가상 문서\nterms:\n  company: 가나다머티리얼즈㈜\n---\n\n"
+    model = MarkdownParser().parse(front + "<table><tr><td>구분</td></tr><tr><td>차주: {{company}}</td></tr></table>\n")
+    table = next(element.content for element in model.elements if element.element_type.name == "TABLE")
+    assert [(run.text, run.term_key) for run in table.rows[1].cells[0].runs] == [
+        ("차주: ", None), ("가나다머티리얼즈㈜", "company"),
+    ]
+
+
+def test_data_uri_images_in_html(tmp_path: Path) -> None:
+    import base64
+
+    uri = "data:image/png;base64," + base64.b64encode(_png_bytes()).decode()
+    body = f'<img src="{uri}" alt="x">\n\n<table><tr><td>셀</td></tr><tr><td><img src="{uri}"></td></tr></table>'
+    doc = _render_model(parse_markdown_file(str(_source(tmp_path, body))))
+    assert len(doc.element.body.xpath(".//w:drawing")) == 2
+
+
 def test_unclosed_html_table_is_reported_and_strict_rejects() -> None:
     model = MarkdownParser(profile="plain").parse("<table>\n<tr><td>가</td></tr>\n")
     assert any("HTML table" in warning for warning in model.warnings)

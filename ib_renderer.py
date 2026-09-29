@@ -2972,16 +2972,16 @@ class ImageRenderer:
             # ── Case 2: File path image ────────────────────────────────────────
             elif image.path:
                 # File-backed parses made the path absolute; others stay cwd-relative.
-                img_path = self.local_path(image.path)
-                if img_path is None:
+                source = self.image_source(image)
+                if source is None:
                     logger.warning(
                         "Image file not found: %s — inserting placeholder",
                         image.path,
                     )
                 else:
-                    self._insert_image(str(img_path), image.alt_text)
+                    self._insert_image(source, image.alt_text)
                     inserted = True
-                    logger.debug("Inserted file image: %s", image.path)
+                    logger.debug("Inserted file image: %s", image.path[:80])
 
         except Exception as e:
             logger.warning(
@@ -3003,12 +3003,12 @@ class ImageRenderer:
             self._render_placeholder(image.alt_text)
         return inserted
 
-    def _insert_image(self, file_path: str, alt_text: str):
+    def _insert_image(self, file_path: Union[str, BytesIO], alt_text: str):
         """
         Insert image file into document with proper sizing.
 
         Args:
-            file_path: Path to image file
+            file_path: Path to image file, or its bytes
             alt_text: Alt text for caption
         """
         # Add image with max width constraint

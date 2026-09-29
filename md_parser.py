@@ -12,9 +12,11 @@ Changelog (term variables):
 Changelog (input loss found on a converted term sheet):
     - FIXED: `*`/`_` emphasis needs flanking delimiters, so `2 * 3 * 4` and
       spaced note markers keep their asterisks.
-    - NEW: Inline images in text and table cells (`TextRun.image`).
-    - NEW: HTML `<table>` blocks (spans, breaks, emphasis, links, images,
-      nested tables) and standalone `<img>` lines; unclosed tables warn.
+    - NEW: Inline images in text and table cells (`TextRun.image`), protected
+      as one unit before math, links, emphasis and term substitution.
+    - NEW: HTML `<table>` blocks built directly as runs (spans, block breaks,
+      nested formatting, links, images, terms, nested tables) and standalone
+      `<img>` lines; unclosed tables and unplaceable text warn.
 
 Changelog (memo rendering):
     - NEW: Inline code spans become literal `code` runs without their backticks.
@@ -57,7 +59,19 @@ import re
 from dataclasses import dataclass, field, replace
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import BinaryIO, Callable, Dict, List, Match, Optional, Set, Tuple, Union, cast
+from typing import (
+    BinaryIO,
+    Callable,
+    Dict,
+    List,
+    Match,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
 from urllib.parse import quote, unquote, urlsplit
 
 import yaml
@@ -468,6 +482,7 @@ class TextParser:
         """
         runs: List[TextRun] = []
         text, code_spans = cls._protect_code_spans(text)
+        text, images = cls._protect_images(text)
 
         # ── Phase 1: Split on color spans, then inline LaTeX boundaries ─────
         color_segments = cls._split_on_color_spans(text)
@@ -491,6 +506,7 @@ class TextParser:
                         cls._apply_color(cls._parse_inline_formatting(inline_text), color_hex)
                     )
 
+        runs = cls._split_image_runs(runs, images, code_spans)
         return cls._encode_link_targets(cls._split_code_runs(runs, code_spans))
 
     @classmethod
@@ -533,10 +549,92 @@ class TextParser:
         (e.g., table cells with currency values).
         """
         text, code_spans = cls._protect_code_spans(text)
+        text, images = cls._protect_images(text)
         runs: List[TextRun] = []
         for segment_text, color_hex in cls._split_on_color_spans(text):
             runs.extend(cls._apply_color(cls._parse_inline_formatting(segment_text), color_hex))
+        runs = cls._split_image_runs(runs, images, code_spans)
         return cls._encode_link_targets(cls._split_code_runs(runs, code_spans))
+
+    @classmethod
+    def _protect_images(cls, text: str) -> Tuple[str, Dict[str, Tuple[str, str, str]]]:
+        """Shield inline images before colour spans, math, links and emphasis see them.
+
+        An image is one unit, so `$` in its path is not math and emphasis around
+        it still pairs. An image-like text inside the destination of a link that
+        starts earlier belongs to that link.
+
+        Args:
+            text: Text whose code spans are already protected.
+
+        Returns:
+            Text with images replaced by tokens, and token -> (source, alt, destination).
+        """
+        images: Dict[str, Tuple[str, str, str]] = {}
+        if "![" not in text:
+            return text, images
+        prefix = "IMG"
+        while prefix in text:
+            prefix += "X"
+        links = [
+            match.span() for match in cls._INLINE_REFERENCE_RE.finditer(text)
+            if match.group(2) and text[match.start() - 1:match.start()] != "\\"
+        ]
+        pieces: List[str] = []
+        last = 0
+        for match in cls._INLINE_IMAGE_RE.finditer(text):
+            if any(start < match.start() < end for start, end in links):
+                continue
+            token = f"{prefix}{len(images)}"
+            images[token] = (match.group(0), match.group(1), match.group(2) or match.group(3))
+            pieces.extend((text[last:match.start()], token))
+            last = match.end()
+        pieces.append(text[last:])
+        return "".join(pieces), images
+
+    @classmethod
+    def _split_image_runs(
+        cls, runs: List[TextRun], images: Dict[str, Tuple[str, str, str]], code_spans: Dict[str, str],
+    ) -> List[TextRun]:
+        """Turn image tokens into image runs that keep the surrounding formatting.
+
+        Math stays literal, so a token inside an equation gets its source back.
+
+        Args:
+            runs: Runs parsed from text whose images were replaced by tokens.
+            images: Token to (source, alt text, destination) from `_protect_images`.
+            code_spans: Code-span tokens, restored inside image fields.
+
+        Returns:
+            Runs with each image as its own run whose text is empty.
+        """
+        if not images:
+            return runs
+
+        def restore(value: str) -> str:
+            for token, literal in code_spans.items():
+                value = value.replace(token, literal)
+            return value
+
+        tokens = re.compile("|".join(re.escape(token) for token in images))
+        result: List[TextRun] = []
+        for run in runs:
+            if run.is_latex:
+                run.text = tokens.sub(lambda match: images[match.group(0)][0], run.text)
+            if run.is_latex or not tokens.search(run.text):
+                result.append(run)
+                continue
+            offset = 0
+            for match in tokens.finditer(run.text):
+                if match.start() > offset:
+                    result.append(replace(run, text=run.text[offset:match.start()]))
+                _, alt, destination = images[match.group(0)]
+                image = Image(alt_text=cls.cleanup_text(restore(alt)), path=restore(destination))
+                result.append(replace(run, text="", image=image))
+                offset = match.end()
+            if offset < len(run.text):
+                result.append(replace(run, text=run.text[offset:]))
+        return result
 
     @classmethod
     def _protect_code_spans(cls, text: str) -> Tuple[str, Dict[str, str]]:
@@ -714,29 +812,8 @@ class TextParser:
 
     @classmethod
     def _parse_inline_formatting(cls, text: str) -> List[TextRun]:
-        """Parse inline images, links and numeric footnote references alongside emphasis."""
-        text, literals = cls._protect_escapes(text)
-        runs: List[TextRun] = []
-        offset = 0
-        for match in cls._INLINE_IMAGE_RE.finditer(text):
-            runs.extend(cls._parse_references(text[offset : match.start()]))
-            image = Image(alt_text=match.group(1), path=match.group(2) or match.group(3))
-            runs.append(TextRun(text="", image=image))
-            offset = match.end()
-        runs.extend(cls._parse_references(text[offset:]))
-        # Destination strings are opaque; Markdown escapes apply to visible text.
-        for run in runs:
-            for token, literal in literals.items():
-                if run.hyperlink:
-                    run.hyperlink = run.hyperlink.replace(token, "\\" + literal)
-                if run.image is not None:
-                    run.image.path = run.image.path.replace(token, "\\" + literal)
-                    run.image.alt_text = run.image.alt_text.replace(token, literal)
-        return cls._restore_code_spans(runs, literals)
-
-    @classmethod
-    def _parse_references(cls, text: str) -> List[TextRun]:
         """Parse links and numeric footnote references alongside inline emphasis."""
+        text, literals = cls._protect_escapes(text)
         runs: List[TextRun] = []
         offset = 0
         for match in cls._INLINE_REFERENCE_RE.finditer(text):
@@ -750,7 +827,12 @@ class TextParser:
                 runs.extend(labels)
             offset = match.end()
         runs.extend(cls._parse_plain_formatting(text[offset:]))
-        return runs
+        # Destination strings are opaque; Markdown escapes apply to visible text.
+        for run in runs:
+            if run.hyperlink:
+                for token, literal in literals.items():
+                    run.hyperlink = run.hyperlink.replace(token, "\\" + literal)
+        return cls._restore_code_spans(runs, literals)
 
     @classmethod
     def _encode_link_targets(cls, runs: List[TextRun]) -> List[TextRun]:
@@ -826,6 +908,7 @@ class TextParser:
     def has_inline_latex(cls, text: str) -> bool:
         """Check if text contains inline LaTeX expressions"""
         text, _ = cls._protect_code_spans(text)
+        text, _ = cls._protect_images(text)
         return bool(cls._INLINE_LATEX_RE.search(text))
 
     @staticmethod
@@ -897,6 +980,8 @@ class TextParser:
             return text
         resolver.reserve(text)
         protected, code_spans = cls._protect_code_spans(text)
+        # An image's alt text and destination are never substituted, like a link destination.
+        protected, images = cls._protect_images(protected)
         # Inline math is split before links are parsed, so a `$` in a URL could
         # otherwise expose part of the destination as text.
         protected, destinations = cls._protect_link_destinations(protected)
@@ -916,6 +1001,8 @@ class TextParser:
         result = "".join(pieces)
         for token, literal in destinations.items():
             result = result.replace(token, literal)
+        for token, (source, _, _) in images.items():
+            result = result.replace(token, source)
         for token, literal in code_spans.items():
             result = result.replace(token, literal)
         return result
@@ -1278,7 +1365,7 @@ class TableParser:
 
     @staticmethod
     def from_cells(
-        rows: List[List[str]],
+        rows: Sequence[Sequence[Union[str, TableCell]]],
         alignments: List[str],
         financial_rules: bool = True,
         terms: Optional[TermResolver] = None,
@@ -1287,7 +1374,8 @@ class TableParser:
         Build a Table from cell sources; the first row is the header row.
 
         Args:
-            rows: Inline Markdown of each cell, row by row (span markers allowed).
+            rows: Each cell as inline Markdown (span markers allowed) or as a
+                prepared cell whose runs are final (HTML tables).
             alignments: Column alignments; ignored unless one per column.
             financial_rules: Whether IB table semantics are inferred.
             terms: Active term resolver; cell runs receive values, content stays raw.
@@ -1304,10 +1392,11 @@ class TableParser:
         )
 
         # Header semantics follow the values the reader sees; cells keep raw content.
-        header_cells = (
-            first_row_cells if terms is None
-            else [_substitute_text(source, terms) for source in first_row_cells]
-        )
+        header_cells = [
+            "".join(run.text for run in source.runs) if isinstance(source, TableCell)
+            else source if terms is None else _substitute_text(source, terms)
+            for source in first_row_cells
+        ]
 
         # Detect table type
         header_text = " ".join(header_cells).lower()
@@ -1337,17 +1426,23 @@ class TableParser:
                 cells = cells[: table.col_count]
 
             row = TableRow(is_header=is_header)
-            for j, cell_text in enumerate(cells):
-                cell = TableParser._parse_cell(
-                    cell_text,
-                    is_header=is_header,
-                    col_idx=j,
-                    row_idx=i,
-                    total_rows=len(rows),
-                    table_type=table.table_type,
-                    header_cells=header_cells,
-                    terms=terms,
-                )
+            for j, cell_source in enumerate(cells):
+                if isinstance(cell_source, TableCell):
+                    cell = replace(cell_source, is_header=is_header)
+                    TableParser._detect_flags(
+                        cell, "".join(run.text for run in cell.runs), j, table.table_type, header_cells,
+                    )
+                else:
+                    cell = TableParser._parse_cell(
+                        cell_source,
+                        is_header=is_header,
+                        col_idx=j,
+                        row_idx=i,
+                        total_rows=len(rows),
+                        table_type=table.table_type,
+                        header_cells=header_cells,
+                        terms=terms,
+                    )
                 cell.alignment = table.alignments[j] if j < len(table.alignments) else "left"
                 row.cells.append(cell)
 
@@ -1449,7 +1544,22 @@ class TableParser:
         latex = TextParser.has_inline_latex(text)
         parse = TextParser.parse_runs if latex else TextParser.parse_runs_plain
         detected_text, cell.runs, _ = _parse_term_runs(text, parse, terms, latex=latex)
+        TableParser._detect_flags(cell, detected_text, col_idx, table_type, header_cells)
+        return cell
 
+    @staticmethod
+    def _detect_flags(
+        cell: TableCell, detected_text: str, col_idx: int, table_type: TableType, header_cells: List[str],
+    ) -> None:
+        """Set a cell's numeric, negative and risk flags from its text.
+
+        Args:
+            cell: Cell with final runs.
+            detected_text: Text the numeric and risk detection reads.
+            col_idx: Zero-based column.
+            table_type: Detected or configured table type.
+            header_cells: Header texts, for risk columns.
+        """
         # Detect numeric content
         cell.is_numeric = any(char.isdigit() for char in detected_text) and col_idx > 0
 
@@ -1473,8 +1583,6 @@ class TableParser:
                     cell.risk_level = "medium"
                 elif "low" in text_lower or "낮" in detected_text:
                     cell.risk_level = "low"
-
-        return cell
 
 
 class TableSpanResolver:
@@ -1572,23 +1680,60 @@ class _HtmlCell:
 
     colspan: int = 1
     rowspan: int = 1
-    parts: List[str] = field(default_factory=list)
+    runs: List[TextRun] = field(default_factory=list)
+
+
+def _html_image(source: str, alt: str) -> Optional[Image]:
+    """Return the image an HTML `src` names; a `data:` URI keeps its bytes.
+
+    Args:
+        source: The `src` attribute.
+        alt: The `alt` attribute.
+
+    Returns:
+        The image, or None without a usable source.
+    """
+    source = source.strip()
+    if source.lower().startswith("data:"):
+        header, _, payload = source.partition(",")
+        if not header.lower().endswith(";base64") or not payload.strip():
+            return None
+        return Image(alt_text=alt, path="", base64_data=payload.strip(), mime_type=header[5:-7] or "image/png")
+    if not source or any(character in source for character in "<>\n"):
+        return None
+    return Image(alt_text=alt, path=source)
 
 
 class _HtmlTableReader(HTMLParser):
-    """Collect the outermost table's cells as inline Markdown."""
+    """Collect the outermost table's cells as runs; HTML text is always literal.
 
-    _EMPHASIS = {"b": "**", "strong": "**", "i": "*", "em": "*"}
+    Formatting tags nest (`<b><i>x</i></b>` is bold italic) and end with their
+    cell. Block tags (`p`, `div`, `li`, headings, nested rows and tables) start
+    and end cell lines; every `<br>` breaks a line.
+    """
+
+    _STYLE_TAGS = {
+        "b": "bold", "strong": "bold", "i": "italic", "em": "italic",
+        "code": "code", "tt": "code", "kbd": "code", "sup": "superscript", "sub": "subscript",
+    }
+    _BLOCK_TAGS = frozenset({
+        "p", "div", "li", "ul", "ol", "tr", "blockquote", "pre", "h1", "h2", "h3", "h4", "h5", "h6",
+    })
     _MAX_SPAN = 63  # Word's column limit bounds any sensible span
 
-    def __init__(self) -> None:
+    def __init__(self, terms: Optional[TermResolver] = None) -> None:
         super().__init__(convert_charrefs=True)
         self.rows: List[List[_HtmlCell]] = []
         self.stray: List[str] = []
         self.extra_tables = 0  # further top-level tables in the same block (not read)
+        self._terms = terms
         self._depth = 0
         self._cell: Optional[_HtmlCell] = None
-        self._marks: List[Tuple[str, int, str]] = []  # (tag, first part index, href)
+        self._styles: Dict[str, int] = {}
+        self._links: List[str] = []
+        self._colors: List[Optional[str]] = []
+        self._line_break = False  # a block boundary: the next content starts a new line
+        self._separator = False  # a nested cell boundary: the next content is spaced
 
     @classmethod
     def _span(cls, value: Optional[str]) -> int:
@@ -1597,19 +1742,55 @@ class _HtmlTableReader(HTMLParser):
         except ValueError:
             return 1
 
-    def _line_break(self) -> None:
-        """Start a new cell line unless the cell is empty or already at a line start."""
-        if self._cell is not None and "".join(self._cell.parts).strip() and self._cell.parts[-1] != "<br>":
-            self._cell.parts.append("<br>")
+    def _line_has_content(self) -> bool:
+        for run in reversed(self._cell.runs if self._cell is not None else []):
+            if run.text == "\n":
+                return False
+            if run.image is not None or run.text.strip():
+                return True
+        return False
+
+    def _add(self, run: TextRun) -> None:
+        """Append content, first realizing a pending line break or nested-cell space."""
+        if self._cell is None:
+            return
+        if self._line_break:
+            if self._line_has_content():
+                self._cell.runs.append(TextRun(text="\n"))
+        elif self._separator and self._line_has_content():
+            self._cell.runs.append(TextRun(text=" "))
+        self._line_break = self._separator = False
+        self._cell.runs.append(run)
+
+    def _formatted(self, text: str) -> List[TextRun]:
+        """Runs for literal text under the open formatting tags, with term values split out."""
+        link = next((href for href in reversed(self._links) if href), "")
+        run = TextRun(
+            text=text,
+            bold=self._styles.get("bold", 0) > 0,
+            italic=self._styles.get("italic", 0) > 0,
+            superscript=self._styles.get("superscript", 0) > 0,
+            subscript=self._styles.get("subscript", 0) > 0,
+            code=self._styles.get("code", 0) > 0,
+            color_hex=next((color for color in reversed(self._colors) if color), None),
+            hyperlink=TextParser.link_target(link) if link else None,
+        )
+        if self._terms is None or run.code or "{{" not in text:
+            return [run]
+        tokens: TokenMap = {}
+        tokenized = TextParser._tokenize_references(text, {}, {}, self._terms, tokens)
+        return split_term_runs([replace(run, text=tokenized)], tokens)
 
     def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
         attributes = {name: value or "" for name, value in attrs}
         if tag == "table":
             if self._depth == 0 and self.rows:
                 self.extra_tables += 1
+            elif self._cell is not None:
+                self._line_break = True  # a nested table starts on its own line
             self._depth += 1
             return
-        if self.extra_tables:
+        if self.extra_tables or self._depth == 0:
             return
         if self._depth == 1 and tag == "tr":
             self.rows.append([])
@@ -1619,57 +1800,57 @@ class _HtmlTableReader(HTMLParser):
             if not self.rows:
                 self.rows.append([])
             self._cell = _HtmlCell(self._span(attributes.get("colspan")), self._span(attributes.get("rowspan")))
-            self._marks = []
+            self._styles, self._links, self._colors = {}, [], []
+            self._line_break = self._separator = False
             self.rows[-1].append(self._cell)
             return
         if self._cell is None:
             return
-        if tag == "tr" or tag in ("p", "div", "li"):
-            # A nested table is flattened into its cell: one line per row.
-            self._line_break()
+        if tag in self._BLOCK_TAGS:
+            self._line_break = True
             if tag == "li":
-                self._cell.parts.append("• ")
+                self._add(TextRun(text="• "))
         elif tag in ("td", "th"):
-            if "".join(self._cell.parts).strip() and self._cell.parts[-1] != "<br>":
-                self._cell.parts.append(" ")
+            self._separator = True
         elif tag == "br":
-            self._cell.parts.append("<br>")
-        elif tag in self._EMPHASIS or tag == "a":
-            self._marks.append((tag, len(self._cell.parts), attributes.get("href", "")))
+            self._line_break = self._separator = False
+            self._cell.runs.append(TextRun(text="\n"))
+        elif tag in self._STYLE_TAGS:
+            name = self._STYLE_TAGS[tag]
+            self._styles[name] = self._styles.get(name, 0) + 1
+        elif tag == "a":
+            self._links.append(attributes.get("href", "").strip())
+        elif tag in ("span", "font"):
+            match = TextParser._COLOR_STYLE_RE.search(attributes.get("style", ""))
+            color = match.group(1) if match else attributes.get("color", "")
+            self._colors.append(color.upper() if re.fullmatch(r"#[0-9A-Fa-f]{6}", color) else None)
         elif tag == "img":
-            source, alt = attributes.get("src", ""), attributes.get("alt", "")
-            if source and not any(character in source for character in "<>\n"):
-                self._cell.parts.append(f"![{_escape_html_text(alt)}](<{source}>)")
+            image = _html_image(attributes.get("src", ""), attributes.get("alt", ""))
+            if image is not None:
+                self._add(TextRun(text="", image=image))
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "table":
             self._depth = max(self._depth - 1, 0)
+            if self._cell is not None:
+                self._line_break = True  # text after a nested table starts a new line
             return
-        if self.extra_tables:
+        if self.extra_tables or self._depth == 0:
             return
         if self._depth == 1 and tag in ("td", "th"):
             self._cell = None
             return
-        if self._cell is None or not (tag in self._EMPHASIS or tag == "a"):
+        if self._cell is None:
             return
-        family = self._EMPHASIS.get(tag, tag)
-        for index in range(len(self._marks) - 1, -1, -1):
-            mark_tag, start, href = self._marks[index]
-            if self._EMPHASIS.get(mark_tag, mark_tag) != family:
-                continue
-            del self._marks[index:]
-            segment = "".join(self._cell.parts[start:])
-            core = segment.strip()
-            if core and core != "<br>":
-                lead = segment[: len(segment) - len(segment.lstrip())]
-                trail = segment[len(segment.rstrip()):]
-                if tag == "a":
-                    valid = href and not any(character in href for character in "<>\n")
-                    core = f"[{core}](<{href}>)" if valid else core
-                else:
-                    core = family + core + family
-                self._cell.parts[start:] = [lead + core + trail]
-            return
+        if tag in self._BLOCK_TAGS:
+            self._line_break = True
+        elif tag in self._STYLE_TAGS:
+            name = self._STYLE_TAGS[tag]
+            self._styles[name] = max(self._styles.get(name, 0) - 1, 0)
+        elif tag == "a" and self._links:
+            self._links.pop()
+        elif tag in ("span", "font") and self._colors:
+            self._colors.pop()
 
     def handle_data(self, data: str) -> None:
         if self.extra_tables:
@@ -1678,29 +1859,61 @@ class _HtmlTableReader(HTMLParser):
             if data.strip():
                 self.stray.append(data.strip())
             return
-        self._cell.parts.append(_escape_html_text(re.sub(r"[ \t\r\n\f]+", " ", data)))
+        text = re.sub(r"[ \t\r\n\f]+", " ", data)
+        if not text.strip() and (self._line_break or self._separator or not self._line_has_content()):
+            return  # layout whitespace between blocks
+        for run in self._formatted(text):
+            self._add(run)
 
+    @staticmethod
+    def finish(runs: List[TextRun]) -> List[TextRun]:
+        """Trim cell edges and collapse the spaces HTML would not show.
 
-_HTML_TEXT_ESCAPE_RE = re.compile(r"([\\`*_\[\]^~$])")
+        Args:
+            runs: Runs collected for one cell.
 
-
-def _escape_html_text(text: str) -> str:
-    """Escape HTML text so inline Markdown reproduces it literally.
-
-    Braces stay active, so `{{term}}` references work inside HTML tables too.
-    """
-    escaped = _HTML_TEXT_ESCAPE_RE.sub(r"\\\1", text)
-    return TextParser._LITERAL_BREAK_RE.sub(lambda match: "\\" + match.group(0), escaped)
+        Returns:
+            Runs without spaces at line edges or doubled across runs, and
+            without leading or trailing line breaks. Code and term values keep
+            their text.
+        """
+        cleaned: List[TextRun] = []
+        for run in runs:
+            text = run.text
+            if run.image is None and text != "\n" and not run.code and run.term_key is None:
+                previous = cleaned[-1] if cleaned else None
+                if previous is None or previous.text == "\n" or (
+                    previous.image is None and previous.text.endswith(" ")
+                ):
+                    text = text.lstrip(" ")
+            if run.image is not None or text:
+                cleaned.append(replace(run, text=text))
+        for index, run in enumerate(cleaned):
+            following = cleaned[index + 1] if index + 1 < len(cleaned) else None
+            if (
+                (following is None or following.text == "\n")
+                and run.image is None and run.text != "\n" and not run.code and run.term_key is None
+            ):
+                cleaned[index] = replace(run, text=run.text.rstrip(" "))
+        cleaned = [run for run in cleaned if run.image is not None or run.text]
+        while cleaned and cleaned[0].text == "\n":
+            cleaned.pop(0)
+        while cleaned and cleaned[-1].text == "\n":
+            cleaned.pop()
+        return cleaned
 
 
 class HtmlTableParser:
     """Read an HTML `<table>` block, as document converters write them.
 
     `colspan`/`rowspan` become the engine's `<<`/`^^` span markers, so the
-    table renders merged whatever the profile's span default. `<br>`, `<p>`,
-    `<div>` and `<li>` start cell lines; `<b>`/`<strong>`, `<i>`/`<em>` and
-    `<a href>` become Markdown and `<img>` an inline image. All other text is
-    literal. A nested table is flattened into its cell, one line per row.
+    table renders merged whatever the profile's span default. Cells are built
+    as runs, so HTML text is literal (never re-read as Markdown): `<br>`, `<p>`,
+    `<div>` and `<li>` start cell lines; `<b>`/`<strong>`, `<i>`/`<em>`,
+    `<code>`, `<sup>`/`<sub>`, colour spans and `<a href>` format text; `<img>`
+    is an inline image; `{{key}}` term references are substituted. A nested
+    table is flattened into its cell, one line per row. Empty rows are kept
+    while spans are placed, then dropped when nothing covers them.
 
     The header is the first row plus any rows its row spans cover. Several
     header rows are merged into one (the engine has one header row): each
@@ -1710,9 +1923,6 @@ class HtmlTableParser:
     START_RE = re.compile(r"^\s*<table\b", re.IGNORECASE)
     _OPEN_RE = re.compile(r"<table\b", re.IGNORECASE)
     _CLOSE_RE = re.compile(r"</table\s*>", re.IGNORECASE)
-    # Breaks the reader wrote; an escaped literal `\<br>` from the text is kept.
-    _EDGE_BREAKS_RE = re.compile(r"^(?:\s*<br>)+|(?:(?<!\\)<br>\s*)+$")
-    _BREAK_SPACING_RE = re.compile(r"[ ]*(?<!\\)<br>[ ]*")
 
     @classmethod
     def block_end(cls, lines: List[str], start: int) -> Optional[int]:
@@ -1732,18 +1942,27 @@ class HtmlTableParser:
                 return index + 1
         return None
 
+    @staticmethod
+    def _table_cell(runs: List[TextRun]) -> TableCell:
+        """A prepared cell; `content` is its text (breaks as `<br>`), never a span marker."""
+        content = "".join(run.text for run in runs).replace("\n", "<br>")
+        return TableCell(content="\\" + content if content in ("^^", "<<") else content, runs=runs)
+
     @classmethod
-    def parse(cls, html: str) -> Tuple[List[List[str]], List[str]]:
-        """Convert a complete table block into rows of cell Markdown.
+    def parse(
+        cls, html: str, terms: Optional[TermResolver] = None,
+    ) -> Tuple[List[List[Union[str, TableCell]]], List[str]]:
+        """Convert a complete table block into rows of cells.
 
         Args:
             html: The `<table>...</table>` source.
+            terms: Active term resolver, or None when the document has no `terms:`.
 
         Returns:
-            The rows (the first is the header row) and warnings about text that
-            is not inside any cell.
+            The rows (the first is the header row; covered positions hold span
+            markers) and warnings about content that could not be placed.
         """
-        reader = _HtmlTableReader()
+        reader = _HtmlTableReader(terms)
         reader.feed(html)
         reader.close()
         warnings = [f"Text outside the HTML table cells was dropped: {text}" for text in reader.stray]
@@ -1752,60 +1971,65 @@ class HtmlTableParser:
                 f"{reader.extra_tables} further HTML table(s) on the closing line were dropped; "
                 "start each table on its own line"
             )
-        rows = [row for row in reader.rows if row]
-        if not rows:
-            return [], warnings
 
-        texts: Dict[Tuple[int, int], str] = {}
+        runs: Dict[Tuple[int, int], List[TextRun]] = {}
         anchors: Dict[Tuple[int, int], Tuple[int, int]] = {}
-        spans: Dict[Tuple[int, int], Tuple[int, int]] = {}
+        spans: Dict[Tuple[int, int], int] = {}
+        rows = reader.rows
         for row_index, html_row in enumerate(rows):
             position = 0
             for cell in html_row:
                 while (row_index, position) in anchors:
                     position += 1
                 rowspan = min(cell.rowspan, len(rows) - row_index)
-                spans[(row_index, position)] = (rowspan, cell.colspan)
-                text = cls._BREAK_SPACING_RE.sub("<br>", "".join(cell.parts).strip())
-                text = cls._EDGE_BREAKS_RE.sub("", text).strip()
-                texts[(row_index, position)] = "\\" + text if text in ("^^", "<<") else text
+                spans[(row_index, position)] = rowspan
+                runs[(row_index, position)] = _HtmlTableReader.finish(cell.runs)
                 for down in range(rowspan):
                     for right in range(cell.colspan):
                         anchors[(row_index + down, position + right)] = (row_index, position)
                 position += cell.colspan
+        if not anchors:
+            return [], warnings
         col_count = max(covered for _, covered in anchors) + 1
+        kept = [row for row in range(len(rows)) if any((row, column) in anchors for column in range(col_count))]
 
-        header_rows = 1
+        header_end = kept[0] + 1
         grown = True
         while grown:
             grown = False
-            for (top, _left), (rowspan, _colspan) in spans.items():
-                if top < header_rows < top + rowspan:
-                    header_rows, grown = top + rowspan, True
+            for (top, _), rowspan in spans.items():
+                if top < header_end < top + rowspan:
+                    header_end, grown = top + rowspan, True
 
-        def source(row: int, column: int) -> str:
+        def source(row: int, column: int) -> Union[str, TableCell]:
             anchor = anchors.get((row, column))
             if anchor is None:
                 return ""
             if anchor == (row, column):
-                return texts[anchor]
+                return cls._table_cell(runs[anchor])
             return "^^" if column == anchor[1] else "<<"
 
-        body = [[source(row, column) for column in range(col_count)] for row in range(header_rows, len(rows))]
-        if header_rows == 1:
-            return [[source(0, column) for column in range(col_count)]] + body, warnings
+        body = [[source(row, column) for column in range(col_count)] for row in kept if row >= header_end]
+        header_rows = [row for row in kept if row < header_end]
+        if len(header_rows) == 1:
+            return [[source(header_rows[0], column) for column in range(col_count)]] + body, warnings
 
-        labels: List[Tuple[Tuple[Tuple[int, int], ...], str]] = []
+        labels: List[Tuple[Tuple[Tuple[int, int], ...], List[TextRun]]] = []
         for column in range(col_count):
             seen: List[Tuple[int, int]] = []
-            for row in range(header_rows):
+            for row in header_rows:
                 anchor = anchors.get((row, column))
-                if anchor is not None and texts[anchor] and anchor not in seen:
+                if anchor is not None and anchor not in seen and runs[anchor]:
                     seen.append(anchor)
-            labels.append((tuple(seen), "<br>".join(texts[anchor] for anchor in seen)))
-        header = [
-            "<<" if column and key and key == labels[column - 1][0] else text
-            for column, (key, text) in enumerate(labels)
+            joined: List[TextRun] = []
+            for anchor in seen:
+                if joined:
+                    joined.append(TextRun(text="\n"))
+                joined.extend(runs[anchor])
+            labels.append((tuple(seen), joined))
+        header: List[Union[str, TableCell]] = [
+            "<<" if column and key and key == labels[column - 1][0] else cls._table_cell(list(label))
+            for column, (key, label) in enumerate(labels)
         ]
         return [header] + body, warnings
 
@@ -1817,7 +2041,7 @@ class HtmlTableParser:
             line: Stripped document line.
 
         Returns:
-            The image, or None when the line is not one `<img>` with a `src`.
+            The image, or None when the line is not one `<img>` with a usable `src`.
         """
         found: List[Dict[str, str]] = []
 
@@ -1829,9 +2053,9 @@ class HtmlTableParser:
         reader = _Reader(convert_charrefs=True)
         reader.feed(line)
         reader.close()
-        if len(found) != 1 or not found[0].get("src"):
+        if len(found) != 1:
             return None
-        return Image(alt_text=found[0].get("alt", ""), path=found[0]["src"])
+        return _html_image(found[0].get("src", ""), found[0].get("alt", ""))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2567,7 +2791,7 @@ class MarkdownParser:
                 end = HtmlTableParser.block_end(lines, i)
                 if end is not None:
                     source = "\n".join(lines[i:end])
-                    cells, html_warnings = HtmlTableParser.parse(source)
+                    cells, html_warnings = HtmlTableParser.parse(source, self._terms)
                     self._parse_warnings.extend(html_warnings)
                     if cells:
                         table = TableParser.from_cells(
@@ -3240,7 +3464,10 @@ def parse_markdown_file(
         for element in model.elements:
             if isinstance(element.content, Image):
                 image = element.content
-                if image.path and not image.base64_data and not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", image.path):
+                if (
+                    image.path and not image.base64_data
+                    and not re.match(r"^(?:[a-zA-Z][a-zA-Z0-9+.-]*://|data:)", image.path, re.IGNORECASE)
+                ):
                     image_path = Path(image.path)
                     if not image_path.is_absolute():
                         image.path = str(source_dir / image_path)
