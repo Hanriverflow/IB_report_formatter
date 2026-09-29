@@ -66,10 +66,21 @@ class TermAudit:
     indicative: List[str] = field(default_factory=list)
 
 
-# Text nodes of a control's current value; None means the node's own text.
-_TERM_TEXT: Dict[str, Optional[str]] = {
-    qn("w:t"): None, qn("w:tab"): "\t", qn("w:br"): "\n", qn("w:cr"): "\n",
+# Visible run content of a control's value other than text (`w:t`) and symbols
+# (`w:sym`, decoded from `w:char`). Objects and note marks are visible without
+# text, so they read as U+FFFC. An optional hyphen is invisible unless a line
+# breaks there: `w:softHyphen` reads as nothing and U+00AD is dropped from both
+# current and generated values, because Word may convert one into the other.
+_VISIBLE_RUN_CONTENT: Dict[str, str] = {
+    qn("w:tab"): "\t", qn("w:ptab"): "\t", qn("w:br"): "\n", qn("w:cr"): "\n",
+    qn("w:noBreakHyphen"): "\u2011", qn("w:softHyphen"): "",
+    qn("w:drawing"): "\ufffc", qn("w:pict"): "\ufffc", qn("w:object"): "\ufffc",
+    qn("w:footnoteReference"): "\ufffc", qn("w:endnoteReference"): "\ufffc",
 }
+_TEXT_TAG = qn("w:t")
+_SYMBOL_TAG = qn("w:sym")
+_RUN_CONTENT_TAGS = (_TEXT_TAG, _SYMBOL_TAG, *_VISIBLE_RUN_CONTENT)
+_SOFT_HYPHEN = "\u00ad"
 _REMOVED_CONTENT = frozenset({qn("w:del"), qn("w:moveFrom")})
 _TERM_TAG_PATH = qn("w:sdtPr") + "/" + qn("w:tag")
 _PLACEHOLDER_PATH = qn("w:sdtPr") + "/" + qn("w:showingPlcHdr")
@@ -233,14 +244,31 @@ def _shows_placeholder(control: Any) -> bool:
 
 
 def _current_text(content: Any, control: Any) -> str:
-    """Join text, tabs and breaks, including insertions but not deletions or moves away."""
+    """Join visible run content, including insertions but not deletions or moves away."""
     parts: List[str] = []
-    for node in content.iter(*_TERM_TEXT):
+    for node in content.iter(*_RUN_CONTENT_TAGS):
         if _is_removed(node, stop=control):
             continue
-        replacement = _TERM_TEXT[node.tag]
-        parts.append((node.text or "") if replacement is None else replacement)
-    return "".join(parts)
+        if node.tag == _TEXT_TAG:
+            parts.append(node.text or "")
+        elif node.tag == _SYMBOL_TAG:
+            parts.append(_symbol_text(node))
+        else:
+            parts.append(_VISIBLE_RUN_CONTENT[node.tag])
+    return _visible("".join(parts))
+
+
+def _symbol_text(node: Any) -> str:
+    """Decode a `w:sym` character code; symbol fonts use the F0xx private-use range."""
+    try:
+        return chr(int(node.get(qn("w:char"), ""), 16))
+    except (ValueError, OverflowError):
+        return "\ufffd"
+
+
+def _visible(text: str) -> str:
+    """Drop optional (soft) hyphens, which are not visible within a line."""
+    return text.replace(_SOFT_HYPHEN, "")
 
 
 def _is_removed(node: Any, stop: Any = None) -> bool:
@@ -265,7 +293,7 @@ def _generated_term_values(doc: DocxDocument) -> Dict[str, str]:
             continue  # comments and processing instructions
         name = prop.get("name") or ""
         if name.startswith(TERM_PROPERTY_PREFIX):
-            values[name[len(TERM_PROPERTY_PREFIX):]] = "".join(prop.itertext())
+            values[name[len(TERM_PROPERTY_PREFIX):]] = _visible("".join(prop.itertext()))
     return values
 
 

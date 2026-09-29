@@ -237,6 +237,48 @@ def test_tabs_and_breaks_are_part_of_the_current_value() -> None:
     assert terms.changed == {"tenor": {"generated": "3년", "current": "3\t년\n만기"}}
 
 
+@pytest.mark.parametrize("tag, attributes, visible", [
+    ("w:noBreakHyphen", {}, "\u2011"),
+    ("w:sym", {"font": "Wingdings", "char": "F0E0"}, "\uf0e0"),
+    ("w:ptab", {"relativeTo": "margin", "alignment": "left", "leader": "none"}, "\t"),
+    ("w:cr", {}, "\n"),
+    ("w:drawing", {}, "\ufffc"),
+    ("w:footnoteReference", {"id": "7"}, "\ufffc"),
+])
+def test_visible_run_content_other_than_text_is_an_edit(
+    tag: str, attributes: Dict[str, str], visible: str,
+) -> None:
+    doc = generate("{{amount}} {{amount}}", {"amount": "500"})
+    [value_run] = xp(controls(doc, "amount")[0], "./w:sdtContent/w:r")
+    value_run.find(qn("w:t")).addprevious(element(tag, **attributes))
+    result, terms = audit(doc)
+    assert terms is not None
+    assert terms.mismatched == {"amount": [visible + "500", "500"]}
+    assert terms.changed == {"amount": {"generated": "500", "current": visible + "500"}}
+    # The injected note reference dangles structurally; term findings stay warnings.
+    assert not any("Term" in issue for issue in result.issues)
+
+
+def test_soft_hyphens_are_invisible_on_both_sides() -> None:
+    doc = generate("{{word}} {{amount}}", {"word": "Kredit\u00adgeber", "amount": "500"})
+    _, untouched = audit(doc)
+    assert untouched == TermAudit()
+    [word] = controls(doc, "word")
+    [text] = xp(word, "./w:sdtContent/w:r/w:t")
+    # Word may store a typed optional hyphen as an element when it saves.
+    text.text = "Kredit"
+    text.addnext(element("w:t", "geber"))
+    text.addnext(element("w:softHyphen"))
+    [amount_run] = xp(controls(doc, "amount")[0], "./w:sdtContent/w:r")
+    amount_run.find(qn("w:t")).addprevious(element("w:softHyphen"))
+    _, terms = audit(doc)
+    assert terms == TermAudit()
+    type_value(controls(doc, "amount")[0], "600")
+    _, edited = audit(doc)
+    assert edited is not None
+    assert edited.changed == {"amount": {"generated": "500", "current": "600"}}
+
+
 def test_empty_values_compare_as_text() -> None:
     doc = generate()
     _, terms = audit(doc)
