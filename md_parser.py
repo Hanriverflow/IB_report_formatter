@@ -3,6 +3,12 @@ MD Parser Module for IB Style Word Report Converter
 Handles parsing of Markdown files including frontmatter, elements, tables,
 LaTeX equations, Base64 images, and footnotes.
 
+Changelog (term variables):
+    - NEW: `terms:` frontmatter values substituted for `{{key}}` as value runs
+      (paragraphs, lists, cells, headings, quotes, title/subtitle/date); code,
+      inline math, `\\{{` escapes and link destinations stay literal.
+    - NEW: Undefined keys and malformed references become model warnings.
+
 Changelog (2026-09-29):
     - FIXED: Preserve escaped inline syntax and non-reference body content.
     - FIXED: Share fence boundaries and normalize Markdown block input.
@@ -33,8 +39,9 @@ Dependencies:
 
 import logging
 import re
+from dataclasses import replace
 from pathlib import Path
-from typing import BinaryIO, Dict, List, Match, Optional, Set, Tuple, Union, cast
+from typing import BinaryIO, Callable, Dict, List, Match, Optional, Set, Tuple, Union, cast
 
 import yaml
 
@@ -117,6 +124,14 @@ from document_model import (
     TextRun as TextRun,
 )
 from document_profiles import apply_table_specs, default_metadata, get_profile
+from term_variables import (
+    TERM_REFERENCE_RE,
+    TermResolver,
+    TokenMap,
+    restore_terms,
+    split_term_runs,
+    validate_terms,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -301,6 +316,10 @@ class TextParser:
     _HTML_BREAK_RE = re.compile(r"(?<!\\)<br\s*/?>", re.IGNORECASE)
     _ESCAPED_HTML_BREAK_RE = re.compile(r"\\(<br\s*/?>)", re.IGNORECASE)
     _CODE_SPAN_RE = re.compile(r"(?<![\\`])(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.DOTALL)
+    # Everything `_ESCAPE_RE` unescapes, plus HTML breaks: escaping these makes
+    # parse_runs reproduce inserted text verbatim.
+    _ESCAPABLE_RE = re.compile(r'([\\$`^~.*"\'()\[\]{}|_-])')
+    _LITERAL_BREAK_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 
     # Inline formatting patterns
     _SUBSCRIPT_PATTERN = r"(?<!~)~[A-Za-z0-9]{1,8}~(?!~)"
@@ -588,6 +607,152 @@ class TextParser:
         pieces.append(cls._ESCAPED_HTML_BREAK_RE.sub(r"\1", part))
         return "".join(pieces)
 
+    # ── Term references ─────────────────────────────────────────────────────
+
+    @classmethod
+    def escape_literal(cls, text: str) -> str:
+        """Escape text so that parse_runs reproduces it verbatim.
+
+        Args:
+            text: Literal text inserted into a field parsed as inline Markdown.
+
+        Returns:
+            Text whose inline syntax, including HTML breaks, is escaped.
+        """
+        escaped = cls._ESCAPABLE_RE.sub(r"\\\1", text)
+        return cls._LITERAL_BREAK_RE.sub(lambda match: "\\" + match.group(0), escaped)
+
+    @classmethod
+    def tokenize_terms(
+        cls, text: str, resolver: TermResolver, tokens: TokenMap, latex: bool = True,
+    ) -> str:
+        """Replace substitutable `{{key}}` references with private-use tokens.
+
+        The stages mirror parse_runs: references in code spans, inline math,
+        escaped braces (`\\{{`) and link destinations stay literal. A token then
+        passes through inline parsing like ordinary text, so its value inherits
+        the surrounding emphasis, colour and link; `split_term_runs` inserts the
+        value afterwards, so the value itself is never parsed.
+
+        Args:
+            text: Markdown source of one field.
+            resolver: Document term values and diagnostics.
+            tokens: Receives each new token of this field.
+            latex: Whether the field is parsed with inline math (parse_runs).
+
+        Returns:
+            The source with each defined reference replaced by its token; all
+            other text, including undefined references, is unchanged.
+        """
+        if "{{" not in text:
+            return text
+        resolver.reserve(text)
+        protected, code_spans = cls._protect_code_spans(text)
+        pieces: List[str] = []
+        last = 0
+        for match in cls._COLOR_SPAN_RE.finditer(protected):
+            if cls._extract_color_from_style(match.group(2)) is None:
+                continue
+            pieces.append(cls._tokenize_segment(
+                protected[last:match.start()], code_spans, resolver, tokens, latex,
+            ))
+            pieces.append(protected[match.start():match.start(3)])
+            pieces.append(cls._tokenize_segment(match.group(3), code_spans, resolver, tokens, latex))
+            pieces.append(protected[match.end(3):match.end()])
+            last = match.end()
+        pieces.append(cls._tokenize_segment(protected[last:], code_spans, resolver, tokens, latex))
+        result = "".join(pieces)
+        for token, literal in code_spans.items():
+            result = result.replace(token, literal)
+        return result
+
+    @classmethod
+    def _tokenize_segment(
+        cls, text: str, code_spans: Dict[str, str], resolver: TermResolver,
+        tokens: TokenMap, latex: bool,
+    ) -> str:
+        """Tokenize one colour segment, keeping inline math verbatim."""
+        pieces: List[str] = []
+        last = 0
+        if latex:
+            for match in cls._INLINE_LATEX_RE.finditer(text):
+                pieces.append(cls._tokenize_inline(text[last:match.start()], code_spans, resolver, tokens))
+                pieces.append(match.group(0))
+                last = match.end()
+        pieces.append(cls._tokenize_inline(text[last:], code_spans, resolver, tokens))
+        return "".join(pieces)
+
+    @classmethod
+    def _tokenize_inline(
+        cls, text: str, code_spans: Dict[str, str], resolver: TermResolver, tokens: TokenMap,
+    ) -> str:
+        """Tokenize text and link labels, keeping escapes and destinations verbatim."""
+        protected, escapes = cls._protect_escapes(text)
+        pieces: List[str] = []
+        offset = 0
+        for match in cls._INLINE_REFERENCE_RE.finditer(protected):
+            pieces.append(cls._tokenize_references(
+                protected[offset:match.start()], code_spans, escapes, resolver, tokens,
+            ))
+            if match.group(3):
+                pieces.append(match.group(0))
+            else:
+                label = cls._tokenize_references(match.group(1), code_spans, escapes, resolver, tokens)
+                pieces.append(f"[{label}]({match.group(2)})")
+            offset = match.end()
+        pieces.append(cls._tokenize_references(protected[offset:], code_spans, escapes, resolver, tokens))
+        result = "".join(pieces)
+        for token, literal in escapes.items():
+            result = result.replace(token, "\\" + literal)
+        return result
+
+    @staticmethod
+    def _tokenize_references(
+        text: str, code_spans: Dict[str, str], escapes: Dict[str, str],
+        resolver: TermResolver, tokens: TokenMap,
+    ) -> str:
+        """Replace references in literal-free text; escapes inside a key are resolved."""
+
+        def replace_reference(match: Match[str]) -> str:
+            written = key = match.group(1)
+            for token, literal in escapes.items():
+                written = written.replace(token, "\\" + literal)
+                key = key.replace(token, literal)
+            for token, literal in code_spans.items():
+                written = written.replace(token, literal)
+                key = key.replace(token, literal)
+            replacement = resolver.token("{{" + written + "}}", key.strip(), tokens)
+            return replacement if replacement is not None else match.group(0)
+
+        return TERM_REFERENCE_RE.sub(replace_reference, text)
+
+
+def _parse_term_runs(
+    text: str,
+    parse: Callable[[str], List[TextRun]],
+    terms: Optional[TermResolver],
+    latex: bool = True,
+) -> Tuple[str, List[TextRun], bool]:
+    """Parse runs, substituting defined `{{key}}` references when terms are active.
+
+    Args:
+        text: Markdown source of one field.
+        parse: The TextParser function the renderer-facing runs come from.
+        terms: Active term resolver, or None when the document has no `terms:`.
+        latex: Whether `parse` recognizes inline math.
+
+    Returns:
+        Substituted source text, runs with value runs split out, and whether a
+        value was inserted. Text and runs are unchanged without a substitution.
+    """
+    if terms is None:
+        return text, parse(text), False
+    tokens: TokenMap = {}
+    tokenized = TextParser.tokenize_terms(text, terms, tokens, latex=latex)
+    if not tokens:
+        return text, parse(text), False
+    return restore_terms(tokenized, tokens), split_term_runs(parse(tokenized), tokens), True
+
 
 class FenceScanner:
     """Share fenced-code boundaries across block parsing and metadata scanning."""
@@ -791,12 +956,16 @@ class TableParser:
     ]
 
     @staticmethod
-    def parse(lines: List[str], financial_rules: bool = True) -> Table:
+    def parse(
+        lines: List[str], financial_rules: bool = True, terms: Optional[TermResolver] = None,
+    ) -> Table:
         """
         Parse markdown table lines into a Table object.
 
         Args:
             lines: Lines that make up the table (starting with |)
+            financial_rules: Whether IB table semantics are inferred.
+            terms: Active term resolver; cell runs receive values, content stays raw.
         """
         table = Table()
 
@@ -857,6 +1026,7 @@ class TableParser:
                     total_rows=len(data_lines),
                     table_type=table.table_type,
                     header_cells=first_row_cells,
+                    terms=terms,
                 )
                 cell.alignment = table.alignments[j] if j < len(table.alignments) else "left"
                 row.cells.append(cell)
@@ -946,18 +1116,22 @@ class TableParser:
         total_rows: int,
         table_type: TableType,
         header_cells: List[str],
+        terms: Optional[TermResolver] = None,
     ) -> TableCell:
-        """Parse a single table cell"""
+        """Parse a single table cell.
+
+        The raw `content` is kept for span markers and width estimation; runs
+        and content-derived flags see substituted term values as typed text.
+        """
         cell = TableCell(content=text, is_header=is_header)
 
         # Prefer LaTeX-aware parsing only when a balanced inline expression exists.
-        if TextParser.has_inline_latex(text):
-            cell.runs = TextParser.parse_runs(text)
-        else:
-            cell.runs = TextParser.parse_runs_plain(text)
+        latex = TextParser.has_inline_latex(text)
+        parse = TextParser.parse_runs if latex else TextParser.parse_runs_plain
+        detected_text, cell.runs, _ = _parse_term_runs(text, parse, terms, latex=latex)
 
         # Detect numeric content
-        cell.is_numeric = any(char.isdigit() for char in text) and col_idx > 0
+        cell.is_numeric = any(char.isdigit() for char in detected_text) and col_idx > 0
 
         # Detect negative numbers
         visible_text = "".join(run.text for run in cell.runs)
@@ -972,12 +1146,12 @@ class TableParser:
             header_lower = header_cells[col_idx].lower() if col_idx < len(header_cells) else ""
             risk_header_kw = ("impact", "probability", "영향", "확률")
             if any(kw in header_lower for kw in risk_header_kw):
-                text_lower = text.lower()
-                if "high" in text_lower or "높" in text:
+                text_lower = detected_text.lower()
+                if "high" in text_lower or "높" in detected_text:
                     cell.risk_level = "high"
-                elif any(kw in text_lower for kw in ("medium", "moderate")) or "중" in text:
+                elif any(kw in text_lower for kw in ("medium", "moderate")) or "중" in detected_text:
                     cell.risk_level = "medium"
-                elif "low" in text_lower or "낮" in text:
+                elif "low" in text_lower or "낮" in detected_text:
                     cell.risk_level = "low"
 
         return cell
@@ -1240,6 +1414,8 @@ class MarkdownParser:
         self.preserve_trailing_double_space_break = preserve_trailing_double_space_break
         self.profile = profile
         self._financial_rules = True
+        # Per-parse `terms:` state; None keeps `{{...}}` ordinary text.
+        self._terms: Optional[TermResolver] = None
 
     def parse(self, content: str) -> DocumentModel:
         """
@@ -1256,6 +1432,11 @@ class MarkdownParser:
         # Parse frontmatter
         metadata, remaining_lines = FrontmatterParser.parse(lines, self.profile)
         self._financial_rules = get_profile(metadata.profile).is_ib
+        # An empty mapping enables checking: every reference is then undefined.
+        self._terms = (
+            TermResolver(validate_terms(metadata.extra["terms"]), corpus=content)
+            if "terms" in metadata.extra else None
+        )
 
         # Detect whether YAML frontmatter was present
         has_frontmatter = len(remaining_lines) < len(lines)
@@ -1312,6 +1493,9 @@ class MarkdownParser:
             f"Undefined footnote: {number}"
             for number in sorted(explicit_references - set(footnotes))
         )
+        # Title inference follows what the author wrote, not a substituted value.
+        written_title = metadata.title
+        self._substitute_metadata(metadata)
         model = DocumentModel(
             metadata=metadata,
             elements=elements,
@@ -1322,22 +1506,106 @@ class MarkdownParser:
         if not self._financial_rules:
             first_heading = next(
                 (
-                    e.content.text
+                    e.content
                     for e in elements
                     if e.element_type == ElementType.HEADING_1 and isinstance(e.content, Heading)
                 ),
-                "",
+                None,
             )
-            if metadata.title in {"", "Document", "IB Report"} and first_heading:
-                metadata.title = first_heading
+            if written_title in {"", "Document", "IB Report"} and first_heading and first_heading.text:
+                metadata.title = first_heading.text
+                if first_heading.runs:
+                    metadata.display_runs["title"] = [replace(run) for run in first_heading.runs]
         apply_table_specs(model)
+        self._substitute_table_text(elements)
         model.warnings.extend(
             warning
             for element in elements
             if element.element_type == ElementType.TABLE and isinstance(element.content, Table)
             for warning in element.content.warnings
         )
+        if self._terms is not None:
+            model.warnings.extend(self._terms.warnings())
+            unused = self._terms.unused()
+            if unused:
+                logger.info("Unused terms (defined but never referenced): %s", ", ".join(unused))
         return model
+
+    # ── Term substitution ───────────────────────────────────────────────────
+
+    def _term_runs(
+        self, text: str, parse: Callable[[str], List[TextRun]], latex: bool = True,
+    ) -> Tuple[str, List[TextRun], bool]:
+        """Parse one field's runs with this document's terms (see `_parse_term_runs`)."""
+        return _parse_term_runs(text, parse, self._terms, latex=latex)
+
+    def _substitute_heading(self, element: Element) -> Element:
+        """Carry value runs for a heading that references terms.
+
+        The runs follow HeadingRenderer's parse of the heading text but resolve
+        escapes once: its second unescape pass would turn `\\{{` into a reference.
+
+        Args:
+            element: A parsed heading element.
+
+        Returns:
+            The same element; text and runs change only when a value is inserted.
+        """
+        heading = element.content
+        if self._terms is None or not isinstance(heading, Heading):
+            return element
+        tokens: TokenMap = {}
+        if element.element_type == ElementType.NUMBERED_HEADING:
+            # Its text is already unescaped, so substitute from the source line.
+            tokenized = TextParser.cleanup_text(
+                TextParser.tokenize_terms(element.raw_text, self._terms, tokens)
+            )
+        else:
+            tokenized = TextParser.tokenize_terms(heading.text, self._terms, tokens)
+        if tokens:
+            heading.text = restore_terms(tokenized, tokens)
+            # HeadingRenderer drops bold markers because it bolds every run.
+            heading.runs = split_term_runs(
+                TextParser.parse_runs(tokenized.replace("**", "").strip()), tokens,
+            )
+        return element
+
+    def _substitute_metadata(self, metadata: DocumentMetadata) -> None:
+        """Substitute title, subtitle and date, keeping their runs for display."""
+        if self._terms is None:
+            return
+        for name in ("title", "subtitle", "date"):
+            source = metadata.extra.get(name) if name == "date" else getattr(metadata, name)
+            if not isinstance(source, str):
+                continue
+            text, runs, substituted = self._term_runs(source, TextParser.parse_runs)
+            if not substituted:
+                continue
+            metadata.display_runs[name] = runs
+            if name == "date":
+                metadata.extra[name] = text
+            else:
+                setattr(metadata, name, text)
+
+    def _substitute_table_text(self, elements: List[Element]) -> None:
+        """Substitute table captions, units, sources and dates as untagged text.
+
+        The renderer reads these fields as inline Markdown, so values are
+        escaped to stay literal there.
+        """
+        if self._terms is None:
+            return
+        for element in elements:
+            if element.element_type != ElementType.TABLE or not isinstance(element.content, Table):
+                continue
+            for name in ("caption", "unit", "source", "as_of"):
+                tokens: TokenMap = {}
+                tokenized = TextParser.tokenize_terms(getattr(element.content, name), self._terms, tokens)
+                if tokens:
+                    setattr(
+                        element.content, name,
+                        restore_terms(tokenized, tokens, TextParser.escape_literal),
+                    )
 
     @staticmethod
     def _strip_comments(lines: List[str]) -> List[str]:
@@ -1574,7 +1842,9 @@ class MarkdownParser:
                 while i < len(lines) and lines[i].strip().startswith("|"):
                     table_lines.append(lines[i].strip())
                     i += 1
-                table = TableParser.parse(table_lines, financial_rules=self._financial_rules)
+                table = TableParser.parse(
+                    table_lines, financial_rules=self._financial_rules, terms=self._terms,
+                )
                 elements.append(
                     Element(
                         element_type=ElementType.TABLE,
@@ -1587,16 +1857,16 @@ class MarkdownParser:
             # ── Headings (must be checked before numbered list) ─────────────
             if i + 1 < len(lines) and self._SETEXT_H1_RE.fullmatch(lines[i + 1].strip()):
                 if not self._starts_new_block(line):
-                    elements.append(Element(
+                    elements.append(self._substitute_heading(Element(
                         element_type=ElementType.HEADING_1,
                         content=Heading(level=1, text=line),
                         raw_text=raw_line + "\n" + lines[i + 1],
-                    ))
+                    )))
                     i += 2
                     continue
             element = self._try_parse_heading(line)
             if element:
-                elements.append(element)
+                elements.append(self._substitute_heading(element))
                 i += 1
                 continue
 
@@ -1604,20 +1874,31 @@ class MarkdownParser:
             match = self.BLOCKQUOTE_PATTERN.match(line)
             if match:
                 bq_lines: List[str] = []
+                quote_tokens: TokenMap = {}
                 while i < len(lines):
                     bq_match = self.BLOCKQUOTE_PATTERN.match(lines[i].strip())
                     if bq_match:
-                        bq_lines.append(TextParser.cleanup_text(bq_match.group(1)))
+                        source = bq_match.group(1)
+                        if self._terms is not None:
+                            # Callouts render their body without inline math.
+                            source = TextParser.tokenize_terms(
+                                source, self._terms, quote_tokens, latex=False,
+                            )
+                        bq_lines.append(TextParser.cleanup_text(source))
                         i += 1
                     else:
                         break
 
                 title, body = self._extract_blockquote_title(bq_lines)
+                quote = Blockquote(text=body, title=title)
+                if quote_tokens:
+                    quote.text = restore_terms(body, quote_tokens)
+                    quote.runs = split_term_runs(TextParser.parse_runs_plain(body), quote_tokens)
                 elements.append(
                     Element(
                         element_type=ElementType.BLOCKQUOTE,
-                        content=Blockquote(text=body, title=title),
-                        raw_text="\n".join(bq_lines),
+                        content=quote,
+                        raw_text=restore_terms("\n".join(bq_lines), quote_tokens),
                     )
                 )
                 continue
@@ -1627,9 +1908,10 @@ class MarkdownParser:
             if match:
                 indent_level = self._get_indent_level(match.group(1))
                 text, next_idx = self._collect_paragraph(lines, i, first_line=match.group(2))
+                text, runs, _ = self._term_runs(text, TextParser.parse_runs)
                 item = ListItem(
                     text=text,
-                    runs=TextParser.parse_runs(text),
+                    runs=runs,
                     indent_level=indent_level,
                 )
                 elements.append(
@@ -1648,9 +1930,10 @@ class MarkdownParser:
                 indent_level = self._get_indent_level(match.group(1))
                 number = match.group(2)
                 text, next_idx = self._collect_paragraph(lines, i, first_line=match.group(3))
+                text, runs, _ = self._term_runs(text, TextParser.parse_runs)
                 item = ListItem(
                     text=text,
-                    runs=TextParser.parse_runs(text),
+                    runs=runs,
                     indent_level=indent_level,
                 )
                 elements.append(
@@ -1808,10 +2091,11 @@ class MarkdownParser:
         the renderer to handle them appropriately.
         """
         has_latex = LaTeXParser.has_inline(line)
+        text, runs, _ = self._term_runs(line, TextParser.parse_runs)
 
         para = Paragraph(
-            text=line,
-            runs=TextParser.parse_runs(line),
+            text=text,
+            runs=runs,
             has_inline_latex=has_latex,
         )
 
