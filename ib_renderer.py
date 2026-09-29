@@ -2,6 +2,20 @@
 IB Renderer Module for Word Report Generation
 Handles styling and rendering of document elements in IB Bank style.
 
+Changelog (term-sheet foundation):
+    - Validate term-sheet metadata and resolve house text before document output.
+    - Preserve confirmation fences in code panels when confirmation text is missing.
+    - Term-sheet composition in the shared path: document defaults, opening
+      block, per-line paragraphs, accent headings, confirmation box and
+      per-section header/footer (term_sheet.py; callbacks injected).
+
+Changelog (table spans):
+    - Merge validated span rectangles in every profile: size the empty table,
+      merge, then fill each owner cell once; covered cells repeat vertical fills.
+    - Render the optional table note after the source in every profile.
+    - Term-sheet tables: fixed label grid for key-value tables, label tiers,
+      per-line cell paragraphs with marker indents and estimated row splitting.
+
 Changelog (cover-free title):
     - Render the IB report title, subtitle and memo-style metadata without a cover.
     - Place the cover-free report opening before the TOC on the first page.
@@ -35,7 +49,7 @@ from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import AbstractSet, Any, Dict, List, Optional, Set, Tuple, cast
 from uuid import uuid4
 from xml.sax.saxutils import escape
 
@@ -52,15 +66,16 @@ from docx.opc.part import XmlPart, serialize_part_xml
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.oxml.parser import parse_xml
-from docx.shared import Inches, Mm, Pt, RGBColor
+from docx.shared import Emu, Inches, Mm, Pt, RGBColor
 
-from document_model import Chart
+from document_model import Chart, ConfirmationBlock
 from document_profiles import (
     RenderOptions,
     default_metadata,
     load_style,
     resolve_options,
     validate_office_metadata,
+    validate_term_sheet_metadata,
 )
 from md_parser import (
     Blockquote,
@@ -90,8 +105,35 @@ from office_layout import (
 )
 from render_styles import STYLE, RasterFontPolicy, collect_raster_font_diagnostics, use_style
 from render_styles import IBStyle as IBStyle
+from term_sheet import (
+    ROW_SPLIT_THRESHOLD,
+    TermSheetTexts,
+    add_table_heading,
+    add_table_note,
+    add_table_source,
+    add_table_spacer,
+    apply_marker_layout,
+    apply_table_frame,
+    configure_cell_paragraph,
+    confirmation_has_text,
+    estimate_cell_lines,
+    key_value_widths,
+    line_text,
+    render_confirmation,
+    render_term_sheet_heading,
+    render_term_sheet_opening,
+    render_term_sheet_paragraph,
+    resolve_term_sheet_texts,
+    set_cell_fill,
+    set_row_pagination,
+    setup_term_sheet_header_footer,
+    setup_term_sheet_styles,
+    split_run_lines,
+)
 
 logger = logging.getLogger(__name__)
+
+_BLACK = RGBColor(0, 0, 0)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -650,7 +692,7 @@ class TableStyler:
 
     @staticmethod
     def set_cell_background(cell, hex_color: str):
-        """Set cell background color"""
+        """Set cell background color, replacing an earlier fill in place."""
         tcPr = cell._element.tcPr
         if tcPr is None:
             tcPr = OxmlElement("w:tcPr")
@@ -659,7 +701,12 @@ class TableStyler:
         shd.set(qn("w:val"), "clear")
         shd.set(qn("w:color"), "auto")
         shd.set(qn("w:fill"), hex_color)
-        tcPr.append(shd)
+        existing = tcPr.find(qn("w:shd"))
+        if existing is not None:
+            # A second fill (e.g. a base case over a label) must not duplicate w:shd.
+            tcPr.replace(existing, shd)
+        else:
+            tcPr.append(shd)
 
     @staticmethod
     def set_table_borders(table):
@@ -1479,8 +1526,10 @@ class TableRenderer:
     _MAX_NUMERIC_COLUMN_WIDTH_INCHES = 1.35
     _MAX_TEXT_COLUMN_SHARE = 0.55
 
-    def __init__(self, doc: DocxDocument):
+    def __init__(self, doc: DocxDocument, term_sheet: bool = False):
         self.doc = doc
+        # Profile-only layout; merge emission itself is shared by every profile.
+        self.term_sheet = term_sheet
 
     def render(self, table: Table):
         """Render a table"""
@@ -1490,15 +1539,11 @@ class TableRenderer:
         row_count = len(table.rows)
         col_count = table.col_count
 
-        previous_geometry = None
-        if table.landscape:
-            section = self.doc.sections[-1]
-            assert section.page_width is not None and section.page_height is not None
-            previous_geometry = (section.orientation, section.page_width, section.page_height)
-            section = self.doc.add_section(WD_SECTION_START.NEW_PAGE)
-            section.orientation = WD_ORIENT.LANDSCAPE
-            section.page_width = max(previous_geometry[1:])
-            section.page_height = min(previous_geometry[1:])
+        previous_geometry = self._begin_landscape(table)
+        if self.term_sheet:
+            self._render_term_sheet_table(table)
+            self._end_landscape(previous_geometry)
+            return
         for text in [
             table.caption,
             " · ".join(
@@ -1520,10 +1565,14 @@ class TableRenderer:
         word_table.style = STYLE.STYLE_TABLE_GRID
         column_kinds = self._infer_column_kinds(table)
         self._apply_column_widths(word_table, table, column_kinds)
+        # Merge the empty, sized grid so spanned widths add up and no content
+        # is concatenated; each owner cell is then filled exactly once.
+        rectangles = self._merge_cells(word_table, table)
+        covered = self._covered_cells(rectangles)
 
         # Render header row
         if table.rows:
-            self._render_header_row(word_table, table.rows[0], col_count)
+            self._render_header_row(word_table, table.rows[0], col_count, covered)
 
         # Render data rows based on table type
         for r_idx, row in enumerate(table.rows[1:], 1):
@@ -1536,7 +1585,9 @@ class TableRenderer:
                 column_kinds,
                 table.column_types,
                 table.alignments,
+                covered,
             )
+        self._mirror_vertical_fills(word_table, rectangles)
 
         word_table.rows[0]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
         for word_row in word_table.rows:
@@ -1551,11 +1602,311 @@ class TableRenderer:
                 TextParser.parse_runs("출처: " + table.source),
                 font_size=STYLE.SMALL_SIZE,
             )
+        if table.note:
+            paragraph = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            TextRenderer.render_runs(
+                paragraph, TextParser.parse_runs(table.note), font_size=STYLE.SMALL_SIZE
+            )
         # Spacer paragraph after table
         self.doc.add_paragraph()
+        self._end_landscape(previous_geometry)
+
+    def _begin_landscape(self, table: Table) -> Optional[Tuple[Any, int, int]]:
+        """Open a landscape section for a landscape table; return the prior geometry."""
+        if not table.landscape:
+            return None
+        section = self.doc.sections[-1]
+        assert section.page_width is not None and section.page_height is not None
+        previous_geometry = (section.orientation, section.page_width, section.page_height)
+        section = self.doc.add_section(WD_SECTION_START.NEW_PAGE)
+        section.orientation = WD_ORIENT.LANDSCAPE
+        section.page_width = Emu(max(previous_geometry[1:]))
+        section.page_height = Emu(min(previous_geometry[1:]))
+        return previous_geometry
+
+    def _end_landscape(self, previous_geometry: Optional[Tuple[Any, int, int]]) -> None:
+        """Restore the page geometry that preceded a landscape table."""
         if previous_geometry:
             section = self.doc.add_section(WD_SECTION_START.NEW_PAGE)
-            section.orientation, section.page_width, section.page_height = previous_geometry
+            section.orientation = previous_geometry[0]
+            section.page_width = Emu(previous_geometry[1])
+            section.page_height = Emu(previous_geometry[2])
+
+    def _render_term_sheet_table(self, table: Table) -> None:
+        """Render a term-sheet table through the shared merge emission.
+
+        Key-value tables (one or two label columns plus one content column) use
+        the fixed label grid so their first vertical line is common; other tables
+        keep content-based widths. Each owner cell is filled once with one
+        paragraph per line, and a row stays unsplit when its estimated height is
+        at most `ROW_SPLIT_THRESHOLD` lines (the header row always).
+
+        Args:
+            table: Parsed table; `label_columns` is inferred by the parser.
+        """
+        row_count, col_count = len(table.rows), table.col_count
+        available = self._get_available_table_width_emu()
+        add_table_heading(
+            self.doc, table.caption, table.unit, table.as_of, TextRenderer.render_runs, available
+        )
+        word_table = self.doc.add_table(rows=row_count, cols=col_count)
+        word_table.style = STYLE.STYLE_TABLE_GRID
+        column_kinds = self._infer_column_kinds(table)
+        label_columns = (
+            table.label_columns if table.label_columns is not None else min(1, max(col_count - 1, 0))
+        )
+        key_value = label_columns in (1, 2) and col_count == label_columns + 1
+        widths = key_value_widths(label_columns, available) if key_value else None
+        if widths is None:
+            widths = [
+                int(Inches(width))
+                for width in self._estimate_column_widths(
+                    table, available / self._EMUS_PER_INCH, column_kinds
+                )
+            ]
+        self._set_column_widths(word_table, widths)
+        rectangles = self._merge_cells(word_table, table)
+        covered = self._covered_cells(rectangles)
+        extents = {(top, left): (bottom, right) for top, left, bottom, right in rectangles}
+        apply_table_frame(word_table, sum(widths))
+
+        line_counts = [0] * row_count
+        for row_index, row in enumerate(table.rows):
+            word_cells = word_table.rows[row_index].cells
+            for column_index in range(col_count):
+                if (row_index, column_index) in covered:
+                    continue
+                bottom, right = extents.get((row_index, column_index), (row_index, column_index))
+                cell_data = (
+                    row.cells[column_index] if column_index < len(row.cells) else TableCell(content="")
+                )
+                role = self._term_sheet_role(row_index, column_index, label_columns, key_value)
+                texts, size = self._fill_term_sheet_cell(
+                    word_cells[column_index], cell_data, role, row_index, column_index,
+                    table, column_kinds,
+                )
+                if bottom == row_index:  # multi-row owners are excluded from row estimates
+                    lines = estimate_cell_lines(
+                        texts, sum(widths[column_index:right + 1]), size, markers=role == "content"
+                    )
+                    line_counts[row_index] = max(line_counts[row_index], lines)
+        self._mirror_vertical_fills(word_table, rectangles)
+        for row_index, word_row in enumerate(word_table.rows):
+            header = row_index == 0
+            set_row_pagination(
+                word_row,
+                keep_together=header or line_counts[row_index] <= ROW_SPLIT_THRESHOLD,
+                repeat_header=header,
+            )
+        if table.note:
+            add_table_note(self.doc, table.note, TextRenderer.render_runs)
+        if table.source:
+            add_table_source(self.doc, table.source, TextRenderer.render_runs)
+        add_table_spacer(self.doc)
+
+    @staticmethod
+    def _term_sheet_role(row_index: int, column_index: int, label_columns: int, key_value: bool) -> str:
+        """Classify an owner cell by the grid position where it starts."""
+        if row_index == 0:
+            return "header"
+        if column_index >= label_columns:
+            return "content"
+        if not key_value:
+            return "grid-label"
+        return "sublabel" if column_index == 1 else "label"
+
+    def _fill_term_sheet_cell(
+        self,
+        word_cell,
+        cell_data: TableCell,
+        role: str,
+        row_index: int,
+        column_index: int,
+        table: Table,
+        column_kinds: List[str],
+    ) -> Tuple[List[str], Pt]:
+        """Fill and style one owner cell exactly once, one paragraph per line.
+
+        Header: header fill, bold accent, centred. Key-value label: label fill,
+        bold black, centred; second label tier: unshaded, regular muted, centred.
+        Grid-table labels: label fill, regular black, centred. Content cells keep
+        column kinds, alignment markers and numeric roles, and indent marker lines.
+
+        Returns:
+            The cell's line texts and base text size, for row-split estimation.
+        """
+        column_role = table.column_types[column_index] if table.column_types else None
+        fill: Optional[str] = None
+        color: Optional[RGBColor] = None
+        alignment = WD_ALIGN_PARAGRAPH.CENTER
+        if role == "header":
+            runs = [
+                replace(run, bold=True, color_hex=None)
+                for run in cell_data.runs or TextParser.parse_runs_plain(cell_data.content)
+            ]
+            fill, color = STYLE.TABLE_HEADER_BG, STYLE.NAVY
+            font_name, size = STYLE.HEADING_FONT, STYLE.TABLE_HEADER_SIZE
+        else:
+            content, runs = self._display_content(cell_data, column_role, table.table_type)
+            runs = runs or TextParser.parse_runs_plain(content)
+            font_name, size = STYLE.BODY_FONT, STYLE.TABLE_BODY_SIZE
+            if role == "label":
+                fill, color = STYLE.TS_LABEL_BG_HEX, _BLACK
+                runs = [replace(run, bold=True) for run in runs]
+            elif role == "grid-label":
+                fill, color = STYLE.TS_LABEL_BG_HEX, _BLACK
+            elif role == "sublabel":
+                color = RGBColor.from_string(STYLE.TS_MUTED_HEX)
+            else:
+                alignment = self._cell_alignment(column_index, column_kinds, table.alignments)
+                if STYLE.TABLE_ZEBRA and row_index % 2 == 1 and not cell_data.is_base_case:
+                    fill = STYLE.LIGHT_GRAY_HEX
+        if fill:
+            set_cell_fill(word_cell._tc, fill)
+        word_cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        texts: List[str] = []
+        for index, line in enumerate(split_run_lines(runs)):
+            paragraph = word_cell.paragraphs[0] if index == 0 else word_cell.add_paragraph()
+            configure_cell_paragraph(paragraph)
+            paragraph.alignment = alignment
+            text = line_text(line)
+            line_size = apply_marker_layout(paragraph, text) if role == "content" else None
+            TextRenderer.render_runs(
+                paragraph, line, default_color=color, font_name=font_name, font_size=line_size or size
+            )
+            texts.append(text)
+        if role != "header" and not (
+            table.table_type == TableType.FINANCIAL and column_role in {"text", "code", "date"}
+        ):
+            self._apply_type_styling(word_cell, cell_data, row_index, table.table_type)
+        return texts, size
+
+    @staticmethod
+    def _set_column_widths(word_table, widths: List[int]) -> None:
+        """Set exact grid and cell widths (EMU) on a table that is not merged yet."""
+        word_table.autofit = False
+        word_table.alignment = WD_TABLE_ALIGNMENT.LEFT
+        for index, width in enumerate(widths):
+            word_table.columns[index].width = Emu(width)
+            for cell in word_table.columns[index].cells:
+                cell.width = Emu(width)
+
+    def _merge_cells(self, word_table, table: Table) -> List[Tuple[int, int, int, int]]:
+        """Merge validated span rectangles of an empty table whose widths are set.
+
+        python-docx concatenates the paragraphs of merged cells that have content
+        and adds the `tcW` of horizontally merged cells, so merging must happen
+        after sizing and before any cell is filled.
+
+        Args:
+            word_table: Freshly created Word table with grid and cell widths applied.
+            table: Parsed table whose `TableCell.merge` directives define the spans.
+
+        Returns:
+            Inclusive zero-based (top, left, bottom, right) rectangles that were merged.
+        """
+        rectangles, problems = self._span_rectangles(table)
+        errors = getattr(self.doc.part, "_ib_render_errors", None)
+        for problem in problems:
+            logger.warning("%s", problem)
+            if errors is not None:
+                errors.append(problem)
+        for top, left, bottom, right in rectangles:
+            word_table.cell(top, left).merge(word_table.cell(bottom, right))
+        return rectangles
+
+    @staticmethod
+    def _span_rectangles(table: Table) -> Tuple[List[Tuple[int, int, int, int]], List[str]]:
+        """Group span directives into rectangles, rejecting malformed groups.
+
+        Parsed tables are already validated by `TableSpanResolver`; this guard keeps
+        hand-built models from producing ragged or overlapping Word merges.
+
+        Args:
+            table: Table whose cells may carry "up"/"left" merge directives.
+
+        Returns:
+            Valid rectangles and one diagnostic per rejected group, whose cells
+            are then rendered unmerged with their own content.
+        """
+        roots: Dict[Tuple[int, int], Tuple[int, int]] = {}
+        groups: Dict[Tuple[int, int], List[Tuple[int, int]]] = {}
+        outside: Set[Tuple[int, int]] = set()
+        for row_index, row in enumerate(table.rows):
+            for column_index, cell in enumerate(row.cells[: table.col_count]):
+                position = root = (row_index, column_index)
+                if cell.merge in ("up", "left"):
+                    target = (
+                        (row_index - 1, column_index)
+                        if cell.merge == "up"
+                        else (row_index, column_index - 1)
+                    )
+                    if target in roots:
+                        root = roots[target]
+                    else:
+                        outside.add(position)
+                roots[position] = root
+                groups.setdefault(root, []).append(position)
+        rectangles: List[Tuple[int, int, int, int]] = []
+        problems: List[str] = []
+        for (top, left), members in groups.items():
+            if all(table.rows[row].cells[column].merge is None for row, column in members):
+                continue
+            bottom = max(row for row, _ in members)
+            right = max(column for _, column in members)
+            if (
+                not outside.intersection(members)
+                and min(row for row, _ in members) == top
+                and min(column for _, column in members) == left
+                and table.rows[top].cells[left].merge is None
+                and len(members) == (bottom - top + 1) * (right - left + 1)
+                and len({table.rows[row].is_header for row in range(top, bottom + 1)}) == 1
+            ):
+                rectangles.append((top, left, bottom, right))
+            else:
+                problems.append(
+                    f"Invalid table span group at row {top + 1}, column {left + 1}; "
+                    "cells rendered unmerged"
+                )
+        return rectangles, problems
+
+    @staticmethod
+    def _covered_cells(rectangles: List[Tuple[int, int, int, int]]) -> Set[Tuple[int, int]]:
+        """Return grid positions represented by another cell's merged owner."""
+        return {
+            (row, column)
+            for top, left, bottom, right in rectangles
+            for row in range(top, bottom + 1)
+            for column in range(left, right + 1)
+            if (row, column) != (top, left)
+        }
+
+    @staticmethod
+    def _mirror_vertical_fills(word_table, rectangles: List[Tuple[int, int, int, int]]) -> None:
+        """Repeat each vertical owner's fill on its continuation `w:tc` elements.
+
+        Continuation cells keep their own properties in OOXML, so the owner's fill
+        is repeated to keep the whole merged area shaded in every consumer.
+        """
+        for top, left, bottom, _ in rectangles:
+            if bottom == top:
+                continue
+            owner = word_table.rows[top]._tr.tc_at_grid_offset(left)
+            shading = owner.tcPr.find(qn("w:shd")) if owner.tcPr is not None else None
+            if shading is None or not shading.get(qn("w:fill")):
+                continue
+            for row_index in range(top + 1, bottom + 1):
+                continuation = word_table.rows[row_index]._tr.tc_at_grid_offset(left)
+                set_cell_fill(continuation, shading.get(qn("w:fill")))
+
+    @staticmethod
+    def _is_span_cell(row: TableRow, col_idx: int) -> bool:
+        """True for covered cells and owners spanning columns (excluded from sizing)."""
+        cells = row.cells
+        return cells[col_idx].merge is not None or (
+            col_idx + 1 < len(cells) and cells[col_idx + 1].merge == "left"
+        )
 
     def _apply_column_widths(self, word_table, table: Table, column_kinds: List[str]) -> None:
         """Apply content-aware column widths for more readable report tables."""
@@ -1613,7 +1964,7 @@ class TableRenderer:
         texts = []
 
         for row in table.rows:
-            if col_idx >= len(row.cells):
+            if col_idx >= len(row.cells) or self._is_span_cell(row, col_idx):
                 continue
 
             cell = row.cells[col_idx]
@@ -1647,7 +1998,7 @@ class TableRenderer:
         sample_texts = []
 
         for row in table.rows[1:]:
-            if col_idx >= len(row.cells):
+            if col_idx >= len(row.cells) or self._is_span_cell(row, col_idx):
                 continue
 
             text = self._cell_display_text(row.cells[col_idx], table.table_type).strip()
@@ -1799,8 +2150,12 @@ class TableRenderer:
 
     def _get_available_table_width_inches(self) -> float:
         """Return the horizontal space available for body tables."""
+        return float(self._get_available_table_width_emu()) / float(self._EMUS_PER_INCH)
+
+    def _get_available_table_width_emu(self) -> int:
+        """Return the printable width of the current (last) section in EMU."""
         if not self.doc.sections:
-            return 6.0
+            return int(Inches(6.0))
 
         section = self.doc.sections[-1]
         if (
@@ -1808,12 +2163,11 @@ class TableRenderer:
             or section.left_margin is None
             or section.right_margin is None
         ):
-            return 6.0
+            return int(Inches(6.0))
         available_width = (
             int(section.page_width) - int(section.left_margin) - int(section.right_margin)
         )
-        available_width = max(available_width, int(Inches(3.0)))
-        return float(available_width) / float(self._EMUS_PER_INCH)
+        return max(available_width, int(Inches(3.0)))
 
     def _cell_display_text(self, cell_data: TableCell, table_type: TableType) -> str:
         """Return display text used for width estimation."""
@@ -1821,13 +2175,21 @@ class TableRenderer:
             return self._format_financial_number(cell_data.content)
         return cell_data.content
 
-    def _render_header_row(self, word_table, row: TableRow, col_count: int):
-        """Render header row with Navy background"""
+    def _render_header_row(
+        self,
+        word_table,
+        row: TableRow,
+        col_count: int,
+        covered: AbstractSet[Tuple[int, int]] = frozenset(),
+    ):
+        """Render header row with Navy background, skipping merged-away cells."""
         word_cells = word_table.rows[0].cells
 
         for c_idx, cell_data in enumerate(row.cells):
             if c_idx >= col_count:
                 break
+            if (0, c_idx) in covered:
+                continue
 
             cell = word_cells[c_idx]
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
@@ -1869,13 +2231,16 @@ class TableRenderer:
         column_kinds: List[str],
         column_types: Optional[List[str]] = None,
         alignments: Optional[List[str]] = None,
+        covered: AbstractSet[Tuple[int, int]] = frozenset(),
     ):
-        """Render a data row with type-specific styling"""
+        """Render a data row with type-specific styling, skipping merged-away cells."""
         word_cells = word_table.rows[row_idx].cells
 
         for c_idx, cell_data in enumerate(row.cells):
             if c_idx >= col_count:
                 break
+            if (row_idx, c_idx) in covered:
+                continue
 
             cell = word_cells[c_idx]
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
@@ -1883,37 +2248,11 @@ class TableRenderer:
             self._configure_cell_paragraph(p)
 
             # ── Alignment ───────────────────────────────────────────────────
-            if c_idx < len(column_kinds) and column_kinds[c_idx] == "numeric":
-                p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            else:
-                p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
-            if alignments and c_idx < len(alignments) and alignments[c_idx] in {"center", "right"}:
-                p.alignment = (
-                    WD_ALIGN_PARAGRAPH.CENTER
-                    if alignments[c_idx] == "center"
-                    else WD_ALIGN_PARAGRAPH.RIGHT
-                )
+            p.alignment = self._cell_alignment(c_idx, column_kinds, alignments)
 
             # ── Format content (financial number formatting) ───────────────
             role = column_types[c_idx] if column_types else None
-            format_numbers = (
-                role not in {None, "text", "code", "date"}
-                or (not role and table_type == TableType.FINANCIAL and cell_data.is_numeric)
-            )
-            display_content = cell_data.content
-            display_runs = cell_data.runs
-            if format_numbers:
-                display_content = self._format_numeric_text(display_content, role)
-                # Semantic runs are independent of the amount. In particular, a
-                # footnote's displayed number must never enter numeric formatting.
-                display_runs = [
-                    run if (
-                        run.footnote_id is not None or run.is_latex
-                        or run.superscript or run.subscript
-                    ) else replace(run, text=self._format_numeric_text(run.text, role))
-                    for run in display_runs
-                ]
+            display_content, display_runs = self._display_content(cell_data, role, table_type)
 
             # ── Render content ──────────────────────────────────────────────
             if cell_data.runs:
@@ -1934,11 +2273,47 @@ class TableRenderer:
 
             # ── Type-specific styling ───────────────────────────────────────
             if not (table_type == TableType.FINANCIAL and role in {"text", "code", "date"}):
-                self._apply_type_styling(cell, p, cell_data, row_idx, table_type)
+                self._apply_type_styling(cell, cell_data, row_idx, table_type)
 
             # ── Alternating row colors (unless special styling applied) ─────
             if STYLE.TABLE_ZEBRA and row_idx % 2 == 1 and not cell_data.is_base_case:
                 TableStyler.set_cell_background(cell, STYLE.LIGHT_GRAY_HEX)
+
+    @staticmethod
+    def _cell_alignment(
+        c_idx: int, column_kinds: List[str], alignments: Optional[List[str]]
+    ) -> WD_ALIGN_PARAGRAPH:
+        """Numeric columns align right; Markdown alignment markers take precedence."""
+        if alignments and c_idx < len(alignments) and alignments[c_idx] in {"center", "right"}:
+            return (
+                WD_ALIGN_PARAGRAPH.CENTER if alignments[c_idx] == "center" else WD_ALIGN_PARAGRAPH.RIGHT
+            )
+        if c_idx < len(column_kinds) and column_kinds[c_idx] == "numeric":
+            return WD_ALIGN_PARAGRAPH.RIGHT
+        return WD_ALIGN_PARAGRAPH.LEFT
+
+    def _display_content(
+        self, cell_data: TableCell, role: Optional[str], table_type: TableType
+    ) -> Tuple[str, List[TextRun]]:
+        """Return display text and runs, formatting amounts only for numeric roles."""
+        format_numbers = (
+            role not in {None, "text", "code", "date"}
+            or (not role and table_type == TableType.FINANCIAL and cell_data.is_numeric)
+        )
+        display_content = cell_data.content
+        display_runs = cell_data.runs
+        if format_numbers:
+            display_content = self._format_numeric_text(display_content, role)
+            # Semantic runs are independent of the amount. In particular, a
+            # footnote's displayed number must never enter numeric formatting.
+            display_runs = [
+                run if (
+                    run.footnote_id is not None or run.is_latex
+                    or run.superscript or run.subscript
+                ) else replace(run, text=self._format_numeric_text(run.text, role))
+                for run in display_runs
+            ]
+        return display_content, display_runs
 
     @classmethod
     def _format_numeric_text(cls, text: str, role: Optional[str]) -> str:
@@ -2037,21 +2412,21 @@ class TableRenderer:
     def _apply_type_styling(
         self,
         cell,
-        paragraph,
         cell_data: TableCell,
         row_idx: int,
         table_type: TableType,
     ):
-        """Apply table-type specific styling"""
+        """Apply table-type specific styling to every paragraph of one owner cell."""
+        runs = [run for paragraph in cell.paragraphs for run in paragraph.runs]
         if table_type == TableType.FINANCIAL:
             if cell_data.is_negative:
-                for run in paragraph.runs:
+                for run in runs:
                     run.font.color.rgb = STYLE.RED
 
         elif table_type == TableType.BEP_SENSITIVITY:
             if cell_data.is_base_case:
                 TableStyler.set_cell_background(cell, STYLE.YELLOW_HEX)
-                for run in paragraph.runs:
+                for run in runs:
                     run.font.bold = True
 
         elif table_type == TableType.RISK_MATRIX:
@@ -2063,7 +2438,7 @@ class TableRenderer:
                 }
                 color = color_map.get(cell_data.risk_level)
                 if color:
-                    for run in paragraph.runs:
+                    for run in runs:
                         run.font.color.rgb = color
                         run.font.bold = True
 
@@ -2754,6 +3129,8 @@ class IBDocumentRenderer:
         self.separator_mode = separator_mode
         self.errors: List[str] = []
         self.charts = False
+        self.term_sheet_texts: Optional[TermSheetTexts] = None
+        self._term_sheet = False
         self._reset_document()
 
     def _reset_document(self) -> None:
@@ -2766,7 +3143,7 @@ class IBDocumentRenderer:
         self.heading_renderer = HeadingRenderer(self.doc)
         self.paragraph_renderer = ParagraphRenderer(self.doc)
         self.list_renderer = ListRenderer(self.doc)
-        self.table_renderer = TableRenderer(self.doc)
+        self.table_renderer = TableRenderer(self.doc, term_sheet=self._term_sheet)
         self.callout_renderer = CalloutRenderer(self.doc)
         self.image_renderer = ImageRenderer(self.doc)
         self.footnote_renderer = FootnoteRenderer(self.doc)
@@ -2775,6 +3152,7 @@ class IBDocumentRenderer:
 
     def render(self, model: DocumentModel) -> DocxDocument:
         """Render through one composition path, using request-local settings."""
+        self.term_sheet_texts = None
         model = deepcopy(model)
         resolved = resolve_options(model.metadata, self.options)
         if model.parsed_profile is not None and model.parsed_profile != resolved.profile.name:
@@ -2791,6 +3169,9 @@ class IBDocumentRenderer:
             model.metadata.profile = resolved.profile.name
         if not resolved.profile.is_ib:
             validate_office_metadata(model.metadata)
+        if resolved.profile.name == "term-sheet":
+            validate_term_sheet_metadata(model.metadata)
+            self.term_sheet_texts = resolve_term_sheet_texts(model.metadata, resolved.house)
         report_title_block = (
             not resolved.cover and resolved.profile.name == "ib-report"
             and bool(model.metadata.title.strip())
@@ -2813,6 +3194,7 @@ class IBDocumentRenderer:
         if resolved.strict and model.warnings:
             raise ValueError("Input validation failed: " + "; ".join(model.warnings))
         self.errors = list(model.warnings)
+        self._term_sheet = resolved.profile.name == "term-sheet"
         self._reset_document()
         self.separator_mode = resolved.separator_mode
         self.charts = resolved.charts
@@ -2821,6 +3203,8 @@ class IBDocumentRenderer:
             self.styler.create_styles()
             if resolved.profile.name == "office-letter":
                 setup_letter_styles(self.doc)
+            if self._term_sheet:
+                setup_term_sheet_styles(self.doc)
             update_fields = OxmlElement("w:updateFields")
             update_fields.set(qn("w:val"), "true")
             self.doc.settings.element.append(update_fields)
@@ -2833,9 +3217,15 @@ class IBDocumentRenderer:
             title_inserted = (
                 render_office_opening(self.doc, model.metadata) if report_title_block else False
             )
+            if self._term_sheet:
+                # Resolved in preflight; the opening leads the first page, before any TOC.
+                title_inserted = render_term_sheet_opening(
+                    self.doc, model.metadata, cast(TermSheetTexts, self.term_sheet_texts),
+                    TextRenderer.render_runs,
+                )
             if resolved.toc:
                 self.toc_renderer.render(model)
-            if not resolved.cover and not report_title_block:
+            if not resolved.cover and not report_title_block and not self._term_sheet:
                 title_inserted = render_office_opening(self.doc, model.metadata)
             skipped_title = report_title_block
             office_closed = False
@@ -2882,10 +3272,16 @@ class IBDocumentRenderer:
                 if isinstance(sender, dict)
                 else model.metadata.company
             )
-            self.styler.setup_header_footer(
-                company="" if resolved.profile.name == "office-letter" else company,
-                confidential=resolved.confidential, show_page_numbers=True
-            )
+            if self._term_sheet:
+                setup_term_sheet_header_footer(
+                    self.doc, model.metadata, self.term_sheet_texts, resolved.confidential,
+                    TextRenderer.render_runs,
+                )
+            else:
+                self.styler.setup_header_footer(
+                    company="" if resolved.profile.name == "office-letter" else company,
+                    confidential=resolved.confidential, show_page_numbers=True
+                )
             self.apply_generator_signature(
                 "ib_generated" if resolved.profile.name == "ib-report" else resolved.profile.name
             )
@@ -2976,10 +3372,20 @@ class IBDocumentRenderer:
             ElementType.HEADING_4,
             ElementType.NUMBERED_HEADING,
         ):
-            self.heading_renderer.render(cast(Heading, element.content))
+            if self._term_sheet:
+                render_term_sheet_heading(
+                    self.doc, cast(Heading, element.content), TextRenderer.render_runs
+                )
+            else:
+                self.heading_renderer.render(cast(Heading, element.content))
 
         elif etype == ElementType.PARAGRAPH:
-            self.paragraph_renderer.render(cast(Paragraph, element.content))
+            if self._term_sheet:
+                render_term_sheet_paragraph(
+                    self.doc, cast(Paragraph, element.content), TextRenderer.render_runs
+                )
+            else:
+                self.paragraph_renderer.render(cast(Paragraph, element.content))
 
         elif etype == ElementType.BULLET_LIST:
             self.list_renderer.render_bullet(cast(ListItem, element.content))
@@ -3010,6 +3416,19 @@ class IBDocumentRenderer:
 
         elif etype == ElementType.CODE_BLOCK:
             self._render_code_block(cast(CodeBlock, element.content))
+
+        elif etype == ElementType.CONFIRMATION:
+            texts = self.term_sheet_texts
+            confirmation = texts.confirmation if self._term_sheet and texts is not None else None
+            if confirmation is not None and confirmation_has_text(confirmation):
+                render_confirmation(self.doc, confirmation, TextRenderer.render_runs)
+            else:
+                # Plan §2-9: without wording, keep the fence losslessly and report it.
+                source = cast(ConfirmationBlock, element.content).source
+                self._render_code_block(CodeBlock(source, "confirmation"))
+                message = "Confirmation text is missing; original fence preserved as a code block"
+                self.errors.append(message)
+                logger.warning("%s", message)
 
         elif etype == ElementType.CHART:
             chart = cast(Chart, element.content)

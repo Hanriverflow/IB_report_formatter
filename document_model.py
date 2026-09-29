@@ -3,6 +3,8 @@
 Changelog (quality hardening):
     - Preserve inferred IB subtitle headings for cover-free rendering.
     - Add chart specifications with retained source for opt-in rendering.
+    - Retain original confirmation fences for lossless term-sheet fallback.
+    - Carry an optional table note rendered below the table in every profile.
 """
 
 from dataclasses import dataclass, field
@@ -90,6 +92,13 @@ class CodeBlock:
         """Return True if text contains enough box-drawing characters."""
         count = sum(1 for ch in text if ch in CodeBlock._BOX_CHARS)
         return count >= threshold
+
+
+@dataclass
+class ConfirmationBlock:
+    """An empty term-sheet confirmation fence with its complete source."""
+
+    source: str
 
 
 @dataclass
@@ -200,6 +209,7 @@ class Table:
     warnings: List[str] = field(default_factory=list)
     spans: Optional[bool] = None  # table spec `spans`; None inherits the profile default
     label_columns: Optional[int] = None  # shaded leading label columns (term-sheet layout)
+    note: str = ""  # table spec `note`: short right-aligned text below the table
 
 
 @dataclass
@@ -275,6 +285,7 @@ ElementContent = Union[
     Blockquote,
     Image,
     CodeBlock,
+    ConfirmationBlock,
     Chart,
     LaTeXEquation,  # NEW (v3)
     "Diagram",  # NEW (v5)

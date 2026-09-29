@@ -3,6 +3,10 @@
 Changelog (feature port):
     - Immutable section presets and opt-in charts resolved in the shared path.
     - Typed presentation themes, including PR #5's uppercase field names.
+
+Changelog (term-sheet foundation):
+    - Register term-sheet metadata/style contracts and explicit table span options.
+    - Accept a text-only table `note` in every profile.
 """
 
 import math
@@ -39,6 +43,7 @@ PROFILES = {
     "office-letter": DocumentProfile("office-letter"),
     "business-report": DocumentProfile("business-report"),
     "meeting-minutes": DocumentProfile("meeting-minutes"),
+    "term-sheet": DocumentProfile("term-sheet", confidential=True),
 }
 
 
@@ -54,6 +59,30 @@ def default_metadata(profile: str = "ib-report") -> DocumentMetadata:
     if get_profile(profile).is_ib:
         return DocumentMetadata(profile=profile)
     return DocumentMetadata(title="Document", company="", sector="", analyst="", profile=profile)
+
+
+def validate_term_sheet_metadata(metadata: DocumentMetadata) -> None:
+    """Validate term-sheet display text before generic title inference.
+
+    Args:
+        metadata: Parsed or caller-built metadata; other profiles are unchanged.
+
+    Raises:
+        ValueError: A required title is absent, not text, or exceeds Word's limit.
+    """
+    if metadata.profile != "term-sheet":
+        return
+    title = metadata.title
+    if not isinstance(title, str) or title.strip() in {"", "Document", "IB Report"}:
+        raise ValueError("term-sheet title must be an explicit non-empty string")
+    if len(title) > 255:
+        raise ValueError("term-sheet title must not exceed 255 characters")
+    if not isinstance(metadata.subtitle, str):
+        raise ValueError("term-sheet subtitle must be a string")
+    if len(metadata.subtitle) > 255:
+        raise ValueError("term-sheet subtitle must not exceed 255 characters")
+    if not metadata.subtitle.strip():
+        metadata.subtitle = "Term Sheet"
 
 
 @dataclass(frozen=True)
@@ -221,6 +250,36 @@ def load_style(profile: DocumentProfile, theme: Optional[str] = None) -> IBStyle
         )
     if profile.name == "office-letter":
         style = replace(style, BODY_LINE_SPACING=1.45, BODY_SPACE_AFTER=Pt(8))
+    if profile.name == "term-sheet":
+        color = "202020" if theme == "mono" else "1A2270"
+        style = replace(
+            style,
+            NAVY=RGBColor.from_string(color),
+            NAVY_HEX=color,
+            HEADING_FONT="Malgun Gothic",
+            BODY_FONT="Malgun Gothic",
+            BODY_SIZE=Pt(9),
+            TABLE_HEADER_SIZE=Pt(9),
+            TABLE_BODY_SIZE=Pt(9),
+            SMALL_SIZE=Pt(8),
+            H1_SIZE=Pt(14),
+            H2_SIZE=Pt(13),
+            H2_SPACE_BEFORE=Pt(15),
+            H2_SPACE_AFTER=Pt(7),
+            H3_SIZE=Pt(10),
+            H3_SPACE_BEFORE=Pt(12),
+            H3_SPACE_AFTER=Pt(5),
+            BODY_LINE_SPACING=1.05,
+            BODY_SPACE_AFTER=Pt(3),
+            TOP_MARGIN=Inches(18 / 25.4),
+            BOTTOM_MARGIN=Inches(16 / 25.4),
+            LEFT_MARGIN=Inches(15 / 25.4),
+            RIGHT_MARGIN=Inches(15 / 25.4),
+            TABLE_HEADER_BG="DCE3F5",
+            TABLE_ZEBRA=False,
+            BODY_JUSTIFY=False,
+            HEADING_BORDER=False,
+        )
     if not theme or theme in {"default", "mono"}:
         return style
     path = Path(theme)
@@ -390,6 +449,10 @@ def apply_table_specs(model: DocumentModel) -> None:
     specs = model.metadata.extra.get("tables", [])
     if not isinstance(specs, list) or len(specs) > len(tables):
         raise ValueError("tables must be a list with at most one specification per body table")
+    if model.metadata.profile == "term-sheet":
+        for table in tables:
+            if table.spans is None:
+                table.spans = True
     kinds = {
         "generic": TableType.GENERIC,
         "financial": TableType.FINANCIAL,
@@ -409,10 +472,22 @@ def apply_table_specs(model: DocumentModel) -> None:
             "as_of",
             "landscape",
             "base_case",
+            "spans",
+            "label_columns",
+            "note",
         }
         if unknown:
             raise ValueError("Unknown table settings: {}".format(", ".join(sorted(unknown))))
         table = tables[index]
+        if "spans" in spec:
+            if not isinstance(spec["spans"], bool):
+                raise ValueError("Table spans must be true or false")
+            table.spans = spec["spans"]
+        if "label_columns" in spec:
+            count = spec["label_columns"]
+            if type(count) is not int or not 0 <= count < table.col_count:
+                raise ValueError("Table label_columns must be an integer from 0 to column count minus 1")
+            table.label_columns = count
         if "type" in spec:
             if spec["type"] not in kinds:
                 raise ValueError("Unknown table type: {}".format(spec["type"]))
@@ -423,7 +498,7 @@ def apply_table_specs(model: DocumentModel) -> None:
         if any(not isinstance(c, str) or c not in roles for c in columns):
             raise ValueError("Unknown table column role")
         table.column_types = columns
-        for key in ("caption", "unit", "source", "as_of"):
+        for key in ("caption", "unit", "source", "as_of", "note"):
             value = spec.get(key, "")
             if isinstance(value, (dict, list)):
                 raise ValueError(f"Table {key} must be text")

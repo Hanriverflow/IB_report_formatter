@@ -7,6 +7,8 @@ Changelog (2026-09-29):
     - FIXED: Preserve escaped inline syntax and non-reference body content.
     - FIXED: Share fence boundaries and normalize Markdown block input.
     - FIXED: Retain inferred IB subtitle headings and separate header metadata lines.
+    - NEW: Validate table span groups and preserve term-sheet confirmation fences.
+    - NEW: Resolve file-relative house paths without opening house files while parsing.
 
 Changelog (v3):
     - NEW: LaTeX block equation parsing ($$ ... $$, multi-line)
@@ -49,6 +51,7 @@ from document_model import Chart as Chart
 from document_model import (
     CodeBlock as CodeBlock,
 )
+from document_model import ConfirmationBlock as ConfirmationBlock
 from document_model import (
     Diagram as Diagram,
 )
@@ -116,7 +119,12 @@ from document_model import (
 from document_model import (
     TextRun as TextRun,
 )
-from document_profiles import apply_table_specs, default_metadata, get_profile
+from document_profiles import (
+    apply_table_specs,
+    default_metadata,
+    get_profile,
+    validate_term_sheet_metadata,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -197,8 +205,13 @@ class FrontmatterParser:
         metadata = default_metadata(profile or str(data.get("profile", "ib-report")))
 
         # Map to metadata fields
-        metadata.title = str(data.get("title", metadata.title))
-        metadata.subtitle = str(data.get("subtitle", metadata.subtitle))
+        if metadata.profile == "term-sheet":
+            # Preserve types so the profile contract can reject malformed YAML.
+            metadata.title = data.get("title", metadata.title)
+            metadata.subtitle = data.get("subtitle", metadata.subtitle)
+        else:
+            metadata.title = str(data.get("title", metadata.title))
+            metadata.subtitle = str(data.get("subtitle", metadata.subtitle))
         metadata.company = str(data.get("company", metadata.company))
         metadata.ticker = str(data.get("ticker", metadata.ticker))
         metadata.sector = str(data.get("sector", metadata.sector))
@@ -210,6 +223,8 @@ class FrontmatterParser:
             "layout", "tables", "sender", "recipients", "cc", "attachments", "attendees", "letter",
             "charts", "preset", "house", "terms", "confirmation",
         }
+        if metadata.profile == "term-sheet":
+            structured.update({"prepared_by", "disclaimer", "confidential_label"})
         metadata.extra = {
             k: v if k in structured else str(v) for k, v in data.items() if k not in known_keys
         }
@@ -983,6 +998,90 @@ class TableParser:
         return cell
 
 
+class TableSpanResolver:
+    """Resolve opt-in span markers while retaining invalid groups literally."""
+
+    @staticmethod
+    def resolve(table: Table, profile: str = "ib-report") -> None:
+        """Validate each connected marker group and infer leading label columns.
+
+        References point only above or left, so row-major traversal resolves a
+        cell's group from an already visited target without recursive walks.
+        Invalid groups never receive merge directives; neighboring groups remain
+        independent even when their bounding rectangles overlap.
+
+        Args:
+            table: A parsed table after ordered specifications have been applied.
+            profile: Selected document profile, including its default span policy.
+        """
+        active = table.spans if table.spans is not None else profile == "term-sheet"
+        first_header_width = 1
+        if active:
+            markers: Dict[Tuple[int, int], str] = {}
+            roots: Dict[Tuple[int, int], Tuple[int, int]] = {}
+            groups: Dict[Tuple[int, int], List[Tuple[int, int]]] = {}
+            outside: Set[Tuple[int, int]] = set()
+
+            for row_index, row in enumerate(table.rows):
+                for column_index, cell in enumerate(row.cells):
+                    coordinate = (row_index, column_index)
+                    raw = cell.content.strip()
+                    root = coordinate
+                    if raw in {r"\^^", r"\<<"}:
+                        # Classify raw source before unescaping either representation.
+                        cell.content = raw[1:]
+                        cell.runs = [TextRun(text=raw[1:])]
+                    elif raw in {"^^", "<<"}:
+                        markers[coordinate] = "up" if raw == "^^" else "left"
+                        target = (
+                            (row_index - 1, column_index)
+                            if raw == "^^"
+                            else (row_index, column_index - 1)
+                        )
+                        if target in roots:
+                            root = roots[target]
+                        else:
+                            outside.add(coordinate)
+                    roots[coordinate] = root
+                    groups.setdefault(root, []).append(coordinate)
+
+            for coordinates in groups.values():
+                marker_cells = [position for position in coordinates if position in markers]
+                if not marker_cells:
+                    continue
+                top = min(row for row, _ in coordinates)
+                bottom = max(row for row, _ in coordinates)
+                left = min(column for _, column in coordinates)
+                right = max(column for _, column in coordinates)
+                anchors = [position for position in coordinates if position not in markers]
+                error = ""
+                if any(position in outside for position in coordinates):
+                    error = "a marker points outside the table"
+                elif len({table.rows[row].is_header for row, _ in coordinates}) > 1:
+                    error = "a merge crosses the header/body boundary"
+                elif anchors != [(top, left)]:
+                    error = "a merge requires one top-left anchor"
+                elif len(coordinates) != (bottom - top + 1) * (right - left + 1):
+                    error = "a merge must fill one complete rectangle"
+                if error:
+                    warning = (
+                        f"Invalid table span group at row {top + 1}, column {left + 1}: "
+                        f"{error}; markers kept literally"
+                    )
+                    table.warnings.append(warning)
+                    logger.warning("%s", warning)
+                    continue
+                for marker_row, marker_column in marker_cells:
+                    table.rows[marker_row].cells[marker_column].merge = markers[
+                        (marker_row, marker_column)
+                    ]
+                if (top, left) == (0, 0) and table.rows[0].is_header:
+                    first_header_width = right + 1
+
+        if table.label_columns is None and (active or profile == "term-sheet"):
+            table.label_columns = min(first_header_width, max(table.col_count - 1, 0))
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # LaTeX PARSER (NEW v3)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1240,6 +1339,8 @@ class MarkdownParser:
         self.preserve_trailing_double_space_break = preserve_trailing_double_space_break
         self.profile = profile
         self._financial_rules = True
+        self._term_sheet = False
+        self._parse_warnings: List[str] = []
 
     def parse(self, content: str) -> DocumentModel:
         """
@@ -1255,7 +1356,10 @@ class MarkdownParser:
 
         # Parse frontmatter
         metadata, remaining_lines = FrontmatterParser.parse(lines, self.profile)
+        validate_term_sheet_metadata(metadata)
         self._financial_rules = get_profile(metadata.profile).is_ib
+        self._term_sheet = metadata.profile == "term-sheet"
+        self._parse_warnings = []
 
         # Detect whether YAML frontmatter was present
         has_frontmatter = len(remaining_lines) < len(lines)
@@ -1303,6 +1407,7 @@ class MarkdownParser:
 
         # Parse elements
         elements = self._parse_elements(remaining_lines)
+        input_warnings.extend(self._parse_warnings)
 
         # If no YAML frontmatter, extract metadata from document header
         if not has_frontmatter and self._financial_rules:
@@ -1331,6 +1436,9 @@ class MarkdownParser:
             if metadata.title in {"", "Document", "IB Report"} and first_heading:
                 metadata.title = first_heading
         apply_table_specs(model)
+        for element in elements:
+            if element.element_type == ElementType.TABLE and isinstance(element.content, Table):
+                TableSpanResolver.resolve(element.content, metadata.profile)
         model.warnings.extend(
             warning
             for element in elements
@@ -1469,8 +1577,30 @@ class MarkdownParser:
             # ── Fenced code block ───────────────────────────────────────────
             code_block = FenceScanner.scan(lines, i)
             if code_block:
+                fence_start = i
                 language, code_lines, i = code_block
                 code_text = "\n".join(code_lines).rstrip()
+
+                if self._term_sheet and language == "confirmation":
+                    source = "\n".join(lines[fence_start:i])
+                    closed = i - fence_start == len(code_lines) + 2
+                    if closed and not code_text.strip():
+                        elements.append(
+                            Element(ElementType.CONFIRMATION, ConfirmationBlock(source), source)
+                        )
+                    else:
+                        reason = "non-empty" if closed else "unclosed"
+                        self._parse_warnings.append(
+                            f"Invalid confirmation fence ({reason}); original source kept as code"
+                        )
+                        elements.append(
+                            Element(
+                                ElementType.CODE_BLOCK,
+                                CodeBlock(code=source, language=language),
+                                source,
+                            )
+                        )
+                    continue
 
                 if language == "chart":
                     chart_number += 1
@@ -2195,6 +2325,14 @@ def parse_markdown_file(
         theme_path = Path(model.metadata.extra["theme"])
         if not theme_path.is_absolute():
             model.metadata.extra["theme"] = str(Path(str(source)).resolve().parent / theme_path)
+
+    house = model.metadata.extra.get("house")
+    if not is_stream(source) and isinstance(house, str) and house.strip():
+        house_path = Path(house)
+        if not house_path.is_absolute():
+            model.metadata.extra["house"] = str(
+                (Path(str(source)).resolve().parent / house_path).resolve()
+            )
 
     if not is_stream(source):
         source_dir = Path(str(source)).resolve().parent

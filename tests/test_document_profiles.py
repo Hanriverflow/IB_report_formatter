@@ -83,6 +83,11 @@ def test_financial_number_is_formatted_in_saved_document():
 @pytest.mark.parametrize("profile", list(PROFILES))
 def test_each_profile_produces_a_valid_document(profile):
     content = OFFICE_MD if profile == "office-letter" else "# Example\n\nBody."
+    if profile == "term-sheet":
+        content = (
+            "---\ntitle: Example\nprepared_by: 라마바은행 자본시장부\n"
+            "disclaimer: 가상 조건 검토 자료입니다.\n---\n" + content
+        )
     doc = render(content, profile=profile)
     assert not inspect_document(doc).issues
     assert "Body." in all_text(doc) or "자료 제출" in all_text(doc)
