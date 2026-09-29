@@ -241,6 +241,15 @@ def test_a_band_kept_as_a_table_still_ends_the_cover(band: str) -> None:
     assert body == source
 
 
+def test_a_band_kept_as_a_table_does_not_make_a_cover_without_chapters() -> None:
+    source = "지급 예정일\n\n**2026. 9. 29.**\n\n<table><tr><td>지급액<br>100원</td></tr></table>\n"
+    cleaned, report = clean_converted_term_sheet(source)
+    front, body = _split(cleaned)
+    assert front == {"profile": "term-sheet"}
+    assert body == source
+    assert "no chapter heading found: cover lines were not moved" in report.lines()
+
+
 def test_html_band_text_keeps_inline_runs_together() -> None:
     cleaned, _ = clean_converted_term_sheet(FRONT + "<table><tr><td>별첨 1<span>0</span></td><td><p>상환</p></td></tr></table>\n")
     assert cleaned == FRONT + "\n## 별첨 10 | 상환\n"

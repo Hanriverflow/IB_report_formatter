@@ -579,13 +579,7 @@ def _paragraph_text(lines: List[str]) -> str:
 
 
 def _is_chapter(block: _Block) -> bool:
-    """An ATX heading of level 2 or more, or a numbered level-1 heading (up to 3 spaces in).
-
-    Any such heading ends the cover, indented or not, and so does a one-row
-    band table kept as a table; ending it early only moves fewer lines.
-    """
-    if block.band:
-        return True
+    """An ATX heading of level 2 or more, or a numbered level-1 heading (up to 3 spaces in)."""
     if block.kind != "text" or len(block.lines) != 1 or not _ATX_RE.match(block.lines[0]):
         return False
     heading = block.lines[0].lstrip()
@@ -595,11 +589,16 @@ def _is_chapter(block: _Block) -> bool:
 def _extract_cover(
     blocks: List[_Block], existing: Dict[str, Any], offset: int, report: ConvertedCleanupReport
 ) -> Dict[str, str]:
-    """Move top-level cover lines before the first chapter heading into frontmatter values."""
-    first = next((position for position, block in enumerate(blocks) if _is_chapter(block)), None)
-    if first is None:
+    """Move top-level cover lines into frontmatter values.
+
+    Only a document with a chapter heading has a cover. The cover ends at the
+    first chapter heading, indented or not, or at a one-row band table kept as
+    a table; ending it early only moves fewer lines.
+    """
+    if not any(_is_chapter(block) for block in blocks):
         report.add(0, "no chapter heading found: cover lines were not moved")
         return {}
+    first = next(position for position, block in enumerate(blocks) if block.band or _is_chapter(block))
     moves: List[_CoverMove] = []
     titles: List[_CoverMove] = []
     title_open = True
