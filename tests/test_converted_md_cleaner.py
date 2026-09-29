@@ -124,12 +124,14 @@ def test_every_change_and_undecided_line_is_reported() -> None:
         'line 5: frontmatter title <- "가나다제일차(유) 유동화증권"',
         'line 6: frontmatter subtitle <- "Term Sheet"',
         'line 8: frontmatter date <- "2026. 9. 29."',
-        'line 10: frontmatter disclaimer <- "' + DISCLAIMER[:59] + '…"',
+        'lines 10-11: frontmatter disclaimer <- "' + DISCLAIMER[:59] + '…"',
         'line 13: kept unclassified cover text: "라마바은행 자본시장부"',
         'line 15: removed repeated confidentiality line "Strictly Confidential"',
         'line 17: heading "**1. 본건 개요**" -> "## 1. 본건 개요" (bold numbered line)',
         'line 24: heading "2\\. 발행 조건" -> "## 2. 발행 조건" (numbered line before a table)',
-        'line 35: band table -> "## 별첨 | 상환스케줄"',
+        'line 30: kept numbered line "3. 기타 사항": not bold and no table follows; '
+        "mark it as a heading if it is a chapter",
+        'lines 35-36: band table -> "## 별첨 | 상환스케줄"',
         'frontmatter profile <- "term-sheet"',
         "prepared_by is not inferred: add it to the house file or the frontmatter",
     ]
@@ -159,12 +161,24 @@ def test_numbered_lines_that_become_chapter_headings(source: str, expected: str)
         "**1. 개요** 뒤에 이어지는 문장\n",
         "```\n**1. 코드 안**\n```\n",
         "    **1. 들여쓴 줄**\n",
+        "- 상위 항목\n\n  **1. 목록 안의 줄**\n",  # a list continuation stays in its list
+        "> **1. 인용 안의 줄**\n",
+        "    | 코드 | 예시 |\n    |---|---|\n",  # an indented table is code, not a band
+        "<table><tr><td>\n<table><tr><td>안쪽</td></tr></table>\n\n**1. 바깥 셀 안**\n\n</td></tr></table>\n",
     ],
 )
 def test_other_numbered_text_is_unchanged(source: str) -> None:
     cleaned, report = clean_converted_term_sheet(FRONT + source)
     assert cleaned == FRONT + "\n" + source
     assert not any("## " in line for line in report.lines())
+
+
+def test_a_lone_numbered_line_left_as_text_is_reported() -> None:
+    _, report = clean_converted_term_sheet(FRONT + "1. 본건 개요\n\n본문입니다.\n")
+    assert (
+        'line 5: kept numbered line "1. 본건 개요": not bold and no table follows; '
+        "mark it as a heading if it is a chapter"
+    ) in report.lines()
 
 
 def test_band_tables_become_headings_and_other_tables_stay() -> None:
@@ -183,7 +197,70 @@ def test_band_tables_become_headings_and_other_tables_stay() -> None:
         "<table><tr><td>가</td></tr><tr><td>1</td></tr></table>\n\n"
         "| | |\n|---|---|\n"
     )
-    assert "line 18: kept a one-row table without text" in report.lines()
+    assert "lines 18-19: kept a one-row table without text" in report.lines()
+
+
+def test_an_html_one_row_table_with_text_outside_its_cells_stays_a_table() -> None:
+    source = "<table>\n<caption>지급 조건 요약</caption>\n<tr><th>조건</th></tr>\n</table>\n"
+    cleaned, report = clean_converted_term_sheet(FRONT + source)
+    assert cleaned == FRONT + "\n" + source
+    assert not any("band table" in line for line in report.lines())
+
+
+def test_a_heading_followed_directly_by_prose_is_a_chapter_not_cover() -> None:
+    prose = "지급은 청구일로부터 삼십 일 이내에 전액으로 하며 상계나 공제 없이 지정 계좌로 이행하여야 합니다. 이는 가상 예시입니다."
+    source = f"**초안**\n\n## 1. 지급 조건\n{prose}\n\n## 2. 기타\n"
+    cleaned, _ = clean_converted_term_sheet(source)
+    front, body = _split(cleaned)
+    assert front == {"profile": "term-sheet", "title": "초안"}
+    assert body == f"## 1. 지급 조건\n{prose}\n\n## 2. 기타\n"
+
+
+def test_escaped_hard_break_markers_stay_literal_text() -> None:
+    source = (
+        "본 가상 문서는 줄바꿈 표시를 글자로 보여 줍니다 \\<br>\n"
+        "이 표시는 줄바꿈이 아니며 고지문에 그대로 남아야 합니다. 두 줄은 한 단락입니다.\n\n"
+        "**1. 개요**\n"
+    )
+    front, _ = _split(clean_converted_term_sheet(source)[0])
+    assert front["disclaimer"] == (
+        "본 가상 문서는 줄바꿈 표시를 글자로 보여 줍니다 \\<br> "
+        "이 표시는 줄바꿈이 아니며 고지문에 그대로 남아야 합니다. 두 줄은 한 단락입니다."
+    )
+
+
+def test_hard_breaks_in_a_disclaimer_become_line_breaks() -> None:
+    source = (
+        "첫째 고지 문장은 가상의 거래 조건을 설명하기 위한 것입니다.<br>\n"
+        "둘째 고지 문장은 자금 제공을 약속하지 않는다는 내용입니다.\\\n"
+        "셋째 줄은 가상 예시의 마지막 문장입니다.\n\n**1. 개요**\n"
+    )
+    front, _ = _split(clean_converted_term_sheet(source)[0])
+    assert front["disclaimer"] == (
+        "첫째 고지 문장은 가상의 거래 조건을 설명하기 위한 것입니다.\n"
+        "둘째 고지 문장은 자금 제공을 약속하지 않는다는 내용입니다.\n셋째 줄은 가상 예시의 마지막 문장입니다."
+    )
+
+
+def test_flow_style_frontmatter_is_rewritten_as_block_yaml_and_reported() -> None:
+    cleaned, report = clean_converted_term_sheet("---\n{title: 초안, version: v1}\n---\n\n**1. 개요**\n")
+    front, _ = _split(cleaned)
+    assert front == {"title": "초안", "version": "v1", "profile": "term-sheet"}
+    assert "rewrote the frontmatter as block YAML to add keys; its comments and layout were not kept" in report.lines()
+
+
+def test_a_yaml_document_end_closer_is_rewritten_for_the_parser() -> None:
+    cleaned, report = clean_converted_term_sheet("---\ntitle: 초안\n...\n\n**1. 개요**\n\n본문입니다.\n")
+    assert cleaned == "---\ntitle: 초안\nprofile: term-sheet\n---\n\n## 1. 개요\n\n본문입니다.\n"
+    assert 'line 3: frontmatter closer "..." -> "---" (the parser closes frontmatter with ---)' in report.lines()
+    assert MarkdownParser().parse(cleaned).metadata.title == "초안"
+
+
+def test_existing_keys_are_matched_without_case() -> None:
+    cleaned, report = clean_converted_term_sheet("---\nTitle: 기존 제목\n---\n\n**새 제목**\n\n**1. 개요**\n")
+    assert "**새 제목**\n\n## 1. 개요" in cleaned
+    assert "title: 새 제목" not in cleaned
+    assert 'line 5: kept (frontmatter already sets title): "**새 제목**"' in report.lines()
 
 
 def test_cover_lines_in_one_paragraph_are_classified_line_by_line() -> None:
@@ -230,7 +307,7 @@ def test_unclear_cover_lines_stay_in_place_and_are_reported() -> None:
     assert 'line 5: kept a bold line after the title: "**작성 부서 메모**"' in lines
     assert 'line 9: kept another confidentiality line: "Strictly Confidential"' in lines
     assert 'line 13: kept a second date line: "2026. 10. 1."' in lines
-    assert "line 15: kept a table before the first chapter" in lines
+    assert "lines 15-17: kept a table before the first chapter" in lines
 
 
 def test_existing_frontmatter_lines_and_keys_are_kept() -> None:
@@ -280,8 +357,22 @@ def test_the_formatter_uses_the_cleanup_only_when_asked(tmp_path: Path) -> None:
     assert plain.read_text(encoding="utf-8") == format_markdown(CONVERTED, cleaner_config=CleanerConfig())
     cleaned = Path(format_file_with_options(str(source), str(tmp_path / "ts.md"), converted_term_sheet=True))
     assert cleaned.read_text(encoding="utf-8") == clean_converted_term_sheet(CONVERTED)[0]
-    with pytest.raises(ValueError, match="DeepResearch"):
-        format_file_with_options(str(source), str(tmp_path / "x.md"), cleaner_mode="on", converted_term_sheet=True)
+    for options in ({"cleaner_mode": "on"}, {"cite_mode": "strip"}, {"cleaner_report": True}):
+        with pytest.raises(ValueError, match="DeepResearch"):
+            format_file_with_options(str(source), str(tmp_path / "x.md"), converted_term_sheet=True, **options)
+
+
+@pytest.mark.parametrize("extra", [["--check"], ["--cite-mode", "strip"], ["--deepresearch-cleaner", "on"]])
+def test_the_cli_rejects_options_that_do_not_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, extra: list
+) -> None:
+    source = tmp_path / "converted.md"
+    source.write_text(CONVERTED, encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["md-format", str(source), "--converted-term-sheet", *extra])
+    with pytest.raises(SystemExit) as exit_info:
+        main()
+    assert exit_info.value.code == 2
+    assert not (tmp_path / "converted_formatted.md").exists()
 
 
 def test_the_cli_flag_writes_the_cleaned_file_and_logs_the_report(
@@ -295,4 +386,4 @@ def test_the_cli_flag_writes_the_cleaned_file_and_logs_the_report(
     with caplog.at_level(logging.INFO, logger="md_formatter"):
         main()
     assert target.read_text(encoding="utf-8") == clean_converted_term_sheet(CONVERTED)[0]
-    assert "Converted term sheet: line 35: band table -> \"## 별첨 | 상환스케줄\"" in caplog.messages
+    assert "Converted term sheet: lines 35-36: band table -> \"## 별첨 | 상환스케줄\"" in caplog.messages

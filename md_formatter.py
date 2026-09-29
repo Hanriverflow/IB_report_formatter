@@ -687,6 +687,13 @@ def _build_cleaner_config(
     )
 
 
+def _uses_deepresearch_options(
+    cleaner_mode: str, cite_mode: str, drop_unknown_markers: bool, cleaner_report: bool
+) -> bool:
+    """True when any DeepResearch cleaner option differs from its default."""
+    return cleaner_mode != "off" or cite_mode != "footnote" or drop_unknown_markers or cleaner_report
+
+
 def format_file_with_options(
     input_path: str,
     output_path: Optional[str] = None,
@@ -706,7 +713,7 @@ def format_file_with_options(
         ValueError: `converted_term_sheet` is combined with the DeepResearch
             cleaner, or the input's frontmatter is not a YAML mapping.
     """
-    if converted_term_sheet and (cleaner_mode != "off" or drop_unknown_markers or cleaner_report):
+    if converted_term_sheet and _uses_deepresearch_options(cleaner_mode, cite_mode, drop_unknown_markers, cleaner_report):
         raise ValueError("--converted-term-sheet cannot be combined with the DeepResearch cleaner")
     input_file = Path(input_path)
 
@@ -836,6 +843,13 @@ def main():
     """Main entry point"""
     parser = build_parser()
     args = parser.parse_args()
+    if args.converted_term_sheet and (
+        args.check
+        or _uses_deepresearch_options(
+            args.deepresearch_cleaner, args.cite_mode, args.drop_unknown_markers, args.cleaner_report
+        )
+    ):
+        parser.error("--converted-term-sheet cannot be combined with --check or the DeepResearch cleaner options")
     configure_logging()
 
     if args.input_file is None:
