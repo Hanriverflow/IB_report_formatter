@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased] - 2026-09-29
 
+### Numeric checks (found on a second real term sheet)
+- `checks:` declares relations between term values (`all_in = issue_rate + credit_fee + running_cost`, `facility = amount * 1.05`). Values are read as displayed: Korean money units, `%`/`%p`, bp, `개월`/`년` and plain numbers. The default tolerance is half of the left value's display step, and failures are warnings that strict mode rejects.
+- The checks and their generated values are stored in the DOCX (`ibrep.checks`), and `docx-audit` re-evaluates them with the current tagged values (`terms.failed_checks`).
+- Table spec `schedule` checks a repayment schedule's arithmetic: balance steps, final zero, repayments equal to the principal (a number, or a money term converted with the table `unit`), the totals row and an optional stated weighted average life.
+- New engine module `numeric_checks.py`. The term-sheet sample declares its checks and its schedule.
+
 ### Table structure (found on a second real term sheet)
 - Table spec `header_rows` draws several header rows in every profile: shaded, merged where spans say so, and repeated on every page. HTML tables keep the rows their header spans cover as header rows instead of joining them into one. `base_case` rows count from the first body row, and zebra shading starts on the first body row.
 - Term sheets: a cell that starts in the second label column and spans into the content columns is laid out as content; a first-column label stays a label however far it spans.

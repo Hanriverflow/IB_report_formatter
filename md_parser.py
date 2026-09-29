@@ -161,11 +161,13 @@ from document_model import (
 )
 from document_profiles import (
     apply_table_specs,
+    check_schedules,
     default_metadata,
     get_profile,
     header_labels,
     validate_term_sheet_metadata,
 )
+from numeric_checks import evaluate_checks, parse_checks
 from term_variables import (
     TERM_REFERENCE_RE,
     TERM_TOKEN_PATTERN,
@@ -271,7 +273,7 @@ class FrontmatterParser:
         known_keys = {"title", "subtitle", "company", "ticker", "sector", "analyst", "profile"}
         structured = {
             "layout", "tables", "sender", "recipients", "cc", "attachments", "attendees", "letter",
-            "charts", "preset", "house", "terms", "confirmation",
+            "charts", "preset", "house", "terms", "confirmation", "checks",
         }
         if metadata.profile == "term-sheet":
             structured.update({"prepared_by", "disclaimer", "confidential_label"})
@@ -2466,6 +2468,11 @@ class MarkdownParser:
             if element.element_type == ElementType.TABLE and isinstance(element.content, Table)
             for warning in element.content.warnings
         )
+        check_schedules(model)
+        if "checks" in metadata.extra:
+            checks = parse_checks(metadata.extra["checks"])
+            values = dict(self._terms.values) if self._terms is not None else {}
+            model.warnings.extend(evaluate_checks(checks, values))
         if self._terms is not None:
             model.warnings.extend(self._terms.warnings())
             unused = self._terms.unused()

@@ -153,7 +153,7 @@ Write numbered sections explicitly with `##` and subsections with `###`. Table s
 - Key-value tables have one or two label columns and exactly one content column. The first label is shaded/bold, with a fixed 33.5 mm width; the second is white, regular/muted, 30 mm wide. Other grid tables size each column so its lines fit on one line, then share the spare width equally; when the content cannot fit side by side they use the content-based estimate. Their labels are regular-weight and shaded. Use `label_columns: 0` for no label shading.
 - A cell that starts in the second label column and spans into the content columns is laid out as content (left-aligned, unshaded). A label in the first column stays a label however far it spans, as in a totals row.
 - `header_rows: 2` (default 1) draws the first two rows as the header: shaded, merged where spans say so, and repeated on every page. The second header row is the first Markdown row after the delimiter. Merges may join header rows but not cross into the body. `base_case` rows then count from the first body row.
-- Use `columns` roles for dates, codes and numeric values, and `unit` for units above the table. `note` is optional text placed below the table, right-aligned and muted (8 pt); every profile supports it. Financial meanings and repayment schedules are not inferred or calculated.
+- Use `columns` roles for dates, codes and numeric values, and `unit` for units above the table. `note` is optional text placed below the table, right-aligned and muted (8 pt); every profile supports it. Financial meanings are not inferred and schedules are not calculated; a declared `schedule` is only checked (see Numeric checks).
 
 Use `<br>` inside cells; in term-sheet body paragraphs it also starts a separate Word paragraph. Line markers receive hanging indents: `•`, `-`, `·` start at 0/3/6 mm with a 3 mm hang; `①`–`⑳` start at 0 with a 4.5 mm hang; `※` starts at 0 with a 4 mm hang and 8 pt text. Wrapped text aligns after the marker. A body Markdown `-` list retains normal list handling.
 
@@ -186,6 +186,47 @@ terms:
 - An undefined key is left as `{{key}}` with a warning, and strict mode rejects it. Without `terms:`, `{{…}}` is ordinary text; `terms: {}` turns the feature on and checks every reference.
 - Each substituted value is wrapped in a Word content control tagged `ibrep:term:<key>`, and the generated value is recorded in the custom document property `ibrep.term.<key>`. For a clean copy without controls, use `--no-term-tags` or `layout: {term_tags: false}`.
 - After editing in Word, `docx-audit` adds a `terms` object to its JSON: `mismatched` (one key with different values), `changed` (values edited since generation, to carry back into the YAML), `missing` (keys whose controls were all removed) and `indicative` (values still in brackets). These are warnings; they do not affect `issues` or the exit code. The check covers consistency between tagged values only, not financial correctness.
+
+### Numeric checks
+
+Declare arithmetic that the terms must satisfy under `checks:`; every profile supports it.
+
+```yaml
+checks:
+  - "all_in = issue_rate + credit_fee + running_cost"
+  - "facility = amount * 1.05"
+  - {check: "upfront = advisory + legal + audit", tolerance: "30만원"}
+```
+
+- A relation has one `=`. Each side combines term keys and plain numbers with `+ - * /` and parentheses.
+- Values are read as displayed:
+  - Korean money: `10억원`, `3,330만원`, `5억 3,000만원`, `1,076,175,000원`.
+  - Percentages and points: `4.78%`, `1.10%p`, `29bp`.
+  - `36개월`, `4.54년` and plain numbers.
+  - Brackets and the words 약, 총, 내외, 수준, 정도 are ignored.
+- Money and percentages are never mixed or rescaled.
+- By default the sides must agree within half of the display step of the left value, so a stated `12.66억원` agrees with any amount that rounds to it. Give an explicit `tolerance` to allow more.
+- A failing or unreadable check is a warning, and strict mode rejects it. The checks are stored in the DOCX (property `ibrep.checks`, with the generated values). `docx-audit` re-evaluates them with the current tagged values and reports failures under `terms.failed_checks`.
+
+A repayment schedule table can declare its columns so its arithmetic is checked:
+
+```yaml
+tables:
+  - unit: 억원
+    schedule: {repayment: 5, balance: 6, months: 4, principal: "{{amount}}", total: true, average_life: "{{wal}}"}
+```
+
+- `repayment` and `balance` are one-based columns; `months` (elapsed months) is optional.
+- `principal` is a number in table units, or a term or value in money that is converted with the table `unit`. Without it, the first row's balance plus its repayment opens the schedule.
+- `total: true` marks the last body row as a totals row.
+- The checks:
+  - each balance equals the previous balance minus that row's repayment;
+  - the last balance is zero;
+  - the repayments add up to the principal;
+  - the totals row shows their sum;
+  - `average_life` (years, or `개월`) matches the repayment-weighted months divided by 12.
+- Blanks, dash placeholders and text such as `대출실행` count as no repayment. A dash balance means nothing is left.
+- Disagreements are warnings (strict rejects them). Nothing is recalculated or rewritten.
 
 ## Charts (opt-in)
 

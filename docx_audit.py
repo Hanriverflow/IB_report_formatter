@@ -33,6 +33,7 @@ from docx.styles.style import ParagraphStyle
 from docx.text.paragraph import Paragraph
 from lxml import etree
 
+from numeric_checks import CHECKS_PROPERTY, checks_from_json, evaluate_checks
 from term_variables import TERM_PROPERTY_PREFIX, TERM_TAG_PREFIX
 
 logger = logging.getLogger(__name__)
@@ -64,12 +65,16 @@ class TermAudit:
             that differs from it, for copying back into the `terms:` YAML.
         missing: Snapshot keys none of whose controls remain in the document.
         indicative: Keys with a current value containing a bracketed `[...]` part.
+        failed_checks: Stored `checks:` relations that fail (or cannot be
+            evaluated) with the current values, falling back to the generated
+            values; None when the document stores no checks.
     """
 
     mismatched: Dict[str, List[str]] = field(default_factory=dict)
     changed: Dict[str, Dict[str, str]] = field(default_factory=dict)
     missing: List[str] = field(default_factory=list)
     indicative: List[str] = field(default_factory=list)
+    failed_checks: Optional[List[str]] = None
 
 
 # Visible run content of a control's value other than text (`w:t`) and symbols
@@ -207,9 +212,19 @@ def inspect_terms(doc: DocxDocument) -> Optional[TermAudit]:
     """
     current = _current_term_values(doc)
     generated = _generated_term_values(doc)
-    if not current and not generated:
+    stored = _custom_property(doc, CHECKS_PROPERTY)
+    if not current and not generated and stored is None:
         return None
     result = TermAudit()
+    if stored is not None:
+        try:
+            checks, latest = checks_from_json(stored)
+        except ValueError as error:
+            result.failed_checks = [f"Stored checks cannot be read: {error}"]
+        else:
+            latest.update(generated)
+            latest.update({key: texts[0] for key, texts in current.items() if texts})
+            result.failed_checks = evaluate_checks(checks, latest)
     for key, values in sorted(current.items()):
         distinct = list(dict.fromkeys(values))
         if len(distinct) > 1:
@@ -287,6 +302,19 @@ def _is_removed(node: Any, stop: Any = None) -> bool:
     return False
 
 
+def _custom_property(doc: DocxDocument, name: str) -> Optional[str]:
+    """Text of one custom document property, or None when it is absent."""
+    try:
+        part = doc.part.package.part_related_by(RT.CUSTOM_PROPERTIES)
+    except KeyError:
+        return None
+    for prop in etree.fromstring(part.blob):
+        if isinstance(prop.tag, str) and prop.get("name") == name:
+            value = next((child for child in prop if isinstance(child.tag, str)), None)
+            return (value.text or "") if value is not None else ""
+    return None
+
+
 def _generated_term_values(doc: DocxDocument) -> Dict[str, str]:
     """Read the `ibrep.term.` snapshot written when the document was generated."""
     try:
@@ -319,6 +347,7 @@ def _term_warnings(terms: TermAudit) -> List[str]:
         f"Term {key!r} was generated but none of its content controls remain in the document"
         for key in terms.missing
     )
+    warnings.extend(terms.failed_checks or [])
     return warnings
 
 
@@ -335,6 +364,8 @@ def audit_to_dict(result: DocumentAudit, terms: Optional[TermAudit] = None) -> D
     data = asdict(result)
     if terms is not None:
         data["terms"] = asdict(terms)
+        if terms.failed_checks is None:  # documents without checks keep the previous schema
+            del data["terms"]["failed_checks"]
     return data
 
 
