@@ -130,6 +130,7 @@ class _Block:
     lines: List[str]
     gap: List[str]  # blank lines before the block
     removed: List[bool] = field(default_factory=list)
+    band: bool = False  # a one-row table kept as a table; it still ends the cover
 
     def __post_init__(self) -> None:
         self.removed = [False] * len(self.lines)
@@ -434,17 +435,20 @@ def _convert_band_tables(blocks: List[_Block], offset: int, report: ConvertedCle
         elif block.kind == "html":
             cells, why = _html_band_cells("\n".join(block.lines))
             if why:
+                block.band = True
                 report.add(first, f"kept a one-row HTML table: {why}", last)
                 continue
         if cells is None:
             continue
         texts = [cell for cell in cells if cell]
         if not texts:
+            block.band = True
             report.add(first, "kept a one-row table without text", last)
             continue
         heading = "## " + " | ".join(texts)
         if _INLINE_SYNTAX_RE.search(heading[3:].replace(" | ", " ")):
             # Joined cells (or decoded HTML) could open emphasis, LaTeX or markup in a heading.
+            block.band = True
             report.add(first, "kept a one-row table: its text has Markdown or HTML characters", last)
             continue
         block.kind, block.lines, block.removed = "text", [heading], [False]
@@ -577,9 +581,11 @@ def _paragraph_text(lines: List[str]) -> str:
 def _is_chapter(block: _Block) -> bool:
     """An ATX heading of level 2 or more, or a numbered level-1 heading (up to 3 spaces in).
 
-    Any such heading ends the cover, indented or not; ending it early only
-    moves fewer lines.
+    Any such heading ends the cover, indented or not, and so does a one-row
+    band table kept as a table; ending it early only moves fewer lines.
     """
+    if block.band:
+        return True
     if block.kind != "text" or len(block.lines) != 1 or not _ATX_RE.match(block.lines[0]):
         return False
     heading = block.lines[0].lstrip()

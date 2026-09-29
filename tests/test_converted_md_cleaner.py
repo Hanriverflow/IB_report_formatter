@@ -225,6 +225,22 @@ def test_one_row_tables_that_a_heading_would_change_stay_tables(source: str) -> 
     assert not any("band table" in line for line in report.lines())
 
 
+@pytest.mark.parametrize(
+    "band",
+    [
+        "<table><tr><td>1. 지급일<br>(예정)</td></tr></table>",
+        "| 지급 $1 | 조건 $2 |\n|---|---|",
+        "| | |\n|---|---|",
+    ],
+)
+def test_a_band_kept_as_a_table_still_ends_the_cover(band: str) -> None:
+    source = f"{band}\n\n**2026. 9. 29.**\n\n## 2. 기타\n"
+    cleaned, _ = clean_converted_term_sheet(source)
+    front, body = _split(cleaned)
+    assert front == {"profile": "term-sheet"}
+    assert body == source
+
+
 def test_html_band_text_keeps_inline_runs_together() -> None:
     cleaned, _ = clean_converted_term_sheet(FRONT + "<table><tr><td>별첨 1<span>0</span></td><td><p>상환</p></td></tr></table>\n")
     assert cleaned == FRONT + "\n## 별첨 10 | 상환\n"
