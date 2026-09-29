@@ -15,13 +15,14 @@ Changelog (converted input):
     - NEW: chapter headings from bold numbered lines or numbered lines followed
       by a table; one-row band tables become headings; cover lines before the
       first chapter move to frontmatter; unclear lines stay and are reported.
-    - Only top-level blocks change: indented code, list continuations, fences
-      and whole (nested) HTML tables are left as written; an ATX heading ends
-      a paragraph; HTML tables with text outside their cells stay tables.
+    - Only top-level blocks change: indented code, list and quote blocks,
+      fences and whole HTML tables (balanced, comments and attributes skipped)
+      are left as written, except that a clean one-row HTML table can become a
+      band heading; any ATX heading ends a paragraph and the cover.
     - Frontmatter follows the parser: `---` closers (`...` is rewritten and
       reported), case-insensitive keys, and a block-YAML rewrite (reported)
-      when new keys cannot be appended; escaped `\\<br>` is not a hard break;
-      multi-line changes report their line range.
+      for flow style or when new keys cannot be appended; escaped `\\<br>` is
+      not a hard break; multi-line changes report their line range.
 """
 
 import html
@@ -54,10 +55,17 @@ _DATE_RE = re.compile(
     r"^\d{4}\s*(?:[.\-/]|년)\s*\d{1,2}\s*(?:[.\-/]|월)\s*(?:\d{1,2}\s*(?:일|\.)?)?\s*"
     r"(?:\([월화수목금토일]\))?$"
 )
+_CONTAINER_RE = re.compile(r"^ {0,3}(?:>|[-+*](?:\s|$))")  # block quote or bullet item
+_ORDERED_ITEM_RE = re.compile(r"^ {0,3}\d{1,9}[.)](?:\s|$)")
 _TABLE_OPEN_RE = re.compile(r"<table\b", re.IGNORECASE)
-_TABLE_CLOSE_RE = re.compile(r"</table\s*>", re.IGNORECASE)
+# Comments first, then whole tags (quoted attribute values may hold `>` or `</table>`).
+_HTML_TOKEN_RE = re.compile(r"<!--.*?-->|<(/?)([A-Za-z][\w:-]*)(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", re.DOTALL)
+_MARKUP_CHAR_RE = re.compile(r"[<>*_`\[\]\\|$~]|&[#\w]+;")
+_BLOCK_KEY_RE = re.compile(r"^[^\s{\[#][^:]*:(?:\s|$)")  # `key:` at column 0 (block-style YAML)
 _HTML_ROW_RE = re.compile(r"<tr\b", re.IGNORECASE)
-_HTML_CELL_RE = re.compile(r"<t([dh])\b[^>]*>(.*?)</t\1\s*>", re.IGNORECASE | re.DOTALL)
+_HTML_CELL_RE = re.compile(
+    r"<t([dh])\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>(.*?)</t\1\s*>", re.IGNORECASE | re.DOTALL
+)
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 _CONFIDENTIAL_MAX_CHARS = 40
@@ -124,6 +132,18 @@ class _Block:
         """True when the block starts at column 0 (not a list continuation)."""
         return not self.lines[0][:1].isspace()
 
+    @property
+    def container(self) -> bool:
+        """A block quote, a bullet item, or an ordered item with indented continuation lines.
+
+        A lone ordered-looking line stays eligible: converters write dates
+        (`2026. 9. 29.`) and chapter titles (`1. 개요`) that way.
+        """
+        first = self.lines[0]
+        if _CONTAINER_RE.match(first):
+            return True
+        return bool(_ORDERED_ITEM_RE.match(first)) and any(line[:1].isspace() for line in self.lines[1:])
+
 
 @dataclass
 class _CoverMove:
@@ -146,9 +166,11 @@ def clean_converted_term_sheet(text: str) -> Tuple[str, ConvertedCleanupReport]:
     Only top-level blocks change. Chapter headings: a one-line paragraph
     `1. Title` (at most 40 characters after the number; `1\\.` too) becomes
     `## 1. Title` when it is bold or the next block is a table. A table with a
-    header row and no body rows (an HTML one only without text outside its
-    cells) becomes a `##` heading of its non-empty cells joined by ` | `.
-    Blocks before the first chapter heading are the cover: the first
+    header row and no body rows (an HTML one only when its cells hold plain
+    text and nothing is outside them) becomes a `##` heading of its non-empty
+    cells joined by ` | `. Blocks before the first heading of level 2 or
+    more (or a numbered level-1 heading) are the cover; list and quote blocks
+    there stay. The first
     confidentiality line becomes `confidential_label` (identical repeats are
     removed), the leading run of bold lines (or a level-1 heading) becomes
     `title` then `subtitle`, a date line `date`, paragraphs of 80 characters
@@ -256,6 +278,23 @@ def _closes_fence(line: str, marker: str) -> bool:
     return len(stripped) >= len(marker) and set(stripped) == {marker[0]} and _indent(line) <= 3
 
 
+def _html_table_end(lines: List[str], index: int) -> int:
+    """Exclusive end line of the balanced HTML table opening at `index`.
+
+    Comments and quoted attribute values are skipped; an unclosed table runs
+    to the end of the document.
+    """
+    text = "\n".join(lines[index:])
+    depth = 0
+    for token in _HTML_TOKEN_RE.finditer(text):
+        if (token.group(2) or "").lower() != "table":
+            continue
+        depth += -1 if token.group(1) else 1
+        if depth == 0:
+            return index + text.count("\n", 0, token.end()) + 1
+    return len(lines)
+
+
 def _starts_block(lines: List[str], index: int) -> bool:
     """A line that interrupts a paragraph: fence, ATX heading or table start."""
     line = lines[index]
@@ -283,17 +322,11 @@ def _split_blocks(lines: List[str]) -> Tuple[List[_Block], List[str]]:
                 end += 1
             kind, end = "fence", min(end + 1, len(lines))
         elif _indent(line) >= 4:  # indented code or a list continuation: never changed
-            while end < len(lines) and lines[end].strip():
+            while end < len(lines) and lines[end].strip() and _indent(lines[end]) >= 4:
                 end += 1
             kind = "indented"
         elif _starts_html_table(line):
-            depth, end = 0, index
-            while end < len(lines):
-                depth += len(_TABLE_OPEN_RE.findall(lines[end])) - len(_TABLE_CLOSE_RE.findall(lines[end]))
-                end += 1
-                if depth <= 0:
-                    break
-            kind = "html"
+            kind, end = "html", _html_table_end(lines, index)
         elif _starts_pipe_table(lines, index):
             end = index + 2
             while end < len(lines) and _is_pipe_row(lines[end]):
@@ -384,6 +417,10 @@ def _convert_band_tables(blocks: List[_Block], offset: int, report: ConvertedCle
         if not texts:
             report.add(first, "kept a one-row table without text", last)
             continue
+        if block.kind == "html" and any(_MARKUP_CHAR_RE.search(text) for text in texts):
+            # Decoded HTML text would be read as Markdown or HTML in a heading.
+            report.add(first, "kept a one-row HTML table: its text has Markdown or HTML characters", last)
+            continue
         heading = "## " + " | ".join(texts)
         block.kind, block.lines, block.removed = "text", [heading], [False]
         report.add(first, f"band table -> {_quote(heading)}", last)
@@ -401,6 +438,7 @@ def _html_band_cells(source: str) -> Optional[List[str]]:
         or not re.search(r"</table\s*>\s*$", lowered)
         or len(_HTML_ROW_RE.findall(source)) != 1
         or "<img" in lowered
+        or "<!--" in source
         or _html_text(_HTML_CELL_RE.sub(" ", source))  # e.g. a caption
     ):
         return None
@@ -489,10 +527,15 @@ def _paragraph_text(lines: List[str]) -> str:
 
 
 def _is_chapter(block: _Block) -> bool:
-    if block.kind != "text" or len(block.lines) != 1 or not block.top_level:
+    """An ATX heading of level 2 or more, or a numbered level-1 heading (up to 3 spaces in).
+
+    Any such heading ends the cover, indented or not; ending it early only
+    moves fewer lines.
+    """
+    if block.kind != "text" or len(block.lines) != 1 or not _ATX_RE.match(block.lines[0]):
         return False
-    line = block.lines[0]
-    return line.startswith("##") or bool(_NUMBERED_H1_RE.match(line))
+    heading = block.lines[0].lstrip()
+    return heading.startswith("##") or bool(_NUMBERED_H1_RE.match(heading))
 
 
 def _extract_cover(
@@ -515,11 +558,12 @@ def _extract_cover(
         report.add(line_no(block, index), f"kept {why}: {_quote(block.lines[index])}")
 
     for block in blocks[:first]:
-        if block.kind != "text" or not block.top_level:
+        if block.kind != "text" or not block.top_level or block.container:
             title_open = title_open and not titles
-            what = {"fence": "code block", "indented": "indented block", "text": "indented block"}.get(
-                block.kind, "table"
-            )
+            if block.kind == "text":
+                what = "list or quote block" if block.top_level else "indented block"
+            else:
+                what = {"fence": "code block", "indented": "indented block"}.get(block.kind, "table")
             first_line, last_line = _span(block, offset)
             report.add(first_line, f"kept a {what} before the first chapter", last_line)
             continue
@@ -620,23 +664,27 @@ def _write_frontmatter(
 ) -> List[str]:
     """Existing frontmatter lines unchanged, new keys before the closing fence.
 
-    When appending would not give the expected mapping (flow-style YAML, for
-    example), the whole frontmatter is rewritten as block YAML and reported.
+    Flow-style frontmatter (`{title: ...}`), which the parser does not read,
+    and frontmatter that appending would not extend to the expected mapping
+    are rewritten as block YAML, and the rewrite is reported.
     """
-    if not fields:
-        return front_lines
     if not front_lines:
-        return ["---", *_dump(fields), "---"]
+        return ["---", *_dump(fields), "---"] if fields else []
     body = front_lines[1:-1]
+    first = next((line for line in body if line.strip() and not line.lstrip().startswith("#")), "")
+    block_style = not first or bool(_BLOCK_KEY_RE.match(first))
+    if block_style and not fields:
+        return front_lines
     original = yaml.safe_load("\n".join(body)) or {}
-    appended = body + _dump(fields)
-    try:
-        merged = yaml.safe_load("\n".join(appended))
-    except yaml.YAMLError:
-        merged = None
-    if merged == {**original, **fields}:
-        return front_lines[:1] + appended + front_lines[-1:]
-    report.add(0, "rewrote the frontmatter as block YAML to add keys; its comments and layout were not kept")
+    if block_style:
+        appended = body + _dump(fields)
+        try:
+            merged = yaml.safe_load("\n".join(appended))
+        except yaml.YAMLError:
+            merged = None
+        if merged == {**original, **fields}:
+            return front_lines[:1] + appended + front_lines[-1:]
+    report.add(0, "rewrote the frontmatter as block YAML the parser reads; its comments and layout were not kept")
     return ["---", *_dump({**original, **fields}), "---"]
 
 

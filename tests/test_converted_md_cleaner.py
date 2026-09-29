@@ -94,6 +94,7 @@ BODY = """라마바은행 자본시장부
 """
 
 FRONT = "---\nprofile: term-sheet\ntitle: 가나다제일차(유) 유동화증권\n---\n"
+REWROTE = "rewrote the frontmatter as block YAML the parser reads; its comments and layout were not kept"
 
 
 def _split(cleaned: str):
@@ -165,6 +166,9 @@ def test_numbered_lines_that_become_chapter_headings(source: str, expected: str)
         "> **1. 인용 안의 줄**\n",
         "    | 코드 | 예시 |\n    |---|---|\n",  # an indented table is code, not a band
         "<table><tr><td>\n<table><tr><td>안쪽</td></tr></table>\n\n**1. 바깥 셀 안**\n\n</td></tr></table>\n",
+        "<table><tr><td>\n<!-- </table> -->\n\n**1. 주석 뒤 셀 안**\n\n</td></tr></table>\n",
+        '<table><tr><td title="</table>">\n\n**1. 속성 뒤 셀 안**\n\n</td></tr></table>\n',
+        "    코드 줄\n~~~text\n\n**1. 펜스 안**\n~~~\n",  # indented code ends at the fence
     ],
 )
 def test_other_numbered_text_is_unchanged(source: str) -> None:
@@ -200,11 +204,43 @@ def test_band_tables_become_headings_and_other_tables_stay() -> None:
     assert "lines 18-19: kept a one-row table without text" in report.lines()
 
 
-def test_an_html_one_row_table_with_text_outside_its_cells_stays_a_table() -> None:
-    source = "<table>\n<caption>지급 조건 요약</caption>\n<tr><th>조건</th></tr>\n</table>\n"
+@pytest.mark.parametrize(
+    "source",
+    [
+        "<table>\n<caption>지급 조건 요약</caption>\n<tr><th>조건</th></tr>\n</table>\n",
+        "<table><tr><td>별첨</td><!-- 메모 --></tr></table>\n",
+        "<table><tr><td>&lt;br&gt;</td><td>*강조 아님*</td></tr></table>\n",
+    ],
+)
+def test_html_one_row_tables_that_a_heading_would_change_stay_tables(source: str) -> None:
     cleaned, report = clean_converted_term_sheet(FRONT + source)
     assert cleaned == FRONT + "\n" + source
     assert not any("band table" in line for line in report.lines())
+
+
+def test_list_and_quote_blocks_in_the_cover_stay() -> None:
+    source = (
+        "> Strictly Confidential\n\n- 항목\n    **하위 굵은 줄**\n\n1. 번호 항목\n    **들여쓴 이어짐**\n\n"
+        "**가나다제일차(유) 유동화증권**\n\n## 1. 개요\n"
+    )
+    cleaned, report = clean_converted_term_sheet(source)
+    front, body = _split(cleaned)
+    assert front == {"profile": "term-sheet", "title": "가나다제일차(유) 유동화증권"}
+    assert body == (
+        "> Strictly Confidential\n\n- 항목\n    **하위 굵은 줄**\n\n1. 번호 항목\n    **들여쓴 이어짐**\n\n## 1. 개요\n"
+    )
+    lines = report.lines()
+    assert "line 1: kept a list or quote block before the first chapter" in lines
+    assert "lines 3-4: kept a list or quote block before the first chapter" in lines
+    assert "lines 6-7: kept a list or quote block before the first chapter" in lines
+
+
+def test_an_indented_heading_ends_the_cover() -> None:
+    source = "  ## 1. 조건\n\nStrictly Confidential\n\n## 2. 기타\n"
+    cleaned, _ = clean_converted_term_sheet(source)
+    front, body = _split(cleaned)
+    assert front == {"profile": "term-sheet"}
+    assert body == source
 
 
 def test_a_heading_followed_directly_by_prose_is_a_chapter_not_cover() -> None:
@@ -246,7 +282,15 @@ def test_flow_style_frontmatter_is_rewritten_as_block_yaml_and_reported() -> Non
     cleaned, report = clean_converted_term_sheet("---\n{title: 초안, version: v1}\n---\n\n**1. 개요**\n")
     front, _ = _split(cleaned)
     assert front == {"title": "초안", "version": "v1", "profile": "term-sheet"}
-    assert "rewrote the frontmatter as block YAML to add keys; its comments and layout were not kept" in report.lines()
+    assert REWROTE in report.lines()
+
+
+def test_flow_style_frontmatter_is_rewritten_even_without_new_keys() -> None:
+    source = "---\n{profile: term-sheet, title: 초안, prepared_by: 라마바은행, disclaimer: 가상 고지}\n---\n\n## 1. 개요\n"
+    cleaned, report = clean_converted_term_sheet(source)
+    assert cleaned.startswith("---\nprofile: term-sheet\ntitle: 초안\n")
+    assert REWROTE in report.lines()
+    assert MarkdownParser().parse(cleaned).metadata.profile == "term-sheet"
 
 
 def test_a_yaml_document_end_closer_is_rewritten_for_the_parser() -> None:
