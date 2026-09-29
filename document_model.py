@@ -69,6 +69,7 @@ class TextRun:
     footnote_id: Optional[int] = None
     term_key: Optional[str] = None  # set when the text is a substituted {{term}} value
     code: bool = False  # inline code span content (rendered monospace, without backticks)
+    image: Optional["Image"] = None  # inline image (e.g. in a table cell); the text is empty
 
 
 @dataclass

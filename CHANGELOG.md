@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased] - 2026-09-29
 
+### Input loss in converted documents (found on a converted real term sheet)
+- `*` and `_` emphasis needs flanking delimiters (CommonMark): an opening delimiter followed by whitespace, or a closing one preceded by it, stays literal. `2 * 3 * 4` and spaced note markers (`매출처* ...`, `* 주요 매출처`) keep their asterisks instead of losing them to a false italic; `** text **` is no longer bold.
+- HTML `<table>` blocks, as HWP/Word converters write them, become Word tables in every profile: `colspan`/`rowspan` merge cells, `<br>`/`<p>`/`<li>` start cell lines, `<b>`/`<i>`/`<a href>` keep their meaning, `<img>` becomes a cell image, and a nested table is flattened into its cell. Several header rows merge into one header row. Other text stays literal; text outside cells and unclosed tables are reported, and strict mode rejects them.
+- Images inside text and table cells (`![alt](path)`) are inserted inline and fitted to the cell width; a failed image leaves a visible marker that strict mode rejects. A standalone `<img>` line is an image.
+- Image paths written percent-encoded (`images/a%20b.png`) find their file; a name that really contains `%` is still tried first.
+
 ### Internal memo rendering (found on a real memo)
 - Inline code is rendered without its backticks in the code font (`CODE_FONT`); its text, including edge spaces in term-sheet lines, stays literal and outside table number formatting. Plain-profile callouts render inline code and links like body text.
 - Local file links (angle-bracket destinations, drive or `./`/`../` paths, document extensions) become Word hyperlinks. Saving through the CLI, converter or registry rebases links on the DOCX folder: relative links keep reaching their file, absolute paths inside the DOCX folder become relative, and other absolute paths stay `file:///` links with a log warning. `#` and `%` in absolute paths are literal; a `#` after a document extension in a relative link is a fragment, and `file:` fragments such as `#page=2` are kept. UNC paths become `file://server/share` links; targets that are not valid local paths are kept as written with a warning. Reference definitions with spaces, brackets or any path form resolve correctly.
