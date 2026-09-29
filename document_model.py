@@ -198,7 +198,7 @@ class Table:
     as_of: str = ""
     landscape: bool = False
     warnings: List[str] = field(default_factory=list)
-    spans: bool = False  # explicit `spans: true` table specification
+    spans: Optional[bool] = None  # table spec `spans`; None inherits the profile default
     label_columns: Optional[int] = None  # shaded leading label columns (term-sheet layout)
 
 
@@ -209,6 +209,7 @@ class Heading:
     level: int
     text: str
     is_numbered: bool = False
+    runs: List[TextRun] = field(default_factory=list)  # set only when terms are substituted
 
 
 @dataclass
@@ -249,6 +250,7 @@ class Blockquote:
 
     text: str
     title: str = "KEY INSIGHT"
+    runs: List[TextRun] = field(default_factory=list)  # set only when terms are substituted
 
 
 @dataclass
@@ -318,6 +320,8 @@ class DocumentMetadata:
     analyst: str = "DCM Team 1"
     extra: Dict[str, Any] = field(default_factory=dict)
     profile: str = "ib-report"
+    # Parsed runs for title/subtitle/date when terms are substituted; empty otherwise.
+    display_runs: Dict[str, List[TextRun]] = field(default_factory=dict)
 
 
 @dataclass
