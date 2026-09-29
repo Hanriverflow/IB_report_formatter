@@ -7,6 +7,9 @@ it must not import `ib_renderer` (the renderer injects run-rendering callbacks).
 
 Changelog (A1 foundation):
     - Validate immutable house boilerplate with presence-based frontmatter precedence.
+
+Changelog (A2 rendering):
+    - Schema-ordered single cell fills shared with generic merged-table emission.
 """
 
 from dataclasses import dataclass
@@ -14,10 +17,18 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
 import yaml
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.oxml.table import CT_Tc
 
 from document_model import DocumentMetadata
 
 ROW_SPLIT_THRESHOLD = 12
+# Elements that follow w:shd inside w:tcPr (ECMA-376 CT_TcPr sequence).
+_TCPR_AFTER_SHD = (
+    "w:noWrap", "w:tcMar", "w:textDirection", "w:tcFitText", "w:vAlign", "w:hideMark",
+    "w:headers", "w:cellIns", "w:cellDel", "w:cellMerge", "w:tcPrChange",
+)
 _HOUSE_KEYS = frozenset({"prepared_by", "disclaimer", "confidential_label", "confirmation"})
 _CONFIRMATION_KEYS = frozenset({"intro", "items", "signature"})
 
@@ -141,3 +152,25 @@ def resolve_term_sheet_texts(
         confirmation=_confirmation_text(values["confirmation"])
         if "confirmation" in values else None,
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TABLE CELL PRIMITIVES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def set_cell_fill(tc: CT_Tc, hex_color: str) -> None:
+    """Give one `w:tc` exactly one solid fill, placed in schema order.
+
+    Args:
+        tc: The cell element; a covered vertical-merge cell is a distinct `w:tc`.
+        hex_color: Six-digit RGB fill without a leading `#`.
+    """
+    tc_pr = tc.get_or_add_tcPr()
+    for shading in tc_pr.findall(qn("w:shd")):
+        tc_pr.remove(shading)
+    shading = OxmlElement("w:shd")
+    shading.set(qn("w:val"), "clear")
+    shading.set(qn("w:color"), "auto")
+    shading.set(qn("w:fill"), hex_color)
+    tc_pr.insert_element_before(shading, *_TCPR_AFTER_SHD)

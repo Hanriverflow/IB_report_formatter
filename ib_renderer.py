@@ -6,6 +6,11 @@ Changelog (term-sheet foundation):
     - Validate term-sheet metadata and resolve house text before document output.
     - Preserve confirmation fences in code panels until box rendering is available.
 
+Changelog (table spans):
+    - Merge validated span rectangles in every profile: size the empty table,
+      merge, then fill each owner cell once; covered cells repeat vertical fills.
+    - Render the optional table note after the source in every profile.
+
 Changelog (cover-free title):
     - Render the IB report title, subtitle and memo-style metadata without a cover.
     - Place the cover-free report opening before the TOC on the first page.
@@ -39,7 +44,7 @@ from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import AbstractSet, Any, Dict, List, Optional, Set, Tuple, cast
 from uuid import uuid4
 from xml.sax.saxutils import escape
 
@@ -95,7 +100,7 @@ from office_layout import (
 )
 from render_styles import STYLE, RasterFontPolicy, collect_raster_font_diagnostics, use_style
 from render_styles import IBStyle as IBStyle
-from term_sheet import TermSheetTexts, resolve_term_sheet_texts
+from term_sheet import TermSheetTexts, resolve_term_sheet_texts, set_cell_fill
 
 logger = logging.getLogger(__name__)
 
@@ -1526,10 +1531,14 @@ class TableRenderer:
         word_table.style = STYLE.STYLE_TABLE_GRID
         column_kinds = self._infer_column_kinds(table)
         self._apply_column_widths(word_table, table, column_kinds)
+        # Merge the empty, sized grid so spanned widths add up and no content
+        # is concatenated; each owner cell is then filled exactly once.
+        rectangles = self._merge_cells(word_table, table)
+        covered = self._covered_cells(rectangles)
 
         # Render header row
         if table.rows:
-            self._render_header_row(word_table, table.rows[0], col_count)
+            self._render_header_row(word_table, table.rows[0], col_count, covered)
 
         # Render data rows based on table type
         for r_idx, row in enumerate(table.rows[1:], 1):
@@ -1542,7 +1551,9 @@ class TableRenderer:
                 column_kinds,
                 table.column_types,
                 table.alignments,
+                covered,
             )
+        self._mirror_vertical_fills(word_table, rectangles)
 
         word_table.rows[0]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
         for word_row in word_table.rows:
@@ -1557,11 +1568,133 @@ class TableRenderer:
                 TextParser.parse_runs("출처: " + table.source),
                 font_size=STYLE.SMALL_SIZE,
             )
+        if table.note:
+            paragraph = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            TextRenderer.render_runs(
+                paragraph, TextParser.parse_runs(table.note), font_size=STYLE.SMALL_SIZE
+            )
         # Spacer paragraph after table
         self.doc.add_paragraph()
         if previous_geometry:
             section = self.doc.add_section(WD_SECTION_START.NEW_PAGE)
             section.orientation, section.page_width, section.page_height = previous_geometry
+
+    def _merge_cells(self, word_table, table: Table) -> List[Tuple[int, int, int, int]]:
+        """Merge validated span rectangles of an empty table whose widths are set.
+
+        python-docx concatenates the paragraphs of merged cells that have content
+        and adds the `tcW` of horizontally merged cells, so merging must happen
+        after sizing and before any cell is filled.
+
+        Args:
+            word_table: Freshly created Word table with grid and cell widths applied.
+            table: Parsed table whose `TableCell.merge` directives define the spans.
+
+        Returns:
+            Inclusive zero-based (top, left, bottom, right) rectangles that were merged.
+        """
+        rectangles, problems = self._span_rectangles(table)
+        errors = getattr(self.doc.part, "_ib_render_errors", None)
+        for problem in problems:
+            logger.warning("%s", problem)
+            if errors is not None:
+                errors.append(problem)
+        for top, left, bottom, right in rectangles:
+            word_table.cell(top, left).merge(word_table.cell(bottom, right))
+        return rectangles
+
+    @staticmethod
+    def _span_rectangles(table: Table) -> Tuple[List[Tuple[int, int, int, int]], List[str]]:
+        """Group span directives into rectangles, rejecting malformed groups.
+
+        Parsed tables are already validated by `TableSpanResolver`; this guard keeps
+        hand-built models from producing ragged or overlapping Word merges.
+
+        Args:
+            table: Table whose cells may carry "up"/"left" merge directives.
+
+        Returns:
+            Valid rectangles and one diagnostic per rejected group, whose cells
+            are then rendered unmerged with their own content.
+        """
+        roots: Dict[Tuple[int, int], Tuple[int, int]] = {}
+        groups: Dict[Tuple[int, int], List[Tuple[int, int]]] = {}
+        outside: Set[Tuple[int, int]] = set()
+        for row_index, row in enumerate(table.rows):
+            for column_index, cell in enumerate(row.cells[: table.col_count]):
+                position = root = (row_index, column_index)
+                if cell.merge in ("up", "left"):
+                    target = (
+                        (row_index - 1, column_index)
+                        if cell.merge == "up"
+                        else (row_index, column_index - 1)
+                    )
+                    if target in roots:
+                        root = roots[target]
+                    else:
+                        outside.add(position)
+                roots[position] = root
+                groups.setdefault(root, []).append(position)
+        rectangles: List[Tuple[int, int, int, int]] = []
+        problems: List[str] = []
+        for (top, left), members in groups.items():
+            if all(table.rows[row].cells[column].merge is None for row, column in members):
+                continue
+            bottom = max(row for row, _ in members)
+            right = max(column for _, column in members)
+            if (
+                not outside.intersection(members)
+                and min(row for row, _ in members) == top
+                and min(column for _, column in members) == left
+                and table.rows[top].cells[left].merge is None
+                and len(members) == (bottom - top + 1) * (right - left + 1)
+                and len({table.rows[row].is_header for row in range(top, bottom + 1)}) == 1
+            ):
+                rectangles.append((top, left, bottom, right))
+            else:
+                problems.append(
+                    f"Invalid table span group at row {top + 1}, column {left + 1}; "
+                    "cells rendered unmerged"
+                )
+        return rectangles, problems
+
+    @staticmethod
+    def _covered_cells(rectangles: List[Tuple[int, int, int, int]]) -> Set[Tuple[int, int]]:
+        """Return grid positions represented by another cell's merged owner."""
+        return {
+            (row, column)
+            for top, left, bottom, right in rectangles
+            for row in range(top, bottom + 1)
+            for column in range(left, right + 1)
+            if (row, column) != (top, left)
+        }
+
+    @staticmethod
+    def _mirror_vertical_fills(word_table, rectangles: List[Tuple[int, int, int, int]]) -> None:
+        """Repeat each vertical owner's fill on its continuation `w:tc` elements.
+
+        Continuation cells keep their own properties in OOXML, so the owner's fill
+        is repeated to keep the whole merged area shaded in every consumer.
+        """
+        for top, left, bottom, _ in rectangles:
+            if bottom == top:
+                continue
+            owner = word_table.rows[top]._tr.tc_at_grid_offset(left)
+            shading = owner.tcPr.find(qn("w:shd")) if owner.tcPr is not None else None
+            if shading is None or not shading.get(qn("w:fill")):
+                continue
+            for row_index in range(top + 1, bottom + 1):
+                continuation = word_table.rows[row_index]._tr.tc_at_grid_offset(left)
+                set_cell_fill(continuation, shading.get(qn("w:fill")))
+
+    @staticmethod
+    def _is_span_cell(row: TableRow, col_idx: int) -> bool:
+        """True for covered cells and owners spanning columns (excluded from sizing)."""
+        cells = row.cells
+        return cells[col_idx].merge is not None or (
+            col_idx + 1 < len(cells) and cells[col_idx + 1].merge == "left"
+        )
 
     def _apply_column_widths(self, word_table, table: Table, column_kinds: List[str]) -> None:
         """Apply content-aware column widths for more readable report tables."""
@@ -1619,7 +1752,7 @@ class TableRenderer:
         texts = []
 
         for row in table.rows:
-            if col_idx >= len(row.cells):
+            if col_idx >= len(row.cells) or self._is_span_cell(row, col_idx):
                 continue
 
             cell = row.cells[col_idx]
@@ -1653,7 +1786,7 @@ class TableRenderer:
         sample_texts = []
 
         for row in table.rows[1:]:
-            if col_idx >= len(row.cells):
+            if col_idx >= len(row.cells) or self._is_span_cell(row, col_idx):
                 continue
 
             text = self._cell_display_text(row.cells[col_idx], table.table_type).strip()
@@ -1827,13 +1960,21 @@ class TableRenderer:
             return self._format_financial_number(cell_data.content)
         return cell_data.content
 
-    def _render_header_row(self, word_table, row: TableRow, col_count: int):
-        """Render header row with Navy background"""
+    def _render_header_row(
+        self,
+        word_table,
+        row: TableRow,
+        col_count: int,
+        covered: AbstractSet[Tuple[int, int]] = frozenset(),
+    ):
+        """Render header row with Navy background, skipping merged-away cells."""
         word_cells = word_table.rows[0].cells
 
         for c_idx, cell_data in enumerate(row.cells):
             if c_idx >= col_count:
                 break
+            if (0, c_idx) in covered:
+                continue
 
             cell = word_cells[c_idx]
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
@@ -1875,13 +2016,16 @@ class TableRenderer:
         column_kinds: List[str],
         column_types: Optional[List[str]] = None,
         alignments: Optional[List[str]] = None,
+        covered: AbstractSet[Tuple[int, int]] = frozenset(),
     ):
-        """Render a data row with type-specific styling"""
+        """Render a data row with type-specific styling, skipping merged-away cells."""
         word_cells = word_table.rows[row_idx].cells
 
         for c_idx, cell_data in enumerate(row.cells):
             if c_idx >= col_count:
                 break
+            if (row_idx, c_idx) in covered:
+                continue
 
             cell = word_cells[c_idx]
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER

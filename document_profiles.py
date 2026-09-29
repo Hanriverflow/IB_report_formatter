@@ -6,6 +6,7 @@ Changelog (feature port):
 
 Changelog (term-sheet foundation):
     - Register term-sheet metadata/style contracts and explicit table span options.
+    - Accept a text-only table `note` in every profile.
 """
 
 import math
@@ -473,6 +474,7 @@ def apply_table_specs(model: DocumentModel) -> None:
             "base_case",
             "spans",
             "label_columns",
+            "note",
         }
         if unknown:
             raise ValueError("Unknown table settings: {}".format(", ".join(sorted(unknown))))
@@ -496,7 +498,7 @@ def apply_table_specs(model: DocumentModel) -> None:
         if any(not isinstance(c, str) or c not in roles for c in columns):
             raise ValueError("Unknown table column role")
         table.column_types = columns
-        for key in ("caption", "unit", "source", "as_of"):
+        for key in ("caption", "unit", "source", "as_of", "note"):
             value = spec.get(key, "")
             if isinstance(value, (dict, list)):
                 raise ValueError(f"Table {key} must be text")

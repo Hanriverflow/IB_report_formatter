@@ -4,6 +4,7 @@ Changelog (quality hardening):
     - Preserve inferred IB subtitle headings for cover-free rendering.
     - Add chart specifications with retained source for opt-in rendering.
     - Retain original confirmation fences for lossless term-sheet fallback.
+    - Carry an optional table note rendered below the table in every profile.
 """
 
 from dataclasses import dataclass, field
@@ -208,6 +209,7 @@ class Table:
     warnings: List[str] = field(default_factory=list)
     spans: Optional[bool] = None  # table spec `spans`; None inherits the profile default
     label_columns: Optional[int] = None  # shaded leading label columns (term-sheet layout)
+    note: str = ""  # table spec `note`: short right-aligned text below the table
 
 
 @dataclass
