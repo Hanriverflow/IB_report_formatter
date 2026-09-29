@@ -52,7 +52,9 @@ The native render was generated at `c323d7858a36e4dda2240663cae7de35a09a388b`. A
 
 ## Old PR disposition after successor merge
 
-The following PRs are superseded, not claimed to have been merged wholesale. Their branches and review history are retained.
+The following PRs are superseded, not claimed to have been merged wholesale. Their review history is retained.
+
+> **2026-09-29 update (owner decision):** the obsolete remote branches below, together with the unmerged `codex/table-layout-tuning-20260323` (an earlier, superseded column-width approach) and `feat/interactive-report-selector` (contained in PR #4), were deleted. The listed commits stay recoverable on GitHub through each PR's `refs/pull/<n>/head` (for example `git fetch origin pull/4/head`), and all five unmerged branch tips were saved in a local git bundle outside the repository before deletion.
 
 | PR | Preserved source | Disposition / deliberately deferred content |
 |---|---|---|

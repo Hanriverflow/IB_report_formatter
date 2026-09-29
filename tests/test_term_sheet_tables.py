@@ -238,11 +238,14 @@ LEGACY_SPECS = [
     },
     {"spans": True},
 ]
-# SHA-256 of the saved body XML produced before A2 (commit 26b9c74). Tables
-# without merge groups must keep rendering byte-identically in every profile.
+# SHA-256 of the saved body XML for tables without merge groups. First recorded
+# before A2 (commit 26b9c74: plain 03d688af…, ib-report 4e5942dd…); updated when
+# the legacy schema-order fix moved w:shd/w:tblBorders into place. The old and
+# new XML were verified identical after sorting property children into schema
+# order, so only element order changed.
 LEGACY_DIGESTS = {
-    "plain": "03d688af5424686e3d0cedb10212af3b5f0de95bb3fb332b6c335eb7cedd8662",
-    "ib-report": "4e5942dd846f5e1ceaf1c10f8ac1fd1142a3c8c07834ea53d5d023d33b12ca11",
+    "plain": "5f696c6f0253cf0f61ea475151770345f21588ab11bb9f9b562dea81de8f128a",
+    "ib-report": "63057cfffd2261f8b72a5dd67944f704d9dbacd01246652e657f71d358293186",
 }
 
 

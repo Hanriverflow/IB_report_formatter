@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased] - 2026-09-29
 
+### Existing-output fixes (schema order, forced TOC, audit encoding)
+- Insert table borders, cell fills and margins, paragraph borders and run styles in ECMA-376 schema order in every profile (`ooxml_order.insert_ordered`). Output changes only in element order; content is identical.
+- `business-report`, `meeting-minutes`, `office-letter` and `ib-memo` without a cover now render their title opening before a forced TOC, and the TOC preview no longer lists the title heading (matching `ib-report` and `term-sheet`).
+- `docx-audit` writes its JSON report as UTF-8 regardless of the console code page, so redirected output parses on Windows (cp949).
+
 ### Term-sheet profile, explicit cell spans and house boilerplate
 - Add the seventh profile, `term-sheet`, with validated house/frontmatter text, source-relative house paths and a `--house` override. Real deal documents and institution wording stay outside the repository.
 - Resolve explicit `^^`/`<<` cell spans and label columns; support escaped literal markers, rectangular merge validation and per-table opt-in for other profiles.
