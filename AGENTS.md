@@ -367,8 +367,9 @@ Claude settings are in `.claude/settings.local.json` for allowed permissions.
 
 ### Images
 - **Base64 embedded images**: Automatically decoded and inserted
-- **File path images**: Local files inserted if found
-- **Fallback**: Placeholder text if image cannot be loaded
+- **File path images**: Local files inserted if found; percent-encoded paths (`a%20b.png`) are tried decoded
+- **Inline images**: In text and table cells, fitted to the cell width
+- **Fallback**: Placeholder text if image cannot be loaded (strict mode rejects it)
 
 ### LaTeX Equations
 - **Block equations**: `$$ E = mc^2 $$` rendered as centered images
@@ -380,6 +381,7 @@ Claude settings are in `.claude/settings.local.json` for allowed permissions.
 - **Negative numbers**: Red color, parentheses support
 - **Sensitivity tables**: Explicit-coordinate base case highlighting only
 - **Risk matrices**: Color-coded risk levels
+- **HTML tables** (converter output): `colspan`/`rowspan` become span markers; several header rows merge into one
 
 ### Callout Boxes
 - **Executive Summary / 요약**: Navy background, white text

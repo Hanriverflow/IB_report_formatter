@@ -69,6 +69,7 @@ class TextRun:
     footnote_id: Optional[int] = None
     term_key: Optional[str] = None  # set when the text is a substituted {{term}} value
     code: bool = False  # inline code span content (rendered monospace, without backticks)
+    image: Optional["Image"] = None  # inline image (e.g. in a table cell); the text is empty
 
 
 @dataclass
@@ -184,6 +185,7 @@ class TableCell:
     is_base_case: bool = False
     risk_level: Optional[str] = None  # high, medium, low
     merge: Optional[str] = None  # resolved span marker: "up" (^^) or "left" (<<)
+    literal: bool = False  # runs are final (built from HTML): the text is never a span marker
 
 
 @dataclass

@@ -53,6 +53,7 @@ Changelog (v2):
     - Blockquote multi-line content preserved
 """
 
+import base64
 import logging
 import os
 import platform
@@ -63,7 +64,20 @@ from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from io import BytesIO
 from pathlib import Path
-from typing import AbstractSet, Any, Callable, Dict, List, Mapping, Optional, Set, Tuple, cast
+from typing import (
+    AbstractSet,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
+from urllib.parse import unquote
 from uuid import uuid4
 from xml.sax.saxutils import escape
 
@@ -792,8 +806,9 @@ class TextRenderer:
     """Renders text with formatting"""
 
     # Compiled regex — class-level cache
-    _BOLD_SPLIT_RE = re.compile(r"(\*\*.*?\*\*)")
-    _ITALIC_SPLIT_RE = re.compile(r"(?<!\*)(\*[^*]+?\*)(?!\*)")
+    # Delimiters must flank their text, as in `TextParser` (`2 * 3` stays literal).
+    _BOLD_SPLIT_RE = re.compile(r"(\*\*(?!\s).*?(?<!\s)\*\*)")
+    _ITALIC_SPLIT_RE = re.compile(r"(?<!\*)(\*(?![\s*])[^*]*?[^\s*]\*)(?!\*)")
     _SUPERSCRIPT_RE = re.compile(r"\^([^^]+?)\^")
     _SUBSCRIPT_PATTERN = r"(?<!~)~[A-Za-z0-9]{1,8}~(?!~)"
     _VERTICAL_ALIGN_SPLIT_RE = re.compile(r"(\^[^^]+?\^|" + _SUBSCRIPT_PATTERN + r")")
@@ -823,6 +838,9 @@ class TextRenderer:
                     run_data.text,
                     font_size=font_size,
                 )
+                continue
+            if run_data.image is not None:
+                TextRenderer._render_inline_image(paragraph, run_data.image, font_size)
                 continue
 
             run = paragraph.add_run(run_data.text)
@@ -854,6 +872,35 @@ class TextRenderer:
                 paragraph._p.append(link)
             elif run_data.term_key is not None:
                 register_term_run(run._r, run_data.term_key, run_data.text)
+
+    @staticmethod
+    def _render_inline_image(paragraph, image: Image, font_size: Pt) -> None:
+        """Insert an inline picture, no wider than a body image.
+
+        Relative paths resolve against the source folder the orchestrator put on
+        the document part; table cells are fitted after their widths are final.
+        A picture that cannot be loaded leaves a visible marker and a diagnostic
+        that strict mode rejects.
+        """
+        try:
+            source = ImageRenderer.image_source(image, getattr(paragraph.part, "_ib_source_dir", None))
+            if source is None:
+                raise FileNotFoundError(image.path)
+            shape = paragraph.add_run().add_picture(source)
+            limit = Inches(ImageRenderer.MAX_WIDTH_INCHES)
+            if shape.width > limit:
+                shape.height = int(shape.height * limit / shape.width)
+                shape.width = limit
+            ImageRenderer._apply_alt_text(shape, image.alt_text)
+            return
+        except Exception as err:
+            logger.warning("Inline image could not be inserted (%s): %s", image.alt_text, err)
+        FontStyler.apply_run_style(
+            paragraph.add_run(f"[Image: {image.alt_text}]"), font_size=font_size, italic=True, color=STYLE.RED,
+        )
+        errors = getattr(paragraph.part, "_ib_render_errors", None)
+        if errors is not None:
+            errors.append("Image could not be rendered: " + (image.alt_text or image.path))
 
     @staticmethod
     def _render_inline_latex(paragraph, expression: str, font_size: Pt):
@@ -929,7 +976,7 @@ class TextRenderer:
         parsed_runs = TextParser.parse_runs_plain(text)
         if any(
             run.bold or run.italic or run.superscript or run.subscript or run.color_hex
-            or run.code or run.hyperlink
+            or run.code or run.hyperlink or run.image is not None
             for run in parsed_runs
         ):
             TextRenderer.render_runs(
@@ -947,7 +994,7 @@ class TextRenderer:
             if not bold_part:
                 continue
 
-            if bold_part.startswith("**") and bold_part.endswith("**") and len(bold_part) > 4:
+            if TextParser.flanked(bold_part, "**"):
                 # Bold segment — check for ^superscript^ / ~subscript~ inside
                 inner = TextRenderer._cleanup(bold_part[2:-2])
                 TextRenderer._render_with_vertical_align(
@@ -966,12 +1013,7 @@ class TextRenderer:
                     if not italic_part:
                         continue
 
-                    if (
-                        italic_part.startswith("*")
-                        and italic_part.endswith("*")
-                        and len(italic_part) > 2
-                        and not italic_part.startswith("**")
-                    ):
+                    if TextParser.flanked(italic_part, "*"):
                         inner = TextRenderer._cleanup(italic_part[1:-1])
                         TextRenderer._render_with_vertical_align(
                             paragraph,
@@ -2797,9 +2839,99 @@ class ImageRenderer:
 
     # Maximum image width in inches (fits within typical IB report margins)
     MAX_WIDTH_INCHES: float = 5.5
+    # Word's default left/right cell margin when a table does not set one.
+    _DEFAULT_CELL_MARGIN_TWIPS = 108
 
     def __init__(self, doc: DocxDocument):
         self.doc = doc
+
+    @staticmethod
+    def local_path(path: str, base_dir: Optional[Path] = None) -> Optional[Path]:
+        """Return the existing local file an image destination names.
+
+        Markdown destinations are URLs, so converters write `a%20b.png`; the
+        path is tried as written first (a file may really contain `%`), then
+        percent-decoded.
+
+        Args:
+            path: Destination as written.
+            base_dir: Folder for a relative path; None keeps it cwd-relative.
+
+        Returns:
+            The file, or None when neither form names an existing file.
+        """
+        candidates = [path]
+        decoded = unquote(path)
+        if decoded != path:
+            candidates.append(decoded)
+        for candidate in candidates:
+            location = Path(candidate)
+            if base_dir is not None and not location.is_absolute():
+                location = base_dir / location
+            try:
+                if location.is_file():
+                    return location
+            except (OSError, ValueError):
+                continue
+        return None
+
+    @classmethod
+    def image_source(cls, image: Image, base_dir: Optional[Path] = None) -> Optional[Union[str, BytesIO]]:
+        """Return what python-docx inserts for an image: decoded bytes or a file path.
+
+        Args:
+            image: Parsed image; Base64 data or a `data:` URI wins over a path.
+            base_dir: Folder for a relative path (see `local_path`).
+
+        Returns:
+            A stream or path, or None when the file does not exist.
+        """
+        data = image.base64_data
+        if data is None and image.path.startswith("data:"):
+            header, _, payload = image.path.partition(",")
+            if header.endswith(";base64"):
+                data = payload
+        if data is not None:
+            return BytesIO(base64.b64decode(data))
+        location = cls.local_path(image.path, base_dir)
+        return str(location) if location is not None else None
+
+    @classmethod
+    def fit_table_cell_images(cls, document: DocxDocument) -> None:
+        """Shrink pictures wider than the text width of their table cell.
+
+        Run after every table has its final grid: a cell's text width is its
+        grid columns (gridSpan included) minus the table's cell margins. Height
+        scales with width, so the aspect ratio is kept.
+
+        Args:
+            document: Rendered document.
+        """
+        for table in document.element.body.iter(qn("w:tbl")):
+            grid = [int(width) for width in table.xpath("./w:tblGrid/w:gridCol/@w:w")]
+            margins = []
+            for side in ("left", "right"):
+                values = table.xpath(f"./w:tblPr/w:tblCellMar/w:{side}/@w:w")
+                margins.append(int(values[0]) if values else cls._DEFAULT_CELL_MARGIN_TWIPS)
+            for row in table.xpath("./w:tr"):
+                before = row.xpath("./w:trPr/w:gridBefore/@w:val")
+                column = int(before[0]) if before else 0
+                for cell in row.xpath("./w:tc"):
+                    span_values = cell.xpath("./w:tcPr/w:gridSpan/@w:val")
+                    span = int(span_values[0]) if span_values else 1
+                    limit = (sum(grid[column:column + span]) - sum(margins)) * 635  # twips to EMU
+                    column += span
+                    if limit <= 0:
+                        continue
+                    for inline in cell.xpath(".//wp:inline"):
+                        extents = inline.xpath("./wp:extent") + inline.xpath(".//a:xfrm/a:ext")
+                        width = int(extents[0].get("cx"))
+                        if width <= limit:
+                            continue
+                        height = int(extents[0].get("cy")) * limit // width
+                        for extent in extents:
+                            extent.set("cx", str(limit))
+                            extent.set("cy", str(height))
 
     def render(self, image: Image) -> bool:
         """
@@ -2813,10 +2945,7 @@ class ImageRenderer:
         Returns:
             Whether an image was inserted successfully.
         """
-        import base64
-        import os
         import tempfile
-        from pathlib import Path
 
         inserted = False
         temp_file_path = None
@@ -2842,29 +2971,17 @@ class ImageRenderer:
 
             # ── Case 2: File path image ────────────────────────────────────────
             elif image.path:
-                img_path = Path(image.path)
-
-                # Handle relative paths
-                if not img_path.is_absolute():
-                    # Try relative to current working directory
-                    if not img_path.exists():
-                        logger.warning(
-                            "Image file not found: %s — inserting placeholder",
-                            image.path,
-                        )
-                    else:
-                        self._insert_image(str(img_path), image.alt_text)
-                        inserted = True
-                        logger.debug("Inserted file image: %s", image.path)
-                elif img_path.exists():
-                    self._insert_image(str(img_path), image.alt_text)
-                    inserted = True
-                    logger.debug("Inserted file image: %s", image.path)
-                else:
+                # File-backed parses made the path absolute; others stay cwd-relative.
+                source = self.image_source(image)
+                if source is None:
                     logger.warning(
                         "Image file not found: %s — inserting placeholder",
                         image.path,
                     )
+                else:
+                    self._insert_image(source, image.alt_text)
+                    inserted = True
+                    logger.debug("Inserted file image: %s", image.path[:80])
 
         except Exception as e:
             logger.warning(
@@ -2886,12 +3003,12 @@ class ImageRenderer:
             self._render_placeholder(image.alt_text)
         return inserted
 
-    def _insert_image(self, file_path: str, alt_text: str):
+    def _insert_image(self, file_path: Union[str, BytesIO], alt_text: str):
         """
         Insert image file into document with proper sizing.
 
         Args:
-            file_path: Path to image file
+            file_path: Path to image file, or its bytes
             alt_text: Alt text for caption
         """
         # Add image with max width constraint
@@ -3383,6 +3500,8 @@ class IBDocumentRenderer:
         self.errors = list(model.warnings)
         self._term_sheet = term_sheet
         self._reset_document()
+        # Inline images (table cells, text) resolve relative paths against the source.
+        cast(Any, self.doc.part)._ib_source_dir = model.source_dir
         self.separator_mode = resolved.separator_mode
         self.charts = resolved.charts
         with (
@@ -3481,6 +3600,7 @@ class IBDocumentRenderer:
                 "ib_generated" if resolved.profile.name == "ib-report" else resolved.profile.name
             )
             self._apply_term_controls(term_runs)
+            ImageRenderer.fit_table_cell_images(self.doc)
             from docx_audit import inspect_document_issues
 
             for warning in font_warnings:

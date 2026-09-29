@@ -289,8 +289,11 @@ def apply_marker_layout(paragraph: Any, text: str) -> Optional[Pt]:
 
 
 def _is_plain(run: TextRun) -> bool:
-    """Semantic runs (equations, footnotes, term values, code) are never trimmed or split."""
-    return not run.is_latex and run.footnote_id is None and run.term_key is None and not run.code
+    """Semantic runs (equations, footnotes, term values, code, images) are never trimmed or split."""
+    return (
+        not run.is_latex and run.footnote_id is None and run.term_key is None and not run.code
+        and run.image is None
+    )
 
 
 def _strip_edge(line: List[TextRun], leading: bool) -> List[TextRun]:
