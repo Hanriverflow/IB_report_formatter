@@ -18,12 +18,22 @@ from lxml import etree
 
 import ib_renderer
 import term_sheet
-from document_model import TextRun
+from document_model import (
+    DocumentMetadata,
+    DocumentModel,
+    Element,
+    ElementType,
+    Table,
+    TableCell,
+    TableRow,
+    TextRun,
+)
 from document_profiles import RenderOptions
 from docx_audit import inspect_document
 from ib_renderer import IBDocumentRenderer
 from md_parser import MarkdownParser
 
+W_NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 TITLE = "가나다머티리얼즈㈜ 구조화금융"
 FIELDS = {
     "profile": "term-sheet",
@@ -187,6 +197,27 @@ def test_invalid_hand_built_merge_directive_renders_unmerged_with_diagnostic() -
     assert any("span" in error.lower() for error in renderer.errors)
 
 
+@pytest.mark.parametrize("profile", ["plain", "term-sheet"])
+def test_hand_built_merge_never_joins_the_rendered_header_row_to_the_body(profile: str) -> None:
+    # Default TableRow.is_header is False, but the renderer always repeats row 0 as the header.
+    table_model = Table(
+        rows=[
+            TableRow(cells=[TableCell("Header"), TableCell("Value")]),
+            TableRow(cells=[TableCell("^^", merge="up"), TableCell("Body")]),
+        ],
+        col_count=2,
+    )
+    extra = {"prepared_by": FIELDS["prepared_by"], "disclaimer": FIELDS["disclaimer"]}
+    metadata = DocumentMetadata(title=TITLE, company="", sector="", analyst="", profile=profile, extra=extra)
+    model = DocumentModel(metadata=metadata, elements=[Element(ElementType.TABLE, table_model)])
+    renderer = IBDocumentRenderer(options=RenderOptions(profile=profile))
+    table = renderer.render(model).element.body.xpath("./w:tbl")[0]
+    assert not table.xpath(".//w:vMerge") and text(table) == "HeaderValue^^Body"
+    assert any("span" in error.lower() for error in renderer.errors)
+    with pytest.raises(ValueError, match="validation"):
+        IBDocumentRenderer(options=RenderOptions(profile=profile, strict=True)).render(model)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # LEGACY OUTPUT LOCK (NO MERGES)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -283,6 +314,60 @@ def test_landscape_key_value_table_takes_the_remaining_section_width() -> None:
     assert sum(grid) == pytest.approx(printable_twips(landscape), abs=1)
 
 
+def write_theme(tmp_path, text: str) -> str:
+    path = tmp_path / "theme.yaml"
+    path.write_text(text, encoding="utf-8")
+    return str(path)
+
+
+def test_term_sheet_table_uses_the_actual_narrow_section_width(tmp_path) -> None:
+    theme = write_theme(tmp_path, "LEFT_MARGIN: 3\nRIGHT_MARGIN: 3\n")
+    _, saved = render(ts_markdown(ONE_LABEL), strict=True, theme=theme)
+    table = tables(saved)[0]
+    grid = [int(width) for width in attr(table, "./w:tblGrid/w:gridCol", "w:w")]
+    total = printable_twips(saved.sections[0])
+    assert total < twips(76.2)  # narrower than the legacy three-inch estimate floor
+    assert grid[0] == twips(33.5)
+    assert sum(grid) == pytest.approx(total, abs=1)
+    assert int(attr(table, "./w:tblPr/w:tblW", "w:w")[0]) <= total + 1
+
+
+@pytest.mark.parametrize("landscape", [False, True])
+def test_term_sheet_table_without_printable_width_is_diagnosed(landscape: bool) -> None:
+    model = MarkdownParser().parse(ts_markdown(ONE_LABEL))
+    table_model = model.elements[0].content
+    table_model.landscape = landscape
+    doc = Document()
+    for section in doc.sections:
+        section.left_margin = section.right_margin = section.page_height
+    with pytest.raises(ValueError, match="printable width"):
+        ib_renderer.TableRenderer(doc, term_sheet=True).render(table_model)
+    assert not doc.tables and not "".join(doc.element.body.xpath(".//w:t/text()"))
+    assert len(doc.sections) == (3 if landscape else 1)
+    assert doc.sections[-1].page_width < doc.sections[-1].page_height
+
+
+def test_fixed_label_grid_is_kept_while_the_content_column_has_width(tmp_path) -> None:
+    theme = write_theme(tmp_path, "margin_mm: 60\n")
+    _, saved = render(ts_markdown(ONE_LABEL + "\n" + KEY_VALUE), strict=True, theme=theme)
+    grids = [[int(width) for width in attr(table, "./w:tblGrid/w:gridCol", "w:w")] for table in tables(saved)]
+    total = printable_twips(saved.sections[0])
+    assert grids[0][0] == grids[1][0] == twips(33.5) and grids[1][1] == twips(30)
+    assert sum(grids[0]) == pytest.approx(total, abs=1) and sum(grids[1]) == pytest.approx(total, abs=1)
+
+
+def test_label_columns_that_cannot_fit_are_diagnosed(tmp_path) -> None:
+    theme = write_theme(tmp_path, "LEFT_MARGIN: 3\nRIGHT_MARGIN: 3\n")
+    renderer, saved = render(ts_markdown(ONE_LABEL + "\n" + KEY_VALUE), theme=theme)
+    one_label, two_labels = ([int(width) for width in attr(table, "./w:tblGrid/w:gridCol", "w:w")] for table in tables(saved))
+    total = printable_twips(saved.sections[0])
+    assert one_label[0] == twips(33.5)
+    assert sum(two_labels) == pytest.approx(total, abs=3)
+    assert [error for error in renderer.errors if "label" in error.lower()]
+    with pytest.raises(ValueError, match="validation"):
+        render(ts_markdown(ONE_LABEL + "\n" + KEY_VALUE), strict=True, theme=theme)
+
+
 def test_term_sheet_frame_borders_margins_and_header_repeat() -> None:
     _, saved = render(ts_markdown(KEY_VALUE), strict=True)
     table = tables(saved)[0]
@@ -309,6 +394,15 @@ def test_term_sheet_frame_borders_margins_and_header_repeat() -> None:
         assert len(bold_runs(paragraph)) == len(paragraph.xpath(".//w:r"))
     owners = table.xpath(".//w:tc[not(w:tcPr/w:vMerge) or w:tcPr/w:vMerge/@w:val='restart']")
     assert owners and all(attr(tc, "./w:tcPr/w:vAlign") == ["center"] for tc in owners)
+
+
+def test_header_row_paragraphs_keep_with_the_first_body_row() -> None:
+    _, saved = render(ts_markdown(KEY_VALUE + "\n" + GRID), strict=True)
+    for table in tables(saved):
+        header, *body = rows(table)
+        header_paragraphs = header.xpath("./w:tc/w:p")
+        assert header_paragraphs and all(p.xpath("./w:pPr/w:keepNext") for p in header_paragraphs)
+        assert not any(p.xpath("./w:pPr/w:keepNext") for row in body for p in row.xpath("./w:tc/w:p"))
 
 
 def test_key_value_label_hierarchy_and_content_cells() -> None:
@@ -350,6 +444,32 @@ def test_type_styling_replaces_a_label_fill_instead_of_duplicating_it() -> None:
     assert fill(base) == ["FFFF00"] and fill(neighbour) == ["F2F5FC"]
     assert bold_runs(base.xpath("./w:p")[0])
     assert all(len(tc_pr.xpath("./w:shd")) <= 1 for tc_pr in table.xpath(".//w:tcPr"))
+
+
+EIGHT_COLUMNS = (
+    "| 회 차 | 지급기일 | 휴일반영 지급일 | 경과(개월) | 원금상환액 | 이자지급액 | 원금잔액 | 비 고 |\n"
+    "|---|---|---|---|---|---|---|---|\n"
+    "| 1 | 2027-01-08 | 2027-01-08 | 3 | – | 5 | 500 | 가상 비고 문구가 조금 길게 들어갑니다 |\n"
+)
+EIGHT_ROLES = ["text", "date", "date", "number", "money", "money", "money", "text"]
+
+
+def test_grid_columns_keep_header_words_on_one_line() -> None:
+    _, saved = render(ts_markdown(EIGHT_COLUMNS, tables=[{"columns": EIGHT_ROLES}]), strict=True)
+    grid = [int(width) for width in attr(tables(saved)[0], "./w:tblGrid/w:gridCol", "w:w")]
+    # Physical lower bounds at 9pt bold: Hangul 1em, a parenthesis at most 0.45em, 2 x 5pt margins.
+    assert grid[3] >= round((4 * 9 + 2 * 0.45 * 9 + 10) * 20)  # 경과(개월)
+    assert min(grid[4], grid[5]) >= round((5 * 9 + 10) * 20)  # 원금상환액, 이자지급액
+    assert sum(grid) == pytest.approx(printable_twips(saved.sections[0]), abs=2)
+
+
+def test_header_word_minimums_fall_back_when_they_cannot_fit() -> None:
+    header = "| " + " | ".join(["가나다라마바사아자"] * 9) + " |\n|" + "---|" * 9 + "\n"
+    body = "| " + " | ".join(str(index) for index in range(9)) + " |\n"
+    renderer, saved = render(ts_markdown(header + body), strict=True)
+    grid = [int(width) for width in attr(tables(saved)[0], "./w:tblGrid/w:gridCol", "w:w")]
+    assert not renderer.errors
+    assert sum(grid) == pytest.approx(printable_twips(saved.sections[0]), abs=2)
 
 
 def test_cell_lines_become_paragraphs_with_marker_hanging_indents() -> None:
@@ -458,6 +578,67 @@ def test_split_run_lines_preserves_formatting_links_footnotes_and_blank_lines() 
     assert term_sheet.split_run_lines([]) == [[]]
     term = TextRun(" 500억원 ", term_key="amount")
     assert term_sheet.split_run_lines([TextRun("앞 \n"), term]) == [[TextRun("앞")], [term]]
+
+
+TCPR_ORDER = (
+    "cnfStyle", "tcW", "gridSpan", "hMerge", "vMerge", "tcBorders", "shd", "noWrap", "tcMar",
+    "textDirection", "tcFitText", "vAlign", "hideMark", "headers", "cellIns", "cellDel",
+    "cellMerge", "tcPrChange",
+)
+TBLPR_ORDER = (
+    "tblStyle", "tblpPr", "tblOverlap", "bidiVisual", "tblStyleRowBandSize",
+    "tblStyleColBandSize", "tblW", "jc", "tblCellSpacing", "tblInd", "tblBorders", "shd",
+    "tblLayout", "tblCellMar", "tblLook", "tblCaption", "tblDescription", "tblPrChange",
+)
+PPR_ORDER = (
+    "pStyle", "keepNext", "keepLines", "pageBreakBefore", "framePr", "widowControl", "numPr",
+    "suppressLineNumbers", "pBdr", "shd", "tabs", "suppressAutoHyphens", "kinsoku", "wordWrap",
+    "overflowPunct", "topLinePunct", "autoSpaceDE", "autoSpaceDN", "bidi", "adjustRightInd",
+    "snapToGrid", "spacing", "ind", "contextualSpacing", "mirrorIndents", "suppressOverlap", "jc",
+    "textDirection", "textAlignment", "textboxTightWrap", "outlineLvl", "divId", "cnfStyle",
+    "rPr", "sectPr", "pPrChange",
+)
+
+
+def assert_schema_order(element, sequence) -> None:
+    names = [etree.QName(child).localname for child in element]
+    assert set(names) <= set(sequence) and len(set(names)) == len(names), names
+    positions = [sequence.index(name) for name in names]
+    assert positions == sorted(positions), names
+
+
+@pytest.mark.parametrize("zebra", [False, True])
+def test_term_sheet_properties_follow_the_schema_order(zebra: bool, tmp_path) -> None:
+    options = {}
+    if zebra:
+        theme = tmp_path / "zebra.yaml"
+        theme.write_text("TABLE_ZEBRA: true\n", encoding="utf-8")
+        options["theme"] = str(theme)
+    body = (
+        ONE_LABEL + "\n" + KEY_VALUE + "\n" + GRID + "\n"
+        "| 금리 | 1% | 2% |\n|---|---|---|\n| 3.0% | 10 | 11 |\n| 3.5% | 9 | 10 |\n\n"
+        "① 가상 설명<br>※ 가상 주석\n\n```confirmation\n```\n"
+    )
+    spec = [
+        {"caption": "개요", "unit": "억원", "note": "(VAT 별도)", "source": "가상 자료"},
+        {"landscape": True},
+        {"type": "risk"},
+        {"type": "sensitivity", "base_case": {"row": 1, "column": 2}},
+    ]
+    confirmation = {"intro": "가상 안내", "items": ["□ 가상 항목"], "signature": "가상 서명"}
+    _, saved = render(ts_markdown(body, tables=spec, confirmation=confirmation), strict=True, **options)
+    body_element = saved.element.body
+    assert body_element.xpath(".//w:tcPr/w:shd[@w:fill='FFFF00']")
+    for tbl_pr in body_element.xpath(".//w:tblPr"):
+        assert_schema_order(tbl_pr, TBLPR_ORDER)
+    for tc_pr in body_element.xpath(".//w:tcPr"):
+        assert_schema_order(tc_pr, TCPR_ORDER)
+    for p_pr in body_element.xpath(".//w:pPr"):
+        assert_schema_order(p_pr, PPR_ORDER)
+    defaults = etree.XPath("./w:docDefaults/w:pPrDefault/w:pPr", namespaces=W_NS)
+    for p_pr in defaults(saved.styles.element):
+        assert_schema_order(p_pr, PPR_ORDER)
+    assert_schema_order(saved.styles["Heading 2"].element.pPr, PPR_ORDER)
 
 
 def test_strict_term_sheet_tables_have_no_audit_issues() -> None:

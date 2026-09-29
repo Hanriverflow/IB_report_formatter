@@ -46,7 +46,8 @@ _BORDER_EDGES = ("top", "left", "bottom", "right", "insideH", "insideV")
 _CELL_SPACE_AFTER = Pt(1.5)
 _CELL_LINE_SPACING = 1.05
 _SPACER_HEIGHT = Pt(4)
-_MIN_CONTENT_WIDTH = Mm(30)
+_CONFIRMATION_GAP = Pt(6)  # air between a preceding note and the confirmation box
+_BOLD_ALLOWANCE = 1.1  # bold header glyphs are wider than the em estimate
 # Successor elements used to insert children in ECMA-376 schema order.
 _TCPR_AFTER_SHD = (
     "w:noWrap", "w:tcMar", "w:textDirection", "w:tcFitText", "w:vAlign", "w:hideMark",
@@ -348,6 +349,27 @@ def _em_width(text: str) -> float:
     return sum(1.0 if unicodedata.east_asian_width(char) in ("W", "F") else 0.55 for char in text)
 
 
+def header_token_width(text: str, font_size: int) -> int:
+    """Column width in EMU that keeps a header's longest unbreakable token on one line.
+
+    Tokens split at whitespace (including `<br>` line breaks). The estimate uses
+    the same em widths as the row estimator, a 10% allowance for bold glyphs and
+    the left and right cell margins.
+
+    Args:
+        text: Visible header text of one single-column header cell.
+        font_size: Header text size in EMU.
+
+    Returns:
+        Required width in EMU, or 0 for an empty header.
+    """
+    tokens = text.split()
+    if not tokens:
+        return 0
+    widest = max(_em_width(token) for token in tokens)
+    return math.ceil(widest * int(font_size) * _BOLD_ALLOWANCE) + 2 * int(Twips(CELL_MARGIN_HORIZONTAL))
+
+
 def estimate_cell_lines(texts: Sequence[str], width: int, font_size: int, markers: bool) -> int:
     """Estimate one cell's wrapped line count for row pagination (plan §4 A2).
 
@@ -383,8 +405,19 @@ def _rgb(hex_color: str) -> RGBColor:
     return RGBColor.from_string(hex_color)
 
 
+def label_widths(label_columns: int) -> List[int]:
+    """Fixed label column widths in EMU: the label, plus the second label tier."""
+    widths = [int(STYLE.TS_LABEL_WIDTH)]
+    if label_columns == 2:
+        widths.append(int(STYLE.TS_SUBLABEL_WIDTH))
+    return widths
+
+
 def key_value_widths(label_columns: int, available: int) -> Optional[List[int]]:
     """Fixed label grid for key-value tables, so their first vertical line is common.
+
+    The labels keep their fixed widths whenever the content column keeps a
+    positive width, however narrow the section is.
 
     Args:
         label_columns: One or two leading label columns.
@@ -392,15 +425,12 @@ def key_value_widths(label_columns: int, available: int) -> Optional[List[int]]:
             or landscape); the content column receives the remainder.
 
     Returns:
-        Column widths in EMU, or None when the section leaves no usable content width.
+        Column widths in EMU, or None when the fixed labels leave no content width
+        (the caller reports that explicitly).
     """
-    fixed = [int(STYLE.TS_LABEL_WIDTH)]
-    if label_columns == 2:
-        fixed.append(int(STYLE.TS_SUBLABEL_WIDTH))
+    fixed = label_widths(label_columns)
     remaining = int(available) - sum(fixed)
-    if remaining < int(_MIN_CONTENT_WIDTH):
-        return None
-    return fixed + [remaining]
+    return fixed + [remaining] if remaining > 0 else None
 
 
 def _measure(tag: str, twips: int) -> Any:
@@ -527,12 +557,19 @@ def add_table_source(doc: Any, source: str, render_runs: RenderRuns) -> None:
     )
 
 
-def add_table_spacer(doc: Any) -> None:
-    """Empty paragraph of exactly 4pt after a table instead of a body-size line."""
+def _add_spacer(doc: Any, height: Length, keep_with_next: bool = False) -> None:
+    """Empty paragraph of an exact height (no body-size line)."""
     paragraph_format = doc.add_paragraph().paragraph_format
+    if keep_with_next:
+        paragraph_format.keep_with_next = True
     paragraph_format.space_before = Pt(0)
     paragraph_format.space_after = Pt(0)
-    paragraph_format.line_spacing = _SPACER_HEIGHT
+    paragraph_format.line_spacing = height
+
+
+def add_table_spacer(doc: Any) -> None:
+    """Empty paragraph of exactly 4pt after a table instead of a body-size line."""
+    _add_spacer(doc, _SPACER_HEIGHT)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -575,18 +612,23 @@ def _set_child(parent: Any, tag: str, successors: Sequence[str], **attributes: s
 def setup_term_sheet_styles(doc: Any) -> None:
     """Apply term-sheet document defaults and heading accents (term-sheet only).
 
-    Korean text wraps by word (`w:wordWrap` off) with kinsoku rules and an East
-    Asian language of `ko-KR`. Unformatted paragraph marks (table cells, spacers)
-    use the body font and size, so Word does not size their lines at the 11pt
-    template default. Heading 2 gets the accent colour and a 1pt accent rule;
-    Heading 3 the accent colour.
+    Korean text wraps at word (eojeol) boundaries with kinsoku rules: Word breaks
+    East Asian text per character when `w:wordWrap` is 0, so it is set to 1
+    explicitly. Automatic spacing between East Asian text and Latin letters or
+    numbers (`w:autoSpaceDE`/`w:autoSpaceDN`) is off, so `300억원`, `SPC에` and
+    `36개월` print tight as in Korean term sheets. The East Asian language is
+    `ko-KR`. Unformatted paragraph marks (table cells, spacers) use the body font
+    and size, so Word does not size their lines at the 11pt template default.
+    Heading 2 gets the accent colour and a 1pt accent rule; Heading 3 the accent.
 
     Args:
         doc: Document whose request-scoped styles were created already.
     """
     paragraph_defaults, run_defaults = _default_properties(doc)
     _set_child(paragraph_defaults, "w:kinsoku", _PPR_AFTER_KINSOKU, val="1")
-    _set_child(paragraph_defaults, "w:wordWrap", _PPR_AFTER_KINSOKU[1:], val="0")
+    _set_child(paragraph_defaults, "w:wordWrap", _PPR_AFTER_KINSOKU[1:], val="1")
+    _set_child(paragraph_defaults, "w:autoSpaceDE", _PPR_AFTER_KINSOKU[4:], val="0")
+    _set_child(paragraph_defaults, "w:autoSpaceDN", _PPR_AFTER_KINSOKU[5:], val="0")
     fonts = run_defaults.get_or_add_rFonts()
     for theme in ("asciiTheme", "hAnsiTheme", "eastAsiaTheme"):
         fonts.attrib.pop(qn(f"w:{theme}"), None)
@@ -744,11 +786,28 @@ def confirmation_has_text(confirmation: ConfirmationText) -> bool:
     return any(text.strip() for text in (confirmation.intro, *confirmation.items, confirmation.signature))
 
 
-def _printable_width(section: Any) -> int:
+def printable_width(section: Any) -> int:
+    """Actual printable width of a section in EMU, without any minimum floor.
+
+    Raises:
+        ValueError: The section lacks explicit page width or margins.
+    """
     width, left, right = section.page_width, section.left_margin, section.right_margin
     if width is None or left is None or right is None:
         raise ValueError("Section dimensions are required for term-sheet layout")
     return int(width) - int(left) - int(right)
+
+
+def positive_printable_width(section: Any, what: str) -> int:
+    """Printable width for content that must fit its section; diagnose impossible geometry.
+
+    Raises:
+        ValueError: The section has no positive printable width for `what`.
+    """
+    width = printable_width(section)
+    if width <= 0:
+        raise ValueError(f"{what} has no printable width in its section")
+    return width
 
 
 def _keep_previous_with_next(doc: Any) -> None:
@@ -787,21 +846,26 @@ def render_confirmation(doc: Any, confirmation: ConfirmationText, render_runs: R
     Row 1 holds the intro (8pt muted) and the check items (10pt, `□` hanging
     indent; later lines of an item align with its text). Row 2 holds the
     signature, centred bold 10pt on `TS_SIGNATURE_BG_HEX`. Both rows are
-    unsplittable, every row-1 paragraph is kept with the next and so is the
-    paragraph before the box, so the whole box stays on one page. A row without
-    text is omitted. The frame is 0.5pt `TS_BORDER_HEX`.
+    unsplittable, every row-1 paragraph is kept with the next and so are the
+    paragraph before the box and a 6pt spacer that separates the box from it, so
+    the whole box stays on one page. A row without text is omitted. The frame is
+    0.5pt `TS_BORDER_HEX`.
 
     Args:
         doc: Document receiving the box at the current position.
         confirmation: Wording with at least one non-blank field.
         render_runs: Injected run renderer.
+
+    Raises:
+        ValueError: The section has no positive printable width (nothing is emitted).
     """
+    width = positive_printable_width(doc.sections[-1], "Confirmation box")
     _keep_previous_with_next(doc)
+    _add_spacer(doc, _CONFIRMATION_GAP, keep_with_next=True)
     intro = confirmation.intro.strip()
     items = [item.strip() for item in confirmation.items if item.strip()]
     signature = confirmation.signature.strip()
     kinds = (["body"] if intro or items else []) + (["signature"] if signature else [])
-    width = _printable_width(doc.sections[-1])
     table = doc.add_table(rows=len(kinds), cols=1)
     table.style = STYLE.STYLE_TABLE_GRID
     table.columns[0].width = Emu(width)
@@ -900,7 +964,7 @@ def setup_term_sheet_header_footer(
     grey = _rgb(STYLE.TS_CONFIDENTIAL_HEX)
     size = STYLE.TS_HEADER_FOOTER_SIZE
     for section in doc.sections:
-        width = _printable_width(section)
+        width = printable_width(section)
         header = _reset_story(section.header)
         header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         if label.strip():
@@ -908,7 +972,8 @@ def setup_term_sheet_header_footer(
         footer = _reset_story(section.footer)
         if footer.style is not None:
             footer.style.paragraph_format.tab_stops.clear_all()
-        footer.paragraph_format.tab_stops.add_tab_stop(Emu(width), WD_TAB_ALIGNMENT.RIGHT)
+        if width > 0:  # a section without printable width is reported by the structural audit
+            footer.paragraph_format.tab_stops.add_tab_stop(Emu(width), WD_TAB_ALIGNMENT.RIGHT)
         runs = ([TextRun(text=left)] if left else []) + [TextRun(text="\t")]
         render_runs(footer, runs, default_color=grey, font_size=size)
         _add_field(footer, "PAGE", grey, size)

@@ -54,7 +54,7 @@ from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from io import BytesIO
 from pathlib import Path
-from typing import AbstractSet, Any, Dict, List, Mapping, Optional, Set, Tuple, cast
+from typing import AbstractSet, Any, Callable, Dict, List, Mapping, Optional, Set, Tuple, cast
 from uuid import uuid4
 from xml.sax.saxutils import escape
 
@@ -122,8 +122,11 @@ from term_sheet import (
     configure_cell_paragraph,
     confirmation_has_text,
     estimate_cell_lines,
+    header_token_width,
     key_value_widths,
+    label_widths,
     line_text,
+    positive_printable_width,
     render_confirmation,
     render_term_sheet_heading,
     render_term_sheet_opening,
@@ -1582,8 +1585,11 @@ class TableRenderer:
 
         previous_geometry = self._begin_landscape(table)
         if self.term_sheet:
-            self._render_term_sheet_table(table)
-            self._end_landscape(previous_geometry)
+            try:
+                self._render_term_sheet_table(table)
+            finally:
+                # A diagnosed failure must not leave later content in landscape.
+                self._end_landscape(previous_geometry)
             return
         for text in [
             table.caption,
@@ -1685,9 +1691,14 @@ class TableRenderer:
 
         Args:
             table: Parsed table; `label_columns` is inferred by the parser.
+
+        Raises:
+            ValueError: The section has no positive printable width. Unlike the
+                legacy estimate there is no three-inch floor, so a term-sheet table
+                never exceeds its section.
         """
         row_count, col_count = len(table.rows), table.col_count
-        available = self._get_available_table_width_emu()
+        available = positive_printable_width(self.doc.sections[-1], "Term-sheet table")
         add_table_heading(
             self.doc, table.caption, table.unit, table.as_of, TextRenderer.render_runs, available
         )
@@ -1699,13 +1710,14 @@ class TableRenderer:
         )
         key_value = label_columns in (1, 2) and col_count == label_columns + 1
         widths = key_value_widths(label_columns, available) if key_value else None
+        if key_value and widths is None:
+            needed_mm, section_mm = sum(label_widths(label_columns)) / 36000, available / 36000
+            self._report(
+                f"Term-sheet label columns need {needed_mm:.1f} mm but the section is only "
+                f"{section_mm:.1f} mm wide; column widths estimated from content"
+            )
         if widths is None:
-            widths = [
-                int(Inches(width))
-                for width in self._estimate_column_widths(
-                    table, available / self._EMUS_PER_INCH, column_kinds
-                )
-            ]
+            widths = self._term_sheet_grid_widths(table, available, column_kinds)
         self._set_column_widths(word_table, widths)
         rectangles = self._merge_cells(word_table, table)
         covered = self._covered_cells(rectangles)
@@ -1745,6 +1757,26 @@ class TableRenderer:
         if table.source:
             add_table_source(self.doc, table.source, TextRenderer.render_runs)
         add_table_spacer(self.doc)
+
+    def _term_sheet_grid_widths(self, table: Table, available: int, column_kinds: List[str]) -> List[int]:
+        """Content-based widths (EMU) whose minimums keep header words on one line.
+
+        Each single-column header cell requires room for its longest unbreakable
+        token in the bold header size plus the cell margins; merged header cells
+        impose no minimum. See `_required_minimums` for the graceful fallback.
+        """
+        required = [0.0] * table.col_count
+        header = table.rows[0]
+        for index in range(min(len(header.cells), table.col_count)):
+            if self._is_span_cell(header, index):
+                continue
+            cell = header.cells[index]
+            text = line_text(cell.runs or TextParser.parse_runs_plain(cell.content))
+            required[index] = header_token_width(text, STYLE.TABLE_HEADER_SIZE) / self._EMUS_PER_INCH
+        widths = self._estimate_column_widths(
+            table, available / self._EMUS_PER_INCH, column_kinds, required
+        )
+        return [int(Inches(width)) for width in widths]
 
     @staticmethod
     def _term_sheet_role(row_index: int, column_index: int, label_columns: int, key_value: bool) -> str:
@@ -1811,6 +1843,9 @@ class TableRenderer:
             paragraph = word_cell.paragraphs[0] if index == 0 else word_cell.add_paragraph()
             configure_cell_paragraph(paragraph)
             paragraph.alignment = alignment
+            if role == "header":
+                # Never strand the header row alone at the foot of a page.
+                paragraph.paragraph_format.keep_with_next = True
             text = line_text(line)
             line_size = apply_marker_layout(paragraph, text) if role == "content" else None
             TextRenderer.render_runs(
@@ -1820,8 +1855,15 @@ class TableRenderer:
         if role != "header" and not (
             table.table_type == TableType.FINANCIAL and column_role in {"text", "code", "date"}
         ):
-            self._apply_type_styling(word_cell, cell_data, row_index, table.table_type)
+            self._apply_type_styling(
+                word_cell, cell_data, row_index, table.table_type, fill=self._ordered_fill
+            )
         return texts, size
+
+    @staticmethod
+    def _ordered_fill(cell, hex_color: str) -> None:
+        """Term-sheet cell fill placed in `w:tcPr` schema order (before `w:vAlign`)."""
+        set_cell_fill(cell._tc, hex_color)
 
     @staticmethod
     def _set_column_widths(word_table, widths: List[int]) -> None:
@@ -1848,21 +1890,27 @@ class TableRenderer:
             Inclusive zero-based (top, left, bottom, right) rectangles that were merged.
         """
         rectangles, problems = self._span_rectangles(table)
-        errors = getattr(self.doc.part, "_ib_render_errors", None)
         for problem in problems:
-            logger.warning("%s", problem)
-            if errors is not None:
-                errors.append(problem)
+            self._report(problem)
         for top, left, bottom, right in rectangles:
             word_table.cell(top, left).merge(word_table.cell(bottom, right))
         return rectangles
+
+    def _report(self, message: str) -> None:
+        """Log a rendering diagnostic and record it for strict validation."""
+        logger.warning("%s", message)
+        errors = getattr(self.doc.part, "_ib_render_errors", None)
+        if errors is not None:
+            errors.append(message)
 
     @staticmethod
     def _span_rectangles(table: Table) -> Tuple[List[Tuple[int, int, int, int]], List[str]]:
         """Group span directives into rectangles, rejecting malformed groups.
 
         Parsed tables are already validated by `TableSpanResolver`; this guard keeps
-        hand-built models from producing ragged or overlapping Word merges.
+        hand-built models from producing ragged or overlapping Word merges. Header
+        and body are classified as the renderer draws them (row 0 is the repeating
+        header row), not by `TableRow.is_header`, which hand-built rows may omit.
 
         Args:
             table: Table whose cells may carry "up"/"left" merge directives.
@@ -1902,7 +1950,7 @@ class TableRenderer:
                 and min(column for _, column in members) == left
                 and table.rows[top].cells[left].merge is None
                 and len(members) == (bottom - top + 1) * (right - left + 1)
-                and len({table.rows[row].is_header for row in range(top, bottom + 1)}) == 1
+                and not (top == 0 and bottom > 0)
             ):
                 rectangles.append((top, left, bottom, right))
             else:
@@ -1973,8 +2021,14 @@ class TableRenderer:
         table: Table,
         available_width_inches: float,
         column_kinds: Optional[List[str]] = None,
+        required_widths: Optional[List[float]] = None,
     ) -> List[float]:
-        """Estimate table column widths from content density and column semantics."""
+        """Estimate table column widths from content density and column semantics.
+
+        Args:
+            required_widths: Optional per-column widths (inches) that should not be
+                undercut, such as a header's longest word; see `_required_minimums`.
+        """
         if table.col_count <= 0:
             return []
 
@@ -1990,6 +2044,9 @@ class TableRenderer:
             self._maximum_column_width(column_info["kind"], available_width_inches)
             for column_info in column_infos
         ]
+        if required_widths is not None:
+            min_widths = self._required_minimums(min_widths, required_widths, available_width_inches)
+            max_widths = [max(high, low) for high, low in zip(max_widths, min_widths)]
         preferred = [column_info["score"] for column_info in column_infos]
         widths = self._fit_widths_to_available_space(
             preferred,
@@ -1999,6 +2056,25 @@ class TableRenderer:
         )
 
         return widths
+
+    @classmethod
+    def _required_minimums(
+        cls, minimums: List[float], required: List[float], available_width_inches: float
+    ) -> List[float]:
+        """Raise column minimums to required widths when the section can hold them.
+
+        First the heuristic minimums are raised; if that overflows, the required
+        widths are kept over the numeric floor only (relaxing the heuristic text
+        minimum); if even that overflows, the heuristic minimums are returned
+        unchanged, so the table still fits without an error.
+        """
+        raised = [max(low, need) for low, need in zip(minimums, required)]
+        if sum(raised) <= available_width_inches:
+            return raised
+        relaxed = [max(cls._MIN_COLUMN_WIDTH_INCHES, need) for need in required]
+        if sum(relaxed) <= available_width_inches:
+            return relaxed
+        return minimums
 
     def _build_column_info(self, table: Table, col_idx: int, column_kind: str) -> Dict[str, Any]:
         """Summarize the content profile of a single column."""
@@ -2460,8 +2536,14 @@ class TableRenderer:
         cell_data: TableCell,
         row_idx: int,
         table_type: TableType,
+        fill: Callable[[Any, str], None] = TableStyler.set_cell_background,
     ):
-        """Apply table-type specific styling to every paragraph of one owner cell."""
+        """Apply table-type specific styling to every paragraph of one owner cell.
+
+        Args:
+            fill: Cell background setter. Legacy tables keep the historical append;
+                term-sheet tables pass a schema-ordered setter.
+        """
         runs = [run for paragraph in cell.paragraphs for run in paragraph.runs]
         if table_type == TableType.FINANCIAL:
             if cell_data.is_negative:
@@ -2470,7 +2552,7 @@ class TableRenderer:
 
         elif table_type == TableType.BEP_SENSITIVITY:
             if cell_data.is_base_case:
-                TableStyler.set_cell_background(cell, STYLE.YELLOW_HEX)
+                fill(cell, STYLE.YELLOW_HEX)
                 for run in runs:
                     run.font.bold = True
 
@@ -3234,11 +3316,13 @@ class IBDocumentRenderer:
             not resolved.cover and resolved.profile.name == "ib-report"
             and bool(model.metadata.title.strip())
         )
+        term_sheet = resolved.profile.name == "term-sheet"
         if (resolved.cover and resolved.profile.is_ib) or report_title_block:
             # Filter the private render copy so the TOC and body share the same outline.
             model.elements = [element for element in model.elements if not element.inferred_subtitle]
-        if report_title_block:
-            # Transfer the first matching body H1 to the non-outline title block.
+        if report_title_block or term_sheet:
+            # Transfer the first matching body H1 to the non-outline title block
+            # (the term-sheet opening always renders the title).
             # Filtering before the TOC also prevents a stale preview title entry.
             for index, element in enumerate(model.elements):
                 if (
@@ -3252,7 +3336,7 @@ class IBDocumentRenderer:
         if resolved.strict and model.warnings:
             raise ValueError("Input validation failed: " + "; ".join(model.warnings))
         self.errors = list(model.warnings)
-        self._term_sheet = resolved.profile.name == "term-sheet"
+        self._term_sheet = term_sheet
         self._reset_document()
         self.separator_mode = resolved.separator_mode
         self.charts = resolved.charts
@@ -3289,7 +3373,8 @@ class IBDocumentRenderer:
                 self.toc_renderer.render(model)
             if not resolved.cover and not report_title_block and not self._term_sheet:
                 title_inserted = render_office_opening(self.doc, model.metadata)
-            skipped_title = report_title_block
+            # The title H1 was already removed from the render copy for these paths.
+            skipped_title = report_title_block or term_sheet
             office_closed = False
             for idx, element in enumerate(model.elements):
                 if idx == appendix_index:

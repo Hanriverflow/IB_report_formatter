@@ -458,6 +458,15 @@ def test_opening_prefers_display_runs_and_parses_house_emphasis():
     assert saved.core_properties.title == TITLE
 
 
+def test_forced_toc_omits_the_title_heading_that_the_body_skips():
+    content = markdown(f"# {TITLE}\n\n## 1. 조건\n\n본문.")
+    renderer, document = render(content, strict=True, include_toc=True)
+    texts = [paragraph.text for paragraph in reopen(document).paragraphs]
+    assert texts.count(TITLE) == 1  # the opening title only, not a TOC preview entry
+    assert texts.count("1. 조건") == 2  # TOC preview entry and body heading
+    assert not renderer.errors
+
+
 def test_opening_disclaimer_is_kept_without_end_disclaimer():
     saved = reopen(render(markdown(), include_disclaimer=False)[1])
     assert DISCLAIMER in [p.text for p in saved.paragraphs]
@@ -499,14 +508,20 @@ def test_term_sheet_document_defaults_are_local_to_term_sheets():
     defaults = find_all(saved.styles.element, "./w:docDefaults")[0]
     paragraph_defaults = find_all(defaults, "./w:pPrDefault/w:pPr")[0]
     assert xml_values(paragraph_defaults, "./w:kinsoku") == ["1"]
-    assert xml_values(paragraph_defaults, "./w:wordWrap") == ["0"]
+    # Word breaks Korean per character with wordWrap=0; 1 keeps word (eojeol) boundaries.
+    assert xml_values(paragraph_defaults, "./w:wordWrap") == ["1"]
+    # No automatic Latin/number spacing: "300억원", "SPC에", "36개월" stay tight.
+    assert xml_values(paragraph_defaults, "./w:autoSpaceDE") == ["0"]
+    assert xml_values(paragraph_defaults, "./w:autoSpaceDN") == ["0"]
     names = [etree.QName(child).localname for child in paragraph_defaults]
-    assert names.index("kinsoku") < names.index("wordWrap") < names.index("spacing")
+    order = ["kinsoku", "wordWrap", "autoSpaceDE", "autoSpaceDN", "spacing"]
+    assert [names.index(name) for name in order] == sorted(names.index(name) for name in order)
     assert xml_values(defaults, "./w:rPrDefault/w:rPr/w:lang", "w:eastAsia") == ["ko-KR"]
     assert xml_values(defaults, "./w:rPrDefault/w:rPr/w:sz") == ["18"]
     plain = reopen(IBDocumentRenderer().render(MarkdownParser(profile="plain").parse("본문.")))
     plain_defaults = find_all(plain.styles.element, "./w:docDefaults")[0]
-    assert not find_all(plain_defaults, ".//w:wordWrap") and not find_all(plain_defaults, ".//w:kinsoku")
+    for tag in ("wordWrap", "kinsoku", "autoSpaceDE", "autoSpaceDN"):
+        assert not find_all(plain_defaults, f".//w:{tag}")
     assert xml_values(plain_defaults, "./w:rPrDefault/w:rPr/w:lang", "w:eastAsia") == ["en-US"]
     assert xml_values(plain_defaults, "./w:rPrDefault/w:rPr/w:sz") == ["22"]
 
@@ -536,7 +551,11 @@ def test_confirmation_box_has_two_rows_kept_on_one_page():
     assert set(xml_values(signature, ".//w:r/w:rPr/w:sz")) == {"20"}
     assert xml_values(signature_cell, "./w:tcPr/w:shd", "w:fill") == ["F2F2F2"]
     assert not signature.xpath("./w:pPr/w:keepNext")
-    previous = table.getprevious()
+    spacer = table.getprevious()  # about 6pt of air between a preceding note and the box
+    assert not spacer.xpath(".//w:t") and spacer.xpath("./w:pPr/w:keepNext")
+    spacing = spacer.xpath("./w:pPr/w:spacing")[0]
+    assert (spacing.get(qn("w:line")), spacing.get(qn("w:lineRule"))) == ("120", "exact")
+    previous = spacer.getprevious()
     assert "".join(previous.xpath(".//w:t/text()")) == "확인 안내 문단입니다." and previous.xpath("./w:pPr/w:keepNext")
     borders = table.xpath("./w:tblPr/w:tblBorders/*")
     assert {(node.get(qn("w:sz")), node.get(qn("w:color"))) for node in borders} == {("4", "9AA5C4")}
