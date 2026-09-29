@@ -2742,15 +2742,15 @@ class CalloutRenderer:
         tblPr = tbl.tblPr if tbl.tblPr is not None else OxmlElement("w:tblPr")
         tblBorders = OxmlElement("w:tblBorders")
 
-        left_border = OxmlElement("w:left")
-        left_border.set(qn("w:val"), "single")
-        left_border.set(qn("w:sz"), "32")
-        left_border.set(qn("w:color"), border_hex)
-        tblBorders.append(left_border)
-
-        for border_name in ("top", "bottom", "right"):
+        # Children follow the schema order: top, left, bottom, right.
+        for border_name in ("top", "left", "bottom", "right"):
             border = OxmlElement(f"w:{border_name}")
-            border.set(qn("w:val"), "nil")
+            if border_name == "left":
+                border.set(qn("w:val"), "single")
+                border.set(qn("w:sz"), "32")
+                border.set(qn("w:color"), border_hex)
+            else:
+                border.set(qn("w:val"), "nil")
             tblBorders.append(border)
 
         insert_ordered(tblPr, tblBorders)

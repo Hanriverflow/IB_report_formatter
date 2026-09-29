@@ -14,12 +14,14 @@ Changelog (hardening):
 """
 
 import argparse
+import codecs
 import json
 import logging
 import re
 import sys
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, cast
 
 from docx import Document
 from docx.document import Document as DocxDocument
@@ -413,17 +415,34 @@ def audit_file(path: str) -> DocumentAudit:
     return inspect_document(Document(path))
 
 
-def _use_utf8_output() -> None:
-    """Write UTF-8 even when the console code page differs (e.g. cp949 on Windows).
+@contextmanager
+def _utf8_log_stream() -> Iterator[None]:
+    """Encode the report as UTF-8 even when the console code page differs.
 
-    Redirected JSON would otherwise be encoded with the locale code page and fail
-    to parse as UTF-8. Interactive consoles already accept Unicode, so this only
-    changes redirected or piped output.
+    Redirected JSON would otherwise use the locale code page (cp949 on Korean
+    Windows) and fail to parse as UTF-8. Only stderr, the logging stream, is
+    changed, only while `main` runs, and its previous settings are restored for
+    in-process callers. A stream that cannot be reconfigured is left as is.
     """
-    for stream in (sys.stdout, sys.stderr):
-        reconfigure = getattr(stream, "reconfigure", None)
-        if callable(reconfigure):
+    stream = sys.stderr
+    reconfigure = getattr(stream, "reconfigure", None)
+    encoding = getattr(stream, "encoding", None)
+    errors = getattr(stream, "errors", None)
+    restore: Optional[Callable[..., Any]] = None
+    if callable(reconfigure) and codecs.lookup(encoding or "ascii").name != "utf-8":
+        try:
             reconfigure(encoding="utf-8")
+            restore = reconfigure
+        except (OSError, ValueError) as exc:  # includes io.UnsupportedOperation
+            logger.debug("Keeping the stderr encoding: %s", exc)
+    try:
+        yield
+    finally:
+        if restore is not None:
+            try:
+                restore(encoding=encoding, errors=errors)
+            except (OSError, ValueError) as exc:
+                logger.debug("Cannot restore the stderr encoding: %s", exc)
 
 
 def main() -> None:
@@ -431,16 +450,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Inspect generated Word document structure")
     parser.add_argument("input_file")
     args = parser.parse_args()
-    _use_utf8_output()
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    try:
-        document = Document(args.input_file)
-        result = inspect_document(document)
-        terms = inspect_terms(document)
-    except Exception as exc:
-        logger.error("Cannot inspect DOCX: %s", exc)
-        raise SystemExit(1) from exc
-    logger.info(json.dumps(audit_to_dict(result, terms), ensure_ascii=False, indent=2))
+    with _utf8_log_stream():
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        try:
+            document = Document(args.input_file)
+            result = inspect_document(document)
+            terms = inspect_terms(document)
+        except Exception as exc:
+            logger.error("Cannot inspect DOCX: %s", exc)
+            raise SystemExit(1) from exc
+        logger.info(json.dumps(audit_to_dict(result, terms), ensure_ascii=False, indent=2))
     raise SystemExit(1 if result.issues else 0)
 
 

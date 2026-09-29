@@ -1,6 +1,7 @@
 """Schema order, forced-TOC title placement and UTF-8 audit output for existing profiles."""
 
 import glob
+import io
 import json
 import os
 import subprocess
@@ -14,6 +15,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from lxml import etree
 
+import docx_audit
 from document_profiles import RenderOptions
 from ib_renderer import IBDocumentRenderer
 from md_parser import MarkdownParser, parse_markdown_file
@@ -34,9 +36,16 @@ def _reopen(doc):
     return Document(payload)
 
 
+# Border children, specified independently of ooxml_order (ECMA-376 §17.4.39, §17.3.1.24).
+BORDER_SEQUENCES = {
+    "tblBorders": ("top", "left", "start", "bottom", "right", "end", "insideH", "insideV"),
+    "pBdr": ("top", "left", "bottom", "right", "between", "bar"),
+}
+
+
 def _order_violations(root) -> list:
     problems = []
-    for kind, sequence in SEQUENCES.items():
+    for kind, sequence in {**SEQUENCES, **BORDER_SEQUENCES}.items():
         for element in root.iter(W + kind):
             names = [etree.QName(c).localname for c in element if isinstance(c.tag, str)]
             known = [name for name in names if name in sequence]
@@ -132,3 +141,36 @@ def test_docx_audit_writes_utf8_json_under_a_legacy_code_page(tmp_path: Path) ->
     assert completed.returncode == 0, completed.stderr
     payload = json.loads((completed.stdout + completed.stderr).decode("utf-8"))
     assert any("가상 도표" in warning for warning in payload["warnings"])
+
+
+def test_callout_border_children_follow_the_schema_order() -> None:
+    doc = _reopen(IBDocumentRenderer().render(MarkdownParser().parse(
+        "---\nprofile: plain\n---\n> 가상 메모 본문.\n"
+    )))
+    borders = doc.element.body.xpath(".//w:tblBorders")
+    assert borders
+    assert _order_violations(doc.element.body) == []
+
+
+def test_in_process_audit_restores_the_callers_stderr(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "plain.docx"
+    Document().save(str(path))
+    caller = io.TextIOWrapper(io.BytesIO(), encoding="cp949", errors="backslashreplace")
+    monkeypatch.setattr(sys, "stderr", caller)
+    monkeypatch.setattr(sys, "argv", ["docx-audit", str(path)])
+    with pytest.raises(SystemExit) as exit_info:
+        docx_audit.main()
+    assert exit_info.value.code == 0
+    assert (caller.encoding, caller.errors) == ("cp949", "backslashreplace")
+
+
+def test_audit_runs_when_stderr_cannot_be_reconfigured(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "plain.docx"
+    Document().save(str(path))
+    unreadable = io.TextIOWrapper(io.BytesIO(b"already read"), encoding="cp949")
+    unreadable.read(1)  # reconfiguring the encoding is now unsupported
+    monkeypatch.setattr(sys, "stderr", unreadable)
+    monkeypatch.setattr(sys, "argv", ["docx-audit", str(path)])
+    with pytest.raises(SystemExit) as exit_info:
+        docx_audit.main()
+    assert exit_info.value.code == 0
