@@ -6,6 +6,7 @@ Changelog (raster fonts):
 
 Changelog (term-sheet foundation):
     - Add immutable, theme-configurable term-sheet colors, widths and text sizes.
+    - Add the confirmation signature-row fill (TS_SIGNATURE_BG_HEX).
 """
 
 import logging
@@ -155,12 +156,13 @@ class IBStyle:
     TS_LABEL_BG_HEX: str = "F2F5FC"
     TS_BORDER_HEX: str = "9AA5C4"
     TS_MUTED_HEX: str = "555555"
-    TS_CONFIDENTIAL_HEX: str = "888888"
+    TS_CONFIDENTIAL_HEX: str = "888888"  # header label and footer text
+    TS_SIGNATURE_BG_HEX: str = "F2F2F2"  # confirmation box signature row
     TS_LABEL_WIDTH: Inches = Inches(33.5 / 25.4)
     TS_SUBLABEL_WIDTH: Inches = Inches(30 / 25.4)
     TS_TITLE_SIZE: Pt = Pt(20)
     TS_SUBTITLE_SIZE: Pt = Pt(16)
-    TS_META_SIZE: Pt = Pt(10)
+    TS_META_SIZE: Pt = Pt(10)  # opening date/prepared_by; confirmation items/signature
     TS_NOTE_SIZE: Pt = Pt(8)
     TS_DISCLAIMER_SIZE: Pt = Pt(7)
     TS_HEADER_FOOTER_SIZE: Pt = Pt(7.5)

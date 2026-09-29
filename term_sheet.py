@@ -12,6 +12,8 @@ Changelog (A2 rendering):
     - Schema-ordered single cell fills shared with generic merged-table emission.
     - Per-line runs with marker hanging indents; row-split estimation; fixed label
       grid, table frame, caption/unit line, note, source and 4pt spacer.
+    - Opening block, per-line body paragraphs, accent headings, document defaults,
+      two-row confirmation box and per-section header/footer.
 """
 
 import math
@@ -21,14 +23,14 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import yaml
-from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.oxml.table import CT_Tc
-from docx.shared import Emu, Mm, Pt, RGBColor, Twips
+from docx.shared import Emu, Length, Mm, Pt, RGBColor, Twips
 
-from document_model import DocumentMetadata, TextRun
+from document_model import DocumentMetadata, Heading, Paragraph, TextRun
 from md_parser import TextParser
 from render_styles import STYLE
 
@@ -58,6 +60,21 @@ _TRPR_AFTER_CANT_SPLIT = (
     "w:trHeight", "w:tblHeader", "w:tblCellSpacing", "w:jc", "w:hidden", "w:ins", "w:del",
     "w:trPrChange",
 )
+_PPR_AFTER_KINSOKU = (
+    "w:wordWrap", "w:overflowPunct", "w:topLinePunct", "w:autoSpaceDE", "w:autoSpaceDN",
+    "w:bidi", "w:adjustRightInd", "w:snapToGrid", "w:spacing", "w:ind",
+    "w:contextualSpacing", "w:mirrorIndents", "w:suppressOverlap", "w:jc",
+    "w:textDirection", "w:textAlignment", "w:textboxTightWrap", "w:outlineLvl", "w:divId",
+    "w:cnfStyle", "w:rPr", "w:sectPr", "w:pPrChange",
+)
+_PPR_AFTER_PBDR = ("w:shd", "w:tabs", "w:suppressAutoHyphens", "w:kinsoku", *_PPR_AFTER_KINSOKU)
+_RPR_AFTER_SZ_CS = (
+    "w:highlight", "w:u", "w:effect", "w:bdr", "w:shd", "w:fitText", "w:vertAlign", "w:rtl",
+    "w:cs", "w:em", "w:lang", "w:eastAsianLayout", "w:specVanish", "w:oMath",
+)
+_HEADING_RULE_SIZE = "8"  # 1pt accent rule under Heading 2
+_CHECKBOX = "□"
+_CHECKBOX_LAYOUT_MM = 4.5  # hanging indent of confirmation check items
 _HOUSE_KEYS = frozenset({"prepared_by", "disclaimer", "confidential_label", "confirmation"})
 _CONFIRMATION_KEYS = frozenset({"intro", "items", "signature"})
 
@@ -270,8 +287,8 @@ def apply_marker_layout(paragraph: Any, text: str) -> Optional[Pt]:
 
 
 def _is_plain(run: TextRun) -> bool:
-    """Semantic runs (equations, footnote references) are never trimmed or split."""
-    return not run.is_latex and run.footnote_id is None
+    """Semantic runs (equations, footnotes, term values) are never trimmed or split."""
+    return not run.is_latex and run.footnote_id is None and run.term_key is None
 
 
 def _strip_edge(line: List[TextRun], leading: bool) -> List[TextRun]:
@@ -515,3 +532,384 @@ def add_table_spacer(doc: Any) -> None:
     paragraph_format.space_before = Pt(0)
     paragraph_format.space_after = Pt(0)
     paragraph_format.line_spacing = _SPACER_HEIGHT
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DOCUMENT STYLES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _default_properties(doc: Any) -> Tuple[Any, Any]:
+    """Return `docDefaults` paragraph and run properties, creating them if absent."""
+    root = doc.styles.element
+    defaults = root.find(qn("w:docDefaults"))
+    if defaults is None:
+        defaults = OxmlElement("w:docDefaults")
+        root.insert(0, defaults)
+    run_default = defaults.find(qn("w:rPrDefault"))
+    if run_default is None:
+        run_default = OxmlElement("w:rPrDefault")
+        defaults.insert(0, run_default)
+    paragraph_default = defaults.find(qn("w:pPrDefault"))
+    if paragraph_default is None:
+        paragraph_default = OxmlElement("w:pPrDefault")
+        run_default.addnext(paragraph_default)
+    for parent, tag in ((run_default, "w:rPr"), (paragraph_default, "w:pPr")):
+        if parent.find(qn(tag)) is None:
+            parent.append(OxmlElement(tag))
+    return paragraph_default.find(qn("w:pPr")), run_default.find(qn("w:rPr"))
+
+
+def _set_child(parent: Any, tag: str, successors: Sequence[str], **attributes: str) -> Any:
+    """Replace one optional child, inserted before its schema successors."""
+    for existing in parent.findall(qn(tag)):
+        parent.remove(existing)
+    element = OxmlElement(tag)
+    for name, value in attributes.items():
+        element.set(qn(f"w:{name}"), value)
+    parent.insert_element_before(element, *successors)
+    return element
+
+
+def setup_term_sheet_styles(doc: Any) -> None:
+    """Apply term-sheet document defaults and heading accents (term-sheet only).
+
+    Korean text wraps by word (`w:wordWrap` off) with kinsoku rules and an East
+    Asian language of `ko-KR`. Unformatted paragraph marks (table cells, spacers)
+    use the body font and size, so Word does not size their lines at the 11pt
+    template default. Heading 2 gets the accent colour and a 1pt accent rule;
+    Heading 3 the accent colour.
+
+    Args:
+        doc: Document whose request-scoped styles were created already.
+    """
+    paragraph_defaults, run_defaults = _default_properties(doc)
+    _set_child(paragraph_defaults, "w:kinsoku", _PPR_AFTER_KINSOKU, val="1")
+    _set_child(paragraph_defaults, "w:wordWrap", _PPR_AFTER_KINSOKU[1:], val="0")
+    fonts = run_defaults.get_or_add_rFonts()
+    for theme in ("asciiTheme", "hAnsiTheme", "eastAsiaTheme"):
+        fonts.attrib.pop(qn(f"w:{theme}"), None)
+    fonts.set(qn("w:ascii"), STYLE.BODY_FONT)
+    fonts.set(qn("w:hAnsi"), STYLE.BODY_FONT)
+    fonts.set(qn("w:eastAsia"), STYLE.KOREAN_FONT)
+    run_defaults.sz_val = STYLE.BODY_SIZE
+    half_points = str(int(round(STYLE.BODY_SIZE.pt * 2)))
+    _set_child(run_defaults, "w:szCs", _RPR_AFTER_SZ_CS, val=half_points)
+    language = run_defaults.find(qn("w:lang"))
+    if language is None:
+        language = _set_child(run_defaults, "w:lang", _RPR_AFTER_SZ_CS[11:])
+    language.set(qn("w:eastAsia"), "ko-KR")
+
+    heading2 = doc.styles["Heading 2"]
+    heading2.font.color.rgb = STYLE.NAVY
+    rule = OxmlElement("w:pBdr")
+    bottom = OxmlElement("w:bottom")
+    for name, value in (("val", "single"), ("sz", _HEADING_RULE_SIZE), ("space", "1"), ("color", STYLE.NAVY_HEX)):
+        bottom.set(qn(f"w:{name}"), value)
+    rule.append(bottom)
+    style_paragraph = heading2.element.get_or_add_pPr()
+    for existing in style_paragraph.findall(qn("w:pBdr")):
+        style_paragraph.remove(existing)
+    style_paragraph.insert_element_before(rule, *_PPR_AFTER_PBDR)
+    doc.styles["Heading 3"].font.color.rgb = STYLE.NAVY
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# OPENING BLOCK, HEADINGS AND BODY PARAGRAPHS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _display_runs(metadata: DocumentMetadata, key: str, text: str) -> List[TextRun]:
+    """Parse-time runs (term substitution) when present, else the parsed text."""
+    runs = metadata.display_runs.get(key)
+    return list(runs) if runs else TextParser.parse_runs(text)
+
+
+def _bold(runs: Sequence[TextRun]) -> List[TextRun]:
+    return [replace(run, bold=True) for run in runs]
+
+
+def _opening_paragraph(doc: Any, space_after: Length, keep_with_next: bool = True) -> Any:
+    paragraph = doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph_format = paragraph.paragraph_format
+    paragraph_format.space_before = Pt(0)
+    paragraph_format.space_after = space_after
+    paragraph_format.keep_with_next = keep_with_next
+    return paragraph
+
+
+def _paragraph_rules(paragraph: Any, edges: Sequence[str]) -> None:
+    """Add 0.5pt `TS_BORDER_HEX` paragraph rules in schema order."""
+    rules = OxmlElement("w:pBdr")
+    for edge in edges:
+        border = OxmlElement(f"w:{edge}")
+        for name, value in (("val", "single"), ("sz", _BORDER_SIZE), ("space", "4"), ("color", STYLE.TS_BORDER_HEX)):
+            border.set(qn(f"w:{name}"), value)
+        rules.append(border)
+    paragraph._p.get_or_add_pPr().insert_element_before(rules, *_PPR_AFTER_PBDR)
+
+
+def render_term_sheet_opening(
+    doc: Any, metadata: DocumentMetadata, texts: TermSheetTexts, render_runs: RenderRuns
+) -> bool:
+    """Render the first-page block: title, subtitle, date, prepared_by, disclaimer.
+
+    The title uses the non-outline `Title` style, so it stays out of the
+    navigation pane and any TOC. Title and subtitle are bold accent-coloured and
+    centred; date and preparer are centred meta lines; the disclaimer is a
+    justified 7pt muted block between thin rules. It is rendered regardless of
+    the end-disclaimer switch. House and frontmatter texts are parsed for inline
+    emphasis; `metadata.display_runs` wins for title, subtitle and date.
+
+    Args:
+        doc: Document with request-scoped styles already created.
+        metadata: Validated term-sheet metadata.
+        texts: Resolved boilerplate for this render.
+        render_runs: Injected run renderer.
+
+    Returns:
+        True, so the caller skips the first body H1 that repeats the title.
+    """
+    title = doc.add_paragraph(style="Title")
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title.paragraph_format.space_before = Pt(0)
+    title.paragraph_format.space_after = Pt(2)
+    render_runs(
+        title, _bold(_display_runs(metadata, "title", metadata.title)),
+        default_color=STYLE.NAVY, font_name=STYLE.HEADING_FONT, font_size=STYLE.TS_TITLE_SIZE,
+    )
+    render_runs(
+        _opening_paragraph(doc, Pt(8)), _bold(_display_runs(metadata, "subtitle", metadata.subtitle)),
+        default_color=STYLE.NAVY, font_name=STYLE.HEADING_FONT, font_size=STYLE.TS_SUBTITLE_SIZE,
+    )
+    date = metadata.extra.get("date")
+    date_text = str(date).strip() if date is not None else ""
+    if metadata.display_runs.get("date") or date_text:
+        render_runs(
+            _opening_paragraph(doc, Pt(0)), _display_runs(metadata, "date", date_text),
+            font_size=STYLE.TS_META_SIZE,
+        )
+    render_runs(
+        _opening_paragraph(doc, Pt(8)), TextParser.parse_runs(texts.prepared_by.strip()),
+        font_size=STYLE.TS_META_SIZE,
+    )
+    lines = split_run_lines(TextParser.parse_runs(texts.disclaimer.strip()))
+    for index, line in enumerate(lines):
+        paragraph = doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        paragraph.paragraph_format.space_before = Pt(0)
+        paragraph.paragraph_format.space_after = Pt(6) if index == len(lines) - 1 else Pt(0)
+        _paragraph_rules(paragraph, ("top", "bottom"))
+        render_runs(
+            paragraph, line, default_color=_rgb(STYLE.TS_MUTED_HEX), font_size=STYLE.TS_DISCLAIMER_SIZE
+        )
+    doc.core_properties.title = metadata.title
+    doc.core_properties.subject = metadata.subtitle
+    return True
+
+
+def render_term_sheet_heading(doc: Any, heading: Heading, render_runs: RenderRuns) -> None:
+    """Accent-coloured heading; parse-time `Heading.runs` are used when present."""
+    level = max(1, min(heading.level, 4))
+    sizes = {1: STYLE.H1_SIZE, 2: STYLE.H2_SIZE, 3: STYLE.H3_SIZE, 4: STYLE.H4_SIZE}
+    paragraph = doc.add_heading(level=level)
+    runs = heading.runs or TextParser.parse_runs(heading.text)
+    render_runs(
+        paragraph, _bold(runs), default_color=STYLE.NAVY if level < 4 else STYLE.DARK_GRAY,
+        font_name=STYLE.HEADING_FONT, font_size=sizes[level],
+    )
+
+
+def render_term_sheet_paragraph(doc: Any, paragraph: Paragraph, render_runs: RenderRuns) -> None:
+    """Render each line of a body paragraph as its own Word paragraph (plan §2-8).
+
+    Separate paragraphs let every line take its own marker hanging indent;
+    `※` lines use the note size. The text itself is never changed.
+    """
+    runs = paragraph.runs or TextParser.parse_runs(paragraph.text)
+    for line in split_run_lines(runs):
+        target = doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
+        render_runs(target, line, font_size=apply_marker_layout(target, line_text(line)))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONFIRMATION BOX
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def confirmation_has_text(confirmation: ConfirmationText) -> bool:
+    """True when any confirmation field has visible text to render."""
+    return any(text.strip() for text in (confirmation.intro, *confirmation.items, confirmation.signature))
+
+
+def _printable_width(section: Any) -> int:
+    width, left, right = section.page_width, section.left_margin, section.right_margin
+    if width is None or left is None or right is None:
+        raise ValueError("Section dimensions are required for term-sheet layout")
+    return int(width) - int(left) - int(right)
+
+
+def _keep_previous_with_next(doc: Any) -> None:
+    """Keep the paragraph that precedes the next body block on the same page."""
+    body = doc.element.body
+    previous = body[-1] if len(body) else None
+    if previous is not None and previous.tag == qn("w:sectPr"):
+        previous = previous.getprevious()
+    if previous is not None and previous.tag == qn("w:p"):
+        previous.get_or_add_pPr().keepNext_val = True
+
+
+class _CellWriter:
+    """Hand out a cell's paragraphs in order, reusing its initial empty one."""
+
+    def __init__(self, cell: Any) -> None:
+        self.cell = cell
+        self.count = 0
+
+    def paragraph(self) -> Any:
+        paragraph = self.cell.paragraphs[0] if self.count == 0 else self.cell.add_paragraph()
+        self.count += 1
+        configure_cell_paragraph(paragraph)
+        return paragraph
+
+
+def _item_layout(text: str) -> Optional[MarkerLayout]:
+    if text.lstrip().startswith(_CHECKBOX):
+        return MarkerLayout(0.0, _CHECKBOX_LAYOUT_MM)
+    return marker_layout(text)
+
+
+def render_confirmation(doc: Any, confirmation: ConfirmationText, render_runs: RenderRuns) -> None:
+    """Render the customer confirmation box as a one-column, two-row table.
+
+    Row 1 holds the intro (8pt muted) and the check items (10pt, `□` hanging
+    indent; later lines of an item align with its text). Row 2 holds the
+    signature, centred bold 10pt on `TS_SIGNATURE_BG_HEX`. Both rows are
+    unsplittable, every row-1 paragraph is kept with the next and so is the
+    paragraph before the box, so the whole box stays on one page. A row without
+    text is omitted. The frame is 0.5pt `TS_BORDER_HEX`.
+
+    Args:
+        doc: Document receiving the box at the current position.
+        confirmation: Wording with at least one non-blank field.
+        render_runs: Injected run renderer.
+    """
+    _keep_previous_with_next(doc)
+    intro = confirmation.intro.strip()
+    items = [item.strip() for item in confirmation.items if item.strip()]
+    signature = confirmation.signature.strip()
+    kinds = (["body"] if intro or items else []) + (["signature"] if signature else [])
+    width = _printable_width(doc.sections[-1])
+    table = doc.add_table(rows=len(kinds), cols=1)
+    table.style = STYLE.STYLE_TABLE_GRID
+    table.columns[0].width = Emu(width)
+    for cell in table.columns[0].cells:
+        cell.width = Emu(width)
+    apply_table_frame(table, width)
+    muted = _rgb(STYLE.TS_MUTED_HEX)
+    for row_index, kind in enumerate(kinds):
+        cell = table.rows[row_index].cells[0]
+        if kind == "signature":
+            set_cell_fill(cell._tc, STYLE.TS_SIGNATURE_BG_HEX)
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        writer = _CellWriter(cell)
+        if kind == "body":
+            for line in split_run_lines(TextParser.parse_runs(intro)) if intro else []:
+                render_runs(writer.paragraph(), line, default_color=muted, font_size=STYLE.TS_NOTE_SIZE)
+            for item in items:
+                layout: Optional[MarkerLayout] = None
+                for line_index, line in enumerate(split_run_lines(TextParser.parse_runs(item))):
+                    paragraph = writer.paragraph()
+                    if line_index == 0:
+                        layout = _item_layout(line_text(line))
+                        if layout is not None:
+                            paragraph.paragraph_format.first_line_indent = Mm(-layout.hanging_mm)
+                    if layout is not None:
+                        paragraph.paragraph_format.left_indent = Mm(layout.start_mm + layout.hanging_mm)
+                    render_runs(paragraph, line, font_size=STYLE.TS_META_SIZE)
+            for paragraph in cell.paragraphs:
+                paragraph.paragraph_format.keep_with_next = True
+        else:
+            for line in split_run_lines(TextParser.parse_runs(signature)):
+                paragraph = writer.paragraph()
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                render_runs(paragraph, _bold(line), font_size=STYLE.TS_META_SIZE)
+        set_row_pagination(table.rows[row_index], keep_together=True, repeat_header=False)
+    add_table_spacer(doc)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# HEADER AND FOOTER
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _reset_story(story: Any) -> Any:
+    """Unlink a header/footer and return its single, emptied paragraph."""
+    story.is_linked_to_previous = False
+    paragraphs = story.paragraphs
+    for extra in paragraphs[1:]:
+        extra._p.getparent().remove(extra._p)
+    paragraph = paragraphs[0] if paragraphs else story.add_paragraph()
+    paragraph.clear()
+    return paragraph
+
+
+def _add_field(paragraph: Any, instruction: str, color: RGBColor, size: Length) -> None:
+    """Append a simple field run (e.g. PAGE) styled like the surrounding text."""
+    run = paragraph.add_run()
+    for kind, text in (("begin", None), (None, instruction), ("end", None)):
+        element = OxmlElement("w:fldChar" if kind else "w:instrText")
+        if kind:
+            element.set(qn("w:fldCharType"), kind)
+        else:
+            element.text = text
+        run._r.append(element)
+    run.font.name = STYLE.BODY_FONT
+    run.font.size = size
+    run.font.color.rgb = color
+    run._r.get_or_add_rPr().get_or_add_rFonts().set(qn("w:eastAsia"), STYLE.KOREAN_FONT)
+
+
+def setup_term_sheet_header_footer(
+    doc: Any,
+    metadata: DocumentMetadata,
+    texts: Optional[TermSheetTexts],
+    confidential: bool,
+    render_runs: RenderRuns,
+) -> None:
+    """Set the header and footer of every section once all sections exist.
+
+    Header: right-aligned italic 7.5pt `TS_CONFIDENTIAL_HEX` confidentiality
+    label; empty when `confidential` is off or the label is blank (plan §2-10).
+    Footer: `"{subtitle} {version}"` at left (empty without a version) and
+    `PAGE / NUMPAGES` at a right tab on each section's own printable width, so
+    portrait and landscape sections both align.
+
+    Args:
+        doc: Document whose sections are final.
+        metadata: Term-sheet metadata supplying subtitle and `version`.
+        texts: Resolved boilerplate carrying the confidentiality label.
+        confidential: Resolved confidential option for this render.
+        render_runs: Injected run renderer.
+    """
+    label = texts.confidential_label if texts is not None and confidential else ""
+    version = str(metadata.extra.get("version") or "").strip()
+    left = f"{metadata.subtitle} {version}" if version else ""
+    grey = _rgb(STYLE.TS_CONFIDENTIAL_HEX)
+    size = STYLE.TS_HEADER_FOOTER_SIZE
+    for section in doc.sections:
+        width = _printable_width(section)
+        header = _reset_story(section.header)
+        header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        if label.strip():
+            render_runs(header, [TextRun(text=label, italic=True)], default_color=grey, font_size=size)
+        footer = _reset_story(section.footer)
+        if footer.style is not None:
+            footer.style.paragraph_format.tab_stops.clear_all()
+        footer.paragraph_format.tab_stops.add_tab_stop(Emu(width), WD_TAB_ALIGNMENT.RIGHT)
+        runs = ([TextRun(text=left)] if left else []) + [TextRun(text="\t")]
+        render_runs(footer, runs, default_color=grey, font_size=size)
+        _add_field(footer, "PAGE", grey, size)
+        render_runs(footer, [TextRun(text=" / ")], default_color=grey, font_size=size)
+        _add_field(footer, "NUMPAGES", grey, size)

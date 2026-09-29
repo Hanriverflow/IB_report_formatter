@@ -456,6 +456,8 @@ def test_split_run_lines_preserves_formatting_links_footnotes_and_blank_lines() 
     assert lines[1][1].hyperlink == "https://example.com"
     assert lines[1][2].footnote_id == 1 and lines[1][2].superscript
     assert term_sheet.split_run_lines([]) == [[]]
+    term = TextRun(" 500억원 ", term_key="amount")
+    assert term_sheet.split_run_lines([TextRun("앞 \n"), term]) == [[TextRun("앞")], [term]]
 
 
 def test_strict_term_sheet_tables_have_no_audit_issues() -> None:

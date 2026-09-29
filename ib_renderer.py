@@ -4,7 +4,10 @@ Handles styling and rendering of document elements in IB Bank style.
 
 Changelog (term-sheet foundation):
     - Validate term-sheet metadata and resolve house text before document output.
-    - Preserve confirmation fences in code panels until box rendering is available.
+    - Preserve confirmation fences in code panels when confirmation text is missing.
+    - Term-sheet composition in the shared path: document defaults, opening
+      block, per-line paragraphs, accent headings, confirmation box and
+      per-section header/footer (term_sheet.py; callbacks injected).
 
 Changelog (table spans):
     - Merge validated span rectangles in every profile: size the empty table,
@@ -112,12 +115,19 @@ from term_sheet import (
     apply_marker_layout,
     apply_table_frame,
     configure_cell_paragraph,
+    confirmation_has_text,
     estimate_cell_lines,
     key_value_widths,
     line_text,
+    render_confirmation,
+    render_term_sheet_heading,
+    render_term_sheet_opening,
+    render_term_sheet_paragraph,
     resolve_term_sheet_texts,
     set_cell_fill,
     set_row_pagination,
+    setup_term_sheet_header_footer,
+    setup_term_sheet_styles,
     split_run_lines,
 )
 
@@ -3193,6 +3203,8 @@ class IBDocumentRenderer:
             self.styler.create_styles()
             if resolved.profile.name == "office-letter":
                 setup_letter_styles(self.doc)
+            if self._term_sheet:
+                setup_term_sheet_styles(self.doc)
             update_fields = OxmlElement("w:updateFields")
             update_fields.set(qn("w:val"), "true")
             self.doc.settings.element.append(update_fields)
@@ -3205,9 +3217,15 @@ class IBDocumentRenderer:
             title_inserted = (
                 render_office_opening(self.doc, model.metadata) if report_title_block else False
             )
+            if self._term_sheet:
+                # Resolved in preflight; the opening leads the first page, before any TOC.
+                title_inserted = render_term_sheet_opening(
+                    self.doc, model.metadata, cast(TermSheetTexts, self.term_sheet_texts),
+                    TextRenderer.render_runs,
+                )
             if resolved.toc:
                 self.toc_renderer.render(model)
-            if not resolved.cover and not report_title_block:
+            if not resolved.cover and not report_title_block and not self._term_sheet:
                 title_inserted = render_office_opening(self.doc, model.metadata)
             skipped_title = report_title_block
             office_closed = False
@@ -3254,10 +3272,16 @@ class IBDocumentRenderer:
                 if isinstance(sender, dict)
                 else model.metadata.company
             )
-            self.styler.setup_header_footer(
-                company="" if resolved.profile.name == "office-letter" else company,
-                confidential=resolved.confidential, show_page_numbers=True
-            )
+            if self._term_sheet:
+                setup_term_sheet_header_footer(
+                    self.doc, model.metadata, self.term_sheet_texts, resolved.confidential,
+                    TextRenderer.render_runs,
+                )
+            else:
+                self.styler.setup_header_footer(
+                    company="" if resolved.profile.name == "office-letter" else company,
+                    confidential=resolved.confidential, show_page_numbers=True
+                )
             self.apply_generator_signature(
                 "ib_generated" if resolved.profile.name == "ib-report" else resolved.profile.name
             )
@@ -3348,10 +3372,20 @@ class IBDocumentRenderer:
             ElementType.HEADING_4,
             ElementType.NUMBERED_HEADING,
         ):
-            self.heading_renderer.render(cast(Heading, element.content))
+            if self._term_sheet:
+                render_term_sheet_heading(
+                    self.doc, cast(Heading, element.content), TextRenderer.render_runs
+                )
+            else:
+                self.heading_renderer.render(cast(Heading, element.content))
 
         elif etype == ElementType.PARAGRAPH:
-            self.paragraph_renderer.render(cast(Paragraph, element.content))
+            if self._term_sheet:
+                render_term_sheet_paragraph(
+                    self.doc, cast(Paragraph, element.content), TextRenderer.render_runs
+                )
+            else:
+                self.paragraph_renderer.render(cast(Paragraph, element.content))
 
         elif etype == ElementType.BULLET_LIST:
             self.list_renderer.render_bullet(cast(ListItem, element.content))
@@ -3384,11 +3418,17 @@ class IBDocumentRenderer:
             self._render_code_block(cast(CodeBlock, element.content))
 
         elif etype == ElementType.CONFIRMATION:
-            source = cast(ConfirmationBlock, element.content).source
-            self._render_code_block(CodeBlock(source, "confirmation"))
-            message = "Confirmation rendering is unavailable; original fence preserved as a code block"
-            self.errors.append(message)
-            logger.warning("%s", message)
+            texts = self.term_sheet_texts
+            confirmation = texts.confirmation if self._term_sheet and texts is not None else None
+            if confirmation is not None and confirmation_has_text(confirmation):
+                render_confirmation(self.doc, confirmation, TextRenderer.render_runs)
+            else:
+                # Plan §2-9: without wording, keep the fence losslessly and report it.
+                source = cast(ConfirmationBlock, element.content).source
+                self._render_code_block(CodeBlock(source, "confirmation"))
+                message = "Confirmation text is missing; original fence preserved as a code block"
+                self.errors.append(message)
+                logger.warning("%s", message)
 
         elif etype == ElementType.CHART:
             chart = cast(Chart, element.content)

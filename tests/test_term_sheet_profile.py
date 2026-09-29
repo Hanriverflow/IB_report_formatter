@@ -1,4 +1,4 @@
-"""A1 term-sheet contracts, boilerplate validation and shared entry points."""
+"""Term-sheet contracts: A1 boilerplate/entry points and A2 document rendering."""
 
 import subprocess
 import sys
@@ -9,13 +9,17 @@ from pathlib import Path
 import pytest
 import yaml
 from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
 from docx.shared import Inches, Pt
+from lxml import etree
 
 import ib_renderer
 import term_sheet
 from converters import get_default_registry
-from document_model import CodeBlock, DocumentMetadata, DocumentModel, ElementType
+from document_model import CodeBlock, DocumentMetadata, DocumentModel, ElementType, TextRun
 from document_profiles import RenderOptions, get_profile, load_style, resolve_options
+from docx_audit import inspect_document
 from ib_renderer import IBDocumentRenderer
 from md_parser import MarkdownParser, parse_markdown_file
 
@@ -329,19 +333,17 @@ def test_renderer_resets_resolved_texts_on_reuse_and_failed_preflight():
 
 
 @pytest.mark.parametrize("fence", ["```confirmation\n```", "~~~confirmation\n \n~~~"])
-def test_closed_empty_confirmation_fence_has_payload_and_a1_lossless_fallback(fence):
+def test_closed_empty_confirmation_fence_renders_the_box(fence):
     model = MarkdownParser().parse(markdown(fence, confirmation={"intro": "가상 확인"}))
     element = model.elements[0]
     assert element.element_type == ElementType.CONFIRMATION
     assert element.content.source == fence
     assert not model.warnings
-    renderer = IBDocumentRenderer()
+    renderer = IBDocumentRenderer(options=RenderOptions(strict=True))
     saved = reopen(renderer.render(model))
+    assert not renderer.errors
     text = "\n".join(saved.element.xpath(".//w:t/text()"))
-    assert "confirmation" in text
-    assert renderer.errors
-    with pytest.raises(ValueError, match="validation"):
-        IBDocumentRenderer(options=RenderOptions(strict=True)).render(model)
+    assert "가상 확인" in text and "confirmation" not in text
 
 
 @pytest.mark.parametrize("fence", ["```confirmation\n가상 확인 내용\n```", "```confirmation\n", "```confirmation\n가상 확인 내용"])
@@ -375,3 +377,240 @@ def test_confirmation_fence_remains_regular_code_in_other_profiles(profile):
     assert model.elements[0].element_type == ElementType.CODE_BLOCK
     assert model.elements[0].content.code == "가상 확인 내용"
     assert not model.warnings
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# A2 RENDERING: OPENING, BODY, STYLES, CONFIRMATION, HEADER/FOOTER
+# ═══════════════════════════════════════════════════════════════════════════════
+
+CONFIRMATION = {
+    "intro": "아래 항목을 확인하시고 ( *자필* )로 기재하여 주시기 바랍니다.",
+    "items": [
+        "□ 본인은 본 Term Sheet의 가상 조건과 위험에 대하여 설명을 들었습니다. (          )",
+        "□ 본인은 가상 수수료 조건을 확인하였습니다. (          )",
+    ],
+    "signature": "고객확인 : 20    .    .    .   (서명/인)",
+}
+
+
+W_NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+
+
+def find_all(element, path):
+    """Namespace-explicit XPath; unregistered elements (docDefaults) lack python-docx's map."""
+    return etree.XPath(path, namespaces=W_NS)(element)
+
+
+def xml_values(element, path, name="w:val"):
+    return [node.get(qn(name)) for node in find_all(element, path)]
+
+
+def printable_twips(section):
+    return round((section.page_width - section.left_margin - section.right_margin) / 635)
+
+
+def test_opening_block_order_typography_and_single_title():
+    content = markdown(f"# {TITLE}\n\n## 1. 본건 개요\n\n본문.", date="2026. 09.", version="v3")
+    renderer, document = render(content, strict=True)
+    saved = reopen(document)
+    paragraphs = saved.paragraphs
+    assert [p.text for p in paragraphs[:6]] == [TITLE, "Term Sheet", "2026. 09.", PREPARED_BY, DISCLAIMER, "1. 본건 개요"]
+    assert sum(TITLE in p.text for p in paragraphs) == 1
+    title, subtitle, date, prepared, disclaimer = paragraphs[:5]
+    assert title.style.name == "Title"
+    assert not title._p.xpath("./w:pPr/w:outlineLvl") and not title.style.element.xpath("./w:pPr/w:outlineLvl")
+    for paragraph, size in ((title, 20), (subtitle, 16)):
+        assert paragraph.alignment == WD_ALIGN_PARAGRAPH.CENTER
+        assert all(run.bold and run.font.size.pt == size and str(run.font.color.rgb) == "1A2270" for run in paragraph.runs)
+    for paragraph in (date, prepared):
+        assert paragraph.alignment == WD_ALIGN_PARAGRAPH.CENTER
+        assert {run.font.size.pt for run in paragraph.runs} == {10}
+    assert disclaimer.alignment == WD_ALIGN_PARAGRAPH.JUSTIFY
+    assert {run.font.size.pt for run in disclaimer.runs} == {7}
+    assert {str(run.font.color.rgb) for run in disclaimer.runs} == {"555555"}
+    borders = disclaimer._p.xpath("./w:pPr/w:pBdr/*")
+    assert [(etree.QName(node).localname, node.get(qn("w:sz")), node.get(qn("w:color"))) for node in borders] == [
+        ("top", "4", "9AA5C4"), ("bottom", "4", "9AA5C4"),
+    ]
+    assert saved.core_properties.title == TITLE and saved.core_properties.subject == "Term Sheet"
+    assert not renderer.errors
+
+
+def test_opening_prefers_display_runs_and_parses_house_emphasis():
+    model = MarkdownParser().parse(markdown(
+        date="2026. 09.", prepared_by="라마바은행 **자본시장부**",
+        disclaimer="본 자료는 ( *주요내용* ) 요약입니다.\n둘째 줄입니다.\n",
+    ))
+    model.metadata.display_runs = {
+        "title": [TextRun("가나다 표시 제목", italic=True)],
+        "subtitle": [TextRun("가상 부제")],
+        "date": [TextRun("2026. 10.")],
+    }
+    saved = reopen(IBDocumentRenderer().render(model))
+    paragraphs = saved.paragraphs
+    assert [p.text for p in paragraphs[:4]] == ["가나다 표시 제목", "가상 부제", "2026. 10.", "라마바은행 자본시장부"]
+    assert paragraphs[0].runs[0].italic and paragraphs[0].runs[0].bold
+    assert [run.text for run in paragraphs[3].runs if run.bold] == ["자본시장부"]
+    first, second = paragraphs[4:6]
+    assert first.text == "본 자료는 ( 주요내용 ) 요약입니다." and second.text == "둘째 줄입니다."
+    assert [run.text for run in first.runs if run.italic] == ["주요내용"]
+    assert all(p._p.xpath("./w:pPr/w:pBdr/w:top") and p._p.xpath("./w:pPr/w:pBdr/w:bottom") for p in (first, second))
+    assert saved.core_properties.title == TITLE
+
+
+def test_opening_disclaimer_is_kept_without_end_disclaimer():
+    saved = reopen(render(markdown(), include_disclaimer=False)[1])
+    assert DISCLAIMER in [p.text for p in saved.paragraphs]
+
+
+def test_paragraph_breaks_become_marker_indented_paragraphs():
+    body = "① 첫째 조건<br>※ 가상 주석입니다.<br>둘째 줄"
+    saved = reopen(render(markdown(body), strict=True)[1])
+    first, note, plain = saved.paragraphs[4:7]
+    assert [first.text, note.text, plain.text] == ["① 첫째 조건", "※ 가상 주석입니다.", "둘째 줄"]
+    assert (xml_values(first._p, "./w:pPr/w:ind", "w:left"), xml_values(first._p, "./w:pPr/w:ind", "w:hanging")) == (["255"], ["255"])
+    assert (xml_values(note._p, "./w:pPr/w:ind", "w:left"), xml_values(note._p, "./w:pPr/w:ind", "w:hanging")) == (["227"], ["227"])
+    assert {run.font.size.pt for run in note.runs} == {8}
+    assert {run.font.size.pt for run in first.runs} == {9}
+    assert not plain._p.xpath("./w:pPr/w:ind")
+    legacy = reopen(IBDocumentRenderer().render(MarkdownParser(profile="plain").parse(body)))
+    assert len(legacy.paragraphs) == 1 and len(legacy.paragraphs[0]._p.xpath(".//w:br")) == 2
+
+
+def test_term_sheet_headings_use_the_accent_and_heading_runs():
+    model = MarkdownParser().parse(markdown("## 1. 원문 제목\n\n### 가. 세부 조건\n\n본문."))
+    model.elements[0].content.runs = [TextRun("1. 치환 제목", italic=True)]
+    saved = reopen(IBDocumentRenderer(options=RenderOptions(strict=True)).render(model))
+    h2 = next(p for p in saved.paragraphs if p.style.name == "Heading 2")
+    h3 = next(p for p in saved.paragraphs if p.style.name == "Heading 3")
+    assert h2.text == "1. 치환 제목" and all(run.italic and run.bold for run in h2.runs)
+    assert h3.text == "가. 세부 조건"
+    for paragraph in (h2, h3):
+        assert {str(run.font.color.rgb) for run in paragraph.runs} == {"1A2270"}
+    heading2 = saved.styles["Heading 2"]
+    assert str(heading2.font.color.rgb) == "1A2270"
+    rule = heading2.element.xpath("./w:pPr/w:pBdr/w:bottom")[0]
+    assert (rule.get(qn("w:val")), rule.get(qn("w:sz")), rule.get(qn("w:color"))) == ("single", "8", "1A2270")
+    assert str(saved.styles["Heading 3"].font.color.rgb) == "1A2270"
+
+
+def test_term_sheet_document_defaults_are_local_to_term_sheets():
+    saved = reopen(render(markdown())[1])
+    defaults = find_all(saved.styles.element, "./w:docDefaults")[0]
+    paragraph_defaults = find_all(defaults, "./w:pPrDefault/w:pPr")[0]
+    assert xml_values(paragraph_defaults, "./w:kinsoku") == ["1"]
+    assert xml_values(paragraph_defaults, "./w:wordWrap") == ["0"]
+    names = [etree.QName(child).localname for child in paragraph_defaults]
+    assert names.index("kinsoku") < names.index("wordWrap") < names.index("spacing")
+    assert xml_values(defaults, "./w:rPrDefault/w:rPr/w:lang", "w:eastAsia") == ["ko-KR"]
+    assert xml_values(defaults, "./w:rPrDefault/w:rPr/w:sz") == ["18"]
+    plain = reopen(IBDocumentRenderer().render(MarkdownParser(profile="plain").parse("본문.")))
+    plain_defaults = find_all(plain.styles.element, "./w:docDefaults")[0]
+    assert not find_all(plain_defaults, ".//w:wordWrap") and not find_all(plain_defaults, ".//w:kinsoku")
+    assert xml_values(plain_defaults, "./w:rPrDefault/w:rPr/w:lang", "w:eastAsia") == ["en-US"]
+    assert xml_values(plain_defaults, "./w:rPrDefault/w:rPr/w:sz") == ["22"]
+
+
+def test_confirmation_box_has_two_rows_kept_on_one_page():
+    content = markdown("## 고객 확인\n\n확인 안내 문단입니다.\n\n```confirmation\n```", confirmation=CONFIRMATION)
+    renderer, document = render(content, strict=True)
+    saved = reopen(document)
+    assert not renderer.errors
+    table = saved.element.body.xpath("./w:tbl")[0]
+    rows = table.xpath("./w:tr")
+    assert len(rows) == 2 and all(len(row.xpath("./w:tc")) == 1 for row in rows)
+    assert all(row.xpath("./w:trPr/w:cantSplit") for row in rows)
+    body_cell, signature_cell = (row.xpath("./w:tc")[0] for row in rows)
+    intro, *items = body_cell.xpath("./w:p")
+    assert len(items) == 2 and all(p.xpath("./w:pPr/w:keepNext") for p in [intro, *items])
+    assert set(xml_values(intro, ".//w:r/w:rPr/w:sz")) == {"16"}
+    assert set(xml_values(intro, ".//w:r/w:rPr/w:color")) == {"555555"}
+    assert intro.xpath(".//w:r[w:rPr/w:i[not(@w:val)]]/w:t/text()") == ["자필"]
+    for item in items:
+        assert set(xml_values(item, ".//w:r/w:rPr/w:sz")) == {"20"}
+        assert (xml_values(item, "./w:pPr/w:ind", "w:left"), xml_values(item, "./w:pPr/w:ind", "w:hanging")) == (["255"], ["255"])
+    signature = signature_cell.xpath("./w:p")[0]
+    assert "".join(signature.xpath(".//w:t/text()")) == CONFIRMATION["signature"]
+    assert xml_values(signature, "./w:pPr/w:jc") == ["center"]
+    assert len(signature.xpath(".//w:r/w:rPr/w:b[not(@w:val)]")) == len(signature.xpath(".//w:r"))
+    assert set(xml_values(signature, ".//w:r/w:rPr/w:sz")) == {"20"}
+    assert xml_values(signature_cell, "./w:tcPr/w:shd", "w:fill") == ["F2F2F2"]
+    assert not signature.xpath("./w:pPr/w:keepNext")
+    previous = table.getprevious()
+    assert "".join(previous.xpath(".//w:t/text()")) == "확인 안내 문단입니다." and previous.xpath("./w:pPr/w:keepNext")
+    borders = table.xpath("./w:tblPr/w:tblBorders/*")
+    assert {(node.get(qn("w:sz")), node.get(qn("w:color"))) for node in borders} == {("4", "9AA5C4")}
+
+
+def test_confirmation_box_omits_an_empty_row():
+    content = markdown("```confirmation\n```", confirmation={"signature": "가상 서명"})
+    renderer, document = render(content, strict=True)
+    rows = reopen(document).element.body.xpath("./w:tbl/w:tr")
+    assert len(rows) == 1 and "".join(rows[0].xpath(".//w:t/text()")) == "가상 서명"
+
+
+@pytest.mark.parametrize("confirmation", [{"intro": " "}, {"signature": ""}])
+def test_blank_confirmation_texts_keep_the_lossless_fallback(confirmation):
+    model = MarkdownParser().parse(markdown("```confirmation\n```", confirmation=confirmation))
+    renderer = IBDocumentRenderer()
+    saved = reopen(renderer.render(model))
+    assert "confirmation" in "\n".join(saved.element.xpath(".//w:t/text()"))
+    assert any("confirmation" in error.lower() for error in renderer.errors)
+    with pytest.raises(ValueError, match="validation"):
+        IBDocumentRenderer(options=RenderOptions(strict=True)).render(model)
+
+
+def test_header_and_footer_follow_each_section_width():
+    body = "앞 문단.\n\n| 구 분 | 내 용 |\n|---|---|\n| 가 | 나 |\n\n뒤 문단."
+    saved = reopen(render(markdown(body, version="v3", tables=[{"landscape": True}]), strict=True)[1])
+    assert len(saved.sections) == 3
+    positions = []
+    for section in saved.sections:
+        header = section.header.paragraphs
+        assert len(header) == 1 and header[0].alignment == WD_ALIGN_PARAGRAPH.RIGHT
+        label = header[0].runs[0]
+        assert label.text == "Strictly Confidential" and label.italic
+        assert label.font.size.pt == 7.5 and str(label.font.color.rgb) == "888888"
+        footer = section.footer.paragraphs[0]
+        assert footer.text.startswith("Term Sheet v3\t")
+        assert footer._p.xpath(".//w:instrText/text()") == ["PAGE", "NUMPAGES"]
+        stops = [(stop.get(qn("w:val")), int(stop.get(qn("w:pos")))) for stop in footer._p.xpath("./w:pPr/w:tabs/w:tab")]
+        assert stops == [("right", printable_twips(section))]
+        assert set(xml_values(footer._p, ".//w:r/w:rPr/w:sz")) == {"15"}
+        assert set(xml_values(footer._p, ".//w:r/w:rPr/w:color")) == {"888888"}
+        positions.append(stops[0][1])
+    assert positions[0] == positions[2] < positions[1]
+
+
+@pytest.mark.parametrize(
+    ("fields", "options"),
+    [({"layout": {"confidential": False}}, {}), ({}, {"confidential": False}), ({"confidential_label": ""}, {})],
+)
+def test_confidential_header_can_be_suppressed(fields, options):
+    saved = reopen(render(markdown(**fields), **options)[1])
+    assert all(not section.header.paragraphs[0].text for section in saved.sections)
+
+
+def test_footer_without_version_starts_with_page_numbers():
+    saved = reopen(render(markdown())[1])
+    footer = saved.sections[0].footer.paragraphs[0]
+    assert footer.text.startswith("\t") and "Term Sheet" not in footer.text
+
+
+def test_complete_term_sheet_renders_strict_without_audit_issues():
+    body = (
+        f"# {TITLE}\n\n## 1. 본건 개요\n\n| 구 분 | 내 용 |\n|---|---|\n| 발행금액 | • 500억원 |\n\n"
+        "## 2. 주요 금융조건\n\n| 구 분 | << | 내 용 |\n|---|---|---|\n"
+        "| ABCP | 금액 | • 500억원 |\n| ^^ | CAP | • 변동<br>※ 가상 기준 |\n\n"
+        "※ 심사 과정에서 상기 조건은 변경될 수 있음\n\n### 가. 참고\n\n"
+        "① 가상 설명<br>② 가상 설명[^1]\n\n- 가상 목록\n\n```confirmation\n```\n\n[^1]: 가상 각주입니다.\n"
+    )
+    content = markdown(
+        body, date="2026. 09.", version="v3", confirmation=CONFIRMATION,
+        tables=[{"caption": "개요", "unit": "억원"}, {"note": "(VAT 별도)", "landscape": True}],
+    )
+    renderer, document = render(content, strict=True)
+    saved = reopen(document)
+    assert not renderer.errors
+    assert inspect_document(saved).issues == []
+    assert saved.element.xpath(".//w:footnoteReference")
