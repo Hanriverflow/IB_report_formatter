@@ -92,7 +92,8 @@ def test_p1e_dash_only_body_row_is_preserved(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("source,expected", [
-    ("Use `[^7]` as an example.", "Use `[^7]` as an example."),
+    # Inline code is shown without its backticks; its content stays literal.
+    ("Use `[^7]` as an example.", "Use [^7] as an example."),
     (r"Use \[^7] as an example.", "Use [^7] as an example."),
 ])
 def test_p2a_literal_footnote_has_no_warning(source: str, expected: str) -> None:
@@ -161,7 +162,7 @@ def test_p2f_comments_are_hidden_outside_code() -> None:
         "`<!-- literal -->`\n\n```\n<!-- code -->\n```\n\nEnd."
     )
     assert [text for text in _texts(doc) if text] == [
-        "Before after.", "`<!-- literal -->`", "<!-- code -->", "End.",
+        "Before after.", "<!-- literal -->", "<!-- code -->", "End.",
     ]
     assert not model.warnings
 
@@ -174,7 +175,8 @@ def test_p2f_reference_links_resolve_and_definitions_disappear(tmp_path: Path) -
     target = tmp_path / "links.docx"
     doc.save(str(target))
     reopened = Document(str(target))
-    assert _texts(reopened) == ["Use docs, docs, docs, [missing][no] and ` [docs][1] `."]
+    # The code span keeps its reference literal; CommonMark trims one space per side.
+    assert _texts(reopened) == ["Use docs, docs, docs, [missing][no] and [docs][1]."]
     links = reopened.element.body.xpath(".//w:hyperlink")
     assert len(links) == 3
     assert [reopened.part.rels[link.get(qn("r:id"))].target_ref for link in links] == [
@@ -186,12 +188,13 @@ def test_p2a_multiline_code_span_does_not_define_or_reference_footnotes() -> Non
     model, doc = _render("Use `literal\n[^7]\n[^8]: example\ncode` here.")
     assert not model.warnings
     assert not model.footnotes
-    assert "Use `literal [^7] [^8]: example code` here." in _texts(doc)
+    assert "Use literal [^7] [^8]: example code here." in _texts(doc)
 
 
 def test_p2d_list_continuation_preserves_inline_code_and_hard_breaks() -> None:
     _, doc = _render("- First `  a  b  `\n    continued<br>\n    next\n    - Child\n- Last")
-    assert _texts(doc) == ["First `  a  b  ` continued\nnext", "Child", "Last"]
+    # Interior spaces survive; CommonMark trims one leading and trailing space.
+    assert _texts(doc) == ["First  a  b  continued\nnext", "Child", "Last"]
     assert doc.paragraphs[1]._p.pPr.numPr.ilvl.val == 1
 
 

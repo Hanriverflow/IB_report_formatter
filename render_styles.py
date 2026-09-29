@@ -139,6 +139,7 @@ class IBStyle:
     HEADING_FONT: str = "Arial"
     BODY_FONT: str = "Calibri"
     KOREAN_FONT: str = "Malgun Gothic"
+    CODE_FONT: str = "Consolas"
     COVER_FONT: str = "Malgun Gothic"
     TOC_FONT: str = "Malgun Gothic"
 

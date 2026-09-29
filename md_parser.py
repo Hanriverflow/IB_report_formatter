@@ -9,6 +9,11 @@ Changelog (term variables):
       inline math, `\\{{` escapes and link destinations stay literal.
     - NEW: Undefined keys and malformed references become model warnings.
 
+Changelog (memo rendering):
+    - NEW: Inline code spans become literal `code` runs without their backticks.
+    - NEW: Local file links (angle brackets, drive or ./ paths, document
+      extensions) become hyperlinks; paths inside the file's folder are relative.
+
 Changelog (2026-09-29):
     - FIXED: Preserve escaped inline syntax and non-reference body content.
     - FIXED: Share fence boundaries and normalize Markdown block input.
@@ -44,6 +49,7 @@ import re
 from dataclasses import replace
 from pathlib import Path
 from typing import BinaryIO, Callable, Dict, List, Match, Optional, Set, Tuple, Union, cast
+from urllib.parse import quote
 
 import yaml
 
@@ -385,7 +391,7 @@ class TextParser:
                         cls._apply_color(cls._parse_inline_formatting(inline_text), color_hex)
                     )
 
-        return cls._restore_code_spans(runs, code_spans)
+        return cls._split_code_runs(runs, code_spans)
 
     @classmethod
     def _split_on_inline_latex(cls, text: str) -> List[Tuple[str, bool]]:
@@ -430,7 +436,7 @@ class TextParser:
         runs: List[TextRun] = []
         for segment_text, color_hex in cls._split_on_color_spans(text):
             runs.extend(cls._apply_color(cls._parse_inline_formatting(segment_text), color_hex))
-        return cls._restore_code_spans(runs, code_spans)
+        return cls._split_code_runs(runs, code_spans)
 
     @classmethod
     def _protect_code_spans(cls, text: str) -> Tuple[str, Dict[str, str]]:
@@ -461,6 +467,54 @@ class TextParser:
             return token
 
         return cls._ESCAPE_RE.sub(replace, text), literals
+
+    @classmethod
+    def _split_code_runs(cls, runs: List[TextRun], literals: Dict[str, str]) -> List[TextRun]:
+        """Turn protected code spans into literal code runs without their backticks.
+
+        The code text is never parsed; the run keeps the surrounding emphasis,
+        colour and link. Link destinations and equations keep the source text.
+
+        Args:
+            runs: Runs parsed from text whose code spans were replaced by tokens.
+            literals: Token to original code span (backticks included).
+
+        Returns:
+            Runs with each code span as its own run flagged `code`.
+        """
+        if not literals:
+            return runs
+        tokens = re.compile("|".join(re.escape(token) for token in literals))
+        result: List[TextRun] = []
+        for run in runs:
+            if run.hyperlink:
+                for token, literal in literals.items():
+                    run.hyperlink = run.hyperlink.replace(token, literal)
+            if run.is_latex or not tokens.search(run.text):
+                if run.is_latex:
+                    for token, literal in literals.items():
+                        run.text = run.text.replace(token, literal)
+                result.append(run)
+                continue
+            offset = 0
+            for match in tokens.finditer(run.text):
+                if match.start() > offset:
+                    result.append(replace(run, text=run.text[offset:match.start()]))
+                content = cls._code_span_content(literals[match.group(0)])
+                result.append(replace(run, text=content, code=True))
+                offset = match.end()
+            if offset < len(run.text):
+                result.append(replace(run, text=run.text[offset:]))
+        return result
+
+    @staticmethod
+    def _code_span_content(literal: str) -> str:
+        """Return a code span's text without its backtick fence (CommonMark rules)."""
+        fence = len(literal) - len(literal.lstrip("`"))
+        content = literal[fence:len(literal) - fence].replace("\n", " ")
+        if len(content) >= 2 and content[0] == " " and content[-1] == " " and content.strip():
+            content = content[1:-1]
+        return content
 
     @staticmethod
     def _restore_code_spans(runs: List[TextRun], literals: Dict[str, str]) -> List[TextRun]:
@@ -516,9 +570,38 @@ class TextParser:
             run.color_hex = color_hex
         return runs
 
-    _INLINE_REFERENCE_RE = re.compile(
-        r"(?<!!)\[([^\]\n]+)\]\((https?://[^\s)]+|mailto:[^\s)]+)\)|\[\^(\d+)\]"
+    _LINK_DESTINATION = (
+        r"<[^<>\n]+>"
+        r"|https?://[^\s)]+|mailto:[^\s)]+"
+        r"|(?:[A-Za-z]:[\\/]|\.{1,2}[\\/])[^\s()<>]*"
+        r"|[^\s()<>]+\.(?i:md|markdown|docx?|xlsx?|xlsm|pptx?|pdf|hwpx?|txt|csv|png|jpe?g|gif|svg)"
     )
+    _INLINE_REFERENCE_RE = re.compile(
+        r"(?<!!)\[([^\]\n]+)\]\((" + _LINK_DESTINATION + r")\)|\[\^(\d+)\]"
+    )
+    _WINDOWS_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")
+    _URL_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+
+    @classmethod
+    def link_target(cls, destination: str) -> str:
+        """Return a Word relationship target for a Markdown link destination.
+
+        URLs are kept as written. A Windows absolute path becomes a `file:///`
+        URI; any other path stays relative to the document's folder. Spaces and
+        non-ASCII characters are percent-encoded.
+
+        Args:
+            destination: Destination as written, optionally in angle brackets.
+
+        Returns:
+            The hyperlink target.
+        """
+        target = destination[1:-1] if destination[:1] == "<" and destination[-1:] == ">" else destination
+        if cls._WINDOWS_PATH_RE.match(target):
+            return "file:///" + quote(target.replace("\\", "/"), safe="/:%")
+        if cls._URL_SCHEME_RE.match(target):
+            return target
+        return quote(target.replace("\\", "/"), safe="/#%")
 
     @classmethod
     def _parse_inline_formatting(cls, text: str) -> List[TextRun]:
@@ -542,7 +625,11 @@ class TextParser:
             if run.hyperlink:
                 for token, literal in literals.items():
                     run.hyperlink = run.hyperlink.replace(token, "\\" + literal)
-        return cls._restore_code_spans(runs, literals)
+        runs = cls._restore_code_spans(runs, literals)
+        for run in runs:
+            if run.hyperlink:
+                run.hyperlink = cls.link_target(run.hyperlink)
+        return runs
 
     @classmethod
     def _parse_plain_formatting(cls, text: str) -> List[TextRun]:
@@ -1555,7 +1642,10 @@ class MarkdownParser:
     _REFERENCE_LABEL_SPACE_RE = re.compile(r"\s+")
 
     def __init__(
-        self, preserve_trailing_double_space_break: bool = False, profile: Optional[str] = None
+        self,
+        preserve_trailing_double_space_break: bool = False,
+        profile: Optional[str] = None,
+        base_dir: Optional[Path] = None,
     ):
         """
         Initialize parser behavior flags.
@@ -1567,6 +1657,8 @@ class MarkdownParser:
         """
         self.preserve_trailing_double_space_break = preserve_trailing_double_space_break
         self.profile = profile
+        # Folder of the source file: local link paths inside it become relative.
+        self.base_dir = base_dir
         self._financial_rules = True
         self._term_sheet = False
         self._parse_warnings: List[str] = []
@@ -1601,7 +1693,7 @@ class MarkdownParser:
         # Detect whether YAML frontmatter was present
         has_frontmatter = len(remaining_lines) < len(lines)
         remaining_lines = self._strip_comments(remaining_lines)
-        remaining_lines = self._resolve_reference_links(remaining_lines)
+        remaining_lines = self._resolve_reference_links(remaining_lines, self.base_dir)
 
         # Extract footnotes/references
         fenced_indices = FenceScanner.protected_indices(remaining_lines)
@@ -1808,8 +1900,53 @@ class MarkdownParser:
             position += 1
         return "".join(pieces).split("\n")
 
+    _WRAP_DESTINATION_RE = re.compile(r"[\s()]")
+
     @classmethod
-    def _resolve_reference_links(cls, lines: List[str]) -> List[str]:
+    def _wrap_destination(cls, destination: str) -> str:
+        """Angle-bracket a destination with spaces or parentheses (CommonMark form)."""
+        if destination[:1] == "<" or not cls._WRAP_DESTINATION_RE.search(destination):
+            return destination
+        return "<" + destination + ">"
+
+    @classmethod
+    def _relative_destination(cls, destination: str, base_dir: Optional[Path]) -> str:
+        """Rewrite an absolute local path inside the document folder as a relative one.
+
+        A relative link opens for colleagues when the folder is shared and does
+        not expose the author's local directory. Paths elsewhere are kept.
+
+        Args:
+            destination: Link destination as written (angle brackets allowed).
+            base_dir: Folder of the source Markdown file, if known.
+
+        Returns:
+            The (possibly relative) destination without angle brackets.
+        """
+        raw = destination[1:-1] if destination[:1] == "<" and destination[-1:] == ">" else destination
+        if base_dir is None or not (TextParser._WINDOWS_PATH_RE.match(raw) or raw.startswith("/")):
+            return raw
+        try:
+            return Path(raw).resolve().relative_to(base_dir.resolve()).as_posix()
+        except (OSError, ValueError):
+            logger.warning(
+                "Link points to a local path outside the document folder; recipients "
+                "may not be able to open it: %s", raw,
+            )
+            return raw
+
+    @classmethod
+    def _relative_inline_link(cls, match: Match[str], base_dir: Optional[Path]) -> str:
+        """Return an inline link with a local absolute destination made relative."""
+        if not match.group(2) or base_dir is None:
+            return match.group(0)
+        destination = cls._relative_destination(match.group(2), base_dir)
+        return f"[{match.group(1)}]({cls._wrap_destination(destination)})"
+
+    @classmethod
+    def _resolve_reference_links(
+        cls, lines: List[str], base_dir: Optional[Path] = None
+    ) -> List[str]:
         """Collect link definitions and expand resolved references outside code."""
         literals: Dict[str, str] = {}
         prefix = "\ue000REF"
@@ -1834,14 +1971,17 @@ class MarkdownParser:
                 index += 1
         source = TextParser._CODE_SPAN_RE.sub(lambda match: protect(match.group(0)), "\n".join(pieces))
         source = TextParser._ESCAPE_RE.sub(lambda match: protect(match.group(0)), source)
-        source = TextParser._INLINE_REFERENCE_RE.sub(lambda match: protect(match.group(0)), source)
+        source = TextParser._INLINE_REFERENCE_RE.sub(
+            lambda match: protect(cls._relative_inline_link(match, base_dir)), source
+        )
         definitions: Dict[str, str] = {}
 
         def label(value: str) -> str:
             return cls._REFERENCE_LABEL_SPACE_RE.sub(" ", value.strip()).casefold()
 
         def define(match: Match[str]) -> str:
-            definitions.setdefault(label(match.group(1)), match.group(2) or match.group(3))
+            destination = cls._relative_destination(match.group(2) or match.group(3), base_dir)
+            definitions.setdefault(label(match.group(1)), destination)
             return ""
 
         source = cls._LINK_DEFINITION_RE.sub(define, source)
@@ -1850,7 +1990,7 @@ class MarkdownParser:
             destination = definitions.get(label(match.group(2) or match.group(1)))
             if destination is None:
                 return match.group(0)
-            return f"[{match.group(1)}]({destination})"
+            return f"[{match.group(1)}]({cls._wrap_destination(destination)})"
 
         source = cls._REFERENCE_LINK_RE.sub(resolve, source)
         # Later protection layers may contain tokens from earlier layers.
@@ -2659,7 +2799,8 @@ def parse_markdown_file(
     _, remaining_lines = FrontmatterParser.parse(lines, profile=profile)
     frontmatter_present = remaining_lines is not lines
 
-    parser = MarkdownParser(profile=profile)
+    base_dir = None if is_stream(source) else Path(str(source)).resolve().parent
+    parser = MarkdownParser(profile=profile, base_dir=base_dir)
     model = parser.parse(content)
     if get_profile(model.metadata.profile).is_ib:
         _infer_metadata_from_elements(model, allow_company_inference=not frontmatter_present)

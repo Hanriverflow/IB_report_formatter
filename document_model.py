@@ -67,6 +67,7 @@ class TextRun:
     hyperlink: Optional[str] = None
     footnote_id: Optional[int] = None
     term_key: Optional[str] = None  # set when the text is a substituted {{term}} value
+    code: bool = False  # inline code span content (rendered monospace, without backticks)
 
 
 @dataclass

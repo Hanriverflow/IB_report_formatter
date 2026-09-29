@@ -1,5 +1,9 @@
 """Office document composition and editable Word numbering.
 
+Changelog (Korean spacing):
+    - General profiles print Korean next to Latin text and digits without
+      Word's automatic spacing (`setup_korean_spacing`).
+
 Changelog (hardening):
     - Scope native list instances to their parent item and override the actual level.
     - Reuse memo title/metadata typography for cover-free IB reports, adding subtitles.
@@ -15,6 +19,7 @@ from docx.shared import Pt
 
 from document_model import DocumentMetadata, DocumentModel, ElementType, Heading
 from document_profiles import string_list
+from ooxml_order import insert_ordered
 from render_styles import STYLE
 
 
@@ -51,6 +56,36 @@ def setup_letter_styles(doc) -> None:
         fmt.tab_stops.add_tab_stop(Pt(42))
         if name in {"Office Metadata", "Office Subject", "Office Contact"}:
             fmt.left_indent, fmt.first_line_indent = Pt(42), Pt(-42)
+
+
+def setup_korean_spacing(doc) -> None:
+    """Print Korean next to Latin letters and digits without Word's automatic gap.
+
+    Word adds space between East Asian text and Latin text (`w:autoSpaceDE`) or
+    digits (`w:autoSpaceDN`) by default, printing `SPC 는`, `제 2 종`, `300 억원`.
+    Korean business documents print these tight, so general profiles turn both
+    off in the document defaults (the term-sheet profile does the same).
+
+    Args:
+        doc: Document whose request-scoped styles were created already.
+    """
+    styles = doc.styles.element
+    defaults = styles.find(qn("w:docDefaults"))
+    if defaults is None:
+        defaults = OxmlElement("w:docDefaults")
+        styles.insert(0, defaults)
+    paragraph_defaults = defaults.find(qn("w:pPrDefault"))
+    if paragraph_defaults is None:
+        paragraph_defaults = OxmlElement("w:pPrDefault")
+        defaults.append(paragraph_defaults)
+    properties = paragraph_defaults.find(qn("w:pPr"))
+    if properties is None:
+        properties = OxmlElement("w:pPr")
+        paragraph_defaults.append(properties)
+    for tag in ("w:autoSpaceDE", "w:autoSpaceDN"):
+        element = OxmlElement(tag)
+        element.set(qn("w:val"), "0")
+        insert_ordered(properties, element)
 
 
 def letter_appendix_index(model: DocumentModel) -> Optional[int]:
