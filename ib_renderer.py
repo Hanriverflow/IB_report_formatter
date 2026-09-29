@@ -99,6 +99,7 @@ from term_variables import (
     TERM_PROPERTY_PREFIX,
     TermRunCollector,
     collect_term_runs,
+    is_term_run,
     register_term_run,
     wrap_term_controls,
 )
@@ -749,8 +750,9 @@ class TextRenderer:
     ):
         """Render text runs to a paragraph.
 
-        Term value runs are only registered here; the orchestrator wraps them in
-        content controls after run-based post-processing. Linked values stay plain.
+        Term value runs are only registered here: post-processing then leaves
+        them intact, and the orchestrator wraps them in content controls last
+        when tags are on. Linked values stay plain.
         """
         font_name = font_name or STYLE.BODY_FONT
         font_size = font_size or STYLE.BODY_SIZE
@@ -2529,10 +2531,15 @@ class FootnoteRenderer:
             FontStyler.apply_run_style(text_run, font_size=STYLE.SMALL_SIZE)
 
     def _collect_reference_runs(self, footnotes: dict) -> List[Tuple[object, int]]:
-        """Find superscript numeric runs that correspond to known footnotes."""
+        """Find superscript numeric runs that correspond to known footnotes.
+
+        A term value is text the author wrote in `terms:`, never a footnote marker.
+        """
         references: List[Tuple[object, int]] = []
         for paragraph in self._iter_document_paragraphs():
             for run in paragraph.runs:
+                if is_term_run(run._r):
+                    continue
                 text = run.text.strip()
                 if not text.isdigit():
                     continue
@@ -2959,7 +2966,7 @@ class IBDocumentRenderer:
         """Stamp the DOCX package with a generator signature."""
         GeneratorSignatureWriter.apply(self.doc, profile)
 
-    def _apply_term_controls(self, collector: Optional[TermRunCollector]) -> None:
+    def _apply_term_controls(self, collector: TermRunCollector) -> None:
         """Tag term values as content controls last, then snapshot the tagged values.
 
         Run-based post-processing (negative and risk colours, base-case bold,
@@ -2967,10 +2974,8 @@ class IBDocumentRenderer:
         run once it is inside a content control.
 
         Args:
-            collector: This render's registered value runs; None when tags are off.
+            collector: This render's registered value runs and tagging option.
         """
-        if collector is None:
-            return
         tagged = wrap_term_controls(self.doc, collector)
         if tagged:
             GeneratorSignatureWriter.upsert_properties(

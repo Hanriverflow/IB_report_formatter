@@ -246,10 +246,17 @@ class TermRunCollector:
     Renderer post-processing (negative colours, risk colours, base-case bold,
     native footnotes) reads `Paragraph.runs`, which does not see runs inside a
     content control, so runs are registered while rendering and wrapped last.
+    Runs are registered even when tagging is off, so that post-processing can
+    still recognize a value (legacy footnote inference must never consume one).
     """
 
-    def __init__(self) -> None:
-        """Start with no registered runs."""
+    def __init__(self, tagging: bool = True) -> None:
+        """Start with no registered runs.
+
+        Args:
+            tagging: Whether registered runs are wrapped as content controls.
+        """
+        self.tagging = tagging
         self._runs: Dict[Any, Tuple[str, str]] = {}
 
     def register(self, run: Any, key: str, value: str) -> None:
@@ -271,16 +278,16 @@ _CONTROL_RUN_CHILDREN = frozenset(qn(tag) for tag in ("w:rPr", "w:t", "w:tab", "
 
 
 @contextmanager
-def collect_term_runs(enabled: bool) -> Iterator[Optional[TermRunCollector]]:
-    """Collect value runs for one render; nothing is collected when tags are off.
+def collect_term_runs(tagging: bool) -> Iterator[TermRunCollector]:
+    """Collect value runs for one render.
 
     Args:
-        enabled: Resolved `term_tags` option of the render.
+        tagging: Resolved `term_tags` option; when false, values stay plain text.
 
     Yields:
-        The render's collector, or None when values stay plain text.
+        The render's collector.
     """
-    collector = TermRunCollector() if enabled else None
+    collector = TermRunCollector(tagging)
     token = _TERM_RUNS.set(collector)
     try:
         yield collector
@@ -288,8 +295,14 @@ def collect_term_runs(enabled: bool) -> Iterator[Optional[TermRunCollector]]:
         _TERM_RUNS.reset(token)
 
 
+def is_term_run(run: Any) -> bool:
+    """Whether a `w:r` element shows a term value registered in this render."""
+    collector = _TERM_RUNS.get()
+    return collector is not None and collector.get(run) is not None
+
+
 def register_term_run(run: Any, key: str, value: str) -> None:
-    """Register a rendered value run; a no-op outside a tagging render.
+    """Register a rendered value run; a no-op outside a render.
 
     Args:
         run: The `w:r` element that shows the value.
@@ -312,9 +325,10 @@ def wrap_term_controls(document: Any, collector: TermRunCollector) -> Dict[str, 
         collector: Runs registered while rendering this document.
 
     Returns:
-        Tagged key -> value in key order, for the generation snapshot.
+        Tagged key -> value in key order, for the generation snapshot; empty
+        when the collector's tagging is off.
     """
-    if not len(collector):
+    if not collector.tagging or not len(collector):
         return {}
     root = document.element
     used_ids = {

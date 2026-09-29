@@ -199,16 +199,27 @@ def test_hyperlinked_value_is_substituted_but_never_tagged() -> None:
     assert term_properties(doc) == {"tenor": "3년"}
 
 
-def test_value_converted_to_a_legacy_footnote_reference_is_not_wrapped() -> None:
+@pytest.mark.parametrize("tags", [True, False])
+@pytest.mark.parametrize("notes", [
+    "\n\n[^1]: Note.",
+    "\n\n## References\n\n1. Source document.",
+])
+def test_legacy_footnote_inference_never_consumes_a_term_value(tags: bool, notes: str) -> None:
     doc = render(
-        front({"note": "1", "amount": "500억원"})
-        + "Claim {{amount}}^{{note}}^.\n\n## References\n\n1. Source document.",
-        profile="ib-memo",
+        front({"value": "01"}) + "Typed^1^ and ^{{value}}^ and {{value}}." + notes,
+        profile="ib-memo", term_tags=tags,
     )
+    [paragraph] = [p for p in doc.paragraphs if xml_text(p._p).startswith("Typed")]
+    assert xml_text(paragraph._p) == "Typed and 01 and 01."
+    # The typed legacy marker still becomes a native footnote; the value does not.
     assert len(xp(doc.element.body, ".//w:footnoteReference")) == 1
-    assert [describe(sdt)[0] for sdt in controls(doc)] == ["amount"]
-    assert not xp(doc.element.body, ".//w:sdt//w:footnoteReference")
-    assert term_properties(doc) == {"amount": "500억원"}
+    if tags:
+        assert [describe(sdt)[3] for sdt in controls(doc)] == ["01", "01"]
+        assert xp(controls(doc)[0], "./w:sdtContent/w:r/w:rPr/w:vertAlign/@w:val") == ["superscript"]
+        assert term_properties(doc) == {"value": "01"}
+    else:
+        assert controls(doc) == [] and term_properties(doc) == {}
+        assert paragraph.text == "Typed and 01 and 01."
 
 
 def test_empty_value_becomes_an_empty_control() -> None:
