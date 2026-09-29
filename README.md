@@ -126,7 +126,7 @@ Themes: `default`, `mono`, or a small YAML file using `body_font`, `heading_font
 
 ## Term sheet
 
-Use `profile: term-sheet` for Korean structured-finance terms. See the [fictional ABCP sample](samples/profiles/term-sheet.md) and [fictional house file](samples/profiles/term-sheet-house.yaml). The rendering behavior below requires the A2 renderer integration; this foundation/docs branch still rejects `note` and renders a confirmation fence as a diagnostic code panel, so the complete sample cannot yet pass strict rendering.
+Use `profile: term-sheet` for Korean structured-finance terms. See the [fictional ABCP sample](samples/profiles/term-sheet.md) and [fictional house file](samples/profiles/term-sheet-house.yaml).
 
 ```yaml
 ---
@@ -151,7 +151,7 @@ Write numbered sections explicitly with `##` and subsections with `###`. Table s
 - Spans default on for `term-sheet`; `spans: false` disables them. Other profiles enable them only with `spans: true`.
 - `label_columns` overrides the leading label count (integer from 0 to one less than the column count). Otherwise the first header cell's resolved span determines it, capped at column count minus one. Thus `| 구 분 | << | 내 용 |` gives two labels; `| 구 분 | 내 용 |` gives one.
 - Key-value tables have one or two label columns and exactly one content column. The first label is shaded/bold, with a fixed 33.5 mm width; the second is white, regular/muted, 30 mm wide. Other grid tables use content-based widths and regular-weight shaded labels. Use `label_columns: 0` for no label shading.
-- Use `columns` roles for dates, codes and numeric values, and `unit` for units above the table. `note` is optional text placed below the table, right-aligned and muted (8 pt); it is supported across profiles after renderer integration. Financial meanings and repayment schedules are not inferred or calculated.
+- Use `columns` roles for dates, codes and numeric values, and `unit` for units above the table. `note` is optional text placed below the table, right-aligned and muted (8 pt); every profile supports it. Financial meanings and repayment schedules are not inferred or calculated.
 
 Use `<br>` inside cells; in term-sheet body paragraphs it also starts a separate Word paragraph. Line markers receive hanging indents: `•`, `-`, `·` start at 0/3/6 mm with a 3 mm hang; `①`–`⑳` start at 0 with a 4.5 mm hang; `※` starts at 0 with a 4 mm hang and 8 pt text. Wrapped text aligns after the marker. A body Markdown `-` list retains normal list handling.
 
@@ -165,6 +165,25 @@ Place an empty, closed fence where the house/frontmatter confirmation should app
 The box has an introduction/checklist row and a shaded, centred signature row kept on one page. Missing text, a nonempty fence or an unclosed fence preserves the source in a diagnostic code panel; strict rendering rejects it. Other profiles treat the fence as code.
 
 Every page uses `confidential_label` (default `Strictly Confidential`) in the header. An empty label, `layout.confidential: false`, or `--no-confidential` suppresses it. The footer shows `subtitle version` when `version` is present, plus `PAGE / NUMPAGES`. The opening disclaimer remains required even with `--no-disclaimer`. The existing **`termsheet` preset** only toggles cover/TOC/end-disclaimer sections; it does not select this profile, load house text or apply term-sheet table formatting.
+
+Term-sheet documents wrap Korean at word boundaries (`w:wordWrap=1`) and turn off Word's automatic spacing between Korean and Latin text or digits (`w:autoSpaceDE/DN=0`), so amounts print as `300억원` and `SPC에`.
+
+### Term variables and consistency checks
+
+Define values that repeat across the document (amounts, rates, dates) once under frontmatter `terms:` and reference them as `{{key}}`. Every profile supports this.
+
+```yaml
+terms:
+  amount: "300억원"
+  cap_spread: "[1.10]%p"
+```
+
+- Keys start with a lowercase letter and use lowercase letters, digits and underscores (at most 40 characters). Values must be single-line strings; quote anything YAML would read as a number (`1.10` would otherwise become `1.1`).
+- References are substituted in the title, subtitle and date, headings, paragraphs, lists, table cells and blockquotes. Table captions, units, sources and as-of dates receive plain, untagged text. Inline code, code blocks, math and link destinations are never substituted. `\{{` stays literal.
+- Values are inserted exactly as written: they are not parsed as Markdown and table number formatting does not apply. Surrounding bold/italic is inherited.
+- An undefined key is left as `{{key}}` with a warning, and strict mode rejects it. Without `terms:`, `{{…}}` is ordinary text; `terms: {}` turns the feature on and checks every reference.
+- Each substituted value is wrapped in a Word content control tagged `ibrep:term:<key>`, and the generated value is recorded in the custom document property `ibrep.term.<key>`. For a clean copy without controls, use `--no-term-tags` or `layout: {term_tags: false}`.
+- After editing in Word, `docx-audit` adds a `terms` object to its JSON: `mismatched` (one key with different values), `changed` (values edited since generation, to carry back into the YAML), `missing` (keys whose controls were all removed) and `indicative` (values still in brackets). These are warnings; they do not affect `issues` or the exit code. The check covers consistency between tagged values only, not financial correctness.
 
 ## Charts (opt-in)
 
