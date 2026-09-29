@@ -561,8 +561,9 @@ class TextParser:
         """Shield inline images before colour spans, math, links and emphasis see them.
 
         An image is one unit, so `$` in its path is not math and emphasis around
-        it still pairs. An image-like text inside the destination of a link that
-        starts earlier belongs to that link.
+        it still pairs. An image-like text inside a link's destination belongs
+        to that link; an image in a link's label stays an image. A `!` after an
+        odd number of backslashes is escaped.
 
         Args:
             text: Text whose code spans are already protected.
@@ -576,14 +577,16 @@ class TextParser:
         prefix = "IMG"
         while prefix in text:
             prefix += "X"
-        links = [
-            match.span() for match in cls._INLINE_REFERENCE_RE.finditer(text)
-            if match.group(2) and text[match.start() - 1:match.start()] != "\\"
+        destinations = [
+            match.span(2) for match in cls._INLINE_REFERENCE_RE.finditer(text)
+            if match.group(2) and not cls._escaped(text, match.start())
         ]
         pieces: List[str] = []
         last = 0
         for match in cls._INLINE_IMAGE_RE.finditer(text):
-            if any(start < match.start() < end for start, end in links):
+            if cls._escaped(text, match.start()) or any(
+                start <= match.start() < end for start, end in destinations
+            ):
                 continue
             token = f"{prefix}{len(images)}"
             images[token] = (match.group(0), match.group(1), match.group(2) or match.group(3))
@@ -591,6 +594,14 @@ class TextParser:
             last = match.end()
         pieces.append(text[last:])
         return "".join(pieces), images
+
+    @staticmethod
+    def _escaped(text: str, index: int) -> bool:
+        """Whether the character at `index` follows an odd number of backslashes."""
+        count = 0
+        while index - count > 0 and text[index - count - 1] == "\\":
+            count += 1
+        return count % 2 == 1
 
     @classmethod
     def _split_image_runs(
@@ -784,7 +795,7 @@ class TextParser:
     # An image inside text or a table cell; a bare destination may hold one level
     # of balanced parentheses (`images/(2026)/a.png`), as converters write them.
     _INLINE_IMAGE_RE = re.compile(
-        r"(?<!\\)!\[([^\]\n]*)\]\(\s*(?:<([^<>\n]+)>|((?:[^\s()<>]|\([^\s()<>]*\))+))"
+        r"!\[((?:\\.|[^\]\\\n])*)\]\(\s*(?:<([^<>\n]+)>|((?:[^\s()<>]|\([^\s()<>]*\))+))"
         r"(?:\s+(?:\"[^\"\n]*\"|'[^'\n]*'))?\s*\)"
     )
     @classmethod
@@ -1612,7 +1623,7 @@ class TableSpanResolver:
             for row_index, row in enumerate(table.rows):
                 for column_index, cell in enumerate(row.cells):
                     coordinate = (row_index, column_index)
-                    raw = cell.content.strip()
+                    raw = "" if cell.literal else cell.content.strip()
                     root = coordinate
                     if raw in {r"\^^", r"\<<"}:
                         # Classify raw source before unescaping either representation.
@@ -1762,10 +1773,10 @@ class _HtmlTableReader(HTMLParser):
         self._line_break = self._separator = False
         self._cell.runs.append(run)
 
-    def _formatted(self, text: str) -> List[TextRun]:
-        """Runs for literal text under the open formatting tags, with term values split out."""
+    def _formatted(self, text: str) -> TextRun:
+        """A run of literal text under the open formatting tags."""
         link = next((href for href in reversed(self._links) if href), "")
-        run = TextRun(
+        return TextRun(
             text=text,
             bold=self._styles.get("bold", 0) > 0,
             italic=self._styles.get("italic", 0) > 0,
@@ -1775,11 +1786,6 @@ class _HtmlTableReader(HTMLParser):
             color_hex=next((color for color in reversed(self._colors) if color), None),
             hyperlink=TextParser.link_target(link) if link else None,
         )
-        if self._terms is None or run.code or "{{" not in text:
-            return [run]
-        tokens: TokenMap = {}
-        tokenized = TextParser._tokenize_references(text, {}, {}, self._terms, tokens)
-        return split_term_runs([replace(run, text=tokenized)], tokens)
 
     def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
         attributes = {name: value or "" for name, value in attrs}
@@ -1862,40 +1868,64 @@ class _HtmlTableReader(HTMLParser):
         text = re.sub(r"[ \t\r\n\f]+", " ", data)
         if not text.strip() and (self._line_break or self._separator or not self._line_has_content()):
             return  # layout whitespace between blocks
-        for run in self._formatted(text):
-            self._add(run)
+        self._add(self._formatted(text))
 
-    @staticmethod
-    def finish(runs: List[TextRun]) -> List[TextRun]:
-        """Trim cell edges and collapse the spaces HTML would not show.
+    def finish(self, runs: List[TextRun]) -> List[TextRun]:
+        """Make one cell's final runs, as HTML shows them.
+
+        Adjacent runs with the same formatting are merged first, so an amount
+        or a `{{key}}` reference split by a neutral tag such as `<span>` is
+        whole; then references are substituted, spaces HTML would not show are
+        removed and line breaks at the cell edges dropped. Code and term values
+        keep their text, including an empty value.
 
         Args:
             runs: Runs collected for one cell.
 
         Returns:
-            Runs without spaces at line edges or doubled across runs, and
-            without leading or trailing line breaks. Code and term values keep
-            their text.
+            The cell's runs.
         """
-        cleaned: List[TextRun] = []
+        merged: List[TextRun] = []
         for run in runs:
+            previous = merged[-1] if merged else None
+            if (
+                previous is not None and previous.image is None and run.image is None
+                and "\n" not in (previous.text, run.text)
+                and replace(previous, text="") == replace(run, text="")
+            ):
+                tail = run.text.lstrip(" ") if previous.text.endswith(" ") else run.text
+                merged[-1] = replace(previous, text=previous.text + tail)
+            else:
+                merged.append(run)
+        substituted: List[TextRun] = []
+        for run in merged:
+            if self._terms is None or run.code or "{{" not in run.text:
+                substituted.append(run)
+                continue
+            self._terms.reserve(run.text)  # literal token-shaped text never becomes a value
+            tokens: TokenMap = {}
+            tokenized = TextParser._tokenize_references(run.text, {}, {}, self._terms, tokens)
+            substituted.extend(split_term_runs([replace(run, text=tokenized)], tokens))
+
+        def fixed(run: TextRun) -> bool:
+            return run.image is not None or run.term_key is not None or run.code or run.text == "\n"
+
+        cleaned: List[TextRun] = []
+        for run in substituted:
             text = run.text
-            if run.image is None and text != "\n" and not run.code and run.term_key is None:
+            if not fixed(run):
                 previous = cleaned[-1] if cleaned else None
                 if previous is None or previous.text == "\n" or (
                     previous.image is None and previous.text.endswith(" ")
                 ):
                     text = text.lstrip(" ")
-            if run.image is not None or text:
+            if text or run.image is not None or run.term_key is not None:
                 cleaned.append(replace(run, text=text))
         for index, run in enumerate(cleaned):
             following = cleaned[index + 1] if index + 1 < len(cleaned) else None
-            if (
-                (following is None or following.text == "\n")
-                and run.image is None and run.text != "\n" and not run.code and run.term_key is None
-            ):
+            if (following is None or following.text == "\n") and not fixed(run):
                 cleaned[index] = replace(run, text=run.text.rstrip(" "))
-        cleaned = [run for run in cleaned if run.image is not None or run.text]
+        cleaned = [run for run in cleaned if run.text or run.image is not None or run.term_key is not None]
         while cleaned and cleaned[0].text == "\n":
             cleaned.pop(0)
         while cleaned and cleaned[-1].text == "\n":
@@ -1944,9 +1974,9 @@ class HtmlTableParser:
 
     @staticmethod
     def _table_cell(runs: List[TextRun]) -> TableCell:
-        """A prepared cell; `content` is its text (breaks as `<br>`), never a span marker."""
+        """A prepared literal cell; `content` is its text with breaks as `<br>`."""
         content = "".join(run.text for run in runs).replace("\n", "<br>")
-        return TableCell(content="\\" + content if content in ("^^", "<<") else content, runs=runs)
+        return TableCell(content=content, runs=runs, literal=True)
 
     @classmethod
     def parse(
@@ -1983,7 +2013,7 @@ class HtmlTableParser:
                     position += 1
                 rowspan = min(cell.rowspan, len(rows) - row_index)
                 spans[(row_index, position)] = rowspan
-                runs[(row_index, position)] = _HtmlTableReader.finish(cell.runs)
+                runs[(row_index, position)] = reader.finish(cell.runs)
                 for down in range(rowspan):
                     for right in range(cell.colspan):
                         anchors[(row_index + down, position + right)] = (row_index, position)

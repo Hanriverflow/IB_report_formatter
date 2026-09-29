@@ -266,6 +266,9 @@ def test_html_empty_rows_keep_spans_in_their_columns(source: str, shape: tuple, 
     table = _render(source, profile="plain").tables[0]
     assert (len(table.rows), len(table.columns)) == shape
     assert [cell.text for cell in table.rows[-1].cells] == last_row
+    # The body row span (second case) is a real vertical merge, not literal markers.
+    assert len(table._tbl.xpath(".//w:vMerge")) == (2 if shape[0] == 4 else 0)
+    assert "^^" not in "".join(table._tbl.xpath(".//w:t/text()"))
 
 
 def test_html_literal_tags_and_markdown_characters_stay_text() -> None:
@@ -294,9 +297,8 @@ def test_html_nested_formatting_combines() -> None:
     )
     runs = MarkdownParser(profile="plain").parse(source).elements[0].content.rows[1].cells[0].runs
     assert [(run.text, run.bold, run.italic, run.hyperlink) for run in runs] == [
-        ("x", True, True, None), (" ", False, False, None), ("a ", True, False, None),
-        ("b", True, False, None), (" c", True, False, None), (" ", False, False, None),
-        ("링크", True, False, "https://example.com"),
+        ("x", True, True, None), (" ", False, False, None), ("a b c", True, False, None),
+        (" ", False, False, None), ("링크", True, False, "https://example.com"),
     ]
 
 
@@ -316,6 +318,59 @@ def test_data_uri_images_in_html(tmp_path: Path) -> None:
     body = f'<img src="{uri}" alt="x">\n\n<table><tr><td>셀</td></tr><tr><td><img src="{uri}"></td></tr></table>'
     doc = _render_model(parse_markdown_file(str(_source(tmp_path, body))))
     assert len(doc.element.body.xpath(".//w:drawing")) == 2
+
+
+TERMS_FRONT = "---\nprofile: business-report\ntitle: 가상 문서\nterms:\n  mark: \" << \"\n  empty: \"\"\n  key: VALUE\n---\n\n"
+
+
+def _html_cell_runs(cell_html: str, front: str = TERMS_FRONT) -> list:
+    model = MarkdownParser().parse(front + f"<table><tr><td>구분</td><td>내용</td></tr><tr><td>x</td><td>{cell_html}</td></tr></table>\n")
+    table = next(element.content for element in model.elements if element.element_type.name == "TABLE")
+    return table.rows[1].cells[1].runs
+
+
+def test_html_cell_text_that_looks_like_a_span_marker_stays_literal() -> None:
+    runs = _html_cell_runs("{{mark}}")
+    assert [(run.text, run.term_key) for run in runs] == [(" << ", "mark")]
+    doc = _render(TERMS_FRONT + "<table><tr><td>A</td><td>B</td></tr><tr><td><b>^^</b></td><td>{{mark}}</td></tr></table>\n")
+    table = doc.tables[0]
+    assert not table._tbl.xpath(".//w:gridSpan") and not table._tbl.xpath(".//w:vMerge")
+    assert table._tbl.xpath(".//w:r[w:rPr/w:b][w:t='^^']")
+    with pytest.raises(ValueError, match="[Ii]mage"):
+        _render(TERMS_FRONT + '<table><tr><td>A</td></tr><tr><td>^^<img src="missing.png" alt="없음"></td></tr></table>\n')
+
+
+def test_html_runs_split_by_neutral_tags_are_whole_for_numbers_and_terms() -> None:
+    doc = _render(
+        "<table><tr><th>항목</th><th>2026</th></tr><tr><td>x</td><td><span>1234</span>5678</td></tr></table>\n",
+        profile="ib-report", strict=False,
+    )
+    table = next(table for table in doc.tables if "항목" in table._tbl.xml)
+    assert table.cell(1, 1).text == "12,345,678"
+    assert [(run.text, run.term_key) for run in _html_cell_runs("<span>{{</span><span>key}}</span>")] == [("VALUE", "key")]
+
+
+def test_html_empty_term_value_keeps_its_run() -> None:
+    runs = _html_cell_runs("A{{empty}}B")
+    assert [(run.text, run.term_key) for run in runs] == [("A", None), ("", "empty"), ("B", None)]
+
+
+def test_html_token_shaped_text_is_not_a_term() -> None:
+    runs = _html_cell_runs("&#xE000;TERM0&#xE001; {{key}}")
+    assert "".join(run.text for run in runs) == "TERM0 VALUE"
+    assert [run.term_key for run in runs if run.term_key] == ["key"]
+
+
+@pytest.mark.parametrize("source,alt", [("a ![a\\]b](a.png) z", "a]b"), ("a \\\\![x](a.png) z", "x")])
+def test_escapes_around_images_follow_backslash_parity(source: str, alt: str) -> None:
+    assert [run.image.alt_text for run in TextParser.parse_runs(source) if run.image] == [alt]
+
+
+def test_image_in_a_link_label_is_a_linked_image() -> None:
+    runs = TextParser.parse_runs("a [![x](a.png)](b.pdf) z")
+    assert [(run.text, run.image is not None, run.hyperlink) for run in runs] == [
+        ("a ", False, None), ("", True, "b.pdf"), (" z", False, None),
+    ]
 
 
 def test_unclosed_html_table_is_reported_and_strict_rejects() -> None:
