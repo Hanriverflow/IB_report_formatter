@@ -46,7 +46,6 @@ _BORDER_EDGES = ("top", "left", "bottom", "right", "insideH", "insideV")
 _CELL_SPACE_AFTER = Pt(1.5)
 _CELL_LINE_SPACING = 1.05
 _SPACER_HEIGHT = Pt(4)
-_MIN_CONTENT_WIDTH = Mm(30)
 # Successor elements used to insert children in ECMA-376 schema order.
 _TCPR_AFTER_SHD = (
     "w:noWrap", "w:tcMar", "w:textDirection", "w:tcFitText", "w:vAlign", "w:hideMark",
@@ -383,8 +382,19 @@ def _rgb(hex_color: str) -> RGBColor:
     return RGBColor.from_string(hex_color)
 
 
+def label_widths(label_columns: int) -> List[int]:
+    """Fixed label column widths in EMU: the label, plus the second label tier."""
+    widths = [int(STYLE.TS_LABEL_WIDTH)]
+    if label_columns == 2:
+        widths.append(int(STYLE.TS_SUBLABEL_WIDTH))
+    return widths
+
+
 def key_value_widths(label_columns: int, available: int) -> Optional[List[int]]:
     """Fixed label grid for key-value tables, so their first vertical line is common.
+
+    The labels keep their fixed widths whenever the content column keeps a
+    positive width, however narrow the section is.
 
     Args:
         label_columns: One or two leading label columns.
@@ -392,15 +402,12 @@ def key_value_widths(label_columns: int, available: int) -> Optional[List[int]]:
             or landscape); the content column receives the remainder.
 
     Returns:
-        Column widths in EMU, or None when the section leaves no usable content width.
+        Column widths in EMU, or None when the fixed labels leave no content width
+        (the caller reports that explicitly).
     """
-    fixed = [int(STYLE.TS_LABEL_WIDTH)]
-    if label_columns == 2:
-        fixed.append(int(STYLE.TS_SUBLABEL_WIDTH))
+    fixed = label_widths(label_columns)
     remaining = int(available) - sum(fixed)
-    if remaining < int(_MIN_CONTENT_WIDTH):
-        return None
-    return fixed + [remaining]
+    return fixed + [remaining] if remaining > 0 else None
 
 
 def _measure(tag: str, twips: int) -> Any:
@@ -744,11 +751,28 @@ def confirmation_has_text(confirmation: ConfirmationText) -> bool:
     return any(text.strip() for text in (confirmation.intro, *confirmation.items, confirmation.signature))
 
 
-def _printable_width(section: Any) -> int:
+def printable_width(section: Any) -> int:
+    """Actual printable width of a section in EMU, without any minimum floor.
+
+    Raises:
+        ValueError: The section lacks explicit page width or margins.
+    """
     width, left, right = section.page_width, section.left_margin, section.right_margin
     if width is None or left is None or right is None:
         raise ValueError("Section dimensions are required for term-sheet layout")
     return int(width) - int(left) - int(right)
+
+
+def positive_printable_width(section: Any, what: str) -> int:
+    """Printable width for content that must fit its section; diagnose impossible geometry.
+
+    Raises:
+        ValueError: The section has no positive printable width for `what`.
+    """
+    width = printable_width(section)
+    if width <= 0:
+        raise ValueError(f"{what} has no printable width in its section")
+    return width
 
 
 def _keep_previous_with_next(doc: Any) -> None:
@@ -801,7 +825,7 @@ def render_confirmation(doc: Any, confirmation: ConfirmationText, render_runs: R
     items = [item.strip() for item in confirmation.items if item.strip()]
     signature = confirmation.signature.strip()
     kinds = (["body"] if intro or items else []) + (["signature"] if signature else [])
-    width = _printable_width(doc.sections[-1])
+    width = positive_printable_width(doc.sections[-1], "Confirmation box")
     table = doc.add_table(rows=len(kinds), cols=1)
     table.style = STYLE.STYLE_TABLE_GRID
     table.columns[0].width = Emu(width)
@@ -900,7 +924,7 @@ def setup_term_sheet_header_footer(
     grey = _rgb(STYLE.TS_CONFIDENTIAL_HEX)
     size = STYLE.TS_HEADER_FOOTER_SIZE
     for section in doc.sections:
-        width = _printable_width(section)
+        width = printable_width(section)
         header = _reset_story(section.header)
         header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         if label.strip():
@@ -908,7 +932,8 @@ def setup_term_sheet_header_footer(
         footer = _reset_story(section.footer)
         if footer.style is not None:
             footer.style.paragraph_format.tab_stops.clear_all()
-        footer.paragraph_format.tab_stops.add_tab_stop(Emu(width), WD_TAB_ALIGNMENT.RIGHT)
+        if width > 0:  # a section without printable width is reported by the structural audit
+            footer.paragraph_format.tab_stops.add_tab_stop(Emu(width), WD_TAB_ALIGNMENT.RIGHT)
         runs = ([TextRun(text=left)] if left else []) + [TextRun(text="\t")]
         render_runs(footer, runs, default_color=grey, font_size=size)
         _add_field(footer, "PAGE", grey, size)

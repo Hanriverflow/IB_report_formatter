@@ -118,7 +118,9 @@ from term_sheet import (
     confirmation_has_text,
     estimate_cell_lines,
     key_value_widths,
+    label_widths,
     line_text,
+    positive_printable_width,
     render_confirmation,
     render_term_sheet_heading,
     render_term_sheet_opening,
@@ -1541,8 +1543,11 @@ class TableRenderer:
 
         previous_geometry = self._begin_landscape(table)
         if self.term_sheet:
-            self._render_term_sheet_table(table)
-            self._end_landscape(previous_geometry)
+            try:
+                self._render_term_sheet_table(table)
+            finally:
+                # A diagnosed failure must not leave later content in landscape.
+                self._end_landscape(previous_geometry)
             return
         for text in [
             table.caption,
@@ -1644,9 +1649,14 @@ class TableRenderer:
 
         Args:
             table: Parsed table; `label_columns` is inferred by the parser.
+
+        Raises:
+            ValueError: The section has no positive printable width. Unlike the
+                legacy estimate there is no three-inch floor, so a term-sheet table
+                never exceeds its section.
         """
         row_count, col_count = len(table.rows), table.col_count
-        available = self._get_available_table_width_emu()
+        available = positive_printable_width(self.doc.sections[-1], "Term-sheet table")
         add_table_heading(
             self.doc, table.caption, table.unit, table.as_of, TextRenderer.render_runs, available
         )
@@ -1658,6 +1668,12 @@ class TableRenderer:
         )
         key_value = label_columns in (1, 2) and col_count == label_columns + 1
         widths = key_value_widths(label_columns, available) if key_value else None
+        if key_value and widths is None:
+            needed_mm, section_mm = sum(label_widths(label_columns)) / 36000, available / 36000
+            self._report(
+                f"Term-sheet label columns need {needed_mm:.1f} mm but the section is only "
+                f"{section_mm:.1f} mm wide; column widths estimated from content"
+            )
         if widths is None:
             widths = [
                 int(Inches(width))
@@ -1814,14 +1830,18 @@ class TableRenderer:
             Inclusive zero-based (top, left, bottom, right) rectangles that were merged.
         """
         rectangles, problems = self._span_rectangles(table)
-        errors = getattr(self.doc.part, "_ib_render_errors", None)
         for problem in problems:
-            logger.warning("%s", problem)
-            if errors is not None:
-                errors.append(problem)
+            self._report(problem)
         for top, left, bottom, right in rectangles:
             word_table.cell(top, left).merge(word_table.cell(bottom, right))
         return rectangles
+
+    def _report(self, message: str) -> None:
+        """Log a rendering diagnostic and record it for strict validation."""
+        logger.warning("%s", message)
+        errors = getattr(self.doc.part, "_ib_render_errors", None)
+        if errors is not None:
+            errors.append(message)
 
     @staticmethod
     def _span_rectangles(table: Table) -> Tuple[List[Tuple[int, int, int, int]], List[str]]:

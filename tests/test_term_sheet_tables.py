@@ -314,6 +314,60 @@ def test_landscape_key_value_table_takes_the_remaining_section_width() -> None:
     assert sum(grid) == pytest.approx(printable_twips(landscape), abs=1)
 
 
+def write_theme(tmp_path, text: str) -> str:
+    path = tmp_path / "theme.yaml"
+    path.write_text(text, encoding="utf-8")
+    return str(path)
+
+
+def test_term_sheet_table_uses_the_actual_narrow_section_width(tmp_path) -> None:
+    theme = write_theme(tmp_path, "LEFT_MARGIN: 3\nRIGHT_MARGIN: 3\n")
+    _, saved = render(ts_markdown(ONE_LABEL), strict=True, theme=theme)
+    table = tables(saved)[0]
+    grid = [int(width) for width in attr(table, "./w:tblGrid/w:gridCol", "w:w")]
+    total = printable_twips(saved.sections[0])
+    assert total < twips(76.2)  # narrower than the legacy three-inch estimate floor
+    assert grid[0] == twips(33.5)
+    assert sum(grid) == pytest.approx(total, abs=1)
+    assert int(attr(table, "./w:tblPr/w:tblW", "w:w")[0]) <= total + 1
+
+
+@pytest.mark.parametrize("landscape", [False, True])
+def test_term_sheet_table_without_printable_width_is_diagnosed(landscape: bool) -> None:
+    model = MarkdownParser().parse(ts_markdown(ONE_LABEL))
+    table_model = model.elements[0].content
+    table_model.landscape = landscape
+    doc = Document()
+    for section in doc.sections:
+        section.left_margin = section.right_margin = section.page_height
+    with pytest.raises(ValueError, match="printable width"):
+        ib_renderer.TableRenderer(doc, term_sheet=True).render(table_model)
+    assert not doc.tables and not "".join(doc.element.body.xpath(".//w:t/text()"))
+    assert len(doc.sections) == (3 if landscape else 1)
+    assert doc.sections[-1].page_width < doc.sections[-1].page_height
+
+
+def test_fixed_label_grid_is_kept_while_the_content_column_has_width(tmp_path) -> None:
+    theme = write_theme(tmp_path, "margin_mm: 60\n")
+    _, saved = render(ts_markdown(ONE_LABEL + "\n" + KEY_VALUE), strict=True, theme=theme)
+    grids = [[int(width) for width in attr(table, "./w:tblGrid/w:gridCol", "w:w")] for table in tables(saved)]
+    total = printable_twips(saved.sections[0])
+    assert grids[0][0] == grids[1][0] == twips(33.5) and grids[1][1] == twips(30)
+    assert sum(grids[0]) == pytest.approx(total, abs=1) and sum(grids[1]) == pytest.approx(total, abs=1)
+
+
+def test_label_columns_that_cannot_fit_are_diagnosed(tmp_path) -> None:
+    theme = write_theme(tmp_path, "LEFT_MARGIN: 3\nRIGHT_MARGIN: 3\n")
+    renderer, saved = render(ts_markdown(ONE_LABEL + "\n" + KEY_VALUE), theme=theme)
+    one_label, two_labels = ([int(width) for width in attr(table, "./w:tblGrid/w:gridCol", "w:w")] for table in tables(saved))
+    total = printable_twips(saved.sections[0])
+    assert one_label[0] == twips(33.5)
+    assert sum(two_labels) == pytest.approx(total, abs=3)
+    assert [error for error in renderer.errors if "label" in error.lower()]
+    with pytest.raises(ValueError, match="validation"):
+        render(ts_markdown(ONE_LABEL + "\n" + KEY_VALUE), strict=True, theme=theme)
+
+
 def test_term_sheet_frame_borders_margins_and_header_repeat() -> None:
     _, saved = render(ts_markdown(KEY_VALUE), strict=True)
     table = tables(saved)[0]
