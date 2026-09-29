@@ -15,6 +15,11 @@ from md_parser import MarkdownParser
 
 
 def compose(profile="ib-report", frontmatter="", **kwargs):
+    if profile == "term-sheet":
+        frontmatter = (
+            "prepared_by: 라마바은행 자본시장부\n"
+            "disclaimer: 가상 조건 검토 자료입니다.\n" + frontmatter
+        )
     model = MarkdownParser(profile=profile).parse(
         "---\ntitle: Bundle test\nsender: {organization: Example}\nrecipients: [Team]\n"
         + frontmatter + "\n---\n# Bundle test\n\nBody text."

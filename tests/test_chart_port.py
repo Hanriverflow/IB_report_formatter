@@ -27,6 +27,17 @@ source: 가상 자료
 CHART = "```chart\n" + SPEC + "```\n"
 
 
+def _profile_frontmatter(profile: str) -> str:
+    """Supply only the metadata required by each profile's rendering contract."""
+    fields = "sender: {organization: Example}\nrecipients: [Team]\n"
+    if profile == "term-sheet":
+        fields += (
+            "title: 가상 조건표\nprepared_by: 라마바은행 자본시장부\n"
+            "disclaimer: 가상 조건 검토 자료입니다.\n"
+        )
+    return "---\n" + fields + "---\n"
+
+
 def render(markdown=CHART, **kwargs):
     """Exercise actual parsing and round-trip DOCX serialization."""
     profile = kwargs.pop("profile", "plain")
@@ -40,7 +51,7 @@ def render(markdown=CHART, **kwargs):
 
 @pytest.mark.parametrize("profile", PROFILES)
 def test_chart_off_matches_legacy_code_panel(profile):
-    prefix = "---\nsender: {organization: Example}\nrecipients: [Team]\n---\n"
+    prefix = _profile_frontmatter(profile)
     _, renderer, doc = render(prefix + CHART, profile=profile)
     assert not doc.inline_shapes
     assert any(SPEC.rstrip() == table.cell(0, 0).text for table in doc.tables)
@@ -181,7 +192,7 @@ def test_disabled_chart_xml_is_identical_to_code_block(profile, monkeypatch):
 
     monkeypatch.setattr("ib_renderer.uuid4", lambda: UUID(int=0))
     model = MarkdownParser(profile=profile).parse(
-        "---\nsender: {organization: Example}\nrecipients: [Team]\n---\n" + CHART
+        _profile_frontmatter(profile) + CHART
     )
     chart_doc = IBDocumentRenderer().render(model)
     element = model.elements[0]

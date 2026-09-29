@@ -3,6 +3,7 @@
 Changelog (quality hardening):
     - Preserve inferred IB subtitle headings for cover-free rendering.
     - Add chart specifications with retained source for opt-in rendering.
+    - Retain original confirmation fences for lossless term-sheet fallback.
 """
 
 from dataclasses import dataclass, field
@@ -90,6 +91,13 @@ class CodeBlock:
         """Return True if text contains enough box-drawing characters."""
         count = sum(1 for ch in text if ch in CodeBlock._BOX_CHARS)
         return count >= threshold
+
+
+@dataclass
+class ConfirmationBlock:
+    """An empty term-sheet confirmation fence with its complete source."""
+
+    source: str
 
 
 @dataclass
@@ -275,6 +283,7 @@ ElementContent = Union[
     Blockquote,
     Image,
     CodeBlock,
+    ConfirmationBlock,
     Chart,
     LaTeXEquation,  # NEW (v3)
     "Diagram",  # NEW (v5)

@@ -2,6 +2,10 @@
 IB Renderer Module for Word Report Generation
 Handles styling and rendering of document elements in IB Bank style.
 
+Changelog (term-sheet foundation):
+    - Validate term-sheet metadata and resolve house text before document output.
+    - Preserve confirmation fences in code panels until box rendering is available.
+
 Changelog (cover-free title):
     - Render the IB report title, subtitle and memo-style metadata without a cover.
     - Place the cover-free report opening before the TOC on the first page.
@@ -54,13 +58,14 @@ from docx.oxml.ns import qn
 from docx.oxml.parser import parse_xml
 from docx.shared import Inches, Mm, Pt, RGBColor
 
-from document_model import Chart
+from document_model import Chart, ConfirmationBlock
 from document_profiles import (
     RenderOptions,
     default_metadata,
     load_style,
     resolve_options,
     validate_office_metadata,
+    validate_term_sheet_metadata,
 )
 from md_parser import (
     Blockquote,
@@ -90,6 +95,7 @@ from office_layout import (
 )
 from render_styles import STYLE, RasterFontPolicy, collect_raster_font_diagnostics, use_style
 from render_styles import IBStyle as IBStyle
+from term_sheet import TermSheetTexts, resolve_term_sheet_texts
 
 logger = logging.getLogger(__name__)
 
@@ -2754,6 +2760,7 @@ class IBDocumentRenderer:
         self.separator_mode = separator_mode
         self.errors: List[str] = []
         self.charts = False
+        self.term_sheet_texts: Optional[TermSheetTexts] = None
         self._reset_document()
 
     def _reset_document(self) -> None:
@@ -2775,6 +2782,7 @@ class IBDocumentRenderer:
 
     def render(self, model: DocumentModel) -> DocxDocument:
         """Render through one composition path, using request-local settings."""
+        self.term_sheet_texts = None
         model = deepcopy(model)
         resolved = resolve_options(model.metadata, self.options)
         if model.parsed_profile is not None and model.parsed_profile != resolved.profile.name:
@@ -2791,6 +2799,9 @@ class IBDocumentRenderer:
             model.metadata.profile = resolved.profile.name
         if not resolved.profile.is_ib:
             validate_office_metadata(model.metadata)
+        if resolved.profile.name == "term-sheet":
+            validate_term_sheet_metadata(model.metadata)
+            self.term_sheet_texts = resolve_term_sheet_texts(model.metadata, resolved.house)
         report_title_block = (
             not resolved.cover and resolved.profile.name == "ib-report"
             and bool(model.metadata.title.strip())
@@ -3010,6 +3021,13 @@ class IBDocumentRenderer:
 
         elif etype == ElementType.CODE_BLOCK:
             self._render_code_block(cast(CodeBlock, element.content))
+
+        elif etype == ElementType.CONFIRMATION:
+            source = cast(ConfirmationBlock, element.content).source
+            self._render_code_block(CodeBlock(source, "confirmation"))
+            message = "Confirmation rendering is unavailable; original fence preserved as a code block"
+            self.errors.append(message)
+            logger.warning("%s", message)
 
         elif etype == ElementType.CHART:
             chart = cast(Chart, element.content)
