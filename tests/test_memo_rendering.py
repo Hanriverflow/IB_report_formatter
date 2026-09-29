@@ -70,11 +70,16 @@ def _code_texts(element) -> list:
     ]
 
 
-def test_plain_callout_renders_code_and_links_like_body_text() -> None:
-    doc = _render("# 메모\n\n> 계좌 `022-1` 와 [안내](https://example.com/a) 참고\n")
+def test_plain_callout_renders_code_like_body_text() -> None:
+    doc = _render("# 메모\n\n> 계좌 `022-1` 참고\n")
     assert "`" not in "".join(doc.element.body.xpath(".//w:t/text()"))
     assert _code_texts(doc.element.body) == ["022-1"]
+
+
+def test_plain_callout_renders_links_like_body_text() -> None:
+    doc = _render("# 메모\n\n> 자세한 내용은 [안내](https://example.com/a) 참고\n")
     assert _hyperlink_targets(doc) == [("안내", "https://example.com/a")]
+    assert "](" not in "".join(doc.element.body.xpath(".//w:t/text()"))
 
 
 def test_term_sheet_line_splitting_keeps_code_whitespace() -> None:
@@ -208,6 +213,41 @@ def test_file_uris_angle_destinations_and_file_hashes_survive_saving(tmp_path: P
         ("해시", "a%23b.pdf"),
         ("조각", "%EC%A0%95%EB%A6%AC.md#%EA%B0%9C%EC%9A%94"),
     ]
+
+
+def test_rebasing_keeps_shares_fragments_and_unusual_targets(tmp_path: Path) -> None:
+    uri = tmp_path.as_uri()
+    source = _write_memo(
+        tmp_path,
+        r"[공유](<\\server\share\a.pdf>) · [쪽](<" + uri + "/a.pdf#page=2>) · "
+        "[호스트](<" + uri.replace("file://", "file://LOCALHOST", 1) + "/b.pdf>) · "
+        "[널](a%00.pdf) · [주소](<file://[bad/c.pdf>) · [바이트](a%FF.pdf)",
+    )
+    output = tmp_path / "memo.docx"
+    _convert("registry", source, output)
+    assert _hyperlink_targets(Document(str(output))) == [
+        ("공유", "file://server/share/a.pdf"),
+        ("쪽", "a.pdf#page=2"),
+        ("호스트", "b.pdf"),
+        ("널", "a%00.pdf"),
+        ("주소", "file://[bad/c.pdf"),
+        ("바이트", "a%FF.pdf"),
+    ]
+
+
+def test_symlinked_output_file_does_not_change_the_link_base(tmp_path: Path) -> None:
+    source = _write_memo(tmp_path / "source", "[상대](a.pdf)")
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    (archive / "old.docx").write_bytes(b"")
+    output = tmp_path / "deliverable" / "nested" / "report.docx"
+    output.parent.mkdir(parents=True)
+    try:
+        output.symlink_to(archive / "old.docx")
+    except OSError:
+        pytest.skip("symbolic links are not permitted here")
+    _convert("registry", source, output)
+    assert _hyperlink_targets(Document(str(output))) == [("상대", "../../source/a.pdf")]
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows path syntax")

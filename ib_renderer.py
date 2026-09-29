@@ -3235,7 +3235,8 @@ def rebase_local_links(document: DocxDocument, source_dir: Optional[Path], outpu
     """
     if source_dir is None:
         return
-    output_dir = Path(output_path).resolve().parent
+    # Resolve the folder, not the file: saving replaces an existing output symlink.
+    output_dir = Path(output_path).parent.resolve()
     for part in document.part.package.iter_parts():
         for relationship in part.rels.values():
             if relationship.reltype == RT.HYPERLINK and relationship.is_external:

@@ -344,15 +344,19 @@ def file_uri(path: str) -> str:
     """Return the `file:` URI of an absolute local path; `%` and `#` are literal.
 
     Args:
-        path: Absolute Windows (`C:\\...`, `C:/...`) or POSIX (`/...`) path.
+        path: Absolute Windows (`C:\\...`, `C:/...`), UNC (`\\\\server\\share`)
+            or POSIX (`/...`) path.
 
     Returns:
-        The percent-encoded URI, as `Path.as_uri()` writes it.
+        The percent-encoded URI, as `Path.as_uri()` writes it; a UNC server
+        becomes the URI host.
     """
-    if _DRIVE_PATH_RE.match(path):
-        normalized = path.replace("\\", "/")
+    normalized = path if path[:1] == "/" else path.replace("\\", "/")
+    if _DRIVE_PATH_RE.match(normalized):
         return "file:///" + normalized[:2] + quote(normalized[2:], safe="/")
-    return "file://" + quote(path, safe="/")
+    if normalized[:2] == "//":
+        return "file:" + quote(normalized, safe="/")
+    return "file://" + quote(normalized, safe="/")
 
 
 def rebase_link_target(target: str, source_dir: Path, output_dir: Path) -> str:
@@ -360,11 +364,12 @@ def rebase_link_target(target: str, source_dir: Path, output_dir: Path) -> str:
 
     A relative target refers to the source folder, so it is rewritten to reach
     the same file from the output folder (a `file:` URI when no relative path
-    exists, e.g. on another drive); its `#` fragment is kept. An absolute
-    `file:` target becomes relative only when the file lies inside the output
-    folder, so the author's directory is not exposed; otherwise it is kept and
-    a warning says recipients may not be able to open it. Other URLs and
-    in-document anchors are returned unchanged.
+    exists, e.g. on another drive); its `#` fragment is kept. An absolute local
+    `file:` target becomes relative, keeping its query and fragment, only when
+    the file lies inside the output folder, so the author's directory is not
+    exposed; otherwise it is kept and a warning says recipients may not be able
+    to open it. Network shares, other URLs, in-document anchors and targets
+    that are not valid local paths are returned unchanged.
 
     Args:
         target: Hyperlink target produced by `TextParser.link_target`.
@@ -374,30 +379,42 @@ def rebase_link_target(target: str, source_dir: Path, output_dir: Path) -> str:
     Returns:
         The target to store in the saved document.
     """
+    try:
+        return _rebase_link_target(target, source_dir, output_dir.resolve())
+    except (OSError, ValueError) as error:  # NUL bytes, invalid UTF-8 escapes, bad hosts
+        logger.warning("Link target kept as written; it is not a usable local path (%s): %s", error, target)
+        return target
+
+
+def _rebase_link_target(target: str, source_dir: Path, output_dir: Path) -> str:
+    """`rebase_link_target` without its guard; raises on malformed targets."""
     if target[:5].lower() == "file:":
         parts = urlsplit(target)
-        location = unquote(parts.path)
+        location = unquote(parts.path, errors="strict")
         if _URI_DRIVE_PATH_RE.match(location):
             location = location[1:]
         path = Path(location)
-        if parts.netloc not in ("", "localhost") or not path.is_absolute():
+        if parts.netloc.lower() not in ("", "localhost") or not path.is_absolute():
             return target  # a network share, or another platform's path
+        resolved = path.resolve()
         try:
-            relative = path.resolve().relative_to(output_dir.resolve())
-        except (OSError, ValueError):
+            relative = resolved.relative_to(output_dir)
+        except ValueError:
             logger.warning(
                 "Link points to a local path outside the output folder; recipients "
                 "may not be able to open it: %s", location,
             )
             return target
-        return quote(relative.as_posix(), safe="/")
+        query = "?" + parts.query if parts.query else ""
+        fragment = "#" + parts.fragment if parts.fragment else ""
+        return quote(relative.as_posix(), safe="/") + query + fragment
     if not target or target[:1] == "#" or _URI_SCHEME_RE.match(target):
         return target
     location, hash_mark, fragment = target.partition("#")
-    local = (source_dir / unquote(location)).resolve()
+    local = (source_dir / unquote(location, errors="strict")).resolve()
     try:
-        reached = Path(os.path.relpath(local, output_dir.resolve())).as_posix()
-    except ValueError:
+        reached = Path(os.path.relpath(local, output_dir)).as_posix()
+    except ValueError:  # another drive: no relative path exists
         return file_uri(str(local)) + hash_mark + fragment
     return quote(reached, safe="/") + hash_mark + fragment
 
@@ -656,7 +673,7 @@ class TextParser:
     def link_target(cls, destination: str) -> str:
         """Return a Word relationship target for a Markdown link destination.
 
-        URLs are kept as written. An absolute local path (`C:\\...` or `/...`)
+        URLs are kept as written. An absolute local path (`C:\\...`, UNC or `/...`)
         is a file name, so it becomes a `file:///` URI in which `%` and `#` are
         literal characters. A relative path is a URL reference to the source
         folder: existing `%` escapes and a `#` fragment are kept. Spaces and
@@ -669,7 +686,7 @@ class TextParser:
             The hyperlink target.
         """
         target = destination[1:-1] if destination[:1] == "<" and destination[-1:] == ">" else destination
-        if _DRIVE_PATH_RE.match(target) or target[:1] == "/":
+        if _DRIVE_PATH_RE.match(target) or target[:1] in ("/", "\\"):
             return file_uri(target)
         if _URI_SCHEME_RE.match(target):
             return target
