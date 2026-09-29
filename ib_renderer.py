@@ -101,6 +101,7 @@ from term_variables import (
     collect_term_runs,
     is_term_run,
     register_term_run,
+    term_cell_text,
     wrap_term_controls,
 )
 
@@ -1856,7 +1857,10 @@ class TableRenderer:
         return float(available_width) / float(self._EMUS_PER_INCH)
 
     def _cell_display_text(self, cell_data: TableCell, table_type: TableType) -> str:
-        """Return display text used for width estimation."""
+        """Return display text used for width estimation and column-kind inference."""
+        shown = term_cell_text(cell_data)
+        if shown is not None:
+            return shown  # term values are shown exactly as written in `terms:`
         if table_type == TableType.FINANCIAL and cell_data.is_numeric:
             return self._format_financial_number(cell_data.content)
         return cell_data.content

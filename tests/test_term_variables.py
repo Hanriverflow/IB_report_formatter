@@ -16,6 +16,7 @@ from document_model import (
     ListItem,
     Paragraph,
     Table,
+    TableType,
     TextRun,
 )
 from document_profiles import RenderOptions
@@ -243,6 +244,23 @@ def test_lists_and_table_cells_receive_value_runs_but_cells_keep_raw_content() -
     marker = table.rows[2].cells[1]
     assert marker.content == "{{marker}}" and keyed(marker.runs) == [("^^", "marker")]
     assert marker.merge is None
+
+
+def test_table_semantics_follow_values_in_header_cells() -> None:
+    risk = "| Risk | {{h}} |\n|---|---|\n| Rate | High |"
+    detected = first(parse(front({"h": "Impact"}) + risk, profile="ib-memo"), ElementType.TABLE)
+    assert detected.table_type == TableType.RISK_MATRIX
+    assert [cell.risk_level for cell in detected.rows[1].cells] == [None, "high"]
+    specified = first(
+        parse(front({"h": "Impact"}, extra="tables:\n  - type: risk\n") + risk), ElementType.TABLE,
+    )
+    assert [cell.risk_level for cell in specified.rows[1].cells] == [None, "high"]
+    year = first(
+        parse(front({"year": "2026"}) + "| Item | {{year}} |\n|---|---|\n| Sales | 1 |", profile="ib-memo"),
+        ElementType.TABLE,
+    )
+    assert year.table_type == TableType.FINANCIAL
+    assert year.rows[0].cells[1].content == "{{year}}"
 
 
 @pytest.mark.parametrize("markdown, element_type", [

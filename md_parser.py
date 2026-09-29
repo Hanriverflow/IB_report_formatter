@@ -754,6 +754,21 @@ def _parse_term_runs(
     return restore_terms(tokenized, tokens), split_term_runs(parse(tokenized), tokens), True
 
 
+def _substitute_text(text: str, terms: TermResolver) -> str:
+    """Return a table cell's source with defined references replaced, as if typed.
+
+    Args:
+        text: Raw cell source.
+        terms: Active term resolver.
+
+    Returns:
+        The source with values inserted where the cell's runs show them.
+    """
+    tokens: TokenMap = {}
+    latex = TextParser.has_inline_latex(text)
+    return restore_terms(TextParser.tokenize_terms(text, terms, tokens, latex=latex), tokens)
+
+
 class FenceScanner:
     """Share fenced-code boundaries across block parsing and metadata scanning."""
 
@@ -989,8 +1004,14 @@ class TableParser:
             alignments if len(alignments) == table.col_count else ["left"] * table.col_count
         )
 
+        # Header semantics follow the values the reader sees; cells keep raw content.
+        header_cells = (
+            first_row_cells if terms is None
+            else [_substitute_text(source, terms) for source in first_row_cells]
+        )
+
         # Detect table type
-        header_text = " ".join(first_row_cells).lower()
+        header_text = " ".join(header_cells).lower()
         table.table_type = (
             TableParser._detect_type(header_text) if financial_rules else TableType.GENERIC
         )
@@ -1025,7 +1046,7 @@ class TableParser:
                     row_idx=i,
                     total_rows=len(data_lines),
                     table_type=table.table_type,
-                    header_cells=first_row_cells,
+                    header_cells=header_cells,
                     terms=terms,
                 )
                 cell.alignment = table.alignments[j] if j < len(table.alignments) else "left"

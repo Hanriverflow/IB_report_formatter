@@ -22,7 +22,7 @@ from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Patte
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
-from document_model import TextRun
+from document_model import TableCell, TextRun
 
 # Word content-control tag and custom-property name prefixes shared by the
 # renderer (writer) and docx_audit (reader).
@@ -233,6 +233,23 @@ def restore_terms(
 def _token_pattern(tokens: TokenMap) -> Pattern[str]:
     """Match any token of one field, capturing it for `re.split`."""
     return re.compile("(" + "|".join(re.escape(token) for token in tokens) + ")")
+
+
+def term_cell_text(cell: TableCell) -> Optional[str]:
+    """Text a table cell shows when it carries term values, else None.
+
+    A cell keeps its raw `content` (with `{{key}}`) for span markers; table
+    inference and measurement use the shown text for cells with values instead.
+
+    Args:
+        cell: A parsed table cell.
+
+    Returns:
+        The joined run text, or None when no run is a term value.
+    """
+    if not any(run.term_key is not None for run in cell.runs):
+        return None
+    return "".join(run.text for run in cell.runs)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
