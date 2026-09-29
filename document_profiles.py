@@ -483,10 +483,20 @@ def apply_table_specs(model: DocumentModel) -> None:
             "spans",
             "label_columns",
             "note",
+            "header_rows",
         }
         if unknown:
             raise ValueError("Unknown table settings: {}".format(", ".join(sorted(unknown))))
         table = tables[index]
+        if "header_rows" in spec:
+            count = spec["header_rows"]
+            if type(count) is not int or not 1 <= count < len(table.rows):
+                raise ValueError("Table header_rows must be an integer from 1 to the row count minus 1")
+            table.header_rows = count
+            for row_index, row in enumerate(table.rows):
+                row.is_header = row_index < count
+                for cell in row.cells:
+                    cell.is_header = row.is_header
         if "spans" in spec:
             if not isinstance(spec["spans"], bool):
                 raise ValueError("Table spans must be true or false")
@@ -520,11 +530,15 @@ def apply_table_specs(model: DocumentModel) -> None:
                 cell.is_base_case = False
                 cell.risk_level = None
         if table.table_type == TableType.RISK_MATRIX:
-            for body_row in table.rows[1:]:
+            for body_row in table.rows[table.header_rows:]:
                 for column_index, cell in enumerate(body_row.cells):
-                    header_cell = table.rows[0].cells[column_index]
-                    shown = term_cell_text(header_cell)
-                    header = (header_cell.content if shown is None else shown).lower()
+                    header_labels = []
+                    for header_row in table.rows[:table.header_rows]:
+                        if column_index < len(header_row.cells):
+                            header_cell = header_row.cells[column_index]
+                            shown = term_cell_text(header_cell)
+                            header_labels.append(header_cell.content if shown is None else shown)
+                    header = " ".join(header_labels).lower()
                     if any(
                         key in header
                         for key in ("impact", "probability", "영향", "확률", "등급", "level")
@@ -542,12 +556,13 @@ def apply_table_specs(model: DocumentModel) -> None:
             if not isinstance(base, dict) or set(base) != {"row", "column"}:
                 raise ValueError("base_case requires one-based row and column")
             row, column = base["row"], base["column"]
+            body_rows = len(table.rows) - table.header_rows
             if (
                 type(row) is not int
                 or type(column) is not int
-                or not (1 <= row < len(table.rows) and 1 <= column <= table.col_count)
+                or not (1 <= row <= body_rows and 1 <= column <= table.col_count)
             ):
                 raise ValueError("base_case is outside the table body")
             if table.table_type != TableType.BEP_SENSITIVITY:
                 raise ValueError("base_case requires a sensitivity table")
-            table.rows[row].cells[column - 1].is_base_case = True
+            table.rows[table.header_rows - 1 + row].cells[column - 1].is_base_case = True

@@ -152,6 +152,7 @@ from term_sheet import (
     key_value_widths,
     label_widths,
     line_text,
+    natural_cell_width,
     positive_printable_width,
     render_confirmation,
     render_term_sheet_heading,
@@ -1617,6 +1618,8 @@ class TableRenderer:
         re.IGNORECASE,
     )
     _PURE_NUMBER_RE = re.compile(r"^\(?[+-]?\d[\d,]*(?:\.\d+)?\)?$")
+    # A dash placeholder ("nothing this period") says nothing about a column's kind.
+    _DASH_PLACEHOLDER_RE = re.compile(r"[-‒–—―－]+")
     _MIN_COLUMN_WIDTH_INCHES = 0.65
     _MIN_TEXT_COLUMN_WIDTH_INCHES = 1.15
     _MAX_NUMERIC_COLUMN_WIDTH_INCHES = 1.35
@@ -1669,12 +1672,13 @@ class TableRenderer:
         rectangles = self._merge_cells(word_table, table)
         covered = self._covered_cells(rectangles)
 
-        # Render header row
-        if table.rows:
-            self._render_header_row(word_table, table.rows[0], col_count, covered)
+        # Render header rows
+        header_rows = min(table.header_rows, len(table.rows))
+        for h_idx in range(header_rows):
+            self._render_header_row(word_table, table.rows[h_idx], col_count, covered, h_idx)
 
         # Render data rows based on table type
-        for r_idx, row in enumerate(table.rows[1:], 1):
+        for r_idx, row in enumerate(table.rows[header_rows:], header_rows):
             self._render_data_row(
                 word_table,
                 row,
@@ -1685,10 +1689,12 @@ class TableRenderer:
                 table.column_types,
                 table.alignments,
                 covered,
+                header_rows,
             )
         self._mirror_vertical_fills(word_table, rectangles)
 
-        word_table.rows[0]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
+        for h_idx in range(header_rows):
+            word_table.rows[h_idx]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
         for word_row in word_table.rows:
             word_row._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
         # Apply borders
@@ -1786,7 +1792,9 @@ class TableRenderer:
                 cell_data = (
                     row.cells[column_index] if column_index < len(row.cells) else TableCell(content="")
                 )
-                role = self._term_sheet_role(row_index, column_index, label_columns, key_value)
+                role = self._term_sheet_role(
+                    row_index, column_index, right, label_columns, key_value, table.header_rows,
+                )
                 texts, size = self._fill_term_sheet_cell(
                     word_cells[column_index], cell_data, role, row_index, column_index,
                     table, column_kinds,
@@ -1798,7 +1806,7 @@ class TableRenderer:
                     line_counts[row_index] = max(line_counts[row_index], lines)
         self._mirror_vertical_fills(word_table, rectangles)
         for row_index, word_row in enumerate(word_table.rows):
-            header = row_index == 0
+            header = row_index < table.header_rows
             set_row_pagination(
                 word_row,
                 keep_together=header or line_counts[row_index] <= ROW_SPLIT_THRESHOLD,
@@ -1811,31 +1819,104 @@ class TableRenderer:
         add_table_spacer(self.doc)
 
     def _term_sheet_grid_widths(self, table: Table, available: int, column_kinds: List[str]) -> List[int]:
-        """Content-based widths (EMU) whose minimums keep header words on one line.
+        """Widths (EMU) for a term-sheet grid table, filling the section width.
 
-        Each single-column header cell requires room for its longest unbreakable
-        token in the bold header size plus the cell margins; merged header cells
-        impose no minimum. See `_required_minimums` for the graceful fallback.
+        When the columns' content fits side by side on single lines, each column
+        gets its natural width (see `_term_sheet_natural_widths`) plus an equal
+        share of the spare width, so short amount columns are not starved while
+        date or label columns balloon. Otherwise widths come from the content
+        estimate, whose minimums keep header words on one line: each
+        single-column header cell requires room for its longest unbreakable token
+        in the bold header size plus the cell margins, and merged header cells
+        impose no minimum (see `_required_minimums` for the graceful fallback).
         """
+        natural = self._term_sheet_natural_widths(table, column_kinds)
+        if sum(natural) <= available:
+            spare = (available - sum(natural)) // table.col_count
+            fitted = [width + spare for width in natural]
+            fitted[-1] += available - sum(fitted)
+            return fitted
         required = [0.0] * table.col_count
-        header = table.rows[0]
-        for index in range(min(len(header.cells), table.col_count)):
-            if self._is_span_cell(header, index):
-                continue
-            cell = header.cells[index]
-            text = line_text(cell.runs or TextParser.parse_runs_plain(cell.content))
-            required[index] = header_token_width(text, STYLE.TABLE_HEADER_SIZE) / self._EMUS_PER_INCH
+        for header in table.rows[:table.header_rows]:
+            for index in range(min(len(header.cells), table.col_count)):
+                if self._is_span_cell(header, index):
+                    continue
+                cell = header.cells[index]
+                text = line_text(cell.runs or TextParser.parse_runs_plain(cell.content))
+                width = header_token_width(text, STYLE.TABLE_HEADER_SIZE) / self._EMUS_PER_INCH
+                required[index] = max(required[index], width)
         widths = self._estimate_column_widths(
             table, available / self._EMUS_PER_INCH, column_kinds, required
         )
         return [int(Inches(width)) for width in widths]
 
+    def _term_sheet_natural_widths(self, table: Table, column_kinds: List[str]) -> List[int]:
+        """Per-column widths (EMU) that keep every cell line on one line.
+
+        Header lines are measured bold in the header size and body lines as
+        displayed (formatted amounts, marker indents). A cell merged across
+        columns spreads any extra width it needs evenly over them.
+
+        Args:
+            table: Term-sheet grid table.
+            column_kinds: Inferred column kinds (unused by the measure itself,
+                kept for symmetry with the content estimate).
+
+        Returns:
+            One width per column.
+        """
+        natural = [0] * table.col_count
+        spanning: List[Tuple[int, int, int]] = []
+        for row_index, row in enumerate(table.rows):
+            header = row_index < table.header_rows
+            for index in range(min(len(row.cells), table.col_count)):
+                cell = row.cells[index]
+                if cell.merge is not None:
+                    continue
+                right = index
+                while right + 1 < min(len(row.cells), table.col_count) and row.cells[right + 1].merge == "left":
+                    right += 1
+                if header:
+                    runs = cell.runs or TextParser.parse_runs_plain(cell.content)
+                    size, bold, markers = STYLE.TABLE_HEADER_SIZE, True, False
+                else:
+                    role = table.column_types[index] if table.column_types else None
+                    content, runs = self._display_content(cell, role, table.table_type)
+                    runs = runs or TextParser.parse_runs_plain(content)
+                    size, bold, markers = STYLE.TABLE_BODY_SIZE, False, True
+                width = natural_cell_width(
+                    [line_text(line) for line in split_run_lines(runs)], size, bold=bold, markers=markers,
+                )
+                if right == index:
+                    natural[index] = max(natural[index], width)
+                else:
+                    spanning.append((index, right, width))
+        for left, right, width in spanning:
+            missing = width - sum(natural[left:right + 1])
+            if missing > 0:
+                share = -(-missing // (right - left + 1))
+                for index in range(left, right + 1):
+                    natural[index] += share
+        return natural
+
     @staticmethod
-    def _term_sheet_role(row_index: int, column_index: int, label_columns: int, key_value: bool) -> str:
-        """Classify an owner cell by the grid position where it starts."""
-        if row_index == 0:
+    def _term_sheet_role(
+        row_index: int,
+        column_index: int,
+        right: int,
+        label_columns: int,
+        key_value: bool,
+        header_rows: int = 1,
+    ) -> str:
+        """Classify an owner cell by where it starts and how far it spans.
+
+        A cell that starts in a second-tier label column but reaches the content
+        columns is content; a label in the first column stays a label however
+        far it spans (for example a totals row).
+        """
+        if row_index < header_rows:
             return "header"
-        if column_index >= label_columns:
+        if column_index >= label_columns or (column_index > 0 and right >= label_columns):
             return "content"
         if not key_value:
             return "grid-label"
@@ -1885,7 +1966,8 @@ class TableRenderer:
                 color = RGBColor.from_string(STYLE.TS_MUTED_HEX)
             else:
                 alignment = self._cell_alignment(column_index, column_kinds, table.alignments)
-                if STYLE.TABLE_ZEBRA and row_index % 2 == 1 and not cell_data.is_base_case:
+                body_index = row_index - table.header_rows
+                if STYLE.TABLE_ZEBRA and body_index % 2 == 0 and not cell_data.is_base_case:
                     fill = STYLE.LIGHT_GRAY_HEX
         if fill:
             set_cell_fill(word_cell._tc, fill)
@@ -1961,8 +2043,9 @@ class TableRenderer:
 
         Parsed tables are already validated by `TableSpanResolver`; this guard keeps
         hand-built models from producing ragged or overlapping Word merges. Header
-        and body are classified as the renderer draws them (row 0 is the repeating
-        header row), not by `TableRow.is_header`, which hand-built rows may omit.
+        and body are classified as the renderer draws them (the first
+        `Table.header_rows` rows repeat as the header), not by
+        `TableRow.is_header`, which hand-built rows may omit.
 
         Args:
             table: Table whose cells may carry "up"/"left" merge directives.
@@ -2002,7 +2085,7 @@ class TableRenderer:
                 and min(column for _, column in members) == left
                 and table.rows[top].cells[left].merge is None
                 and len(members) == (bottom - top + 1) * (right - left + 1)
-                and not (top == 0 and bottom > 0)
+                and not (top < table.header_rows <= bottom)
             ):
                 rectangles.append((top, left, bottom, right))
             else:
@@ -2163,15 +2246,18 @@ class TableRenderer:
         return [self._infer_column_kind(table, col_idx) for col_idx in range(table.col_count)]
 
     def _infer_column_kind(self, table: Table, col_idx: int) -> str:
-        """Classify a column as text or numeric using the first 2-3 body cells."""
+        """Classify a column as text or numeric using the first 2-3 body cells.
+
+        Empty cells and dash placeholders (`-`, `–`) are not samples.
+        """
         sample_texts = []
 
-        for row in table.rows[1:]:
+        for row in table.rows[table.header_rows:]:
             if col_idx >= len(row.cells) or self._is_span_cell(row, col_idx):
                 continue
 
             text = self._cell_display_text(row.cells[col_idx], table.table_type).strip()
-            if not text:
+            if not text or self._DASH_PLACEHOLDER_RE.fullmatch(text):
                 continue
 
             sample_texts.append(text)
@@ -2353,14 +2439,15 @@ class TableRenderer:
         row: TableRow,
         col_count: int,
         covered: AbstractSet[Tuple[int, int]] = frozenset(),
+        row_index: int = 0,
     ):
-        """Render header row with Navy background, skipping merged-away cells."""
-        word_cells = word_table.rows[0].cells
+        """Render one header row with Navy background, skipping merged-away cells."""
+        word_cells = word_table.rows[row_index].cells
 
         for c_idx, cell_data in enumerate(row.cells):
             if c_idx >= col_count:
                 break
-            if (0, c_idx) in covered:
+            if (row_index, c_idx) in covered:
                 continue
 
             cell = word_cells[c_idx]
@@ -2404,8 +2491,13 @@ class TableRenderer:
         column_types: Optional[List[str]] = None,
         alignments: Optional[List[str]] = None,
         covered: AbstractSet[Tuple[int, int]] = frozenset(),
+        header_rows: int = 1,
     ):
-        """Render a data row with type-specific styling, skipping merged-away cells."""
+        """Render a data row with type-specific styling, skipping merged-away cells.
+
+        Zebra shading counts body rows only, so it starts on the first body row
+        whatever the number of header rows.
+        """
         word_cells = word_table.rows[row_idx].cells
 
         for c_idx, cell_data in enumerate(row.cells):
@@ -2448,7 +2540,7 @@ class TableRenderer:
                 self._apply_type_styling(cell, cell_data, row_idx, table_type)
 
             # ── Alternating row colors (unless special styling applied) ─────
-            if STYLE.TABLE_ZEBRA and row_idx % 2 == 1 and not cell_data.is_base_case:
+            if STYLE.TABLE_ZEBRA and (row_idx - header_rows) % 2 == 0 and not cell_data.is_base_case:
                 TableStyler.set_cell_background(cell, STYLE.LIGHT_GRAY_HEX)
 
     @staticmethod

@@ -9,6 +9,10 @@ Changelog (term variables):
       inline math, `\\{{` escapes and link destinations stay literal.
     - NEW: Undefined keys and malformed references become model warnings.
 
+Changelog (table structure):
+    - NEW: `Table.header_rows` (table spec `header_rows`); HTML tables keep the
+      rows their header spans cover as header rows instead of joining them.
+
 Changelog (input loss found on a converted term sheet):
     - FIXED: `*`/`_` emphasis needs flanking delimiters, so `2 * 3 * 4` and
       spaced note markers keep their asterisks.
@@ -1380,9 +1384,10 @@ class TableParser:
         alignments: List[str],
         financial_rules: bool = True,
         terms: Optional[TermResolver] = None,
+        header_rows: int = 1,
     ) -> Table:
         """
-        Build a Table from cell sources; the first row is the header row.
+        Build a Table from cell sources; the leading `header_rows` rows are the header.
 
         Args:
             rows: Each cell as inline Markdown (span markers allowed) or as a
@@ -1390,10 +1395,12 @@ class TableParser:
             alignments: Column alignments; ignored unless one per column.
             financial_rules: Whether IB table semantics are inferred.
             terms: Active term resolver; cell runs receive values, content stays raw.
+            header_rows: Number of header rows (at least one).
         """
         table = Table()
         if not rows:
             return table
+        table.header_rows = max(1, min(header_rows, len(rows)))
 
         # Get column count from first row
         first_row_cells = rows[0]
@@ -1418,7 +1425,7 @@ class TableParser:
         # Parse all rows — normalise column count per row
         for i, row_cells in enumerate(rows):
             cells = list(row_cells)
-            is_header = i == 0
+            is_header = i < table.header_rows
 
             # Pad short rows with empty cells
             while len(cells) < table.col_count:
@@ -1945,9 +1952,8 @@ class HtmlTableParser:
     table is flattened into its cell, one line per row. Empty rows are kept
     while spans are placed, then dropped when nothing covers them.
 
-    The header is the first row plus any rows its row spans cover. Several
-    header rows are merged into one (the engine has one header row): each
-    column joins its distinct labels, top to bottom, with a line break.
+    The header is the first row plus any rows its row spans cover; every header
+    row is drawn and repeated as a header (`Table.header_rows`).
     """
 
     START_RE = re.compile(r"^\s*<table\b", re.IGNORECASE)
@@ -1981,7 +1987,7 @@ class HtmlTableParser:
     @classmethod
     def parse(
         cls, html: str, terms: Optional[TermResolver] = None,
-    ) -> Tuple[List[List[Union[str, TableCell]]], List[str]]:
+    ) -> Tuple[List[List[Union[str, TableCell]]], int, List[str]]:
         """Convert a complete table block into rows of cells.
 
         Args:
@@ -1989,8 +1995,9 @@ class HtmlTableParser:
             terms: Active term resolver, or None when the document has no `terms:`.
 
         Returns:
-            The rows (the first is the header row; covered positions hold span
-            markers) and warnings about content that could not be placed.
+            The rows (covered positions hold span markers), how many leading
+            rows form the header, and warnings about content that could not be
+            placed.
         """
         reader = _HtmlTableReader(terms)
         reader.feed(html)
@@ -2019,7 +2026,7 @@ class HtmlTableParser:
                         anchors[(row_index + down, position + right)] = (row_index, position)
                 position += cell.colspan
         if not anchors:
-            return [], warnings
+            return [], 0, warnings
         col_count = max(covered for _, covered in anchors) + 1
         kept = [row for row in range(len(rows)) if any((row, column) in anchors for column in range(col_count))]
 
@@ -2039,29 +2046,8 @@ class HtmlTableParser:
                 return cls._table_cell(runs[anchor])
             return "^^" if column == anchor[1] else "<<"
 
-        body = [[source(row, column) for column in range(col_count)] for row in kept if row >= header_end]
-        header_rows = [row for row in kept if row < header_end]
-        if len(header_rows) == 1:
-            return [[source(header_rows[0], column) for column in range(col_count)]] + body, warnings
-
-        labels: List[Tuple[Tuple[Tuple[int, int], ...], List[TextRun]]] = []
-        for column in range(col_count):
-            seen: List[Tuple[int, int]] = []
-            for row in header_rows:
-                anchor = anchors.get((row, column))
-                if anchor is not None and anchor not in seen and runs[anchor]:
-                    seen.append(anchor)
-            joined: List[TextRun] = []
-            for anchor in seen:
-                if joined:
-                    joined.append(TextRun(text="\n"))
-                joined.extend(runs[anchor])
-            labels.append((tuple(seen), joined))
-        header: List[Union[str, TableCell]] = [
-            "<<" if column and key and key == labels[column - 1][0] else cls._table_cell(list(label))
-            for column, (key, label) in enumerate(labels)
-        ]
-        return [header] + body, warnings
+        cells = [[source(row, column) for column in range(col_count)] for row in kept]
+        return cells, sum(1 for row in kept if row < header_end), warnings
 
     @staticmethod
     def image(line: str) -> Optional[Image]:
@@ -2821,11 +2807,12 @@ class MarkdownParser:
                 end = HtmlTableParser.block_end(lines, i)
                 if end is not None:
                     source = "\n".join(lines[i:end])
-                    cells, html_warnings = HtmlTableParser.parse(source, self._terms)
+                    cells, header_rows, html_warnings = HtmlTableParser.parse(source, self._terms)
                     self._parse_warnings.extend(html_warnings)
                     if cells:
                         table = TableParser.from_cells(
                             cells, [], financial_rules=self._financial_rules, terms=self._terms,
+                            header_rows=header_rows,
                         )
                         table.spans = True
                         elements.append(Element(element_type=ElementType.TABLE, content=table, raw_text=source))

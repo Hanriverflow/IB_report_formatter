@@ -176,12 +176,12 @@ SCHEDULE = """<table>
 </table>"""
 
 
-def test_multi_row_html_header_is_flattened_into_one_header_row() -> None:
+def test_multi_row_html_header_keeps_its_rows() -> None:
     table = MarkdownParser(profile="plain").parse(SCHEDULE).elements[0].content
-    assert [_cell_text(cell) for cell in table.rows[0].cells] == ["회 차", "기 간\n(개월)", "대출\n상환액", "대출\n잔액"]
-    assert [row.is_header for row in table.rows] == [True, False, False]
+    assert [_cell_text(cell) for cell in table.rows[1].cells] == ["^^", "(개월)", "상환액", "잔액"]
+    assert table.header_rows == 2 and [row.is_header for row in table.rows] == [True, True, False, False]
     doc = _render(SCHEDULE, profile="plain")
-    assert doc.tables[0]._tbl.xpath("./w:tr[3]/w:tc[1]/w:tcPr/w:gridSpan/@w:val") == ["2"]
+    assert doc.tables[0]._tbl.xpath("./w:tr[4]/w:tc[1]/w:tcPr/w:gridSpan/@w:val") == ["2"]
 
 
 def test_nested_single_cell_table_with_an_image_becomes_a_cell_image(tmp_path: Path) -> None:
@@ -258,7 +258,7 @@ def test_term_references_in_image_fields_stay_literal() -> None:
 
 @pytest.mark.parametrize("source,shape,last_row", [
     ('<table><tr><td rowspan="2">A</td><td>B</td></tr><tr></tr><tr><td>C</td><td>D</td></tr></table>',
-     (2, 2), ["C", "D"]),
+     (3, 2), ["C", "D"]),
     ('<table><tr><th>H1</th><th>H2</th></tr><tr><td rowspan="2">A</td><td>B</td></tr><tr></tr>'
      "<tr><td>C</td><td>D</td></tr></table>", (4, 2), ["C", "D"]),
 ])
@@ -266,8 +266,8 @@ def test_html_empty_rows_keep_spans_in_their_columns(source: str, shape: tuple, 
     table = _render(source, profile="plain").tables[0]
     assert (len(table.rows), len(table.columns)) == shape
     assert [cell.text for cell in table.rows[-1].cells] == last_row
-    # The body row span (second case) is a real vertical merge, not literal markers.
-    assert len(table._tbl.xpath(".//w:vMerge")) == (2 if shape[0] == 4 else 0)
+    # The row span is a real vertical merge (in the header, then in the body), not literal markers.
+    assert len(table._tbl.xpath(".//w:vMerge")) == 2
     assert "^^" not in "".join(table._tbl.xpath(".//w:t/text()"))
 
 
