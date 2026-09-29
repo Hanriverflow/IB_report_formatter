@@ -1821,7 +1821,9 @@ class TableRenderer:
         """Group span directives into rectangles, rejecting malformed groups.
 
         Parsed tables are already validated by `TableSpanResolver`; this guard keeps
-        hand-built models from producing ragged or overlapping Word merges.
+        hand-built models from producing ragged or overlapping Word merges. Header
+        and body are classified as the renderer draws them (row 0 is the repeating
+        header row), not by `TableRow.is_header`, which hand-built rows may omit.
 
         Args:
             table: Table whose cells may carry "up"/"left" merge directives.
@@ -1861,7 +1863,7 @@ class TableRenderer:
                 and min(column for _, column in members) == left
                 and table.rows[top].cells[left].merge is None
                 and len(members) == (bottom - top + 1) * (right - left + 1)
-                and len({table.rows[row].is_header for row in range(top, bottom + 1)}) == 1
+                and not (top == 0 and bottom > 0)
             ):
                 rectangles.append((top, left, bottom, right))
             else:

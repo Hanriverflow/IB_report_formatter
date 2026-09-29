@@ -18,7 +18,16 @@ from lxml import etree
 
 import ib_renderer
 import term_sheet
-from document_model import TextRun
+from document_model import (
+    DocumentMetadata,
+    DocumentModel,
+    Element,
+    ElementType,
+    Table,
+    TableCell,
+    TableRow,
+    TextRun,
+)
 from document_profiles import RenderOptions
 from docx_audit import inspect_document
 from ib_renderer import IBDocumentRenderer
@@ -185,6 +194,27 @@ def test_invalid_hand_built_merge_directive_renders_unmerged_with_diagnostic() -
     assert not table.xpath(".//w:gridSpan") and not table.xpath(".//w:vMerge")
     assert text(table) == "가나다라"
     assert any("span" in error.lower() for error in renderer.errors)
+
+
+@pytest.mark.parametrize("profile", ["plain", "term-sheet"])
+def test_hand_built_merge_never_joins_the_rendered_header_row_to_the_body(profile: str) -> None:
+    # Default TableRow.is_header is False, but the renderer always repeats row 0 as the header.
+    table_model = Table(
+        rows=[
+            TableRow(cells=[TableCell("Header"), TableCell("Value")]),
+            TableRow(cells=[TableCell("^^", merge="up"), TableCell("Body")]),
+        ],
+        col_count=2,
+    )
+    extra = {"prepared_by": FIELDS["prepared_by"], "disclaimer": FIELDS["disclaimer"]}
+    metadata = DocumentMetadata(title=TITLE, company="", sector="", analyst="", profile=profile, extra=extra)
+    model = DocumentModel(metadata=metadata, elements=[Element(ElementType.TABLE, table_model)])
+    renderer = IBDocumentRenderer(options=RenderOptions(profile=profile))
+    table = renderer.render(model).element.body.xpath("./w:tbl")[0]
+    assert not table.xpath(".//w:vMerge") and text(table) == "HeaderValue^^Body"
+    assert any("span" in error.lower() for error in renderer.errors)
+    with pytest.raises(ValueError, match="validation"):
+        IBDocumentRenderer(options=RenderOptions(profile=profile, strict=True)).render(model)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
