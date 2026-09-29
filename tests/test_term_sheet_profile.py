@@ -508,14 +508,20 @@ def test_term_sheet_document_defaults_are_local_to_term_sheets():
     defaults = find_all(saved.styles.element, "./w:docDefaults")[0]
     paragraph_defaults = find_all(defaults, "./w:pPrDefault/w:pPr")[0]
     assert xml_values(paragraph_defaults, "./w:kinsoku") == ["1"]
-    assert xml_values(paragraph_defaults, "./w:wordWrap") == ["0"]
+    # Word breaks Korean per character with wordWrap=0; 1 keeps word (eojeol) boundaries.
+    assert xml_values(paragraph_defaults, "./w:wordWrap") == ["1"]
+    # No automatic Latin/number spacing: "300억원", "SPC에", "36개월" stay tight.
+    assert xml_values(paragraph_defaults, "./w:autoSpaceDE") == ["0"]
+    assert xml_values(paragraph_defaults, "./w:autoSpaceDN") == ["0"]
     names = [etree.QName(child).localname for child in paragraph_defaults]
-    assert names.index("kinsoku") < names.index("wordWrap") < names.index("spacing")
+    order = ["kinsoku", "wordWrap", "autoSpaceDE", "autoSpaceDN", "spacing"]
+    assert [names.index(name) for name in order] == sorted(names.index(name) for name in order)
     assert xml_values(defaults, "./w:rPrDefault/w:rPr/w:lang", "w:eastAsia") == ["ko-KR"]
     assert xml_values(defaults, "./w:rPrDefault/w:rPr/w:sz") == ["18"]
     plain = reopen(IBDocumentRenderer().render(MarkdownParser(profile="plain").parse("본문.")))
     plain_defaults = find_all(plain.styles.element, "./w:docDefaults")[0]
-    assert not find_all(plain_defaults, ".//w:wordWrap") and not find_all(plain_defaults, ".//w:kinsoku")
+    for tag in ("wordWrap", "kinsoku", "autoSpaceDE", "autoSpaceDN"):
+        assert not find_all(plain_defaults, f".//w:{tag}")
     assert xml_values(plain_defaults, "./w:rPrDefault/w:rPr/w:lang", "w:eastAsia") == ["en-US"]
     assert xml_values(plain_defaults, "./w:rPrDefault/w:rPr/w:sz") == ["22"]
 

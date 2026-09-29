@@ -582,18 +582,23 @@ def _set_child(parent: Any, tag: str, successors: Sequence[str], **attributes: s
 def setup_term_sheet_styles(doc: Any) -> None:
     """Apply term-sheet document defaults and heading accents (term-sheet only).
 
-    Korean text wraps by word (`w:wordWrap` off) with kinsoku rules and an East
-    Asian language of `ko-KR`. Unformatted paragraph marks (table cells, spacers)
-    use the body font and size, so Word does not size their lines at the 11pt
-    template default. Heading 2 gets the accent colour and a 1pt accent rule;
-    Heading 3 the accent colour.
+    Korean text wraps at word (eojeol) boundaries with kinsoku rules: Word breaks
+    East Asian text per character when `w:wordWrap` is 0, so it is set to 1
+    explicitly. Automatic spacing between East Asian text and Latin letters or
+    numbers (`w:autoSpaceDE`/`w:autoSpaceDN`) is off, so `300억원`, `SPC에` and
+    `36개월` print tight as in Korean term sheets. The East Asian language is
+    `ko-KR`. Unformatted paragraph marks (table cells, spacers) use the body font
+    and size, so Word does not size their lines at the 11pt template default.
+    Heading 2 gets the accent colour and a 1pt accent rule; Heading 3 the accent.
 
     Args:
         doc: Document whose request-scoped styles were created already.
     """
     paragraph_defaults, run_defaults = _default_properties(doc)
     _set_child(paragraph_defaults, "w:kinsoku", _PPR_AFTER_KINSOKU, val="1")
-    _set_child(paragraph_defaults, "w:wordWrap", _PPR_AFTER_KINSOKU[1:], val="0")
+    _set_child(paragraph_defaults, "w:wordWrap", _PPR_AFTER_KINSOKU[1:], val="1")
+    _set_child(paragraph_defaults, "w:autoSpaceDE", _PPR_AFTER_KINSOKU[4:], val="0")
+    _set_child(paragraph_defaults, "w:autoSpaceDN", _PPR_AFTER_KINSOKU[5:], val="0")
     fonts = run_defaults.get_or_add_rFonts()
     for theme in ("asciiTheme", "hAnsiTheme", "eastAsiaTheme"):
         fonts.attrib.pop(qn(f"w:{theme}"), None)
