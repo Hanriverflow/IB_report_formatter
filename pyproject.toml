@@ -74,6 +74,8 @@ include = [
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+# Legacy unreadable pytest temp dirs may exist in local checkouts (AGENTS.md: do not delete).
+extend-exclude = ["Users*AppDataLocalTemp*"]
 
 [tool.ruff.lint]
 select = [
@@ -119,7 +121,8 @@ python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
-exclude = ["tests/"]
+# Legacy unreadable pytest temp dirs may exist in local checkouts (AGENTS.md: do not delete).
+exclude = ["tests/", "^Users[^/]*AppDataLocalTemp"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
