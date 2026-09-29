@@ -94,6 +94,8 @@ LibreOffice 렌더 비교는 이 단계의 선택 항목이다. Malgun Gothic과
 
 ### E4. `w:wordWrap=0` 한 줄이 한국어 문서의 가장 눈에 띄는 결함을 없앤다
 
+> **2026-09-29 정정:** Word 실측 결과 방향이 반대다. `w:wordWrap w:val="0"`은 한글을 음절 단위로 끊고, 요소가 없거나 `1`이면 어절 단위로 끊는다. 텀싯 프로필은 `wordWrap=1`과 `autoSpaceDE`/`autoSpaceDN=0`을 쓴다([텀싯 계획 §2-18](term-sheet-plan-20260929.md)). 아래 본문은 작성 당시 기록으로 남긴다.
+
 Word는 기본적으로 한국어를 음절 단위로 끊는다. 한 어절이 두 줄로 쪼개지는 현상이 여기서 나온다. `w:wordWrap`은 Word의 "한글 단어 잘림 허용" 옵션에 해당하며, Word는 이 속성을 **한국어 텍스트에만** 적용한다 ([MS-OI29500 §17.3.1.45](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oi29500/5c96914d-820a-4f49-a239-40024839685e)). 그래서 영문 문단에는 부작용이 없다. `w:kinsoku`는 행두·행말 금칙을 한·중·일 텍스트에 적용한다 ([MS-OI29500 kinsoku](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oi29500/84486937-c3e4-4d37-8672-68892080944d)). `w:autoSpaceDE`/`autoSpaceDN`은 한글과 영문·숫자 사이 간격을 자동으로 조정한다. 재무 표의 숫자 간격을 고르게 하려고 한국 템플릿이 이를 끄는 경우가 있으므로 프로필별 선택 사항으로 둔다 ([datypic w:pPr](http://www.datypic.com/sc/ooxml/e-w_pPr-6.html)). 현재 엔진은 `w:eastAsia` 글꼴은 설정하지만 이 줄바꿈 속성들은 쓰지 않는다. 추가할 것은 네 가지다. 한국어 프로필의 본문, 목록, 표 셀 스타일에 `wordWrap=0`과 `kinsoku`를 명시하고, `w:lang w:eastAsia="ko-KR"`을 지정하고, 숫자와 영문은 `ascii`/`hAnsi` 글꼴로 분리한다. **완료 기준:** 한국어 프로필 산출물의 styles.xml에서 해당 속성이 확인되고, 대표 샘플의 Word COM 페이지 이미지에서 어절 중간 분리가 0건이며, 영문 IB 샘플의 쪽수가 변하지 않는다. 한국어 Normal.dotm의 kinsoku와 autoSpace 기본값은 미확인이다. 그러므로 명시적으로 켜고 끄는 방식이 안전하다.
 
 ### E5. SEQ 캡션과 REF 상호참조는 Pandoc도 DOCX에서 하지 않는 일이다

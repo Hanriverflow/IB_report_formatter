@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased] - 2026-09-29
 
+### Term-sheet profile, explicit cell spans and house boilerplate
+- Add the seventh profile, `term-sheet`, with validated house/frontmatter text, source-relative house paths and a `--house` override. Real deal documents and institution wording stay outside the repository.
+- Resolve explicit `^^`/`<<` cell spans and label columns; support escaped literal markers, rectangular merge validation and per-table opt-in for other profiles.
+- Render term-sheet documents: opening block (title, subtitle, date, prepared-by, disclaimer), confidentiality header and version/page footer on every section, labelled term tables with fixed label widths, label tiers, merged cells, per-line hanging indents and estimated row splitting, a two-row confirmation box, and Korean word-boundary wrapping without automatic Latin/number spacing.
+- Merge validated spans in every profile's tables; add the optional table `note` (below the table, right-aligned) for every profile.
+- Add a fictional Korean ABCP sample, repayment schedule and freshly written house boilerplate, plus bilingual authoring documentation.
+
+### Term variables and consistency checks
+- Add `terms:` values referenced as `{{key}}` in every profile, substituted at parse time as literal runs (never re-parsed, excluded from number formatting). Undefined keys warn and fail strict mode.
+- Wrap substituted values in Word content controls tagged `ibrep:term:<key>` and snapshot the generated values in `ibrep.term.<key>` custom properties; `--no-term-tags` / `layout.term_tags: false` emits plain text.
+- `docx-audit` reports `mismatched`, `changed`, `missing` and `indicative` term values after Word edits as warnings; documents without terms keep the previous JSON output.
+
 ### Title block without a cover (owner decision, 2026-09-29)
 - When the cover is not rendered (`--no-cover`, `termsheet`/`legal-memo` presets), `ib-report` now starts with a title block (title, subtitle, date/author) before the TOC instead of omitting the title. The block is not a TOC entry; a matching H1 or inferred subtitle appears once. Cover-on output is unchanged.
 
