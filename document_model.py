@@ -33,6 +33,7 @@ class ElementType(Enum):
     # ── NEW (v5) ────────────────────────────────────────────────────────────
     DIAGRAM = auto()  # ```diagram:type ... ``` code block
     CHART = auto()  # ```chart YAML with lossless code-panel fallback
+    CONFIRMATION = auto()  # term-sheet ```confirmation``` block (customer sign-off box)
 
 
 class TableType(Enum):
@@ -63,6 +64,7 @@ class TextRun:
     is_latex: bool = False  # NEW (v3): marks this run as inline LaTeX
     hyperlink: Optional[str] = None
     footnote_id: Optional[int] = None
+    term_key: Optional[str] = None  # set when the text is a substituted {{term}} value
 
 
 @dataclass
@@ -170,6 +172,7 @@ class TableCell:
     is_negative: bool = False
     is_base_case: bool = False
     risk_level: Optional[str] = None  # high, medium, low
+    merge: Optional[str] = None  # resolved span marker: "up" (^^) or "left" (<<)
 
 
 @dataclass
@@ -195,6 +198,8 @@ class Table:
     as_of: str = ""
     landscape: bool = False
     warnings: List[str] = field(default_factory=list)
+    spans: bool = False  # explicit `spans: true` table specification
+    label_columns: Optional[int] = None  # shaded leading label columns (term-sheet layout)
 
 
 @dataclass

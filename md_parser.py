@@ -127,7 +127,9 @@ class FrontmatterParser:
     _MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+")
     _BOLD_LABEL_RE = re.compile(r"\*\*[^*]+:\*\*")
     _SIMPLE_KEY_VALUE_RE = re.compile(r"^[A-Za-z0-9_.-]+\s*:\s*.*$")
-    _DECLARED_RE = re.compile(r"^(profile|layout|tables|sender|charts|preset):", re.IGNORECASE)
+    _DECLARED_RE = re.compile(
+        r"^(profile|layout|tables|sender|charts|preset|house|terms|confirmation):", re.IGNORECASE
+    )
 
     @staticmethod
     def parse(
@@ -204,7 +206,10 @@ class FrontmatterParser:
 
         # Store extra fields
         known_keys = {"title", "subtitle", "company", "ticker", "sector", "analyst", "profile"}
-        structured = {"layout", "tables", "sender", "recipients", "cc", "attachments", "attendees", "letter", "charts", "preset"}
+        structured = {
+            "layout", "tables", "sender", "recipients", "cc", "attachments", "attendees", "letter",
+            "charts", "preset", "house", "terms", "confirmation",
+        }
         metadata.extra = {
             k: v if k in structured else str(v) for k, v in data.items() if k not in known_keys
         }

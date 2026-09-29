@@ -70,6 +70,8 @@ class RenderOptions:
     confidential: Optional[bool] = None
     charts: Optional[bool] = None
     preset: Optional[str] = None
+    house: Optional[str] = None
+    term_tags: Optional[bool] = None
 
 
 PRESETS: Mapping[str, RenderOptions] = MappingProxyType({
@@ -109,6 +111,8 @@ class ResolvedOptions:
     theme: Optional[str]
     strict: bool
     charts: bool
+    house: Optional[str] = None
+    term_tags: bool = True
 
 
 def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> ResolvedOptions:
@@ -117,7 +121,7 @@ def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> Resol
     layout = metadata.extra.get("layout", {})
     if not isinstance(layout, dict):
         raise ValueError("layout must be a YAML mapping")
-    allowed = {"cover", "toc", "disclaimer", "confidential", "separator_mode", "strict"}
+    allowed = {"cover", "toc", "disclaimer", "confidential", "separator_mode", "strict", "term_tags"}
     unknown = set(layout) - allowed
     if unknown:
         raise ValueError("Unknown layout settings: {}".format(", ".join(sorted(unknown))))
@@ -148,6 +152,12 @@ def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> Resol
     charts = options.charts if options.charts is not None else metadata.extra.get("charts", False)
     if not isinstance(charts, bool):
         raise ValueError("charts must be true or false")
+    house = options.house if options.house is not None else metadata.extra.get("house")
+    if house is not None and (not isinstance(house, str) or not house.strip()):
+        raise ValueError("house must be a YAML file path")
+    term_tags = options.term_tags if options.term_tags is not None else layout.get("term_tags", True)
+    if not isinstance(term_tags, bool):
+        raise ValueError("layout.term_tags must be true or false")
     return ResolvedOptions(
         profile=profile,
         cover=flag("cover", options.include_cover, profile.cover),
@@ -158,6 +168,8 @@ def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> Resol
         theme=theme,
         strict=flag("strict", options.strict, False),
         charts=charts,
+        house=house,
+        term_tags=term_tags,
     )
 
 

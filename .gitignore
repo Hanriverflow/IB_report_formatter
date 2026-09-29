@@ -51,3 +51,7 @@ reports/
 output/
 IB_CPSTB_reader/
 .dryforge/
+
+# Real deal documents and institution boilerplate stay outside the public repository
+tmp/
+private/

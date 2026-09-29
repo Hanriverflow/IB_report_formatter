@@ -426,6 +426,17 @@ Examples:
                              help="Render chart fences as code panels, overriding frontmatter")
     parser.add_argument("--list-profiles", action="store_true", help="List document profiles")
     parser.add_argument(
+        "--house",
+        help="Term-sheet institution boilerplate YAML (overrides frontmatter `house`)",
+    )
+    parser.add_argument(
+        "--no-term-tags",
+        action="store_false",
+        dest="term_tags",
+        default=None,
+        help="Insert {{term}} values as plain text without Word content controls or snapshot",
+    )
+    parser.add_argument(
         "--strict", action="store_true", default=None, help="Fail on input loss or rendering errors"
     )
     parser.add_argument(
@@ -496,6 +507,8 @@ def run_conversion(input_path: Path, args) -> int:
         confidential=getattr(args, "confidential", None),
         charts=getattr(args, "charts", None),
         preset=getattr(args, "preset", None),
+        house=str(Path(args.house).resolve()) if getattr(args, "house", None) else None,
+        term_tags=getattr(args, "term_tags", None),
     )
 
     # Auto-format / cleaner if requested
