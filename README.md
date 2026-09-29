@@ -247,6 +247,20 @@ tables:
 - Blanks, dash placeholders and text such as `대출실행` count as no repayment. A dash balance means nothing is left.
 - Disagreements are warnings (strict rejects them). Nothing is recalculated or rewritten.
 
+### Converted input (HWP/Word)
+
+Markdown from an external HWP or Word converter needs cleanup before it is term-sheet input. The cleanup is an explicit MD→MD step; review its report and the output before rendering:
+
+```sh
+uv run md-format converted.md term-sheet.md --converted-term-sheet
+```
+
+- A one-line paragraph `1. Title` (a one- or two-digit number, `1\.` too, and at most 40 characters after it) becomes `## 1. Title` when it is bold or directly followed by a pipe or HTML table. Other numbered text is unchanged, and the parser never promotes it by itself.
+- A table with a header row and no body rows, such as `| 별첨 | | 상환스케줄 |`, becomes the heading `## 별첨 | 상환스케줄`.
+- Blocks before the first chapter heading are the cover. The first confidentiality line becomes `confidential_label` and identical repeats are removed. The leading bold lines (or a level-1 heading) become `title` and then `subtitle`, a date line becomes `date`, and paragraphs of 80 characters or more become `disclaimer`. Cover images are removed and reported, so you can use the logo as the house `style.logo`.
+- Lines the cleanup cannot classify stay where they are and are reported. `prepared_by` is never inferred; put it in the house file or frontmatter. Existing frontmatter lines and keys are kept, and a cover line whose key is already set stays in the body. Code fences are never changed.
+- Every moved, rewritten, removed or kept line is printed with its input line number. This mode replaces the Deep Research formatting for that run and cannot be combined with `--deepresearch-cleaner`.
+
 ## Charts (opt-in)
 
 ```sh
