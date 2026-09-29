@@ -16,6 +16,11 @@ Changelog (table spans):
     - Term-sheet tables: fixed label grid for key-value tables, label tiers,
       per-line cell paragraphs with marker indents and estimated row splitting.
 
+Changelog (term variables):
+    - Render carried heading/callout runs; tag term values as content controls
+      after all run post-processing, then snapshot them in custom properties.
+    - Keep term values out of table numeric formatting.
+
 Changelog (cover-free title):
     - Render the IB report title, subtitle and memo-style metadata without a cover.
     - Place the cover-free report opening before the TOC on the first page.
@@ -49,7 +54,7 @@ from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from io import BytesIO
 from pathlib import Path
-from typing import AbstractSet, Any, Dict, List, Optional, Set, Tuple, cast
+from typing import AbstractSet, Any, Dict, List, Mapping, Optional, Set, Tuple, cast
 from uuid import uuid4
 from xml.sax.saxutils import escape
 
@@ -130,6 +135,14 @@ from term_sheet import (
     setup_term_sheet_styles,
     split_run_lines,
 )
+from term_variables import (
+    TERM_PROPERTY_PREFIX,
+    TermRunCollector,
+    collect_term_runs,
+    is_term_run,
+    register_term_run,
+    wrap_term_controls,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +160,7 @@ _BLACK = RGBColor(0, 0, 0)
 
 
 class GeneratorSignatureWriter:
-    """Embed an explicit generator signature in DOCX custom properties."""
+    """Embed an explicit generator signature and other string DOCX custom properties."""
 
     _CUSTOM_PROPS_PARTNAME = PackURI("/docProps/custom.xml")
     _CUSTOM_PROPS_XML = (
@@ -165,15 +178,28 @@ class GeneratorSignatureWriter:
     _PROJECT_NAME = "ib-report-formatter"
     _GENERATOR_NAME = "ib_report_formatter"
     _GENERATOR_PROFILE = "ib_generated"
-    _PROPERTY_NAMES = ("generator", "generator_version", "generator_profile")
     _PYPROJECT_VERSION_RE = re.compile(r'^version\s*=\s*"([^"]+)"\s*$')
     _resolved_version: Optional[str] = None
 
     @classmethod
     def apply(cls, doc: DocxDocument, profile: str = "ib_generated") -> None:
         """Upsert generator signature custom properties on a DOCX package."""
+        cls.upsert_properties(doc, cls._signature_properties(profile))
+
+    @classmethod
+    def upsert_properties(
+        cls, doc: DocxDocument, properties: Mapping[str, str], owned_prefix: str = "",
+    ) -> None:
+        """Replace named string properties, preserving all others and their PIDs.
+
+        Args:
+            doc: Document whose package receives the custom-properties part.
+            properties: Ordered property names and string values; XML is escaped.
+            owned_prefix: Also remove existing properties with this prefix, for a
+                family written as a whole (such as the term snapshot).
+        """
         custom_part, custom_props = cls._get_or_add_custom_properties_part(doc)
-        cls._upsert_signature_properties(custom_props, profile)
+        cls._upsert_properties(custom_props, properties, owned_prefix)
         if isinstance(custom_part, XmlPart):
             custom_part._element = custom_props
             return
@@ -202,16 +228,19 @@ class GeneratorSignatureWriter:
             return custom_part, custom_props
 
     @classmethod
-    def _upsert_signature_properties(cls, custom_props, profile: str = "ib_generated") -> None:
-        """Replace only the generator signature properties, preserving others."""
+    def _upsert_properties(
+        cls, custom_props, properties: Mapping[str, str], owned_prefix: str = "",
+    ) -> None:
+        """Replace only the given (and owned-prefix) properties, preserving others."""
         for prop in list(custom_props):
             if cls._local_name(prop.tag) != "property":
                 continue
-            if (prop.get("name") or "").strip() in cls._PROPERTY_NAMES:
+            name = (prop.get("name") or "").strip()
+            if name in properties or (owned_prefix and name.startswith(owned_prefix)):
                 custom_props.remove(prop)
 
         used_pids = cls._used_property_ids(custom_props)
-        for name, value in cls._signature_properties(profile).items():
+        for name, value in properties.items():
             custom_props.append(cls._build_property(name, value, cls._next_pid(used_pids)))
 
     @classmethod
@@ -766,7 +795,12 @@ class TextRenderer:
         font_name: Optional[str] = None,
         font_size: Optional[Pt] = None,
     ):
-        """Render text runs to a paragraph"""
+        """Render text runs to a paragraph.
+
+        Term value runs are only registered here: post-processing then leaves
+        them intact, and the orchestrator wraps them in content controls last
+        when tags are on. Linked values stay plain.
+        """
         font_name = font_name or STYLE.BODY_FONT
         font_size = font_size or STYLE.BODY_SIZE
 
@@ -805,6 +839,8 @@ class TextRenderer:
                     run.font.color.rgb = STYLE.NAVY
                 link.append(run._r)
                 paragraph._p.append(link)
+            elif run_data.term_key is not None:
+                register_term_run(run._r, run_data.term_key, run_data.text)
 
     @staticmethod
     def _render_inline_latex(paragraph, expression: str, font_size: Pt):
@@ -1401,10 +1437,14 @@ class HeadingRenderer:
         self.doc = doc
 
     def render(self, heading: Heading):
-        """Render a heading with appropriate level"""
-        # Clean markdown bold markers from heading text
-        clean_text = heading.text.replace("**", "").strip()
-        clean_text = TextRenderer._cleanup(clean_text)
+        """Render a heading with appropriate level; parse-time term runs are used as is."""
+        if heading.runs:
+            source_runs = heading.runs
+        else:
+            # Clean markdown bold markers from heading text
+            clean_text = heading.text.replace("**", "").strip()
+            clean_text = TextRenderer._cleanup(clean_text)
+            source_runs = TextParser.parse_runs(clean_text)
 
         # Clamp level to 1-4 (Word supports Heading 1-9, but we style 1-4)
         level = max(1, min(heading.level, 4))
@@ -1412,7 +1452,7 @@ class HeadingRenderer:
 
         size, color, bold = self._STYLE_CONFIG.get(level, (STYLE.BODY_SIZE, STYLE.DARK_GRAY, True))
 
-        runs = [replace(run, bold=bold) for run in TextParser.parse_runs(clean_text)]
+        runs = [replace(run, bold=bold) for run in source_runs]
         TextRenderer.render_runs(p, runs, font_name=STYLE.HEADING_FONT, font_size=size, default_color=color)
 
 
@@ -2305,11 +2345,12 @@ class TableRenderer:
         if format_numbers:
             display_content = self._format_numeric_text(display_content, role)
             # Semantic runs are independent of the amount. In particular, a
-            # footnote's displayed number must never enter numeric formatting.
+            # footnote's displayed number must never enter numeric formatting,
+            # and a term value keeps the exact text written in `terms:`.
             display_runs = [
                 run if (
                     run.footnote_id is not None or run.is_latex
-                    or run.superscript or run.subscript
+                    or run.superscript or run.subscript or run.term_key is not None
                 ) else replace(run, text=self._format_numeric_text(run.text, role))
                 for run in display_runs
             ]
@@ -2529,11 +2570,19 @@ class CalloutRenderer:
 
         # Content — with inline formatting support (**bold**, *italic*, ^super^)
         content_text = blockquote.text.strip()
-        if content_text:
+        # Determine text color based on background
+        content_color = STYLE.WHITE if bg_hex == STYLE.NAVY_HEX else None
+        if blockquote.runs:
+            # Parse-time runs carry term values, which must not be parsed again.
+            TextRenderer.render_runs(
+                cell.add_paragraph(),
+                blockquote.runs,
+                font_name=STYLE.BODY_FONT,
+                font_size=STYLE.BODY_SIZE,
+                default_color=content_color,
+            )
+        elif content_text:
             content_para = cell.add_paragraph()
-
-            # Determine text color based on background
-            content_color = STYLE.WHITE if bg_hex == STYLE.NAVY_HEX else None
 
             TextRenderer.render_text_with_formatting(
                 content_para,
@@ -2857,10 +2906,15 @@ class FootnoteRenderer:
             FontStyler.apply_run_style(text_run, font_size=STYLE.SMALL_SIZE)
 
     def _collect_reference_runs(self, footnotes: dict) -> List[Tuple[object, int]]:
-        """Find superscript numeric runs that correspond to known footnotes."""
+        """Find superscript numeric runs that correspond to known footnotes.
+
+        A term value is text the author wrote in `terms:`, never a footnote marker.
+        """
         references: List[Tuple[object, int]] = []
         for paragraph in self._iter_document_paragraphs():
             for run in paragraph.runs:
+                if is_term_run(run._r):
+                    continue
                 text = run.text.strip()
                 if not text.isdigit():
                     continue
@@ -3198,7 +3252,11 @@ class IBDocumentRenderer:
         self._reset_document()
         self.separator_mode = resolved.separator_mode
         self.charts = resolved.charts
-        with use_style(load_style(resolved.profile, resolved.theme)), collect_raster_font_diagnostics() as font_warnings:
+        with (
+            use_style(load_style(resolved.profile, resolved.theme)),
+            collect_raster_font_diagnostics() as font_warnings,
+            collect_term_runs(resolved.term_tags) as term_runs,
+        ):
             self.styler.setup_document()
             self.styler.create_styles()
             if resolved.profile.name == "office-letter":
@@ -3285,6 +3343,7 @@ class IBDocumentRenderer:
             self.apply_generator_signature(
                 "ib_generated" if resolved.profile.name == "ib-report" else resolved.profile.name
             )
+            self._apply_term_controls(term_runs)
             from docx_audit import inspect_document_issues
 
             for warning in font_warnings:
@@ -3302,6 +3361,24 @@ class IBDocumentRenderer:
     def apply_generator_signature(self, profile: str = "ib_generated") -> None:
         """Stamp the DOCX package with a generator signature."""
         GeneratorSignatureWriter.apply(self.doc, profile)
+
+    def _apply_term_controls(self, collector: TermRunCollector) -> None:
+        """Tag term values as content controls last, then snapshot the tagged values.
+
+        Run-based post-processing (negative and risk colours, base-case bold,
+        native footnotes) has finished, because python-docx no longer lists a
+        run once it is inside a content control.
+
+        Args:
+            collector: This render's registered value runs and tagging option.
+        """
+        tagged = wrap_term_controls(self.doc, collector)
+        if tagged:
+            GeneratorSignatureWriter.upsert_properties(
+                self.doc,
+                {TERM_PROPERTY_PREFIX + key: value for key, value in tagged.items()},
+                owned_prefix=TERM_PROPERTY_PREFIX,
+            )
 
     def _add_semantic_bookmark(self, paragraph, element_type: str, extra: str = "") -> None:
         """Wrap a paragraph's first run with a hidden semantic bookmark."""
