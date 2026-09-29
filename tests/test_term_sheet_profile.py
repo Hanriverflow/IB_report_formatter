@@ -458,6 +458,15 @@ def test_opening_prefers_display_runs_and_parses_house_emphasis():
     assert saved.core_properties.title == TITLE
 
 
+def test_forced_toc_omits_the_title_heading_that_the_body_skips():
+    content = markdown(f"# {TITLE}\n\n## 1. 조건\n\n본문.")
+    renderer, document = render(content, strict=True, include_toc=True)
+    texts = [paragraph.text for paragraph in reopen(document).paragraphs]
+    assert texts.count(TITLE) == 1  # the opening title only, not a TOC preview entry
+    assert texts.count("1. 조건") == 2  # TOC preview entry and body heading
+    assert not renderer.errors
+
+
 def test_opening_disclaimer_is_kept_without_end_disclaimer():
     saved = reopen(render(markdown(), include_disclaimer=False)[1])
     assert DISCLAIMER in [p.text for p in saved.paragraphs]

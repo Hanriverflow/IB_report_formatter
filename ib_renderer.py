@@ -3211,11 +3211,13 @@ class IBDocumentRenderer:
             not resolved.cover and resolved.profile.name == "ib-report"
             and bool(model.metadata.title.strip())
         )
+        term_sheet = resolved.profile.name == "term-sheet"
         if (resolved.cover and resolved.profile.is_ib) or report_title_block:
             # Filter the private render copy so the TOC and body share the same outline.
             model.elements = [element for element in model.elements if not element.inferred_subtitle]
-        if report_title_block:
-            # Transfer the first matching body H1 to the non-outline title block.
+        if report_title_block or term_sheet:
+            # Transfer the first matching body H1 to the non-outline title block
+            # (the term-sheet opening always renders the title).
             # Filtering before the TOC also prevents a stale preview title entry.
             for index, element in enumerate(model.elements):
                 if (
@@ -3229,7 +3231,7 @@ class IBDocumentRenderer:
         if resolved.strict and model.warnings:
             raise ValueError("Input validation failed: " + "; ".join(model.warnings))
         self.errors = list(model.warnings)
-        self._term_sheet = resolved.profile.name == "term-sheet"
+        self._term_sheet = term_sheet
         self._reset_document()
         self.separator_mode = resolved.separator_mode
         self.charts = resolved.charts
@@ -3262,7 +3264,8 @@ class IBDocumentRenderer:
                 self.toc_renderer.render(model)
             if not resolved.cover and not report_title_block and not self._term_sheet:
                 title_inserted = render_office_opening(self.doc, model.metadata)
-            skipped_title = report_title_block
+            # The title H1 was already removed from the render copy for these paths.
+            skipped_title = report_title_block or term_sheet
             office_closed = False
             for idx, element in enumerate(model.elements):
                 if idx == appendix_index:
