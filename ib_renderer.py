@@ -117,6 +117,7 @@ from term_sheet import (
     configure_cell_paragraph,
     confirmation_has_text,
     estimate_cell_lines,
+    header_token_width,
     key_value_widths,
     label_widths,
     line_text,
@@ -1675,12 +1676,7 @@ class TableRenderer:
                 f"{section_mm:.1f} mm wide; column widths estimated from content"
             )
         if widths is None:
-            widths = [
-                int(Inches(width))
-                for width in self._estimate_column_widths(
-                    table, available / self._EMUS_PER_INCH, column_kinds
-                )
-            ]
+            widths = self._term_sheet_grid_widths(table, available, column_kinds)
         self._set_column_widths(word_table, widths)
         rectangles = self._merge_cells(word_table, table)
         covered = self._covered_cells(rectangles)
@@ -1720,6 +1716,26 @@ class TableRenderer:
         if table.source:
             add_table_source(self.doc, table.source, TextRenderer.render_runs)
         add_table_spacer(self.doc)
+
+    def _term_sheet_grid_widths(self, table: Table, available: int, column_kinds: List[str]) -> List[int]:
+        """Content-based widths (EMU) whose minimums keep header words on one line.
+
+        Each single-column header cell requires room for its longest unbreakable
+        token in the bold header size plus the cell margins; merged header cells
+        impose no minimum. See `_required_minimums` for the graceful fallback.
+        """
+        required = [0.0] * table.col_count
+        header = table.rows[0]
+        for index in range(min(len(header.cells), table.col_count)):
+            if self._is_span_cell(header, index):
+                continue
+            cell = header.cells[index]
+            text = line_text(cell.runs or TextParser.parse_runs_plain(cell.content))
+            required[index] = header_token_width(text, STYLE.TABLE_HEADER_SIZE) / self._EMUS_PER_INCH
+        widths = self._estimate_column_widths(
+            table, available / self._EMUS_PER_INCH, column_kinds, required
+        )
+        return [int(Inches(width)) for width in widths]
 
     @staticmethod
     def _term_sheet_role(row_index: int, column_index: int, label_columns: int, key_value: bool) -> str:
@@ -1964,8 +1980,14 @@ class TableRenderer:
         table: Table,
         available_width_inches: float,
         column_kinds: Optional[List[str]] = None,
+        required_widths: Optional[List[float]] = None,
     ) -> List[float]:
-        """Estimate table column widths from content density and column semantics."""
+        """Estimate table column widths from content density and column semantics.
+
+        Args:
+            required_widths: Optional per-column widths (inches) that should not be
+                undercut, such as a header's longest word; see `_required_minimums`.
+        """
         if table.col_count <= 0:
             return []
 
@@ -1981,6 +2003,9 @@ class TableRenderer:
             self._maximum_column_width(column_info["kind"], available_width_inches)
             for column_info in column_infos
         ]
+        if required_widths is not None:
+            min_widths = self._required_minimums(min_widths, required_widths, available_width_inches)
+            max_widths = [max(high, low) for high, low in zip(max_widths, min_widths)]
         preferred = [column_info["score"] for column_info in column_infos]
         widths = self._fit_widths_to_available_space(
             preferred,
@@ -1990,6 +2015,25 @@ class TableRenderer:
         )
 
         return widths
+
+    @classmethod
+    def _required_minimums(
+        cls, minimums: List[float], required: List[float], available_width_inches: float
+    ) -> List[float]:
+        """Raise column minimums to required widths when the section can hold them.
+
+        First the heuristic minimums are raised; if that overflows, the required
+        widths are kept over the numeric floor only (relaxing the heuristic text
+        minimum); if even that overflows, the heuristic minimums are returned
+        unchanged, so the table still fits without an error.
+        """
+        raised = [max(low, need) for low, need in zip(minimums, required)]
+        if sum(raised) <= available_width_inches:
+            return raised
+        relaxed = [max(cls._MIN_COLUMN_WIDTH_INCHES, need) for need in required]
+        if sum(relaxed) <= available_width_inches:
+            return relaxed
+        return minimums
 
     def _build_column_info(self, table: Table, col_idx: int, column_kind: str) -> Dict[str, Any]:
         """Summarize the content profile of a single column."""

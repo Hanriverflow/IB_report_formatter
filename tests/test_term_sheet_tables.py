@@ -446,6 +446,32 @@ def test_type_styling_replaces_a_label_fill_instead_of_duplicating_it() -> None:
     assert all(len(tc_pr.xpath("./w:shd")) <= 1 for tc_pr in table.xpath(".//w:tcPr"))
 
 
+EIGHT_COLUMNS = (
+    "| 회 차 | 지급기일 | 휴일반영 지급일 | 경과(개월) | 원금상환액 | 이자지급액 | 원금잔액 | 비 고 |\n"
+    "|---|---|---|---|---|---|---|---|\n"
+    "| 1 | 2027-01-08 | 2027-01-08 | 3 | – | 5 | 500 | 가상 비고 문구가 조금 길게 들어갑니다 |\n"
+)
+EIGHT_ROLES = ["text", "date", "date", "number", "money", "money", "money", "text"]
+
+
+def test_grid_columns_keep_header_words_on_one_line() -> None:
+    _, saved = render(ts_markdown(EIGHT_COLUMNS, tables=[{"columns": EIGHT_ROLES}]), strict=True)
+    grid = [int(width) for width in attr(tables(saved)[0], "./w:tblGrid/w:gridCol", "w:w")]
+    # Physical lower bounds at 9pt bold: Hangul 1em, a parenthesis at most 0.45em, 2 x 5pt margins.
+    assert grid[3] >= round((4 * 9 + 2 * 0.45 * 9 + 10) * 20)  # 경과(개월)
+    assert min(grid[4], grid[5]) >= round((5 * 9 + 10) * 20)  # 원금상환액, 이자지급액
+    assert sum(grid) == pytest.approx(printable_twips(saved.sections[0]), abs=2)
+
+
+def test_header_word_minimums_fall_back_when_they_cannot_fit() -> None:
+    header = "| " + " | ".join(["가나다라마바사아자"] * 9) + " |\n|" + "---|" * 9 + "\n"
+    body = "| " + " | ".join(str(index) for index in range(9)) + " |\n"
+    renderer, saved = render(ts_markdown(header + body), strict=True)
+    grid = [int(width) for width in attr(tables(saved)[0], "./w:tblGrid/w:gridCol", "w:w")]
+    assert not renderer.errors
+    assert sum(grid) == pytest.approx(printable_twips(saved.sections[0]), abs=2)
+
+
 def test_cell_lines_become_paragraphs_with_marker_hanging_indents() -> None:
     _, saved = render(ts_markdown(KEY_VALUE), strict=True)
     table = tables(saved)[0]

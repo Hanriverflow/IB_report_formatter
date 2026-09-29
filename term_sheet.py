@@ -46,6 +46,7 @@ _BORDER_EDGES = ("top", "left", "bottom", "right", "insideH", "insideV")
 _CELL_SPACE_AFTER = Pt(1.5)
 _CELL_LINE_SPACING = 1.05
 _SPACER_HEIGHT = Pt(4)
+_BOLD_ALLOWANCE = 1.1  # bold header glyphs are wider than the em estimate
 # Successor elements used to insert children in ECMA-376 schema order.
 _TCPR_AFTER_SHD = (
     "w:noWrap", "w:tcMar", "w:textDirection", "w:tcFitText", "w:vAlign", "w:hideMark",
@@ -345,6 +346,27 @@ def line_text(line: Sequence[TextRun]) -> str:
 def _em_width(text: str) -> float:
     """Approximate advance in ems: East Asian wide/full-width 1.0, others 0.55."""
     return sum(1.0 if unicodedata.east_asian_width(char) in ("W", "F") else 0.55 for char in text)
+
+
+def header_token_width(text: str, font_size: int) -> int:
+    """Column width in EMU that keeps a header's longest unbreakable token on one line.
+
+    Tokens split at whitespace (including `<br>` line breaks). The estimate uses
+    the same em widths as the row estimator, a 10% allowance for bold glyphs and
+    the left and right cell margins.
+
+    Args:
+        text: Visible header text of one single-column header cell.
+        font_size: Header text size in EMU.
+
+    Returns:
+        Required width in EMU, or 0 for an empty header.
+    """
+    tokens = text.split()
+    if not tokens:
+        return 0
+    widest = max(_em_width(token) for token in tokens)
+    return math.ceil(widest * int(font_size) * _BOLD_ALLOWANCE) + 2 * int(Twips(CELL_MARGIN_HORIZONTAL))
 
 
 def estimate_cell_lines(texts: Sequence[str], width: int, font_size: int, markers: bool) -> int:
