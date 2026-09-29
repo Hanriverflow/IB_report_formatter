@@ -248,6 +248,21 @@ def test_empty_values_compare_as_text() -> None:
     assert terms.changed == {"blank": {"generated": "", "current": "x"}}
 
 
+@pytest.mark.parametrize("flag, expected", [(None, ""), ("0", "Click or tap here to enter text.")])
+def test_word_placeholder_text_of_a_cleared_control_is_an_empty_value(
+    flag: Optional[str], expected: str,
+) -> None:
+    doc = generate()
+    [tenor] = controls(doc, "tenor")
+    properties = tenor.find(qn("w:sdtPr"))
+    placeholder = element("w:showingPlcHdr") if flag is None else element("w:showingPlcHdr", val=flag)
+    properties.find(qn("w:id")).addnext(placeholder)
+    type_value(tenor, "Click or tap here to enter text.")
+    _, terms = audit(doc)
+    assert terms is not None
+    assert terms.changed == {"tenor": {"generated": "3년", "current": expected}}
+
+
 def test_brackets_mark_indicative_values_until_they_are_removed() -> None:
     doc = generate()
     [rate] = controls(doc, "rate")

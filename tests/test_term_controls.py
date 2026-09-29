@@ -1,6 +1,7 @@
 """Term values rendered as Word plain-text content controls with a generation snapshot."""
 
 import json
+import re
 from io import BytesIO
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -198,6 +199,18 @@ def test_hyperlinked_value_is_substituted_but_never_tagged() -> None:
     assert term_properties(doc) == {"tenor": "3년"}
 
 
+def test_value_converted_to_a_legacy_footnote_reference_is_not_wrapped() -> None:
+    doc = render(
+        front({"note": "1", "amount": "500억원"})
+        + "Claim {{amount}}^{{note}}^.\n\n## References\n\n1. Source document.",
+        profile="ib-memo",
+    )
+    assert len(xp(doc.element.body, ".//w:footnoteReference")) == 1
+    assert [describe(sdt)[0] for sdt in controls(doc)] == ["amount"]
+    assert not xp(doc.element.body, ".//w:sdt//w:footnoteReference")
+    assert term_properties(doc) == {"amount": "500억원"}
+
+
 def test_empty_value_becomes_an_empty_control() -> None:
     doc = render(front({"blank": ""}) + "A{{blank}}B")
     [sdt] = controls(doc)
@@ -237,6 +250,21 @@ def test_snapshot_records_tagged_keys_and_preserves_generator_properties() -> No
     assert len(set(pids)) == len(pids) and min(pids) >= 2
     [quote] = [sdt for sdt in controls(doc) if describe(sdt)[0] == "quote"]
     assert describe(quote)[3] == 'A<&>"\'B'
+
+
+@pytest.mark.parametrize("profile", ["plain", "business-report"])
+def test_unreferenced_terms_leave_the_document_unchanged(profile: str) -> None:
+    body = (
+        "# Title\n\n## Scope {not a term}\n\nBody **bold** [link](https://example.com)[^1].\n\n"
+        "- Item\n    1. Nested\n\n> [참고] Quote\n\n| A | B |\n|---|---:|\n| x | 1234 |\n\n"
+        "```text\ncode\n```\n\n[^1]: Note."
+    )
+    bookmark = re.compile(r'w:name="_ibrep_[^"]*"')
+    outputs = []
+    for markdown in ("---\ntitle: T\n---\n" + body, front(VALUES, extra="title: T\n") + body):
+        doc = render(markdown, profile=profile)
+        outputs.append((bookmark.sub("", doc.element.xml), custom_properties(doc)))
+    assert outputs[0] == outputs[1]
 
 
 def test_documents_without_tagged_values_have_no_snapshot_or_controls() -> None:

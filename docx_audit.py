@@ -72,6 +72,7 @@ _TERM_TEXT: Dict[str, Optional[str]] = {
 }
 _REMOVED_CONTENT = frozenset({qn("w:del"), qn("w:moveFrom")})
 _TERM_TAG_PATH = qn("w:sdtPr") + "/" + qn("w:tag")
+_PLACEHOLDER_PATH = qn("w:sdtPr") + "/" + qn("w:showingPlcHdr")
 _INDICATIVE_RE = re.compile(r"\[[^\[\]]*\]")
 
 
@@ -217,9 +218,18 @@ def _current_term_values(doc: DocxDocument) -> Dict[str, List[str]]:
         if not name.startswith(TERM_TAG_PREFIX) or _is_removed(control):
             continue
         content = control.find(qn("w:sdtContent"))
-        text = _current_text(content, control) if content is not None else ""
+        text = ""
+        # Word refills a cleared control with placeholder text and flags it.
+        if content is not None and not _shows_placeholder(control):
+            text = _current_text(content, control)
         values.setdefault(name[len(TERM_TAG_PREFIX):], []).append(text)
     return values
+
+
+def _shows_placeholder(control: Any) -> bool:
+    """Whether a content control displays placeholder text instead of a value."""
+    flag = control.find(_PLACEHOLDER_PATH)
+    return flag is not None and flag.get(qn("w:val"), "true") not in {"0", "false", "off"}
 
 
 def _current_text(content: Any, control: Any) -> str:
