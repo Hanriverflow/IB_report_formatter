@@ -143,6 +143,20 @@ def test_value_run_inherits_surrounding_formatting(markdown: str, expected: Text
     assert paragraph.runs == [expected]
 
 
+def test_references_inside_subscript_and_superscript_take_the_offset() -> None:
+    markdown = "H~{{n}}~O, x^{{n}}^y, C~{{n}}{{n}}~ and a~{{wide}}~b"
+    paragraph = first(parse(front({"n": "2", "wide": "2+x y"}) + markdown), ElementType.PARAGRAPH)
+    assert [(r.text, r.term_key, r.subscript, r.superscript) for r in paragraph.runs] == [
+        ("H", None, False, False), ("2", "n", True, False), ("O, x", None, False, False),
+        ("2", "n", False, True), ("y, C", None, False, False), ("2", "n", True, False),
+        ("2", "n", True, False), (" and a", None, False, False), ("2+x y", "wide", True, False),
+        ("b", None, False, False),
+    ]
+    typed = [(r.text, r.subscript) for r in TextParser.parse_runs("H~2~O")]
+    assert typed == [("H", False), ("2", True), ("O", False)]
+    assert texts(TextParser.parse_runs("H~{{n}}~O")) == ["H~{{n}}~O"]
+
+
 def test_emphasis_around_a_reference_splits_into_three_formatted_runs() -> None:
     paragraph = first(parse(front(VALUES) + "**A{{amount}}B** {{ tenor }}{{rate}}"), ElementType.PARAGRAPH)
     assert paragraph.runs == [

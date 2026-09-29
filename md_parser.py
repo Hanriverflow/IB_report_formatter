@@ -126,6 +126,7 @@ from document_model import (
 from document_profiles import apply_table_specs, default_metadata, get_profile
 from term_variables import (
     TERM_REFERENCE_RE,
+    TERM_TOKEN_PATTERN,
     TermResolver,
     TokenMap,
     restore_terms,
@@ -321,8 +322,9 @@ class TextParser:
     _ESCAPABLE_RE = re.compile(r'([\\$`^~.*"\'()\[\]{}|_-])')
     _LITERAL_BREAK_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 
-    # Inline formatting patterns
-    _SUBSCRIPT_PATTERN = r"(?<!~)~[A-Za-z0-9]{1,8}~(?!~)"
+    # Inline formatting patterns. A term token counts as one subscript unit, so a
+    # value between tildes is a subscript whatever it contains (never re-parsed).
+    _SUBSCRIPT_PATTERN = r"(?<!~)~(?:[A-Za-z0-9]|" + TERM_TOKEN_PATTERN + r"){1,8}~(?!~)"
     _INLINE_FORMAT_SPLIT_RE = re.compile(
         r"(\*\*[^*\n]+?\*\*|\^[^^\n]+?\^|"
         + _SUBSCRIPT_PATTERN

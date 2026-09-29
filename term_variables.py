@@ -178,6 +178,13 @@ class TermResolver:
         return sorted(set(self.values) - self.used)
 
 
+# Regex source for any resolver token. Inline syntax that only admits letters or
+# digits (subscript) accepts a token as one unit, so a value inherits it.
+TERM_TOKEN_PATTERN = (
+    re.escape(TermResolver._TOKEN_PREFIX) + "X*[0-9]+" + re.escape(TermResolver._TOKEN_END)
+)
+
+
 def split_term_runs(runs: List[TextRun], tokens: TokenMap) -> List[TextRun]:
     """Split token-bearing runs into before, value and after runs.
 
