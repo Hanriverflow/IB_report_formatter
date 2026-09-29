@@ -82,7 +82,10 @@ def validate_term_sheet_metadata(metadata: DocumentMetadata, check_length: bool 
         raise ValueError("term-sheet title must not exceed 255 characters")
     if not isinstance(metadata.subtitle, str):
         raise ValueError("term-sheet subtitle must be a string")
-    if check_length and len(metadata.subtitle) > 255:
+    if not check_length:
+        # The default and the length limit both apply to the displayed text.
+        return
+    if len(metadata.subtitle) > 255:
         raise ValueError("term-sheet subtitle must not exceed 255 characters")
     if not metadata.subtitle.strip():
         metadata.subtitle = "Term Sheet"
