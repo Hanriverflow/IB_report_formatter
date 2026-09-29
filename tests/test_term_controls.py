@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Tuple
 import pytest
 from docx import Document
 from docx.document import Document as DocxDocument
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml.ns import qn
 from lxml import etree
@@ -188,6 +189,16 @@ def test_table_styles_apply_to_values_and_numbers_keep_their_written_form() -> N
     base = sensitivity.cell(1, 1)._tc
     assert xp(base, ".//w:sdt/w:sdtContent/w:r/w:rPr/w:b")
     assert "FFFF00" in xp(base, "./w:tcPr/w:shd/@w:fill")
+
+
+@pytest.mark.parametrize("profile", ["plain", "ib-memo"])
+def test_term_cells_are_measured_and_aligned_like_their_values(profile: str) -> None:
+    table = "| Item | Amount |\n|---|---|\n| Loan | {cell} |"
+    with_term = render(front({"n": "12345"}) + table.format(cell="{{n}}"), profile=profile).tables[0]
+    typed = render(table.format(cell="12345"), profile=profile).tables[0]
+    assert with_term.cell(1, 1).paragraphs[0].alignment == typed.cell(1, 1).paragraphs[0].alignment
+    assert typed.cell(1, 1).paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.RIGHT
+    assert [column.width for column in with_term.columns] == [column.width for column in typed.columns]
 
 
 def test_hyperlinked_value_is_substituted_but_never_tagged() -> None:

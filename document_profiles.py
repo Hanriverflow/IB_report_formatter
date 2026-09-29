@@ -21,6 +21,7 @@ from docx.shared import Inches, Pt, RGBColor
 
 from document_model import DocumentMetadata, DocumentModel, ElementType, Table, TableType
 from render_styles import IBStyle
+from term_variables import term_cell_text
 
 
 @dataclass(frozen=True)
@@ -514,7 +515,9 @@ def apply_table_specs(model: DocumentModel) -> None:
         if table.table_type == TableType.RISK_MATRIX:
             for body_row in table.rows[1:]:
                 for column_index, cell in enumerate(body_row.cells):
-                    header = table.rows[0].cells[column_index].content.lower()
+                    header_cell = table.rows[0].cells[column_index]
+                    shown = term_cell_text(header_cell)
+                    header = (header_cell.content if shown is None else shown).lower()
                     if any(
                         key in header
                         for key in ("impact", "probability", "영향", "확률", "등급", "level")

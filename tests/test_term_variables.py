@@ -3,6 +3,8 @@
 import datetime
 import json
 import logging
+from io import BytesIO
+from pathlib import Path
 from typing import Dict, List
 
 import pytest
@@ -16,11 +18,12 @@ from document_model import (
     ListItem,
     Paragraph,
     Table,
+    TableType,
     TextRun,
 )
 from document_profiles import RenderOptions
 from ib_renderer import IBDocumentRenderer
-from md_parser import MarkdownParser, TextParser
+from md_parser import MarkdownParser, TextParser, parse_markdown_file
 from term_variables import validate_terms
 
 VALUES = {"amount": "500억원", "tenor": "3년", "rate": "CD(3개월) + [1.10]%"}
@@ -142,6 +145,20 @@ def test_value_run_inherits_surrounding_formatting(markdown: str, expected: Text
     assert paragraph.runs == [expected]
 
 
+def test_references_inside_subscript_and_superscript_take_the_offset() -> None:
+    markdown = "H~{{n}}~O, x^{{n}}^y, C~{{n}}{{n}}~ and a~{{wide}}~b"
+    paragraph = first(parse(front({"n": "2", "wide": "2+x y"}) + markdown), ElementType.PARAGRAPH)
+    assert [(r.text, r.term_key, r.subscript, r.superscript) for r in paragraph.runs] == [
+        ("H", None, False, False), ("2", "n", True, False), ("O, x", None, False, False),
+        ("2", "n", False, True), ("y, C", None, False, False), ("2", "n", True, False),
+        ("2", "n", True, False), (" and a", None, False, False), ("2+x y", "wide", True, False),
+        ("b", None, False, False),
+    ]
+    typed = [(r.text, r.subscript) for r in TextParser.parse_runs("H~2~O")]
+    assert typed == [("H", False), ("2", True), ("O", False)]
+    assert texts(TextParser.parse_runs("H~{{n}}~O")) == ["H~{{n}}~O"]
+
+
 def test_emphasis_around_a_reference_splits_into_three_formatted_runs() -> None:
     paragraph = first(parse(front(VALUES) + "**A{{amount}}B** {{ tenor }}{{rate}}"), ElementType.PARAGRAPH)
     assert paragraph.runs == [
@@ -208,6 +225,33 @@ def test_code_math_fences_and_link_destinations_are_not_substituted() -> None:
     assert model.warnings == []
 
 
+MATH_LINK = "[X](https://example.com/{{amount}}?q=$foo$)"
+
+
+def test_link_destination_with_math_stays_literal_and_unchecked() -> None:
+    assert parse("---\nterms: {}\n---\n" + MATH_LINK).warnings == []
+    model = parse(front({"amount": "500"}) + MATH_LINK)
+    assert first(model, ElementType.PARAGRAPH).runs == TextParser.parse_runs(MATH_LINK)
+    assert model.warnings == []
+
+
+def test_escaped_link_syntax_is_prose_so_its_reference_is_substituted() -> None:
+    paragraph = first(
+        parse(front({"amount": "500"}) + r"\[X](https://example.com/{{amount}})"), ElementType.PARAGRAPH,
+    )
+    assert keyed(paragraph.runs) == [
+        ("[X](https://example.com/", None), ("500", "amount"), (")", None),
+    ]
+
+
+def test_label_value_beside_a_math_destination_is_the_only_substitution() -> None:
+    model = parse(front({"amount": "500"}) + "[{{amount}}](https://example.com/{{amount}}?q=$foo$)")
+    runs = first(model, ElementType.PARAGRAPH).runs
+    assert [run.text for run in runs if run.term_key] == ["500"]
+    assert "https://example.com/{{amount}}?q=" in "".join(texts(runs))
+    assert model.warnings == []
+
+
 def test_value_containing_reference_syntax_is_not_substituted_again() -> None:
     model = parse(front({"a": "{{b}}", "b": "X"}) + "# Head {{a}}\n\nBody {{a}} and {{b}}.")
     heading = first(model, ElementType.HEADING_1)
@@ -243,6 +287,23 @@ def test_lists_and_table_cells_receive_value_runs_but_cells_keep_raw_content() -
     marker = table.rows[2].cells[1]
     assert marker.content == "{{marker}}" and keyed(marker.runs) == [("^^", "marker")]
     assert marker.merge is None
+
+
+def test_table_semantics_follow_values_in_header_cells() -> None:
+    risk = "| Risk | {{h}} |\n|---|---|\n| Rate | High |"
+    detected = first(parse(front({"h": "Impact"}) + risk, profile="ib-memo"), ElementType.TABLE)
+    assert detected.table_type == TableType.RISK_MATRIX
+    assert [cell.risk_level for cell in detected.rows[1].cells] == [None, "high"]
+    specified = first(
+        parse(front({"h": "Impact"}, extra="tables:\n  - type: risk\n") + risk), ElementType.TABLE,
+    )
+    assert [cell.risk_level for cell in specified.rows[1].cells] == [None, "high"]
+    year = first(
+        parse(front({"year": "2026"}) + "| Item | {{year}} |\n|---|---|\n| Sales | 1 |", profile="ib-memo"),
+        ElementType.TABLE,
+    )
+    assert year.table_type == TableType.FINANCIAL
+    assert year.rows[0].cells[1].content == "{{year}}"
 
 
 @pytest.mark.parametrize("markdown, element_type", [
@@ -300,6 +361,21 @@ def test_title_subtitle_and_date_get_display_runs_and_substituted_strings() -> N
         "subtitle": [TextRun("Tenor "), TextRun("3년", term_key="tenor")],
         "date": [TextRun("2026. 09.", term_key="sign")],
     }
+
+
+def test_substituted_ib_title_survives_file_and_stream_parsing(tmp_path: Path) -> None:
+    source = front({"name": "IB Report"}, extra='title: "{{name}}"\n') + "# Different title\n\nBody."
+    path = tmp_path / "title.md"
+    path.write_text(source, encoding="utf-8")
+    for model in (
+        parse(source, profile="ib-report"),
+        parse_markdown_file(str(path)),
+        parse_markdown_file(BytesIO(source.encode("utf-8"))),
+    ):
+        assert model.metadata.title == "IB Report"
+        assert keyed(model.metadata.display_runs["title"]) == [("IB Report", "name")]
+    inferred = parse_markdown_file(BytesIO((front({"name": "x"}) + "# Heading title\n\nBody.").encode()))
+    assert inferred.metadata.title == "Heading title"
 
 
 def test_metadata_without_references_keeps_no_display_runs() -> None:

@@ -134,6 +134,7 @@ from document_profiles import (
 )
 from term_variables import (
     TERM_REFERENCE_RE,
+    TERM_TOKEN_PATTERN,
     TermResolver,
     TokenMap,
     restore_terms,
@@ -336,8 +337,9 @@ class TextParser:
     _ESCAPABLE_RE = re.compile(r'([\\$`^~.*"\'()\[\]{}|_-])')
     _LITERAL_BREAK_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 
-    # Inline formatting patterns
-    _SUBSCRIPT_PATTERN = r"(?<!~)~[A-Za-z0-9]{1,8}~(?!~)"
+    # Inline formatting patterns. A term token counts as one subscript unit, so a
+    # value between tildes is a subscript whatever it contains (never re-parsed).
+    _SUBSCRIPT_PATTERN = r"(?<!~)~(?:[A-Za-z0-9]|" + TERM_TOKEN_PATTERN + r"){1,8}~(?!~)"
     _INLINE_FORMAT_SPLIT_RE = re.compile(
         r"(\*\*[^*\n]+?\*\*|\^[^^\n]+?\^|"
         + _SUBSCRIPT_PATTERN
@@ -663,6 +665,9 @@ class TextParser:
             return text
         resolver.reserve(text)
         protected, code_spans = cls._protect_code_spans(text)
+        # Inline math is split before links are parsed, so a `$` in a URL could
+        # otherwise expose part of the destination as text.
+        protected, destinations = cls._protect_link_destinations(protected)
         pieces: List[str] = []
         last = 0
         for match in cls._COLOR_SPAN_RE.finditer(protected):
@@ -677,9 +682,38 @@ class TextParser:
             last = match.end()
         pieces.append(cls._tokenize_segment(protected[last:], code_spans, resolver, tokens, latex))
         result = "".join(pieces)
+        for token, literal in destinations.items():
+            result = result.replace(token, literal)
         for token, literal in code_spans.items():
             result = result.replace(token, literal)
         return result
+
+    @classmethod
+    def _protect_link_destinations(cls, text: str) -> Tuple[str, Dict[str, str]]:
+        """Shield each complete inline-link destination; labels stay visible.
+
+        Args:
+            text: Text whose code spans are already protected.
+
+        Returns:
+            Text with destinations replaced by tokens, and token -> destination.
+        """
+        literals: Dict[str, str] = {}
+        prefix = "\ue000URL"
+        while prefix in text:
+            prefix += "X"
+
+        def replace(match: Match[str]) -> str:
+            index = match.start()
+            while index and text[index - 1] == "\\":
+                index -= 1
+            if not match.group(2) or (match.start() - index) % 2:
+                return match.group(0)  # a footnote reference or an escaped bracket
+            token = prefix + str(len(literals)) + "\ue001"
+            literals[token] = match.group(2)
+            return f"[{match.group(1)}]({token})"
+
+        return cls._INLINE_REFERENCE_RE.sub(replace, text), literals
 
     @classmethod
     def _tokenize_segment(
@@ -767,6 +801,21 @@ def _parse_term_runs(
     if not tokens:
         return text, parse(text), False
     return restore_terms(tokenized, tokens), split_term_runs(parse(tokenized), tokens), True
+
+
+def _substitute_text(text: str, terms: TermResolver) -> str:
+    """Return a table cell's source with defined references replaced, as if typed.
+
+    Args:
+        text: Raw cell source.
+        terms: Active term resolver.
+
+    Returns:
+        The source with values inserted where the cell's runs show them.
+    """
+    tokens: TokenMap = {}
+    latex = TextParser.has_inline_latex(text)
+    return restore_terms(TextParser.tokenize_terms(text, terms, tokens, latex=latex), tokens)
 
 
 class FenceScanner:
@@ -1004,8 +1053,14 @@ class TableParser:
             alignments if len(alignments) == table.col_count else ["left"] * table.col_count
         )
 
+        # Header semantics follow the values the reader sees; cells keep raw content.
+        header_cells = (
+            first_row_cells if terms is None
+            else [_substitute_text(source, terms) for source in first_row_cells]
+        )
+
         # Detect table type
-        header_text = " ".join(first_row_cells).lower()
+        header_text = " ".join(header_cells).lower()
         table.table_type = (
             TableParser._detect_type(header_text) if financial_rules else TableType.GENERIC
         )
@@ -1040,7 +1095,7 @@ class TableParser:
                     row_idx=i,
                     total_rows=len(data_lines),
                     table_type=table.table_type,
-                    header_cells=first_row_cells,
+                    header_cells=header_cells,
                     terms=terms,
                 )
                 cell.alignment = table.alignments[j] if j < len(table.alignments) else "left"
@@ -2648,7 +2703,9 @@ def _infer_metadata_from_elements(
     """Backfill metadata from document content when frontmatter is absent or partial."""
     metadata = model.metadata
 
-    if metadata.title == "IB Report":
+    # Display runs exist only for a title written with a term reference; such a
+    # title is explicit even when its value equals the default.
+    if metadata.title == "IB Report" and "title" not in metadata.display_runs:
         first_heading = next(
             (
                 element.content.text.strip()
