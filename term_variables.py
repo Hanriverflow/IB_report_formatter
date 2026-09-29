@@ -36,7 +36,7 @@ TERM_REFERENCE_RE = re.compile(r"\{\{([^{}\n]*)\}\}")
 # Private-use token -> (key, value) for one substituted text field.
 TokenMap = Dict[str, Tuple[str, str]]
 
-_LINE_BREAK_RE = re.compile("[\n\r\x85  ]")
+_LINE_BREAK_RE = re.compile("[\n\r\x85\u2028\u2029]")
 _CONTROL_RE = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _INVALID_HINT = "keys use lowercase letters, digits and underscores and start with a letter"
 
@@ -119,8 +119,8 @@ class TermResolver:
     runs afterwards, so a value is never parsed.
     """
 
-    _TOKEN_PREFIX = "TERM"
-    _TOKEN_END = ""
+    _TOKEN_PREFIX = "\ue000TERM"
+    _TOKEN_END = "\ue001"
 
     def __init__(self, values: Mapping[str, str], corpus: str = "") -> None:
         """Create a resolver for validated values.
