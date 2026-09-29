@@ -8,21 +8,27 @@
 |---|---|---|---|---|
 | 2절 표 구조 | `feat/term-sheet-tables` | #19 | `main` | Codex 리뷰 반영 완료 |
 | 3절 수치 검증 | `feat/numeric-checks` | #20 | `feat/term-sheet-tables` | Codex 리뷰 반영 완료 |
-| 4절 기관 서식 | `feat/term-sheet-house-style` | #21 | `feat/numeric-checks` | **Codex 리뷰 미수신** |
+| 4절 기관 서식 | `feat/term-sheet-house-style` | #21 | `feat/numeric-checks` | **Codex 지적 5건 미반영**(아래 2절) |
 | 5절 입력 정리 | `feat/converted-md-cleanup` | 없음 | `feat/term-sheet-house-style` | 이 계획만 있음 |
 
 병합 순서: #19 → #20 → #21. 각 PR을 병합한 뒤 다음 PR의 base를 `main`으로 바꾼다(`gh pr edit <번호> --base main`). 병합은 소유자 승인 후에만 한다.
 
 ## 2. 이어서 할 일
 
-1. **4절 Codex 재검토.** 적대적 리뷰를 read-only로 다시 돌린다(`gpt-6-astra`, effort는 `high`~`max`, `ultra` 금지). 대상은 `git show 9160f11`이다. 확인 항목은 다음과 같다.
-   - `style` 입력 검증: 타입, 빈 값, 큰 값.
-   - 로고 경로: 상대, 절대, UNC, `data:` URI, house와 frontmatter의 우선순위.
-   - OOXML 순서: `pBdr`, `tabs`, `tblBorders`의 `nil`.
-   - 여러 구역(가로 표)의 머리글·바닥글.
-   - `style`이 없을 때 출력이 바이트 단위로 같은지.
-   - 로고 경로가 임의의 로컬 파일을 DOCX에 싣는 위험. 로드맵 E1의 이미지 경로 정책과 비교한다.
-2. **확인된 지적은 테스트를 먼저 쓰고 고친다.** 그다음 #21 CI를 확인한다.
+1. **4절(#21) Codex 리뷰 지적 5건을 반영한다.** 모두 `feat/term-sheet-house-style`에서 테스트를 먼저 쓴 뒤 고친다. 반영 후 `feat/converted-md-cleanup`를 그 위로 다시 맞춘다.
+   - (P2, 재현됨) `style: {page_number: null}`은 검증을 통과해 바닥글 렌더링에서 `TypeError`로 중단된다. null을 거부하거나 기본값으로 바꾼다.
+   - (P2, 재현됨) `logo_width_mm: null`은 검증을 통과한다. 그러면 비strict에서는 로고가 빠지고 strict에서는 `NoneType` 곱셈 오류가 난다. null을 거부하거나 기본값을 쓴다.
+   - (P2, 추정) `cover: page` 바로 뒤에 `landscape: true` 표가 오면 쪽 나누기와 다음 쪽 구역 나누기가 연달아 들어가 빈 세로 쪽이 생길 수 있다. 표지 쪽 나누기를 구역 전환으로 대신한다.
+   - (P3, 재현됨) `page_number`의 캐리지 리턴(`\r`)을 막지 않아 바닥글에 실제 줄바꿈이 들어간다. `\n`과 함께 거부한다.
+   - (P3, 재현됨) `label_color: ""`를 거부한다. 문서상 빈 값은 기본 회색이므로 허용한다.
+   - 이상 없음으로 확인된 항목:
+     - `style`이 없을 때 모든 샘플이 바이트 단위로 같다.
+     - 로고 경로 해석과 우선순위.
+     - 로고 누락 진단.
+     - 가로·세로 구역의 머리글·바닥글.
+     - OOXML 순서.
+   - 참고: 로고가 임의 로컬 파일을 싣는 위험은 기존 이미지 정책과 같다(로드맵 E1에서 함께 다룬다).
+2. **#21 CI를 확인한다.**
 3. **5절을 구현한다.** 아래 설계를 따른다.
 
 ## 3. 5절 설계: 변환본 정리 모드(opt-in)
