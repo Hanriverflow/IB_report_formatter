@@ -2564,7 +2564,9 @@ def _infer_metadata_from_elements(
     """Backfill metadata from document content when frontmatter is absent or partial."""
     metadata = model.metadata
 
-    if metadata.title == "IB Report":
+    # Display runs exist only for a title written with a term reference; such a
+    # title is explicit even when its value equals the default.
+    if metadata.title == "IB Report" and "title" not in metadata.display_runs:
         first_heading = next(
             (
                 element.content.text.strip()

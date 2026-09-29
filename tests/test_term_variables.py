@@ -3,6 +3,8 @@
 import datetime
 import json
 import logging
+from io import BytesIO
+from pathlib import Path
 from typing import Dict, List
 
 import pytest
@@ -21,7 +23,7 @@ from document_model import (
 )
 from document_profiles import RenderOptions
 from ib_renderer import IBDocumentRenderer
-from md_parser import MarkdownParser, TextParser
+from md_parser import MarkdownParser, TextParser, parse_markdown_file
 from term_variables import validate_terms
 
 VALUES = {"amount": "500억원", "tenor": "3년", "rate": "CD(3개월) + [1.10]%"}
@@ -359,6 +361,21 @@ def test_title_subtitle_and_date_get_display_runs_and_substituted_strings() -> N
         "subtitle": [TextRun("Tenor "), TextRun("3년", term_key="tenor")],
         "date": [TextRun("2026. 09.", term_key="sign")],
     }
+
+
+def test_substituted_ib_title_survives_file_and_stream_parsing(tmp_path: Path) -> None:
+    source = front({"name": "IB Report"}, extra='title: "{{name}}"\n') + "# Different title\n\nBody."
+    path = tmp_path / "title.md"
+    path.write_text(source, encoding="utf-8")
+    for model in (
+        parse(source, profile="ib-report"),
+        parse_markdown_file(str(path)),
+        parse_markdown_file(BytesIO(source.encode("utf-8"))),
+    ):
+        assert model.metadata.title == "IB Report"
+        assert keyed(model.metadata.display_runs["title"]) == [("IB Report", "name")]
+    inferred = parse_markdown_file(BytesIO((front({"name": "x"}) + "# Heading title\n\nBody.").encode()))
+    assert inferred.metadata.title == "Heading title"
 
 
 def test_metadata_without_references_keeps_no_display_runs() -> None:
