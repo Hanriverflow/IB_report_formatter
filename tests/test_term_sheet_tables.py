@@ -33,6 +33,7 @@ from docx_audit import inspect_document
 from ib_renderer import IBDocumentRenderer
 from md_parser import MarkdownParser
 
+W_NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 TITLE = "가나다머티리얼즈㈜ 구조화금융"
 FIELDS = {
     "profile": "term-sheet",
@@ -488,6 +489,67 @@ def test_split_run_lines_preserves_formatting_links_footnotes_and_blank_lines() 
     assert term_sheet.split_run_lines([]) == [[]]
     term = TextRun(" 500억원 ", term_key="amount")
     assert term_sheet.split_run_lines([TextRun("앞 \n"), term]) == [[TextRun("앞")], [term]]
+
+
+TCPR_ORDER = (
+    "cnfStyle", "tcW", "gridSpan", "hMerge", "vMerge", "tcBorders", "shd", "noWrap", "tcMar",
+    "textDirection", "tcFitText", "vAlign", "hideMark", "headers", "cellIns", "cellDel",
+    "cellMerge", "tcPrChange",
+)
+TBLPR_ORDER = (
+    "tblStyle", "tblpPr", "tblOverlap", "bidiVisual", "tblStyleRowBandSize",
+    "tblStyleColBandSize", "tblW", "jc", "tblCellSpacing", "tblInd", "tblBorders", "shd",
+    "tblLayout", "tblCellMar", "tblLook", "tblCaption", "tblDescription", "tblPrChange",
+)
+PPR_ORDER = (
+    "pStyle", "keepNext", "keepLines", "pageBreakBefore", "framePr", "widowControl", "numPr",
+    "suppressLineNumbers", "pBdr", "shd", "tabs", "suppressAutoHyphens", "kinsoku", "wordWrap",
+    "overflowPunct", "topLinePunct", "autoSpaceDE", "autoSpaceDN", "bidi", "adjustRightInd",
+    "snapToGrid", "spacing", "ind", "contextualSpacing", "mirrorIndents", "suppressOverlap", "jc",
+    "textDirection", "textAlignment", "textboxTightWrap", "outlineLvl", "divId", "cnfStyle",
+    "rPr", "sectPr", "pPrChange",
+)
+
+
+def assert_schema_order(element, sequence) -> None:
+    names = [etree.QName(child).localname for child in element]
+    assert set(names) <= set(sequence) and len(set(names)) == len(names), names
+    positions = [sequence.index(name) for name in names]
+    assert positions == sorted(positions), names
+
+
+@pytest.mark.parametrize("zebra", [False, True])
+def test_term_sheet_properties_follow_the_schema_order(zebra: bool, tmp_path) -> None:
+    options = {}
+    if zebra:
+        theme = tmp_path / "zebra.yaml"
+        theme.write_text("TABLE_ZEBRA: true\n", encoding="utf-8")
+        options["theme"] = str(theme)
+    body = (
+        ONE_LABEL + "\n" + KEY_VALUE + "\n" + GRID + "\n"
+        "| 금리 | 1% | 2% |\n|---|---|---|\n| 3.0% | 10 | 11 |\n| 3.5% | 9 | 10 |\n\n"
+        "① 가상 설명<br>※ 가상 주석\n\n```confirmation\n```\n"
+    )
+    spec = [
+        {"caption": "개요", "unit": "억원", "note": "(VAT 별도)", "source": "가상 자료"},
+        {"landscape": True},
+        {"type": "risk"},
+        {"type": "sensitivity", "base_case": {"row": 1, "column": 2}},
+    ]
+    confirmation = {"intro": "가상 안내", "items": ["□ 가상 항목"], "signature": "가상 서명"}
+    _, saved = render(ts_markdown(body, tables=spec, confirmation=confirmation), strict=True, **options)
+    body_element = saved.element.body
+    assert body_element.xpath(".//w:tcPr/w:shd[@w:fill='FFFF00']")
+    for tbl_pr in body_element.xpath(".//w:tblPr"):
+        assert_schema_order(tbl_pr, TBLPR_ORDER)
+    for tc_pr in body_element.xpath(".//w:tcPr"):
+        assert_schema_order(tc_pr, TCPR_ORDER)
+    for p_pr in body_element.xpath(".//w:pPr"):
+        assert_schema_order(p_pr, PPR_ORDER)
+    defaults = etree.XPath("./w:docDefaults/w:pPrDefault/w:pPr", namespaces=W_NS)
+    for p_pr in defaults(saved.styles.element):
+        assert_schema_order(p_pr, PPR_ORDER)
+    assert_schema_order(saved.styles["Heading 2"].element.pPr, PPR_ORDER)
 
 
 def test_strict_term_sheet_tables_have_no_audit_issues() -> None:

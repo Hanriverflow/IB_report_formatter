@@ -49,7 +49,7 @@ from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from io import BytesIO
 from pathlib import Path
-from typing import AbstractSet, Any, Dict, List, Optional, Set, Tuple, cast
+from typing import AbstractSet, Any, Callable, Dict, List, Optional, Set, Tuple, cast
 from uuid import uuid4
 from xml.sax.saxutils import escape
 
@@ -1779,8 +1779,15 @@ class TableRenderer:
         if role != "header" and not (
             table.table_type == TableType.FINANCIAL and column_role in {"text", "code", "date"}
         ):
-            self._apply_type_styling(word_cell, cell_data, row_index, table.table_type)
+            self._apply_type_styling(
+                word_cell, cell_data, row_index, table.table_type, fill=self._ordered_fill
+            )
         return texts, size
+
+    @staticmethod
+    def _ordered_fill(cell, hex_color: str) -> None:
+        """Term-sheet cell fill placed in `w:tcPr` schema order (before `w:vAlign`)."""
+        set_cell_fill(cell._tc, hex_color)
 
     @staticmethod
     def _set_column_widths(word_table, widths: List[int]) -> None:
@@ -2417,8 +2424,14 @@ class TableRenderer:
         cell_data: TableCell,
         row_idx: int,
         table_type: TableType,
+        fill: Callable[[Any, str], None] = TableStyler.set_cell_background,
     ):
-        """Apply table-type specific styling to every paragraph of one owner cell."""
+        """Apply table-type specific styling to every paragraph of one owner cell.
+
+        Args:
+            fill: Cell background setter. Legacy tables keep the historical append;
+                term-sheet tables pass a schema-ordered setter.
+        """
         runs = [run for paragraph in cell.paragraphs for run in paragraph.runs]
         if table_type == TableType.FINANCIAL:
             if cell_data.is_negative:
@@ -2427,7 +2440,7 @@ class TableRenderer:
 
         elif table_type == TableType.BEP_SENSITIVITY:
             if cell_data.is_base_case:
-                TableStyler.set_cell_background(cell, STYLE.YELLOW_HEX)
+                fill(cell, STYLE.YELLOW_HEX)
                 for run in runs:
                     run.font.bold = True
 
