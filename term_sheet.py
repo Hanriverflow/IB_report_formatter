@@ -46,6 +46,7 @@ _BORDER_EDGES = ("top", "left", "bottom", "right", "insideH", "insideV")
 _CELL_SPACE_AFTER = Pt(1.5)
 _CELL_LINE_SPACING = 1.05
 _SPACER_HEIGHT = Pt(4)
+_CONFIRMATION_GAP = Pt(6)  # air between a preceding note and the confirmation box
 _BOLD_ALLOWANCE = 1.1  # bold header glyphs are wider than the em estimate
 # Successor elements used to insert children in ECMA-376 schema order.
 _TCPR_AFTER_SHD = (
@@ -556,12 +557,19 @@ def add_table_source(doc: Any, source: str, render_runs: RenderRuns) -> None:
     )
 
 
-def add_table_spacer(doc: Any) -> None:
-    """Empty paragraph of exactly 4pt after a table instead of a body-size line."""
+def _add_spacer(doc: Any, height: Length, keep_with_next: bool = False) -> None:
+    """Empty paragraph of an exact height (no body-size line)."""
     paragraph_format = doc.add_paragraph().paragraph_format
+    if keep_with_next:
+        paragraph_format.keep_with_next = True
     paragraph_format.space_before = Pt(0)
     paragraph_format.space_after = Pt(0)
-    paragraph_format.line_spacing = _SPACER_HEIGHT
+    paragraph_format.line_spacing = height
+
+
+def add_table_spacer(doc: Any) -> None:
+    """Empty paragraph of exactly 4pt after a table instead of a body-size line."""
+    _add_spacer(doc, _SPACER_HEIGHT)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -838,21 +846,26 @@ def render_confirmation(doc: Any, confirmation: ConfirmationText, render_runs: R
     Row 1 holds the intro (8pt muted) and the check items (10pt, `□` hanging
     indent; later lines of an item align with its text). Row 2 holds the
     signature, centred bold 10pt on `TS_SIGNATURE_BG_HEX`. Both rows are
-    unsplittable, every row-1 paragraph is kept with the next and so is the
-    paragraph before the box, so the whole box stays on one page. A row without
-    text is omitted. The frame is 0.5pt `TS_BORDER_HEX`.
+    unsplittable, every row-1 paragraph is kept with the next and so are the
+    paragraph before the box and a 6pt spacer that separates the box from it, so
+    the whole box stays on one page. A row without text is omitted. The frame is
+    0.5pt `TS_BORDER_HEX`.
 
     Args:
         doc: Document receiving the box at the current position.
         confirmation: Wording with at least one non-blank field.
         render_runs: Injected run renderer.
+
+    Raises:
+        ValueError: The section has no positive printable width (nothing is emitted).
     """
+    width = positive_printable_width(doc.sections[-1], "Confirmation box")
     _keep_previous_with_next(doc)
+    _add_spacer(doc, _CONFIRMATION_GAP, keep_with_next=True)
     intro = confirmation.intro.strip()
     items = [item.strip() for item in confirmation.items if item.strip()]
     signature = confirmation.signature.strip()
     kinds = (["body"] if intro or items else []) + (["signature"] if signature else [])
-    width = positive_printable_width(doc.sections[-1], "Confirmation box")
     table = doc.add_table(rows=len(kinds), cols=1)
     table.style = STYLE.STYLE_TABLE_GRID
     table.columns[0].width = Emu(width)

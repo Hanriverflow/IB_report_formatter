@@ -551,7 +551,11 @@ def test_confirmation_box_has_two_rows_kept_on_one_page():
     assert set(xml_values(signature, ".//w:r/w:rPr/w:sz")) == {"20"}
     assert xml_values(signature_cell, "./w:tcPr/w:shd", "w:fill") == ["F2F2F2"]
     assert not signature.xpath("./w:pPr/w:keepNext")
-    previous = table.getprevious()
+    spacer = table.getprevious()  # about 6pt of air between a preceding note and the box
+    assert not spacer.xpath(".//w:t") and spacer.xpath("./w:pPr/w:keepNext")
+    spacing = spacer.xpath("./w:pPr/w:spacing")[0]
+    assert (spacing.get(qn("w:line")), spacing.get(qn("w:lineRule"))) == ("120", "exact")
+    previous = spacer.getprevious()
     assert "".join(previous.xpath(".//w:t/text()")) == "확인 안내 문단입니다." and previous.xpath("./w:pPr/w:keepNext")
     borders = table.xpath("./w:tblPr/w:tblBorders/*")
     assert {(node.get(qn("w:sz")), node.get(qn("w:color"))) for node in borders} == {("4", "9AA5C4")}
