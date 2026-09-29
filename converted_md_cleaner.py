@@ -15,9 +15,10 @@ Changelog (converted input):
     - NEW: chapter headings from bold numbered lines or numbered lines followed
       by a table; one-row band tables become headings; cover lines before the
       first chapter move to frontmatter; unclear lines stay and are reported.
-    - Only top-level blocks change: indented code, list and quote blocks,
-      fences and whole HTML tables (balanced, comments and attributes skipped)
-      are left as written, except that a clean one-row HTML table can become a
+    - Only top-level blocks change: indented code, list and quote blocks
+      (nested ones included), fences and whole HTML tables (balanced, comments
+      and attributes skipped) are left as written, except that a one-row table
+      with plain text (HTML: one `<p>` and formatting tags at most) can become a
       band heading; any ATX heading ends a paragraph and the cover.
     - Frontmatter follows the parser: `---` closers (`...` is rewritten and
       reported), case-insensitive keys, and a block-YAML rewrite (reported)
@@ -68,8 +69,11 @@ _HTML_ROW_RE = re.compile(r"<tr\b", re.IGNORECASE)
 _HTML_CELL_RE = re.compile(
     r"<t([dh])\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>(.*?)</t\1\s*>", re.IGNORECASE | re.DOTALL
 )
-_HTML_TAG_RE = re.compile(r"<!--.*?-->|</?[A-Za-z][^>]*>", re.DOTALL)  # `a < b` is text
-_HTML_SPACING_TAG_RE = re.compile(r"<br\s*/?>|</?(?:p|div|li|tr|td|th)\b[^>]*>", re.IGNORECASE)
+_HTML_PARAGRAPH_RE = re.compile(r"<p\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>(.*)</p\s*>", re.IGNORECASE | re.DOTALL)
+# Formatting-only tags whose text reads the same inside a bold heading; any other tag
+# (breaks, super/subscript, links, blocks) keeps the table as written.
+_BAND_INLINE_TAGS = frozenset({"span", "font", "b", "strong", "i", "em", "u"})
+_TABLE_STRUCTURE_TAGS = frozenset({"table", "thead", "tbody", "tfoot", "tr", "colgroup", "col"})
 
 _CONFIDENTIAL_MAX_CHARS = 40
 _DISCLAIMER_MIN_CHARS = 80
@@ -137,15 +141,21 @@ class _Block:
 
     @property
     def container(self) -> bool:
-        """A block quote, a bullet item, or an ordered item with indented continuation lines.
+        """A block quote or bullet item, an ordered item with indented continuation
+        lines, or any block holding an indented list item or quote.
 
         A lone ordered-looking line stays eligible: converters write dates
         (`2026. 9. 29.`) and chapter titles (`1. 개요`) that way.
         """
-        first = self.lines[0]
+        first, rest = self.lines[0], self.lines[1:]
         if _CONTAINER_RE.match(first):
             return True
-        return bool(_ORDERED_ITEM_RE.match(first)) and any(line[:1].isspace() for line in self.lines[1:])
+        if any(
+            line[:1].isspace() and (_CONTAINER_RE.match(line.lstrip()) or _ORDERED_ITEM_RE.match(line.lstrip()))
+            for line in rest
+        ):
+            return True
+        return bool(_ORDERED_ITEM_RE.match(first)) and any(line[:1].isspace() for line in rest)
 
 
 @dataclass
@@ -337,14 +347,15 @@ def _split_blocks(lines: List[str]) -> Tuple[List[_Block], List[str]]:
             kind = "pipe"
         else:
             if not _ATX_RE.match(line):  # a heading is a block of its own
-                # A quote or bullet line starts its own (container) block, which
-                # keeps following quote/bullet lines and lazy continuations.
+                # A quote or bullet line at column 0 starts its own (container)
+                # block, which keeps following quote/bullet lines and lazy
+                # continuations; indented ones stay with the block they continue.
                 in_container = bool(_CONTAINER_RE.match(line))
                 while (
                     end < len(lines)
                     and lines[end].strip()
                     and not _starts_block(lines, end)
-                    and (in_container or not _CONTAINER_RE.match(lines[end]))
+                    and (in_container or lines[end][:1].isspace() or not _CONTAINER_RE.match(lines[end]))
                 ):
                     end += 1
             kind = "text"
@@ -416,14 +427,17 @@ def _convert_band_tables(blocks: List[_Block], offset: int, report: ConvertedCle
     for block in blocks:
         if not block.top_level:
             continue
+        first, last = _span(block, offset)
         cells: Optional[List[str]] = None
         if block.kind == "pipe" and len(block.lines) == 2:
             cells = [_unbold(cell) or cell for cell in _row_cells(block.lines[0])]
         elif block.kind == "html":
-            cells = _html_band_cells("\n".join(block.lines))
+            cells, why = _html_band_cells("\n".join(block.lines))
+            if why:
+                report.add(first, f"kept a one-row HTML table: {why}", last)
+                continue
         if cells is None:
             continue
-        first, last = _span(block, offset)
         texts = [cell for cell in cells if cell]
         if not texts:
             report.add(first, "kept a one-row table without text", last)
@@ -437,26 +451,47 @@ def _convert_band_tables(blocks: List[_Block], offset: int, report: ConvertedCle
         report.add(first, f"band table -> {_quote(heading)}", last)
 
 
-def _html_text(fragment: str) -> str:
-    """Visible text: inline tags vanish (`1<span>00</span>` is `100`), block tags and breaks separate words."""
-    spaced = _HTML_SPACING_TAG_RE.sub(" ", fragment)
-    return " ".join(html.unescape(_HTML_TAG_RE.sub("", spaced)).split())
+def _html_cell_text(content: str) -> Optional[str]:
+    """Text of a cell holding at most one `<p>` and formatting-only tags, else None.
+
+    Formatting tags join their text (`1<span>00</span>` is `100`); a break,
+    superscript, link, image, comment or block tag would change the text as a
+    heading, so such a cell is not converted.
+    """
+    inner = content.strip()
+    paragraph = _HTML_PARAGRAPH_RE.fullmatch(inner)
+    if paragraph and not re.search(r"<p\b", paragraph.group(1), re.IGNORECASE):
+        inner = paragraph.group(1)
+    for token in _HTML_TOKEN_RE.finditer(inner):
+        if token.group(2) is None or token.group(2).lower() not in _BAND_INLINE_TAGS:
+            return None
+    return " ".join(html.unescape(_HTML_TOKEN_RE.sub("", inner)).split())
 
 
-def _html_band_cells(source: str) -> Optional[List[str]]:
-    """Cell texts of a lone single-row HTML table with no text outside its cells."""
-    lowered = source.lower()
-    if (
-        len(_TABLE_OPEN_RE.findall(source)) != 1
-        or not re.search(r"</table\s*>\s*$", lowered)
-        or len(_HTML_ROW_RE.findall(source)) != 1
-        or "<img" in lowered
-        or "<!--" in source
-        or _html_text(_HTML_CELL_RE.sub(" ", source))  # e.g. a caption
-    ):
-        return None
-    cells = [_html_text(content) for _, content in _HTML_CELL_RE.findall(source)]
-    return cells or None
+def _html_band_cells(source: str) -> Tuple[Optional[List[str]], str]:
+    """Cell texts of a lone single-row HTML table.
+
+    Returns:
+        `(cells, "")` when it can become a heading; `(None, reason)` when it is
+        a one-row table that must stay; `(None, "")` when it is not one.
+    """
+    if len(_TABLE_OPEN_RE.findall(source)) != 1 or len(_HTML_ROW_RE.findall(source)) != 1:
+        return None, ""
+    if not re.search(r"</table\s*>\s*$", source, re.IGNORECASE):
+        return None, "text follows the table"
+    outside = _HTML_CELL_RE.sub("", source)
+    for token in _HTML_TOKEN_RE.finditer(outside):
+        if token.group(2) is None or token.group(2).lower() not in _TABLE_STRUCTURE_TAGS:
+            return None, "it has content outside its cells"
+    if html.unescape(_HTML_TOKEN_RE.sub("", outside)).strip():
+        return None, "it has text outside its cells"
+    cells = []
+    for _, content in _HTML_CELL_RE.findall(source):
+        text = _html_cell_text(content)
+        if text is None:
+            return None, "a cell has markup other than simple formatting"
+        cells.append(text)
+    return cells or None, ""
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -589,7 +624,10 @@ def _extract_cover(
             continue
         for index, (core, kind) in enumerate(zip(cores, kinds)):
             plain = _plain(core)
-            if kind == "image":
+            if block.lines[index][:1].isspace():  # a continuation line is never moved on its own
+                title_open = title_open and not titles
+                keep(block, index, "an indented line")
+            elif kind == "image":
                 block.removed[index] = True
                 for source in _image_sources(core) or []:
                     report.add(

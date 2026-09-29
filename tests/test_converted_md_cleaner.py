@@ -213,6 +213,10 @@ def test_band_tables_become_headings_and_other_tables_stay() -> None:
         "<table><tr><td>DSCR < 1.2 and LTV > 60%</td></tr></table>\n",
         "<table><tr><td>A^12^</td></tr></table>\n",
         "| USD $100 | USD $200 |\n|---|---|\n",  # joined cells would open inline LaTeX
+        '<table><tr><td>10<br class="break">20</td></tr></table>\n',
+        "<table><tr><td>10<sup>2</sup></td></tr></table>\n",
+        '<table><tr><td><a href="https://example.com">별첨</a></td></tr></table>\n',
+        "<table><tr><td><p>첫째</p><p>둘째</p></td></tr></table>\n",
     ],
 )
 def test_one_row_tables_that_a_heading_would_change_stay_tables(source: str) -> None:
@@ -224,6 +228,20 @@ def test_one_row_tables_that_a_heading_would_change_stay_tables(source: str) -> 
 def test_html_band_text_keeps_inline_runs_together() -> None:
     cleaned, _ = clean_converted_term_sheet(FRONT + "<table><tr><td>별첨 1<span>0</span></td><td><p>상환</p></td></tr></table>\n")
     assert cleaned == FRONT + "\n## 별첨 10 | 상환\n"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "1. 대외비\n   - 배포 금지\n\n## 조건\n",  # an ordered item with a nested bullet
+        "**초안**\n  > Strictly Confidential\n\n## 1. 조건\n",  # an indented quote continues the paragraph
+    ],
+)
+def test_blocks_with_nested_lists_or_quotes_stay_whole(source: str) -> None:
+    cleaned, _ = clean_converted_term_sheet(source)
+    front, body = _split(cleaned)
+    assert front == {"profile": "term-sheet"}
+    assert body == source
 
 
 def test_a_quote_right_after_a_title_line_stays_a_quote() -> None:
