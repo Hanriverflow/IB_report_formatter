@@ -216,7 +216,8 @@ def test_code_math_fences_and_link_destinations_are_not_substituted() -> None:
     )
     paragraph = first(model, ElementType.PARAGRAPH)
     assert [run.text for run in paragraph.runs if run.term_key] == ["500억원"]
-    assert "`{{amount}}`" in "".join(texts(paragraph.runs))
+    # Code keeps the reference literal (shown without backticks, as a code run).
+    assert [run.text for run in paragraph.runs if run.code] == ["{{amount}}", "{{nope}}"]
     assert [run.text for run in paragraph.runs if run.is_latex] == ["x^{{2}}"]
     assert [run.hyperlink for run in paragraph.runs if run.hyperlink] == ["https://example.com/{{nope}}"]
     code = first(model, ElementType.CODE_BLOCK)

@@ -520,8 +520,11 @@ def test_term_sheet_document_defaults_are_local_to_term_sheets():
     assert xml_values(defaults, "./w:rPrDefault/w:rPr/w:sz") == ["18"]
     plain = reopen(IBDocumentRenderer().render(MarkdownParser(profile="plain").parse("본문.")))
     plain_defaults = find_all(plain.styles.element, "./w:docDefaults")[0]
-    for tag in ("wordWrap", "kinsoku", "autoSpaceDE", "autoSpaceDN"):
+    for tag in ("wordWrap", "kinsoku"):
         assert not find_all(plain_defaults, f".//w:{tag}")
+    # General profiles print Korean next to Latin text and digits tight as well.
+    assert xml_values(plain_defaults, "./w:pPrDefault/w:pPr/w:autoSpaceDE") == ["0"]
+    assert xml_values(plain_defaults, "./w:pPrDefault/w:pPr/w:autoSpaceDN") == ["0"]
     assert xml_values(plain_defaults, "./w:rPrDefault/w:rPr/w:lang", "w:eastAsia") == ["en-US"]
     assert xml_values(plain_defaults, "./w:rPrDefault/w:rPr/w:sz") == ["22"]
 

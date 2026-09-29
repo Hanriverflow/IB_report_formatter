@@ -178,7 +178,7 @@ class DocxOutputConverter(OutputConverter):
     output_format = "docx"
 
     def convert(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> Any:
-        from ib_renderer import IBDocumentRenderer
+        from ib_renderer import IBDocumentRenderer, rebase_local_links
 
         assert isinstance(source, DocumentModel)
         from document_profiles import RenderOptions
@@ -208,6 +208,7 @@ class DocxOutputConverter(OutputConverter):
         if output_path:
             from cli_utils import safe_save
 
+            rebase_local_links(doc, source.source_dir, Path(output_path))
             saved = safe_save(
                 Path(output_path),
                 lambda path: doc.save(str(path)),

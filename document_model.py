@@ -9,6 +9,7 @@ Changelog (quality hardening):
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 
@@ -67,6 +68,7 @@ class TextRun:
     hyperlink: Optional[str] = None
     footnote_id: Optional[int] = None
     term_key: Optional[str] = None  # set when the text is a substituted {{term}} value
+    code: bool = False  # inline code span content (rendered monospace, without backticks)
 
 
 @dataclass
@@ -346,6 +348,9 @@ class DocumentModel:
     warnings: List[str] = field(default_factory=list)
     # None means a hand-built model; parsed models retain their parsing policy.
     parsed_profile: Optional[str] = None
+    # Folder of the source file; None for text or stream input. Relative link
+    # targets refer to it until a save rebases them on the output folder.
+    source_dir: Optional[Path] = None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

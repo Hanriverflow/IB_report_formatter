@@ -47,7 +47,7 @@ def test_breaks_do_not_add_an_extra_space_or_duplicate_source_newline():
     assert doc.paragraphs[0].text == "앞\n뒤\n\n끝"
 
 
-@pytest.mark.parametrize("source, expected", [(r"앞\<br>뒤", "앞<br>뒤"), ("`<br>`", "`<br>`"), ("`**<br>**`", "`**<br>**`"), ("`$5<br>$`", "`$5<br>$`")])
+@pytest.mark.parametrize("source, expected", [(r"앞\<br>뒤", "앞<br>뒤"), ("`<br>`", "<br>"), ("`**<br>**`", "**<br>**"), ("`$5<br>$`", "$5<br>$")])
 def test_literal_break_syntax_stays_literal(source, expected):
     doc = render(source)
     assert doc.paragraphs[0].text == expected
@@ -63,10 +63,12 @@ def test_br_does_not_change_link_destination_or_currency():
 
 def test_literal_code_keeps_surrounding_emphasis_and_table_context():
     runs = TextParser.parse_runs("**앞 `*<br>*` 뒤**")
-    assert "".join(r.text for r in runs) == "앞 `*<br>*` 뒤"
+    # Inline code is literal (no emphasis, no break) and shown without its backticks.
+    assert "".join(r.text for r in runs) == "앞 *<br>* 뒤"
+    assert [r.text for r in runs if r.code] == ["*<br>*"]
     assert all(r.bold for r in runs)
     doc = render("| 항목 |\n|---|\n| `$5<br>$` |")
-    assert doc.tables[0].cell(1, 0).text == "`$5<br>$`"
+    assert doc.tables[0].cell(1, 0).text == "$5<br>$"
     assert not doc.element.xpath(".//w:br")
 
 

@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased] - 2026-09-29
 
+### Internal memo rendering (found on a real memo)
+- Inline code is rendered without its backticks in the code font (`CODE_FONT`); its text, including edge spaces in term-sheet lines, stays literal and outside table number formatting. Plain-profile callouts render inline code and links like body text.
+- Local file links (angle-bracket destinations, drive or `./`/`../` paths, document extensions) become Word hyperlinks. Saving through the CLI, converter or registry rebases links on the DOCX folder: relative links keep reaching their file, absolute paths inside the DOCX folder become relative, and other absolute paths stay `file:///` links with a log warning. `#` and `%` in absolute paths are literal; a `#` after a document extension in a relative link is a fragment, and `file:` fragments such as `#page=2` are kept. UNC paths become `file://server/share` links; targets that are not valid local paths are kept as written with a warning. Reference definitions with spaces, brackets or any path form resolve correctly.
+- General profiles turn off Word's automatic Korean/Latin and Korean/number spacing (`SPC는`, `제2종`, `300억원`), as the term-sheet profile already did.
+
 ### Existing-output fixes (schema order, forced TOC, audit encoding)
 - Insert table borders, cell fills and margins, paragraph borders and run styles in ECMA-376 schema order in every profile (`ooxml_order.insert_ordered`). Output changes only in element order; content is identical.
 - `business-report`, `meeting-minutes`, `office-letter` and `ib-memo` without a cover now render their title opening before a forced TOC, and the TOC preview no longer lists the title heading (matching `ib-report` and `term-sheet`).
