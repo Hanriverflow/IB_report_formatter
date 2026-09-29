@@ -2,6 +2,11 @@
 IB Renderer Module for Word Report Generation
 Handles styling and rendering of document elements in IB Bank style.
 
+Changelog (legacy output fixes):
+    - Insert borders, fills, cell margins and run styles in schema order.
+    - Without a cover, office/memo openings precede a forced TOC, whose
+      preview no longer lists the title heading.
+
 Changelog (term-sheet foundation):
     - Validate term-sheet metadata and resolve house text before document output.
     - Preserve confirmation fences in code panels when confirmation text is missing.
@@ -108,6 +113,7 @@ from office_layout import (
     render_office_opening,
     setup_letter_styles,
 )
+from ooxml_order import insert_ordered
 from render_styles import STYLE, RasterFontPolicy, collect_raster_font_diagnostics, use_style
 from render_styles import IBStyle as IBStyle
 from term_sheet import (
@@ -561,7 +567,7 @@ class DocumentStyler:
         bottom.set(qn("w:sz"), "12")
         bottom.set(qn("w:color"), STYLE.NAVY_HEX)
         pBdr.append(bottom)
-        pPr.append(pBdr)
+        insert_ordered(pPr, pBdr)
 
     def setup_header_footer(
         self,
@@ -651,7 +657,7 @@ class DocumentStyler:
         bottom.set(qn("w:sz"), "6")
         bottom.set(qn("w:color"), STYLE.GRAY_BORDER_HEX)
         pBdr.append(bottom)
-        pPr.append(pBdr)
+        insert_ordered(pPr, pBdr)
 
     def _add_page_number_field(self, paragraph):
         """Add page number field code to paragraph."""
@@ -734,12 +740,8 @@ class TableStyler:
         shd.set(qn("w:val"), "clear")
         shd.set(qn("w:color"), "auto")
         shd.set(qn("w:fill"), hex_color)
-        existing = tcPr.find(qn("w:shd"))
-        if existing is not None:
-            # A second fill (e.g. a base case over a label) must not duplicate w:shd.
-            tcPr.replace(existing, shd)
-        else:
-            tcPr.append(shd)
+        # One fill, in schema order (before w:vAlign); a second fill replaces the first.
+        insert_ordered(tcPr, shd)
 
     @staticmethod
     def set_table_borders(table):
@@ -770,7 +772,7 @@ class TableStyler:
         insideV.set(qn("w:color"), STYLE.GRAY_BORDER_HEX)
         tblBorders.append(insideV)
 
-        tblPr.append(tblBorders)
+        insert_ordered(tblPr, tblBorders)
         if tbl.tblPr is None:
             tbl.insert(0, tblPr)
 
@@ -1229,7 +1231,7 @@ class CoverRenderer:
             border.set(qn("w:val"), "nil")
             tblBorders.append(border)
 
-        tblPr.append(tblBorders)
+        insert_ordered(tblPr, tblBorders)
         if tbl.tblPr is None:
             tbl.insert(0, tblPr)
 
@@ -1330,7 +1332,7 @@ class CoverRenderer:
         bottom.set(qn("w:space"), "1")
         bottom.set(qn("w:color"), color_hex)
         pBdr.append(bottom)
-        pPr.append(pBdr)
+        insert_ordered(pPr, pBdr)
 
 
 class TOCRenderer:
@@ -2751,7 +2753,7 @@ class CalloutRenderer:
             border.set(qn("w:val"), "nil")
             tblBorders.append(border)
 
-        tblPr.append(tblBorders)
+        insert_ordered(tblPr, tblBorders)
         if tbl.tblPr is None:
             tbl.insert(0, tblPr)
 
@@ -2769,7 +2771,7 @@ class CalloutRenderer:
             border.set(qn("w:color"), border_hex)
             tblBorders.append(border)
 
-        tblPr.append(tblBorders)
+        insert_ordered(tblPr, tblBorders)
         if tbl.tblPr is None:
             tbl.insert(0, tblPr)
 
@@ -3032,7 +3034,7 @@ class FootnoteRenderer:
 
         r_style = OxmlElement("w:rStyle")
         r_style.set(qn("w:val"), "FootnoteReference")
-        r_pr.append(r_style)
+        insert_ordered(r_pr, r_style)
 
         footnote_ref = OxmlElement("w:footnoteReference")
         footnote_ref.set(qn("w:id"), str(number))
@@ -3317,10 +3319,16 @@ class IBDocumentRenderer:
             and bool(model.metadata.title.strip())
         )
         term_sheet = resolved.profile.name == "term-sheet"
+        # Without a cover, every other non-plain profile opens with its title too
+        # (`render_office_opening`); it leads the page like the report title block.
+        opening_title = (
+            not resolved.cover and not report_title_block and not term_sheet
+            and resolved.profile.name not in {"plain", "ib-report"}
+        )
         if (resolved.cover and resolved.profile.is_ib) or report_title_block:
             # Filter the private render copy so the TOC and body share the same outline.
             model.elements = [element for element in model.elements if not element.inferred_subtitle]
-        if report_title_block or term_sheet:
+        if report_title_block or term_sheet or opening_title:
             # Transfer the first matching body H1 to the non-outline title block
             # (the term-sheet opening always renders the title).
             # Filtering before the TOC also prevents a stale preview title entry.
@@ -3369,12 +3377,13 @@ class IBDocumentRenderer:
                     self.doc, model.metadata, cast(TermSheetTexts, self.term_sheet_texts),
                     TextRenderer.render_runs,
                 )
+            if opening_title:
+                # Title before the TOC, whose preview no longer lists the title H1.
+                title_inserted = render_office_opening(self.doc, model.metadata)
             if resolved.toc:
                 self.toc_renderer.render(model)
-            if not resolved.cover and not report_title_block and not self._term_sheet:
-                title_inserted = render_office_opening(self.doc, model.metadata)
             # The title H1 was already removed from the render copy for these paths.
-            skipped_title = report_title_block or term_sheet
+            skipped_title = report_title_block or term_sheet or opening_title
             office_closed = False
             for idx, element in enumerate(model.elements):
                 if idx == appendix_index:
@@ -3661,7 +3670,7 @@ class IBDocumentRenderer:
         bottom.set(qn("w:space"), "1")
         bottom.set(qn("w:color"), STYLE.GRAY_BORDER_HEX)
         pBdr.append(bottom)
-        pPr.append(pBdr)
+        insert_ordered(pPr, pBdr)
 
         # Minimal spacing
         pFmt = p.paragraph_format
@@ -3721,7 +3730,7 @@ class IBDocumentRenderer:
             border.set(qn("w:val"), "nil")
             tbl_borders.append(border)
 
-        tbl_pr.append(tbl_borders)
+        insert_ordered(tbl_pr, tbl_borders)
         if tbl.tblPr is None:
             tbl.insert(0, tbl_pr)
 
@@ -3733,7 +3742,7 @@ class IBDocumentRenderer:
             margin.set(qn("w:w"), "180" if edge in {"left", "right"} else "140")
             margin.set(qn("w:type"), "dxa")
             tc_mar.append(margin)
-        tc_pr.append(tc_mar)
+        insert_ordered(tc_pr, tc_mar)
 
     def _render_code_block_line(self, paragraph, line: str) -> None:
         """Render one line of a code block with light semantic emphasis for tree diagrams."""

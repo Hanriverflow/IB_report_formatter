@@ -55,7 +55,7 @@ only-include = [
     "cli_utils.py", "converters.py", "deep_md_cleaner.py", "diagram_renderer.py",
     "document_model.py", "document_profiles.py", "docx_audit.py", "ib_renderer.py",
     "md_formatter.py", "md_parser.py", "md_to_word.py", "office_layout.py",
-    "render_styles.py", "stream_utils.py", "term_sheet.py", "term_variables.py",
+    "ooxml_order.py", "render_styles.py", "stream_utils.py", "term_sheet.py", "term_variables.py",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -63,7 +63,7 @@ include = [
     "/chart_renderer.py",
     "/cli_utils.py", "/converters.py", "/deep_md_cleaner.py", "/diagram_renderer.py",
     "/document_model.py", "/document_profiles.py", "/docx_audit.py", "/ib_renderer.py",
-    "/md_formatter.py", "/md_parser.py", "/md_to_word.py", "/office_layout.py",
+    "/md_formatter.py", "/md_parser.py", "/md_to_word.py", "/office_layout.py", "/ooxml_order.py",
     "/render_styles.py", "/stream_utils.py", "/term_sheet.py", "/term_variables.py",
     "/pyproject.toml", "/uv.lock",
     "/README.md", "/README.ko.md", "/CHANGELOG.md", "/AGENTS.md", "/LICENSE",
@@ -111,6 +111,7 @@ known-first-party = [
     "md_to_word",
     "converters",
     "office_layout",
+    "ooxml_order",
     "render_styles",
     "stream_utils",
     "term_sheet",

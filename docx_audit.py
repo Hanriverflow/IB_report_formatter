@@ -1,5 +1,8 @@
 """Inspect generated DOCX structure without an inverse Word-to-Markdown parser.
 
+Changelog (output encoding):
+    - Write the JSON report as UTF-8 regardless of the console code page.
+
 Changelog (term variables):
     - Compare tagged term values with each other and with the generation
       snapshot (`terms`); mismatches and missing controls are warnings only.
@@ -14,6 +17,7 @@ import argparse
 import json
 import logging
 import re
+import sys
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, cast
 
@@ -409,11 +413,25 @@ def audit_file(path: str) -> DocumentAudit:
     return inspect_document(Document(path))
 
 
+def _use_utf8_output() -> None:
+    """Write UTF-8 even when the console code page differs (e.g. cp949 on Windows).
+
+    Redirected JSON would otherwise be encoded with the locale code page and fail
+    to parse as UTF-8. Interactive consoles already accept Unicode, so this only
+    changes redirected or piped output.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8")
+
+
 def main() -> None:
     """Print a JSON audit result and return nonzero on structural errors only."""
     parser = argparse.ArgumentParser(description="Inspect generated Word document structure")
     parser.add_argument("input_file")
     args = parser.parse_args()
+    _use_utf8_output()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     try:
         document = Document(args.input_file)
