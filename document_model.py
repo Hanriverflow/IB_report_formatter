@@ -215,6 +215,7 @@ class Table:
     label_columns: Optional[int] = None  # shaded leading label columns (term-sheet layout)
     note: str = ""  # table spec `note`: short right-aligned text below the table
     header_rows: int = 1  # leading rows drawn and repeated as the header (spec `header_rows`)
+    schedule: Optional[Dict[str, Any]] = None  # validated table spec `schedule` (repayment checks)
 
 
 @dataclass

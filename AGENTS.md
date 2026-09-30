@@ -46,6 +46,7 @@ Existing `md_to_word.py` and `ib-report` remain entry points. On Windows, use a 
 | `term_sheet.py` | House texts and term-sheet composition; must not import `ib_renderer` |
 | `ooxml_order.py` | Schema-ordered insertion for hand-built tblPr/tcPr/pPr/rPr children |
 | `term_variables.py` | Term variables, content-control tags and snapshots |
+| `numeric_checks.py` | `checks:` relations and table `schedule` arithmetic; reads displayed amounts, reports only |
 | `docx_audit.py` | Structural diagnostics, not reverse conversion or visual QA |
 | `md_to_word.py` | CLI, file/batch conversion and safe save |
 | `converters.py` | Registry with Markdown input and DOCX output only |

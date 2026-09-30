@@ -124,6 +124,7 @@ from md_parser import (
     TextRun,
     rebase_link_target,
 )
+from numeric_checks import CHECKS_PROPERTY, checks_to_json, parse_checks
 from office_layout import (
     NativeNumbering,
     add_text,
@@ -3698,6 +3699,15 @@ class IBDocumentRenderer:
                 "ib_generated" if resolved.profile.name == "ib-report" else resolved.profile.name
             )
             self._apply_term_controls(term_runs)
+            if "checks" in model.metadata.extra:
+                # Stored so docx-audit can re-evaluate the relations after edits in Word.
+                GeneratorSignatureWriter.upsert_properties(
+                    self.doc,
+                    {CHECKS_PROPERTY: checks_to_json(
+                        parse_checks(model.metadata.extra["checks"]),
+                        {str(key): str(value) for key, value in (model.metadata.extra.get("terms") or {}).items()},
+                    )},
+                )
             ImageRenderer.fit_table_cell_images(self.doc)
             from docx_audit import inspect_document_issues
 

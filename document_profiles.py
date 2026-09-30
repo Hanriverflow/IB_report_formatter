@@ -12,14 +12,16 @@ Changelog (term-sheet foundation):
 import math
 import re
 from dataclasses import dataclass, fields, replace
+from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import yaml
 from docx.shared import Inches, Pt, RGBColor
 
 from document_model import DocumentMetadata, DocumentModel, ElementType, Table, TableType
+from numeric_checks import Quantity, ScheduleSpec, check_schedule, money_unit, read_quantity
 from render_styles import IBStyle
 from term_variables import term_cell_text
 
@@ -518,6 +520,7 @@ def apply_table_specs(model: DocumentModel) -> None:
             "label_columns",
             "note",
             "header_rows",
+            "schedule",
         }
         if unknown:
             raise ValueError("Unknown table settings: {}".format(", ".join(sorted(unknown))))
@@ -531,6 +534,8 @@ def apply_table_specs(model: DocumentModel) -> None:
                 row.is_header = row_index < count
                 for cell in row.cells:
                     cell.is_header = row.is_header
+        if "schedule" in spec:
+            table.schedule = _schedule_spec(spec["schedule"], table.col_count)
         if "spans" in spec:
             if not isinstance(spec["spans"], bool):
                 raise ValueError("Table spans must be true or false")
@@ -603,3 +608,136 @@ def apply_table_specs(model: DocumentModel) -> None:
             if table.table_type != TableType.BEP_SENSITIVITY:
                 raise ValueError("base_case requires a sensitivity table")
             table.rows[table.header_rows - 1 + row].cells[column - 1].is_base_case = True
+
+
+_SCHEDULE_KEYS = {"repayment", "balance", "months", "principal", "total", "average_life", "tolerance"}
+
+
+def _schedule_spec(raw: Any, col_count: int) -> Dict[str, Any]:
+    """Validate a table's `schedule` spec; figures are resolved after term substitution.
+
+    Args:
+        raw: The spec mapping: one-based `repayment`, `balance` and optional
+            `months` columns, optional `principal`, `total`, `average_life`
+            and `tolerance`.
+        col_count: Columns of the table.
+
+    Returns:
+        The spec with zero-based columns and the stated figures as written.
+
+    Raises:
+        ValueError: The spec is malformed.
+    """
+    required = {"repayment", "balance"}
+    if not isinstance(raw, dict) or not required <= set(raw) or set(raw) - _SCHEDULE_KEYS:
+        raise ValueError(
+            "Table schedule needs one-based `repayment` and `balance` columns and may have "
+            "`months`, `principal`, `total`, `average_life` and `tolerance`"
+        )
+    columns: Dict[str, Optional[int]] = {}
+    for key in ("repayment", "balance", "months"):
+        value = raw.get(key)
+        if value is None and key == "months":
+            columns[key] = None
+            continue
+        if type(value) is not int or not 1 <= value <= col_count:
+            raise ValueError(f"Table schedule {key} must be a column number from 1 to {col_count}")
+        columns[key] = value - 1
+    chosen = [column for column in columns.values() if column is not None]
+    if len(set(chosen)) != len(chosen):
+        raise ValueError("Table schedule columns must differ")
+    total = raw.get("total", False)
+    if not isinstance(total, bool):
+        raise ValueError("Table schedule total must be true (a last totals row) or false")
+    for key in ("principal", "average_life", "tolerance"):
+        value = raw.get(key)
+        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float, str))):
+            raise ValueError(f"Table schedule {key} must be a number or text")
+    if "average_life" in raw and columns["months"] is None:
+        raise ValueError("Table schedule average_life needs the months column")
+    stated = {key: raw.get(key) for key in ("principal", "average_life", "tolerance")}
+    return {**columns, **stated, "total": total}
+
+
+_TERM_ONLY_RE = re.compile(r"^\s*\{\{\s*([a-z][a-z0-9_]*)\s*\}\}\s*$")
+
+
+def _stated(value: Any, terms: Mapping[str, Any]) -> Quantity:
+    """Read a stated figure: a number, a `{{key}}` term reference or a displayed value."""
+    if isinstance(value, (int, float)):
+        return read_quantity(str(value))
+    text = str(value)
+    match = _TERM_ONLY_RE.match(text)
+    if match:
+        if match.group(1) not in terms:
+            raise ValueError(f"undefined term {{{{{match.group(1)}}}}}")
+        text = str(terms[match.group(1)])
+    return read_quantity(text)
+
+
+def _table_amount(quantity: Quantity, table: Table, what: str) -> Tuple[Decimal, Decimal]:
+    """An amount and its display step in table units; money is converted with the table `unit`."""
+    if quantity.dimension == "plain":
+        return quantity.value, quantity.step
+    if quantity.dimension != "money":
+        raise ValueError(f"the {what} is {quantity.dimension}, not an amount")
+    unit = money_unit(table.unit)
+    if unit is None:
+        raise ValueError(f"a money {what} needs the table `unit` (for example 억원)")
+    return quantity.value / unit, quantity.step / unit
+
+
+def _resolved_schedule(table: Table, terms: Mapping[str, Any]) -> ScheduleSpec:
+    """Build the schedule checker's spec, converting stated money to the table unit."""
+    raw = table.schedule or {}
+    principal = principal_step = None
+    if raw.get("principal") is not None:
+        principal, principal_step = _table_amount(_stated(raw["principal"], terms), table, "principal")
+    average_life = None
+    if raw.get("average_life") is not None:
+        stated_life = _stated(raw["average_life"], terms)
+        if stated_life.dimension == "months":
+            stated_life = Quantity(stated_life.value / 12, "years", stated_life.step / 12)
+        elif stated_life.dimension not in ("years", "plain"):
+            raise ValueError(f"average_life is {stated_life.dimension}, not years")
+        average_life = stated_life
+    tolerance = None
+    if raw.get("tolerance") is not None:
+        tolerance = abs(_table_amount(_stated(raw["tolerance"], terms), table, "tolerance")[0])
+    return ScheduleSpec(
+        repayment=raw["repayment"], balance=raw["balance"], months=raw.get("months"),
+        principal=principal, principal_step=principal_step, total=raw["total"],
+        average_life=average_life, tolerance=tolerance,
+    )
+
+
+def check_schedules(model: DocumentModel) -> None:
+    """Check every table with a `schedule` spec and add model warnings for disagreements.
+
+    Runs after term substitution, so cells, the unit and stated figures are
+    read as displayed. Strict rendering rejects the warnings.
+
+    Args:
+        model: Parsed model; `terms:` supplies `{{key}}` figures.
+    """
+    terms = model.metadata.extra.get("terms") or {}
+    tables = [
+        element.content
+        for element in model.elements
+        if element.element_type == ElementType.TABLE and isinstance(element.content, Table)
+    ]
+    for index, table in enumerate(tables, 1):
+        if not table.schedule:
+            continue
+        try:
+            spec = _resolved_schedule(table, terms if isinstance(terms, dict) else {})
+        except ValueError as error:
+            model.warnings.append(f"Table {index} schedule: {error}")
+            continue
+        rows = [
+            ["".join(run.text for run in cell.runs) for cell in row.cells]
+            for row in table.rows[table.header_rows:]
+        ]
+        model.warnings.extend(
+            f"Table {index} schedule: {problem}" for problem in check_schedule(rows, spec)
+        )

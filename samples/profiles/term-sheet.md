@@ -20,13 +20,19 @@ terms:
   amortization: "37.5억원"
   reserve: "10억원"
   facility: "315억원"
+checks:
+  - "issue_rate = base_rate + cap_spread"
+  - "all_in = issue_rate + credit_fee + running_cost"
+  - "facility = amount * 1.05"
 tables:
   - {}
   - {}
   - {note: "※ 심사 및 승인 과정에서 상기 조건은 변경될 수 있음"}
   - {}
   - {}
-  - {columns: [text, date, date, number, number, number], unit: 억원}
+  - columns: [text, date, date, number, number, number]
+    unit: 억원
+    schedule: {repayment: 5, balance: 6, months: 4, principal: "{{amount}}", total: true}
   - {}
 ---
 
