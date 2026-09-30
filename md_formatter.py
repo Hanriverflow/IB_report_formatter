@@ -12,6 +12,12 @@ as a single continuous line with no newlines, containing:
 Usage:
     uv run md_formatter.py input.md [output.md]
     uv run md_formatter.py --check input.md        # Check if formatting needed
+    uv run md_formatter.py input.md output.md --converted-term-sheet
+
+Changelog (converted input):
+    - NEW: `--converted-term-sheet` cleans HWP/Word-converted Markdown into
+      term-sheet input (`converted_md_cleaner`) and reports every change. It
+      replaces the Deep Research formatting for that run; the default is unchanged.
 
 Changelog (v2):
     - Complete rewrite for single-line Deep Research clipboard handling
@@ -32,6 +38,7 @@ from pathlib import Path
 from typing import Dict, List, Match, Optional, Tuple
 
 from cli_utils import setup_logging as configure_logging
+from converted_md_cleaner import clean_converted_term_sheet
 from deep_md_cleaner import CleanerConfig, clean_deepresearch_markdown
 
 # Parent folder path
@@ -680,6 +687,13 @@ def _build_cleaner_config(
     )
 
 
+def _uses_deepresearch_options(
+    cleaner_mode: str, cite_mode: str, drop_unknown_markers: bool, cleaner_report: bool
+) -> bool:
+    """True when any DeepResearch cleaner option differs from its default."""
+    return cleaner_mode != "off" or cite_mode != "footnote" or drop_unknown_markers or cleaner_report
+
+
 def format_file_with_options(
     input_path: str,
     output_path: Optional[str] = None,
@@ -687,8 +701,20 @@ def format_file_with_options(
     cite_mode: str = "footnote",
     drop_unknown_markers: bool = False,
     cleaner_report: bool = False,
+    converted_term_sheet: bool = False,
 ) -> str:
-    """Format markdown file with optional DeepResearch cleaner controls."""
+    """Format markdown file with optional DeepResearch cleaner controls.
+
+    With `converted_term_sheet` the file is cleaned as HWP/Word-converted
+    term-sheet input instead (`clean_converted_term_sheet`) and every change
+    is logged; the DeepResearch cleaner options must then stay off.
+
+    Raises:
+        ValueError: `converted_term_sheet` is combined with the DeepResearch
+            cleaner, or the input's frontmatter is not a YAML mapping.
+    """
+    if converted_term_sheet and _uses_deepresearch_options(cleaner_mode, cite_mode, drop_unknown_markers, cleaner_report):
+        raise ValueError("--converted-term-sheet cannot be combined with the DeepResearch cleaner")
     input_file = Path(input_path)
 
     # Resolve path
@@ -704,17 +730,21 @@ def format_file_with_options(
     line_count = content.count("\n")
     logger.info("Input: %s (%d lines, %d chars)", input_file.name, line_count, len(content))
 
-    cleaner_config = _build_cleaner_config(
-        cleaner_mode=cleaner_mode,
-        cite_mode=cite_mode,
-        drop_unknown_markers=drop_unknown_markers,
-    )
-
-    formatted = format_markdown(
-        content,
-        cleaner_config=cleaner_config,
-        cleaner_report=cleaner_report,
-    )
+    if converted_term_sheet:
+        formatted, report = clean_converted_term_sheet(content)
+        for line in report.lines():
+            logger.info("Converted term sheet: %s", line)
+    else:
+        cleaner_config = _build_cleaner_config(
+            cleaner_mode=cleaner_mode,
+            cite_mode=cite_mode,
+            drop_unknown_markers=drop_unknown_markers,
+        )
+        formatted = format_markdown(
+            content,
+            cleaner_config=cleaner_config,
+            cleaner_report=cleaner_report,
+        )
 
     if output_path:
         output_file = Path(output_path)
@@ -798,6 +828,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print DeepResearch cleaner summary",
     )
+    parser.add_argument(
+        "--converted-term-sheet",
+        action="store_true",
+        help=(
+            "Clean HWP/Word-converted Markdown into term-sheet input (chapter headings, "
+            "band tables, cover to frontmatter) and report every change"
+        ),
+    )
     return parser
 
 
@@ -805,6 +843,13 @@ def main():
     """Main entry point"""
     parser = build_parser()
     args = parser.parse_args()
+    if args.converted_term_sheet and (
+        args.check
+        or _uses_deepresearch_options(
+            args.deepresearch_cleaner, args.cite_mode, args.drop_unknown_markers, args.cleaner_report
+        )
+    ):
+        parser.error("--converted-term-sheet cannot be combined with --check or the DeepResearch cleaner options")
     configure_logging()
 
     if args.input_file is None:
@@ -827,6 +872,7 @@ def main():
             cite_mode=args.cite_mode,
             drop_unknown_markers=args.drop_unknown_markers,
             cleaner_report=args.cleaner_report,
+            converted_term_sheet=args.converted_term_sheet,
         )
         print(f"\nFormatted file: {result}")
     except Exception as e:

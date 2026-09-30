@@ -25,6 +25,7 @@ uv run md-to-word --list-profiles
 uv run md-to-word samples/profiles --batch
 uv run docx-audit letter.docx
 uv run md_formatter.py input.md output.md
+uv run md-format converted.md term-sheet.md --converted-term-sheet
 uv run pytest tests/
 uv build
 ```
@@ -51,6 +52,7 @@ Existing `md_to_word.py` and `ib-report` remain entry points. On Windows, use a 
 | `md_to_word.py` | CLI, file/batch conversion and safe save |
 | `converters.py` | Registry with Markdown input and DOCX output only |
 | `md_formatter.py`, `deep_md_cleaner.py` | Optional input cleanup |
+| `converted_md_cleaner.py` | Opt-in MD→MD cleanup of HWP/Word-converted term sheets (`--converted-term-sheet`); reports every change |
 | `diagram_renderer.py` | Existing diagram rendering |
 | `cli_utils.py`, `stream_utils.py` | Shared I/O helpers |
 
@@ -60,6 +62,7 @@ Existing `md_to_word.py` and `ib-report` remain entry points. On Windows, use a 
 - Keep real deal documents and real institution house files outside the repository; samples and tests use fictional names and freshly written boilerplate only.
 - Explicit CLI/API options override YAML, then profile defaults. Pass profile to the parser as well as renderer when overriding.
 - Four general profiles use A4, neutral metadata and native numbered lists with four-space nesting. They must not infer IB financial table semantics or promote short numbered text to headings.
+- Converted-input heuristics (numbered-line headings, band tables, cover to frontmatter) live only in the explicit `--converted-term-sheet` MD→MD step, never in the parser's default path. That step changes only top-level blocks (never code, list or quote blocks, or HTML tables other than clean one-row bands), reports every moved, rewritten, removed or kept line, keeps unclear lines and existing frontmatter, and never infers `prepared_by`.
 - Keep styles immutable and scoped. Do not replace a process-global style instance, capture theme-dependent values in default arguments, or cache styles across requests.
 - Use one renderer per concurrent job. CLI/API/registry must share `IBDocumentRenderer.render`; do not reintroduce a second document assembler.
 - Tables use ordered YAML specifications. Never guess a sensitivity table's base case: use explicit one-based body-row/column coordinates.

@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased] - 2026-09-29
 
+### Converted term-sheet input (found on a second real term sheet)
+- `md-format --converted-term-sheet` cleans Markdown from external HWP/Word converters into term-sheet input: bold numbered lines, or numbered lines followed by a table, become `##` chapter headings; one-row band tables become headings; cover lines before the first chapter move to frontmatter (`confidential_label`, `title`, `subtitle`, `date`, `disclaimer`) and cover images are removed for the house `style.logo`.
+- Every moved, rewritten, removed or kept line is reported with its input line number (a range for multi-line changes), including one-line numbered paragraphs left as text. Unclear cover lines stay in place, existing frontmatter lines and keys (case-insensitive) are kept, `prepared_by` is never inferred, and only top-level blocks change: indented code, list and quote blocks, fences and HTML tables (nested ones included; a one-row band becomes a heading only when its text has no inline syntax characters and an HTML band has nothing outside its cells) stay as written. A YAML `...` closer becomes `---` and flow-style frontmatter is rewritten as block YAML, both reported. The parser's default path and the formatter's default output are unchanged.
+- New engine module `converted_md_cleaner.py`.
+
 ### Term-sheet house style (found on a second real term sheet)
 - House (and frontmatter) `style` options: a cover page (`cover: page`) with an optional logo (path or `data:` URI), a boxed disclaimer, header and footer accent rules, the confidentiality label colour, the footer page format (`- {page} -`) and position, a dark table header and open-sided tables. Frontmatter settings override the house file key by key; the defaults keep the standard layout unchanged.
 - A null `style` value is a setting error (omit the key for the default), so it no longer passes validation and then stops the footer or drops the logo. `page_number` rejects every line break, including carriage returns. `label_color: ""` keeps the default grey, and frontmatter `logo: ""` removes a house logo.
