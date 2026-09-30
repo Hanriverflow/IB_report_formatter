@@ -373,6 +373,38 @@ def header_token_width(text: str, font_size: int) -> int:
     return math.ceil(widest * int(font_size) * _BOLD_ALLOWANCE) + 2 * int(Twips(CELL_MARGIN_HORIZONTAL))
 
 
+def natural_cell_width(texts: Sequence[str], font_size: int, bold: bool = False, markers: bool = False) -> int:
+    """Column width in EMU that keeps every line of a cell on one line.
+
+    Uses the row estimator's em widths, the bold allowance for header text,
+    marker hanging indents (content cells) and the left and right cell margins.
+
+    Args:
+        texts: One entry per cell paragraph, already split at line breaks.
+        font_size: Text size in EMU.
+        bold: Whether the text is bold (header cells).
+        markers: Whether marker lines are indented (content cells).
+
+    Returns:
+        Required width in EMU, or 0 for an empty cell.
+    """
+    widest = 0.0
+    for text in texts:
+        if not text.strip():
+            continue
+        size, indent = int(font_size), 0
+        layout = marker_layout(text) if markers else None
+        if layout is not None:
+            indent = int(Mm(layout.start_mm + layout.hanging_mm))
+            if layout.note:
+                size = int(STYLE.TS_NOTE_SIZE)
+        advance = _em_width(text) * size * (_BOLD_ALLOWANCE if bold else 1.0)
+        widest = max(widest, advance + indent)
+    if not widest:
+        return 0
+    return math.ceil(widest) + 2 * int(Twips(CELL_MARGIN_HORIZONTAL))
+
+
 def estimate_cell_lines(texts: Sequence[str], width: int, font_size: int, markers: bool) -> int:
     """Estimate one cell's wrapped line count for row pagination (plan §4 A2).
 

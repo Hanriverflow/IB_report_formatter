@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased] - 2026-09-29
 
+### Table structure (found on a second real term sheet)
+- Table spec `header_rows` draws several header rows in every profile: shaded, merged where spans say so, and repeated on every page. HTML tables keep the rows their header spans cover as header rows instead of joining them into one. `base_case` rows count from the first body row, and zebra shading starts on the first body row.
+- Term sheets: a cell that starts in the second label column and spans into the content columns is laid out as content; a first-column label stays a label however far it spans.
+- Term-sheet grid tables size each column to fit its lines and share the spare width equally, so short amount columns are no longer starved while date and label columns balloon. Tables whose content cannot fit side by side keep the content estimate.
+- Column kinds skip dash placeholders (`-`, `–`), so an amount column that starts with them is still numeric and right-aligned.
+
 ### Input loss in converted documents (found on a converted real term sheet)
 - `*` and `_` emphasis needs flanking delimiters (CommonMark): an opening delimiter followed by whitespace, or a closing one preceded by it, stays literal. `2 * 3 * 4` and spaced note markers (`매출처* ...`, `* 주요 매출처`) keep their asterisks instead of losing them to a false italic; `** text **` is no longer bold.
 - HTML `<table>` blocks, as HWP/Word converters write them, become Word tables in every profile: `colspan`/`rowspan` merge cells (empty rows under a span keep their place), block tags (`<p>`, `<div>`, `<li>`, nested rows and tables) and `<br>` break cell lines, `<b>`/`<strong>`, `<i>`/`<em>`, `<code>`, `<sup>`/`<sub>`, colour spans and `<a href>` format text and combine when nested, `<img>` becomes a cell image (`data:` URIs included), `{{key}}` references are substituted, and a nested table is flattened into its cell. Cells are built directly as runs, so HTML text (including decoded `&lt;tags&gt;` and Markdown characters) is never re-read as Markdown. Several header rows merge into one header row. Text outside cells, extra tables on a closing line and unclosed tables are reported, and strict mode rejects them.

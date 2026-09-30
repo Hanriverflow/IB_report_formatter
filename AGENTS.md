@@ -381,7 +381,8 @@ Claude settings are in `.claude/settings.local.json` for allowed permissions.
 - **Negative numbers**: Red color, parentheses support
 - **Sensitivity tables**: Explicit-coordinate base case highlighting only
 - **Risk matrices**: Color-coded risk levels
-- **HTML tables** (converter output): `colspan`/`rowspan` become span markers; several header rows merge into one
+- **HTML tables** (converter output): `colspan`/`rowspan` become span markers; rows the header spans cover stay header rows
+- **Header rows**: table spec `header_rows` draws, merges and repeats several header rows in every profile
 
 ### Callout Boxes
 - **Executive Summary / 요약**: Navy background, white text
