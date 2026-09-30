@@ -276,7 +276,7 @@ class FrontmatterParser:
             "charts", "preset", "house", "terms", "confirmation", "checks",
         }
         if metadata.profile == "term-sheet":
-            structured.update({"prepared_by", "disclaimer", "confidential_label"})
+            structured.update({"prepared_by", "disclaimer", "confidential_label", "style"})
         metadata.extra = {
             k: v if k in structured else str(v) for k, v in data.items() if k not in known_keys
         }
@@ -3487,6 +3487,15 @@ def parse_markdown_file(
             model.metadata.extra["house"] = str(
                 (Path(str(source)).resolve().parent / house_path).resolve()
             )
+
+    style = model.metadata.extra.get("style")
+    if not is_stream(source) and isinstance(style, dict) and isinstance(style.get("logo"), str):
+        logo = style["logo"].strip()
+        if logo and not logo.lower().startswith("data:") and not Path(logo).is_absolute():
+            # A frontmatter logo is relative to the Markdown file, like `house`.
+            model.metadata.extra["style"] = {
+                **style, "logo": str((Path(str(source)).resolve().parent / logo).resolve()),
+            }
 
     if not is_stream(source):
         source_dir = Path(str(source)).resolve().parent
