@@ -56,7 +56,7 @@ def collect_notices(destination: Path) -> dict[str, str]:
         found = []
         for entry in distribution.files or []:
             if any(part.lower() in {"licenses", "license"} for part in entry.parts) or entry.name.lower().startswith(("license", "copying", "notice")):
-                source = Path(distribution.locate_file(entry))
+                source = Path(str(distribution.locate_file(entry)))
                 if source.is_file():
                     # Preserve nested license paths and avoid path traversal.
                     relative = Path(*[part for part in entry.parts if part not in {"..", "."}])

@@ -15,7 +15,7 @@ import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Optional, Sequence
+from typing import Iterator, Never, Optional, Sequence
 
 CACHE_ENV = "IB_REPORT_FORMATTER_CACHE_DIR"
 LOCK_TIMEOUT_SECONDS = 120.0
@@ -151,7 +151,7 @@ def execute(arguments: argparse.Namespace) -> int:
 
 
 class _JsonArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
+    def error(self, message: str) -> Never:
         raise ValueError(message)
 
 

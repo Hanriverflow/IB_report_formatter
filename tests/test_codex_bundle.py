@@ -47,7 +47,7 @@ def test_bundle_has_exact_allowlist_and_verifiable_hashes(public_checkout, tmp_p
         assert {
             prefix + name for name in (
                 "docs/distribution-build.md", "docs/distribution/시작하기.html",
-                "scripts/build_portable.py", "tools/portable_launcher.py",
+                "scripts/build_portable.py", "tools/__init__.py", "tools/portable_launcher.py",
                 "samples/distribution/minimal-term-sheet.md",
                 "samples/distribution/minimal-house.yaml",
             )

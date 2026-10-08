@@ -11,7 +11,7 @@ import json
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Never, Optional, Sequence
 
 # This source-checkout tool must also work when invoked from another directory.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -146,7 +146,7 @@ def render_document(
 
 
 class _JsonArgumentParser(argparse.ArgumentParser):
-    def error(self, message: str) -> None:
+    def error(self, message: str) -> Never:
         raise ValueError(message)
 
 

@@ -51,7 +51,7 @@ PUBLIC_FILES = (
     "docs/verification-title-block-20260929.md",
     "scripts/agent_render.py", "scripts/build_codex_bundle.py",
     "scripts/build_plugin_bundle.py", "scripts/plugin_runtime.py",
-    "scripts/build_portable.py", "tools/portable_launcher.py",
+    "scripts/build_portable.py", "tools/__init__.py", "tools/portable_launcher.py",
     "scripts/word_visual_qa.ps1",
     "samples/profiles/business-report.md", "samples/profiles/company-theme.yaml",
     "samples/profiles/ib-memo.md", "samples/profiles/ib-report.md",

@@ -112,7 +112,10 @@ def launch_gui(self_test: bool = False) -> None:
         try:
             if not path.exists():
                 raise FileNotFoundError(f"파일 또는 폴더가 없습니다: {path}")
-            os.startfile(str(path))
+            if sys.platform == "win32":
+                os.startfile(str(path))
+            else:
+                raise OSError("파일 열기 기능은 Windows에서 지원됩니다.")
         except OSError as exc:
             messagebox.showerror("열기 실패", str(exc), parent=window)
 
