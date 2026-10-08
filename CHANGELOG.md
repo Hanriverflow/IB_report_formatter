@@ -2,7 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased] - 2026-09-29
+## [2.0.0-beta.1] - 2026-10-08
+
+First public distribution prerelease. The release tag identifies this delivery set; engine/package metadata remains **2.0.0 (Beta)** and the separately versioned plugin remains **0.1.0**.
+
+- Ship the same Markdown-to-Word engine as a Windows portable converter, a Claude Code / Codex source plugin, and an advanced Codex source-project kit.
+- Put workflow selection first in both READMEs; distinguish distribution archive names and engine/plugin versions.
+- Include synthetic examples and per-file manifests. The Windows package includes Python and dependency notices; source/plugin archives do not bundle a runtime.
+- Keep the engine features listed below, including seven profiles, term variables, numerical checks, house styling and opt-in cleanup of externally converted Markdown.
+- This is a prerelease, not financial/legal approval or a guarantee of page layout. Claude web/Cowork, native host GUI installation and a separate Python-uninstalled Windows machine are not certified. The release notes record the exact tested artifacts, environments and limitations.
+
+## Engine source changes included in 2.0.0-beta.1 - 2026-09-29
 
 ### Converted term-sheet input (found on a second real term sheet)
 - `md-format --converted-term-sheet` cleans Markdown from external HWP/Word converters into term-sheet input: bold numbered lines, or numbered lines followed by a table, become `##` chapter headings; one-row band tables become headings; cover lines before the first chapter move to frontmatter (`confidential_label`, `title`, `subtitle`, `date`, `disclaimer`) and cover images are removed for the house `style.logo`.

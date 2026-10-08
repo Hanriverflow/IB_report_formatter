@@ -18,16 +18,25 @@
 
 ## Windows 실행 프로그램
 
-Windows x64에서 uv와 Python 3.12를 사용합니다. 별도 빌드 환경에 잠긴 런타임 의존성과 PyInstaller를 설치합니다. 출력 폴더는 매번 새 경로를 지정합니다.
+Windows x64에서 uv와 아래에 고정한 CPython 3.12.12 full 배포본을 사용합니다. 일반 uv의 stripped 런타임은 전체 제3자 고지가 없고 바이너리도 달라 이 빌드에 사용하지 않습니다. 별도 빌드 환경에 잠긴 런타임 의존성과 PyInstaller를 설치합니다. 출력·압축 해제 폴더는 매번 새 경로를 지정하며, 다른 Python 환경에서 상속된 `PYTHONHOME`, `PYTHONPATH`, `VIRTUAL_ENV`가 있으면 해당 빌드 프로세스에서 해제합니다.
 
 ```powershell
-uv venv --python 3.12 dist/portable-build-env
+$archive = "dist/cpython-3.12.12-20251031-full.tar.zst"
+$url = "https://github.com/astral-sh/python-build-standalone/releases/download/20251031/cpython-3.12.12%2B20251031-x86_64-pc-windows-msvc-pgo-full.tar.zst"
+New-Item -ItemType Directory -Path dist -Force | Out-Null
+Invoke-WebRequest -Uri $url -OutFile $archive
+$expected = "d0af03df00f516079b1db4c8f4e72daa0d085b93a86e784de93b4ba105a0193c"
+if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw "Runtime archive hash mismatch" }
+New-Item -ItemType Directory -Path dist/python-runtime-source -ErrorAction Stop | Out-Null
+tar -xf $archive -C dist/python-runtime-source
+if ($LASTEXITCODE -ne 0) { throw "Runtime extraction failed" }
+uv venv --python dist/python-runtime-source/python/install/python.exe dist/portable-build-env
 uv export --locked --extra full --no-dev --no-emit-project --output-file dist/portable-requirements.txt
 uv pip install --python dist/portable-build-env/Scripts/python.exe -r dist/portable-requirements.txt "pyinstaller==6.22.0"
-dist/portable-build-env/Scripts/python.exe scripts/build_portable.py --output-dir dist/portable-release-001
+dist/portable-build-env/Scripts/python.exe scripts/build_portable.py --output-dir dist/portable-release-001 --python-runtime-source-dir dist/python-runtime-source/python
 ```
 
-빌더는 실행 프로그램과 지원 파일, 텀시트 작성 안내, 가상 MD/YAML 및 변환 예제, 라이선스, 파일 해시가 담긴 `manifest.json`을 ZIP으로 묶습니다. 의존성 설치와 누락된 Tcl/Tk 라이선스 취득에는 인터넷이 필요할 수 있습니다.
+빌더는 실행 프로그램과 지원 파일, 텀시트 작성 안내, 가상 MD/YAML 및 변환 예제, 라이선스, 파일 해시가 담긴 `manifest.json`을 ZIP으로 묶습니다. `--python-runtime-source-dir`은 full 압축 해제본의 `PYTHON.json`, `licenses`, `install`이 있는 디렉터리이며 필수입니다. 현재 실행 중인 Python의 EXE/DLL/PYD를 원본과 바이트 단위로 대조하고 일치하지 않으면 빌드를 중단합니다. 전체 upstream 고지와 메타데이터를 `라이선스/Python-standalone`에 보존합니다. 아카이브 SHA-256 검사는 위 명령의 별도 선행 조건입니다. 의존성 설치와 누락된 Tcl/Tk 라이선스 취득에는 인터넷이 필요할 수 있습니다.
 
 `--app-dir`는 이미 빌드한 실행 프로그램 폴더를 재사용하는 옵션입니다. **현재 소스와 같은 코드로 빌드되었음을 확인한 경우에만 사용하십시오.** 오래된 실행 프로그램을 재사용하면 새 설명서·예제와 실제 변환 동작이 서로 달라질 수 있습니다. 새 배포에는 위 명령처럼 이 옵션을 생략하는 편이 명확합니다.
 

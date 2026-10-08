@@ -108,7 +108,8 @@ def test_portable_archive_filename_and_matching_root(tmp_path, monkeypatch):
     monkeypatch.setattr(build_portable, "collect_notices", lambda destination: {})
     monkeypatch.setattr(build_portable.sys, "path", list(build_portable.sys.path))
 
-    archive = build_portable.build(tmp_path / "release", app_dir)
+    monkeypatch.setattr(build_portable, "collect_runtime_notices", lambda destination, source: {})
+    archive = build_portable.build(tmp_path / "release", app_dir, tmp_path / "runtime-source")
 
     assert archive.name == "ib-report-formatter-windows-x64-9.8.7.zip"
     prefix = "ib-report-formatter-windows-x64-9.8.7/"
@@ -119,3 +120,56 @@ def test_portable_archive_filename_and_matching_root(tmp_path, monkeypatch):
         assert prefix + "입력/" in bundle.namelist()
         assert prefix + "출력/" in bundle.namelist()
         assert json.loads(bundle.read(prefix + "manifest.json"))["version"] == "9.8.7"
+
+
+def _runtime_notice_fixture(tmp_path, monkeypatch):
+    monkeypatch.setattr(build_portable.platform, "python_version", lambda: "3.12.12")
+    source = tmp_path / "runtime-source"
+    base = tmp_path / "active-runtime"
+    (source / "install" / "DLLs").mkdir(parents=True)
+    (source / "licenses").mkdir()
+    (base / "DLLs").mkdir(parents=True)
+    for name in ("python.exe", "python312.dll", "DLLs/libffi-8.dll"):
+        (source / "install" / name).write_bytes(b"verified-runtime")
+        (base / name).write_bytes(b"verified-runtime")
+    (source / "PYTHON.json").write_text(json.dumps({
+        "python_version": build_portable.platform.python_version(),
+        "target_triple": "x86_64-pc-windows-msvc",
+    }), encoding="utf-8")
+    for name in ("cpython", "expat", "libffi", "liblzma", "openssl-3", "zlib", "bzip2", "mpdecimal"):
+        (source / "licenses" / f"LICENSE.{name}.txt").write_text("upstream notice", encoding="utf-8")
+    monkeypatch.setattr(build_portable.sys, "base_prefix", str(base))
+    return source, base
+
+
+def test_runtime_notices_match_and_preserve_upstream_metadata(tmp_path, monkeypatch):
+    source, base = _runtime_notice_fixture(tmp_path, monkeypatch)
+    destination = tmp_path / "notices"
+    build_portable.collect_runtime_notices(destination, source)
+    saved = destination / "Python-standalone"
+    assert (saved / "LICENSE.libffi.txt").read_text() == "upstream notice"
+    assert (saved / "PYTHON.json").read_bytes() == (source / "PYTHON.json").read_bytes()
+    proof = json.loads((saved / "provenance.json").read_text())
+    assert len(proof["runtime_binaries"]) == 3
+
+
+def test_runtime_notices_reject_different_binary(tmp_path, monkeypatch):
+    source, base = _runtime_notice_fixture(tmp_path, monkeypatch)
+    (base / "DLLs/libffi-8.dll").write_bytes(b"different-runtime")
+    with pytest.raises(RuntimeError, match="does not match"):
+        build_portable.collect_runtime_notices(tmp_path / "notices", source)
+    assert not (tmp_path / "notices/Python-standalone").exists()
+
+
+def test_runtime_notices_reject_missing_license(tmp_path, monkeypatch):
+    source, base = _runtime_notice_fixture(tmp_path, monkeypatch)
+    (source / "licenses/LICENSE.expat.txt").unlink()
+    with pytest.raises(RuntimeError, match="Incomplete"):
+        build_portable.collect_runtime_notices(tmp_path / "notices", source)
+
+
+def test_runtime_notices_reject_wrong_platform(tmp_path, monkeypatch):
+    source, base = _runtime_notice_fixture(tmp_path, monkeypatch)
+    (source / "PYTHON.json").write_text(json.dumps({"python_version": "0.0", "target_triple": "wrong"}))
+    with pytest.raises(RuntimeError, match="platform/version mismatch"):
+        build_portable.collect_runtime_notices(tmp_path / "notices", source)

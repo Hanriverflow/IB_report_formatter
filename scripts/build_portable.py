@@ -95,10 +95,56 @@ def collect_notices(destination: Path) -> dict[str, str]:
     return versions
 
 
-def build(output: Path, app_dir: Path | None = None) -> Path:
+RUNTIME_NOTICE_SHA256 = "d0af03df00f516079b1db4c8f4e72daa0d085b93a86e784de93b4ba105a0193c"
+RUNTIME_NOTICE_URL = "https://github.com/astral-sh/python-build-standalone/releases/download/20251031/cpython-3.12.12%2B20251031-x86_64-pc-windows-msvc-pgo-full.tar.zst"
+
+
+def collect_runtime_notices(destination: Path, source: Path) -> dict[str, str]:
+    """Copy full-runtime notices only after matching active runtime binaries.
+
+    Source must contain PYTHON.json, licenses, and install from the pinned
+    archive. Verify its SHA-256 before extraction; stripped uv builds fail.
+    """
+    root = source.resolve()
+    metadata = json.loads((root / "PYTHON.json").read_text(encoding="utf-8"))
+    if metadata["python_version"] != "3.12.12" or platform.python_version() != "3.12.12" or metadata["target_triple"] != "x86_64-pc-windows-msvc":
+        raise RuntimeError("Runtime notice archive platform/version mismatch")
+    base = Path(sys.base_prefix)
+    reference = root / "install"
+    records = {}
+    candidates = list(base.glob("*.exe")) + list(base.glob("*.dll")) + list((base / "DLLs").glob("*.dll")) + list((base / "DLLs").glob("*.pyd"))
+    if not (base / "python312.dll").is_file() or not candidates:
+        raise RuntimeError("Missing runtime binary inventory")
+    for binary in candidates:
+        relative = binary.relative_to(base)
+        expected = reference / relative
+        digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+        if not expected.is_file() or hashlib.sha256(expected.read_bytes()).hexdigest() != digest:
+            raise RuntimeError(f"Runtime binary does not match notice archive: {relative}")
+        records[relative.as_posix()] = digest
+    notices = root / "licenses"
+    required = {"LICENSE.cpython.txt", "LICENSE.expat.txt", "LICENSE.libffi.txt",
+                "LICENSE.liblzma.txt", "LICENSE.openssl-3.txt", "LICENSE.zlib.txt",
+                "LICENSE.bzip2.txt", "LICENSE.mpdecimal.txt"}
+    if any(not (notices / name).is_file() or not (notices / name).stat().st_size for name in required):
+        raise RuntimeError("Incomplete full-runtime notices")
+    target = destination / "Python-standalone"
+    shutil.copytree(notices, target)
+    shutil.copy2(root / "PYTHON.json", target / "PYTHON.json")
+    (target / "provenance.json").write_text(json.dumps({
+        "url": RUNTIME_NOTICE_URL, "expected_archive_sha256": RUNTIME_NOTICE_SHA256,
+        "archive_hash_verification": "external prerequisite; directory input",
+        "runtime_binaries": records, "source": "exact full standalone runtime distribution",
+    }, indent=2), encoding="utf-8")
+    return {"Python-build-standalone": "20251031"}
+
+
+def build(output: Path, app_dir: Path | None = None, python_runtime_source_dir: Path | None = None) -> Path:
     """Create a fresh staging folder, sample results, manifest and distributable ZIP."""
     if sys.platform != "win32":
         raise RuntimeError("Build the Windows package on Windows.")
+    if python_runtime_source_dir is None:
+        raise RuntimeError("--python-runtime-source-dir is required")
     inputs = package_inputs()
     for source, _ in inputs:
         if not source.is_file():
@@ -133,6 +179,7 @@ def build(output: Path, app_dir: Path | None = None) -> Path:
     for name in ("입력", "출력"):
         (package / name).mkdir()
     versions = collect_notices(package / "라이선스")
+    versions.update(collect_runtime_notices(package / "라이선스", python_runtime_source_dir))
     sys.path.insert(0, str(ROOT))
     from tools.portable_launcher import convert_document
     sample_records = []
@@ -165,10 +212,11 @@ def main() -> None:
     """Read explicit build paths from the command line."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--python-runtime-source-dir", type=Path, required=True)
     parser.add_argument("--app-dir", type=Path, help="Reuse an already-built frozen app folder")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    build(args.output_dir, args.app_dir)
+    build(args.output_dir, args.app_dir, args.python_runtime_source_dir)
 
 
 if __name__ == "__main__":
