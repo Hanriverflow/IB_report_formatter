@@ -4,22 +4,35 @@ IB 보고서와 회사 업무문서를 위한 **Markdown → 편집 가능한 Wo
 
 [구현계획](docs/implementation-plan-20260914.md) · [검증 결과](docs/verification-20260914.md) · [예제 7종](samples/profiles) · [English / API 상세](README.md)
 
+## 어떤 방식으로 사용하시나요?
+
+같은 Markdown → Word 엔진을 **사용 방식에 따라** 선택합니다. 브랜치나 문서 종류별로 다른 제품이 아닙니다.
+
+| 하고 싶은 일 | 선택할 배포본 | 필요한 환경 |
+|---|---|---|
+| 완성된 Markdown을 편집 가능한 Word로 변환 | **문서 변환기 · Windows 실행형** | Windows x64, Python 포함, AI 계정 불필요 |
+| 내 작업 폴더의 자료로 AI에게 작성·수정까지 요청 | **AI 문서 작성 도우미 · Claude Code / Codex 플러그인** | 지원 호스트와 계정, uv; 필요 시 Python 3.12 준비 |
+
+**[시작하기: 배포본 선택과 설치](docs/start-here.md)** · [플러그인 설치](docs/plugin-guide.md) · [공개 다운로드](https://github.com/Hanriverflow/IB_report_formatter/releases)
+
+<details>
+<summary>고급 사용자: Codex 프로젝트 키트 (소스형)</summary>
+
+압축을 푼 소스 폴더 자체를 Codex 프로젝트로 열어 예제를 배우거나 작업 흐름·코드를 수정합니다. Codex 계정, uv, Python 3.12 이상이 필요합니다. 플러그인보다 문서 기능이 많은 상위 제품은 아닙니다. [프로젝트 시작](docs/start-here.md#codex-project-kit) · [상세 로컬 HTML 안내](docs/codex-start.html)
+
+</details>
+
+**버전 구분:** 엔진 **2.0.0 (Beta)** / 플러그인 **0.1.0**. 서로 다른 버전 체계이며 신·구 제품 순서가 아닙니다. ZIP과 `.plugin`은 같은 플러그인이고, Claude 웹·Cowork 실행은 검증되지 않았습니다. 소스가 있다는 것이 다운로드 가능한 Release 게시를 뜻하지는 않습니다. [검증 범위](https://github.com/Hanriverflow/IB_report_formatter/blob/main/docs/verification-plugin-20261008.md)
+
+**문서 종류는 그다음에 선택합니다:** 일반 업무(공문·보고서·회의록), IB 보고서·메모, 금융거래 텀시트. 기관별 문구·로고는 YAML 설정으로 구분하며 실제 기관 자료는 저장소 밖에 둡니다. 모든 배포본이 같은 엔진을 사용하므로 기능 브랜치를 별도 제품으로 내려받지 않습니다. [문서 프로필](#문서-프로파일) · [관리자용 빌드·배포 안내](https://github.com/Hanriverflow/IB_report_formatter/blob/main/docs/distribution-build.md)
+
 ## 제품 방향
 
 Word→MD는 일시 중단이 아니라 **자체 개발 폐기**입니다. 이미 좋은 외부 프로젝트가 많으므로 이 프로젝트는 역변환을 다시 개발하지 않습니다. 버전 2에서 관련 CLI·파서·MD 역렌더러·OMML 역변환·왕복 검사와 전용 테스트를 제거했습니다.
 
 ## 바로 사용하기
 
-### 배포본 선택
-
-- **Claude Code / Codex 플러그인:** 압축 해제한 플러그인 폴더를 사용하는 앱에 설치하거나 로드한 뒤 `ib-document` 스킬로 자신의 작업 폴더에서 문서를 작성합니다. 공통 스킬과 내장 엔진을 사용하고 실행 환경은 플러그인 밖 캐시에 준비합니다. [플러그인 설치·작성 안내](docs/plugin-guide.md). Claude 웹과 네이티브 Cowork에서의 실행 검증을 뜻하지 않습니다.
-
-- **Windows 실행 프로그램 ZIP:** 전체 압축 해제 → `시작하기.html` 확인 → `문서변환기.exe` 실행. 작성된 Markdown을 Word로 변환하며 Python이 포함되어 있습니다. LLM이나 Codex 계정은 필요 없습니다. [실행 프로그램 안내](docs/distribution/시작하기.html)
-- **Codex 소스 ZIP:** 압축을 푼 폴더를 Codex 프로젝트로 열어 자료를 바탕으로 문서를 작성·수정합니다. 본인의 Codex 계정과 uv, Python 3.12 이상이 필요하며 ZIP에는 실행 환경이 포함되지 않습니다. [Codex 시작 안내](docs/codex-start.html)
-
-관리자는 [배포본 빌드 방법](docs/distribution-build.md)에 따라 두 묶음을 만들 수 있습니다. 생성한 ZIP·EXE는 Git에서 제외된 `dist/`에 보관합니다. 소스 추가는 GitHub Release 게시를 의미하지 않습니다.
-
-### Codex에서 자료를 주고 문서 작성하기
+### 고급 사용자: Codex 소스 프로젝트로 문서 작성하기
 
 이 소스 폴더를 Codex 앱의 로컬 프로젝트로 열고 `$ib-document`에 문서 작성을 요청할 수 있습니다. Codex가 자료를 읽어 MD/YAML을 작성·수정하고, 기존 엔진이 엄격 검사 후 Word를 생성합니다. 별도 LLM 프로그램·프로젝트 API 키·EXE는 필요 없습니다. GitHub를 쓰지 않는 분은 소스 ZIP을 전체 압축 해제하면 됩니다.
 

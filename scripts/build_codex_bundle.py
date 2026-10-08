@@ -24,6 +24,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 PUBLIC_FILES = (
+    "docs/start-here.md",
     "docs/verification-plugin-20261008.md",
     "pyproject.toml", "uv.lock", ".python-version", ".gitignore", "LICENSE",
     "AGENTS.md", "README.md", "README.ko.md", "CHANGELOG.md",
@@ -152,7 +153,7 @@ def build_bundle(source_root: Path, output_dir: Path) -> Path:
             for name, data in sorted(payloads.items())
         ],
     }
-    root_name = f"IB_report_formatter_Codex_{version}"
+    root_name = f"ib-report-formatter-codex-source-{version}"
     release = output_dir.resolve() / (
         "codex-source-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         + "-" + uuid.uuid4().hex[:8]

@@ -1,4 +1,8 @@
-# IB Report Formatter 플러그인 사용 안내
+# AI 문서 작성 도우미: Claude Code / Codex 플러그인
+
+[배포본 선택으로 돌아가기](start-here.md) · 플러그인 **0.1.0** / 내장 엔진 **2.0.0 (Beta)**
+
+배포 파일은 `ib-report-formatter-plugin-0.1.0.zip`입니다. 문서 변환만 필요하면 Windows 실행형을, 소스 자체를 배우거나 수정하려면 Codex 프로젝트 키트를 선택하세요.
 
 Claude Code 또는 Codex에 이 플러그인을 설치하면 **현재 작업 폴더의 자료를 주고 Word 문서 작성을 요청**할 수 있습니다. AI가 근거 정리와 Markdown 초안을 작성하고, 내장 Python 엔진이 엄격 검사 후 DOCX를 만듭니다. 별도 모델 API 키나 변환용 EXE는 필요 없습니다. 사용하는 Claude Code/Codex의 계정과 이용 조건이 적용됩니다.
 

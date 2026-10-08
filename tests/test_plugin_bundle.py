@@ -36,6 +36,8 @@ def test_plugin_archive_layout_hashes_and_no_private_inputs(plugin_checkout, tmp
     archive = builder.build_bundle(plugin_checkout, tmp_path / "release")
     assert archive.read_bytes() == archive.with_suffix(".plugin").read_bytes()
     plugin_version, engine_version, paths = builder.public_sources(plugin_checkout)
+    assert archive.name == f"ib-report-formatter-plugin-{plugin_version}.zip"
+    assert archive.with_suffix(".plugin").name == f"ib-report-formatter-plugin-{plugin_version}.plugin"
     with zipfile.ZipFile(archive) as bundle:
         assert set(bundle.namelist()) == set(paths) | {"bundle-manifest.json"}
         assert "plugin.json" in bundle.namelist()
@@ -53,7 +55,9 @@ def test_plugin_archive_layout_hashes_and_no_private_inputs(plugin_checkout, tmp
             assert b"PRIVATE_MUST_NOT_SHIP" not in data
     for suffix in (".zip", ".plugin"):
         artifact = archive.with_suffix(suffix)
-        assert artifact.with_suffix(suffix + ".sha256").read_text().split()[0] == hashlib.sha256(artifact.read_bytes()).hexdigest()
+        assert artifact.with_suffix(suffix + ".sha256").read_text().split() == [
+            hashlib.sha256(artifact.read_bytes()).hexdigest(), artifact.name,
+        ]
 
 
 def test_manifests_use_same_identity_and_local_root(plugin_checkout):

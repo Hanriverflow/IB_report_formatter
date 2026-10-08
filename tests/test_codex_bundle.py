@@ -42,7 +42,8 @@ def test_bundle_has_exact_allowlist_and_verifiable_hashes(public_checkout, tmp_p
         target.write_text("DO_NOT_DISTRIBUTE", encoding="utf-8")
     archive = builder.build_bundle(public_checkout, tmp_path / "release")
     version, paths = builder.source_files(public_checkout)
-    prefix = f"IB_report_formatter_Codex_{version}/"
+    assert archive.name == f"ib-report-formatter-codex-source-{version}.zip"
+    prefix = f"ib-report-formatter-codex-source-{version}/"
     with zipfile.ZipFile(archive) as bundle:
         assert {
             prefix + name for name in (
@@ -66,7 +67,9 @@ def test_bundle_has_exact_allowlist_and_verifiable_hashes(public_checkout, tmp_p
         assert bundle.read(prefix + "시작하기.html") == bundle.read(prefix + "docs/codex-start.html")
         assert manifest["source"]["base_commit"] is None
         assert manifest["source"]["dirty"] is None
-    assert archive.with_suffix(".zip.sha256").read_text().split()[0] == hashlib.sha256(archive.read_bytes()).hexdigest()
+    assert archive.with_suffix(".zip.sha256").read_text().split() == [
+        hashlib.sha256(archive.read_bytes()).hexdigest(), archive.name,
+    ]
 
 
 def test_repeated_build_preserves_previous_release(public_checkout, tmp_path):

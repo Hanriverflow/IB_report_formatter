@@ -123,7 +123,7 @@ def build(output: Path, app_dir: Path | None = None) -> Path:
         raise FileNotFoundError(f"Missing frozen executable in {app_dir}")
     with (ROOT / "pyproject.toml").open("rb") as handle:
         version = tomllib.load(handle)["project"]["version"]
-    label = f"IB문서변환기_{version}_Windows_x64"
+    label = f"ib-report-formatter-windows-x64-{version}"
     package = output / label
     shutil.copytree(app_dir, package)
     for source, relative in inputs:

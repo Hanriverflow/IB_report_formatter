@@ -1,12 +1,14 @@
 # 배포본 만들기
 
+사용자는 먼저 [배포본 선택과 시작하기](start-here.md)를 읽으세요. 이 문서는 관리자용 빌드·배포 안내입니다.
+
 같은 Markdown → Word 엔진을 실행 프로그램, Codex 프로젝트 또는 호스트 플러그인으로 전달합니다.
 
 | 배포본 | 받는 사람이 하는 일 | 필요한 환경 |
 |---|---|---|
-| Windows portable ZIP | 작성한 MD를 실행 프로그램에서 변환 | Windows x64, Python 설치 불필요 |
-| Codex source ZIP | 자료와 요청을 주고 Codex에서 MD 작성·변환 | Codex 계정·앱, uv, Python 3.12 이상 |
-| Claude Code / Codex plugin ZIP | 플러그인을 불러와 별도 작업 폴더에서 문서 작성·변환 | 해당 호스트 계정·플러그인 지원 버전, uv; Python 3.12는 uv로 준비 가능 |
+| 문서 변환기 · Windows 실행형 | 작성한 MD를 실행 프로그램에서 변환 | Windows x64, Python 설치 불필요 |
+| Codex 프로젝트 키트 · 고급 사용자용 소스형 | 자료와 요청을 주고 Codex에서 MD 작성·변환 | Codex 계정·앱, uv, Python 3.12 이상 |
+| AI 문서 작성 도우미 · Claude Code / Codex 플러그인 | 플러그인을 불러와 별도 작업 폴더에서 문서 작성·변환 | 해당 호스트 계정·플러그인 지원 버전, uv; Python 3.12는 uv로 준비 가능 |
 
 사용 안내는 [실행 프로그램 시작하기](distribution/시작하기.html)와 [Codex 시작하기](codex-start.html)를 참고합니다. Codex 방식에는 별도 프로젝트 API 키가 필요하지 않습니다. 실행 프로그램 자체는 LLM을 호출하지 않습니다.
 
@@ -48,7 +50,7 @@ uv run python scripts/build_codex_bundle.py --output-dir dist
 uv run python scripts/build_plugin_bundle.py --output-dir dist
 ```
 
-새 출력 폴더에 `ib-report-formatter-0.1.0.zip`과 같은 바이트의 `.plugin` 파일, 각각의 SHA-256 파일을 생성합니다. 플러그인 버전은 엔진 버전과 별도로 관리되므로 실제 파일명은 매니페스트의 버전을 따릅니다. ZIP 최상위에는 `plugin.json`, 호스트별 매니페스트, `skills/`, 엔진 소스와 잠금 파일이 있습니다. 빌드 당시 소스 상태와 파일별 해시는 내부 `bundle-manifest.json`에 기록합니다.
+새 출력 폴더에 `ib-report-formatter-plugin-0.1.0.zip`과 같은 바이트의 `.plugin` 파일, 각각의 SHA-256 파일을 생성합니다. 플러그인 버전은 엔진 버전과 별도로 관리되므로 실제 파일명은 매니페스트의 버전을 따릅니다. ZIP 최상위에는 `plugin.json`, 호스트별 매니페스트, `skills/`, 엔진 소스와 잠금 파일이 있습니다. 빌드 당시 소스 상태와 파일별 해시는 내부 `bundle-manifest.json`에 기록합니다.
 
 이 묶음은 소스 배포본입니다. Python 런타임·라이브러리·EXE는 포함되지 않으며, `setup` 스킬이 `scripts/plugin_runtime.py`를 통해 플러그인 밖 캐시에 잠긴 의존성을 준비합니다. 사용자는 [플러그인 안내](plugin-guide.md)에 따라 ZIP을 별도 폴더에 전체 압축 해제하고 사용하는 호스트에서 불러옵니다. 실제 자료와 생성 문서는 설치 폴더 밖에 둡니다.
 
@@ -57,3 +59,21 @@ uv run python scripts/build_plugin_bundle.py --output-dir dist
 ## 전달
 
 검증한 ZIP과 해시를 공유폴더 또는 GitHub Release 자산으로 전달할 수 있습니다. Git 저장소에는 생성된 ZIP·EXE를 직접 추가하지 않습니다. 배포할 때 사용한 소스 커밋, 환경과 검증 범위를 함께 남기십시오.
+
+## 배포 파일명과 버전
+
+| 배포본 | 현재 메타데이터 기준 파일명 | 버전 기준 |
+|---|---|---|
+| Windows 실행형 | `ib-report-formatter-windows-x64-2.0.0.zip` | 엔진 `pyproject.toml` |
+| Codex 소스형 | `ib-report-formatter-codex-source-2.0.0.zip` | 엔진 `pyproject.toml` |
+| 공용 플러그인 | `ib-report-formatter-plugin-0.1.0.zip` | 호스트별 플러그인 manifest |
+
+플러그인의 `.plugin` 파일은 같은 이름·내용의 대체 확장자이며 네 번째 배포본이 아닙니다. 엔진 2.0.0은 Beta 메타데이터이고 플러그인 0.1.0과 별도로 관리합니다. 파일명 예시는 게시된 Release를 의미하지 않습니다. 이름 변경 후 새로 빌드한 자산의 해시를 기록하며, 과거 검증 문서의 파일명·해시는 당시 기록으로 보존합니다.
+
+## 저장소와 Release 운영
+
+- 공통 엔진과 배포 소스는 `main`에서 함께 관리합니다. 문서 종류·기관 스타일별 장기 브랜치를 만들지 않습니다.
+- 기능 브랜치는 통합 이력 보존을 확인한 뒤 정리합니다. 브랜치를 최종 사용자 다운로드 경로로 안내하지 않습니다.
+- Release 체크리스트를 통과한 같은 소스 커밋에서 배포 자산 세 종류를 만들고, 한 GitHub Release에 역할별로 구분해 수동 첨부할 수 있습니다. 자동화 추가는 필수가 아닙니다.
+- Release 본문에는 배포본별 설치 안내, 엔진/플러그인 버전, 소스 커밋, SHA-256, 실제 수행한 검증과 미검증 범위를 구분해 기록합니다. 아직 검증하지 않은 자산은 게시하거나 완료로 표시하지 않습니다.
+- 새 ZIP·EXE나 실제 거래자료는 Git에 커밋하지 않습니다. 소스 ZIP 자동 생성물은 검증된 Windows 실행형과 다릅니다.

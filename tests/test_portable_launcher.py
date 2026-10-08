@@ -1,10 +1,13 @@
 """Portable entry point checks against the actual parsing/rendering/save path."""
 
+import json
+import zipfile
 from pathlib import Path
 
 import pytest
 from docx import Document
 
+from scripts import build_portable
 from scripts.build_portable import package_inputs
 from tools import portable_launcher
 
@@ -82,3 +85,37 @@ def test_package_allowlist_only_includes_public_guide_license_and_samples():
     assert all(".." not in destination.parts and not destination.is_absolute() for _, destination in inputs)
     assert not any(source.suffix == ".docx" for source, _ in inputs)
     assert (Path("예제/빠른시작/minimal-house.yaml")) in {dest for _, dest in inputs}
+
+
+def test_portable_archive_filename_and_matching_root(tmp_path, monkeypatch):
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    (source_root / "pyproject.toml").write_text(
+        '[project]\nversion = "9.8.7"\n', encoding="utf-8"
+    )
+    license_file = source_root / "LICENSE"
+    license_file.write_text("test license", encoding="utf-8")
+    app_dir = tmp_path / "frozen-app"
+    app_dir.mkdir()
+    executable = f"{build_portable.APP_NAME}.exe"
+    (app_dir / executable).write_bytes(b"test frozen executable")
+    monkeypatch.setattr(build_portable, "ROOT", source_root)
+    monkeypatch.setattr(build_portable.sys, "platform", "win32")
+    monkeypatch.setattr(
+        build_portable, "package_inputs",
+        lambda: [(license_file, Path("라이선스/LICENSE.txt"))],
+    )
+    monkeypatch.setattr(build_portable, "collect_notices", lambda destination: {})
+    monkeypatch.setattr(build_portable.sys, "path", list(build_portable.sys.path))
+
+    archive = build_portable.build(tmp_path / "release", app_dir)
+
+    assert archive.name == "ib-report-formatter-windows-x64-9.8.7.zip"
+    prefix = "ib-report-formatter-windows-x64-9.8.7/"
+    with zipfile.ZipFile(archive) as bundle:
+        assert all(name.startswith(prefix) for name in bundle.namelist())
+        assert bundle.read(prefix + executable) == b"test frozen executable"
+        assert bundle.read(prefix + "라이선스/LICENSE.txt") == b"test license"
+        assert prefix + "입력/" in bundle.namelist()
+        assert prefix + "출력/" in bundle.namelist()
+        assert json.loads(bundle.read(prefix + "manifest.json"))["version"] == "9.8.7"

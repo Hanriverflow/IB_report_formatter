@@ -4,6 +4,28 @@ Markdown → editable Word for investment-banking reports and Korean business do
 
 [한국어 설명](README.ko.md) · [Current integration record](docs/pr-consolidation-20260926.md) · [Release checklist](#release-checklist)
 
+## Choose how you work
+
+One Markdown-to-Word engine, three delivery formats. Choose by workflow, not by branch or document type.
+
+| Your goal | Distribution | What you need |
+|---|---|---|
+| Convert prepared Markdown to editable Word | **Document Converter · Windows portable** | Windows x64; Python bundled; no AI account |
+| Ask AI to draft and revise documents in your own workspace | **AI Document Assistant · Claude Code / Codex plugin** | Supported host and account, uv; Python 3.12 prepared as needed |
+
+**[Start here: setup and distribution selection](docs/start-here.md)** · [Plugin installation](docs/plugin-guide.md) · [Published downloads](https://github.com/Hanriverflow/IB_report_formatter/releases)
+
+<details>
+<summary>Advanced: Codex Project Kit (source distribution)</summary>
+
+Open the extracted source folder itself as a Codex project to learn from examples, customize the workflow or modify code. Requires Codex, uv and Python 3.12+. This is not a more capable document engine than the plugin. [Project setup](docs/start-here.md#codex-project-kit) · [Detailed local HTML guide](docs/codex-start.html)
+
+</details>
+
+**Versions:** engine **2.0.0 (Beta)**; plugin **0.1.0**. These are separate version lines, not successive editions. ZIP and `.plugin` contain the same plugin; Claude web/Cowork execution is not verified. Source availability does not mean a downloadable release has been published. See [verification scope](https://github.com/Hanriverflow/IB_report_formatter/blob/main/docs/verification-plugin-20261008.md).
+
+**Then choose a document profile:** general business (letters, reports, minutes), IB reports/memos, or term sheets with institution-specific YAML settings. All distributions share the same engine; do not select a feature branch for a document type. [Profiles](#profiles) · [Build and release guidance for maintainers](https://github.com/Hanriverflow/IB_report_formatter/blob/main/docs/distribution-build.md)
+
 ## Status and documentation map
 
 Repository review on **2026-09-27**: the default branch is `main`, the README calls the writer-only architecture **2.0**, and [package metadata](pyproject.toml) declares **2.0.0 (Beta)**. GitHub showed **0 tags and no published releases**. These version labels describe source/package metadata, not an already published or newly certified v2.0 release.
@@ -56,16 +78,7 @@ This is a **Markdown-to-Word-only engine**. In-house Word→Markdown development
 
 ## Quick start
 
-### Choose a distribution
-
-- **Claude Code / Codex plugin:** install or load the extracted plugin directory in either host, then ask its `ib-document` skill to write documents in your own workspace. The shared skills and bundled engine use an external runtime cache. See the [plugin setup and authoring guide](docs/plugin-guide.md). Claude web and native Cowork execution are not claimed as verified targets.
-
-- **Windows portable ZIP:** extract the entire archive, open `시작하기.html`, and run `문서변환기.exe` to convert prepared Markdown. Python is bundled; no LLM or Codex account is involved. See the [portable guide](docs/distribution/시작하기.html).
-- **Codex source ZIP:** open the extracted project in Codex to draft and revise documents from supplied materials. Requires your Codex account, uv and Python 3.12+; the ZIP does not bundle a runtime. See the [Codex guide](docs/codex-start.html).
-
-Maintainers can build either package using the [distribution build instructions](docs/distribution-build.md). Generated ZIPs and executable files stay under ignored `dist/`; source inclusion does not mean a GitHub release has been published.
-
-### Write with Codex
+### Advanced: write with the Codex source project
 
 Open this source folder as a local project in the Codex app and ask `$ib-document` to draft a document from your supplied facts. Codex writes/revises Markdown and runs this repository's strict renderer; no separate LLM client, project API key or EXE is needed. GitHub users can clone the project; other users can extract the source ZIP. See the [Korean getting-started guide](docs/codex-start.html), [repository skill](.agents/skills/ib-document/SKILL.md) and [fictional authoring exercise](samples/harness/). If the skill is not discovered, ask Codex to read its file path explicitly. Initial Python/uv setup and Codex model use can require internet access. Structural checks do not certify source accuracy or page layout.
 

@@ -21,6 +21,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 PUBLIC_FILES = (
+    "docs/start-here.md",
     "plugin.json", ".codex-plugin/plugin.json", ".claude-plugin/plugin.json",
     ".agents/plugins/marketplace.json", ".claude-plugin/marketplace.json",
     "skills/ib-document/SKILL.md", "skills/ib-document/references/term-sheet.md",
@@ -122,7 +123,7 @@ def build_bundle(source_root: Path, output_dir: Path) -> Path:
         "plugin-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
     )
     release.mkdir(parents=True, exist_ok=False)
-    archive = release / f"ib-report-formatter-{version}.zip"
+    archive = release / f"ib-report-formatter-plugin-{version}.zip"
     with zipfile.ZipFile(archive, "x", compression=zipfile.ZIP_DEFLATED) as bundle:
         for name, data in sorted(payloads.items()):
             bundle.writestr(name, data)
