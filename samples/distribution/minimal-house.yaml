@@ -1,0 +1,18 @@
+# 문서 작성 연습용 가상 문구입니다. 실제 사용 시 승인된 기관 문구로 교체하십시오.
+prepared_by: "라마바은행 금융솔루션팀 (가상)"
+confidential_label: "Strictly Confidential | 작성 연습용"
+disclaimer: >-
+  본 문서는 문서 작성 기능을 설명하기 위한 가상의 조건표입니다.
+  기재된 조건은 금융 제공이나 거래 체결의 약속이 아니며,
+  실제 거래조건은 별도의 심사, 당사자 협의 및 최종 계약으로 확정됩니다.
+confirmation:
+  intro: "아래는 고객확인란의 가상 서식 예시입니다."
+  items:
+    - "□ 주요 조건 및 상환일정을 확인하였습니다."
+    - "□ 추가 협의가 필요한 사항은 별도로 기재합니다."
+  signature: "확인일: 20    년    월    일 | 확인자: ____________________"
+style:
+  cover: inline
+  disclaimer: rules
+  table_header: light
+  table_sides: closed

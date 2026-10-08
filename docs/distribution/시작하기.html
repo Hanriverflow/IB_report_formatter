@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IB 문서변환기 시작하기 · 텀시트 작성 안내</title>
+<style>
+:root{--navy:#1a2270;--ink:#172239;--muted:#536279;--line:#dce3ef;--paper:#fff;--bg:#f3f5fa;--tint:#eef1fc}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.8 "Malgun Gothic","맑은 고딕",sans-serif}main{max-width:1040px;margin:auto;padding:38px 28px 80px}header{background:var(--navy);color:white;padding:44px;border-radius:18px}header p{color:#e0e6ff;max-width:730px}h1{font-size:34px;line-height:1.35;margin:12px 0}h2{font-size:25px;line-height:1.4;color:var(--navy);margin:0 0 20px}h3{font-size:19px;margin:28px 0 10px}p{margin:10px 0 16px}.eyebrow{letter-spacing:2px;font-size:12px;font-weight:bold}.pill{display:inline-block;padding:3px 11px;border:1px solid #838aca;border-radius:20px;font-size:13px}section,nav{background:var(--paper);border:1px solid var(--line);border-radius:14px;margin-top:22px;padding:30px 34px;scroll-margin-top:20px}nav{padding:22px 30px}nav a{display:inline-block;margin:4px 17px 4px 0}a{color:var(--navy);text-underline-offset:3px}code{font:14px/1.7 Consolas,"Malgun Gothic",monospace;background:var(--tint);padding:2px 5px;border-radius:4px}pre{background:#101b30;color:#edf3ff;border-radius:9px;padding:21px;overflow-x:auto;white-space:pre;line-height:1.7;font-size:14px;tab-size:2}pre code{font:inherit;color:inherit;background:none;padding:0}table{border-collapse:collapse;width:100%;margin:18px 0;font-size:14px}th,td{border:1px solid var(--line);padding:11px 13px;text-align:left;vertical-align:top}th{background:var(--tint)}ul,ol{padding-left:26px}li{margin:8px 0}.note{background:var(--tint);border-left:4px solid var(--navy);padding:14px 18px;margin:18px 0}.small{font-size:13px;color:var(--muted)}.steps{counter-reset:step;list-style:none;padding:0}.steps>li{position:relative;padding:0 0 17px 43px}.steps>li:before{counter-increment:step;content:counter(step);position:absolute;left:0;top:2px;border-radius:50%;background:var(--navy);color:white;width:28px;height:28px;text-align:center;line-height:28px;font-weight:bold}footer{text-align:center;color:var(--muted);font-size:13px;margin:32px}details{border-top:1px solid var(--line);padding:16px 0}summary{font-weight:bold;cursor:pointer}button{border:0;border-radius:6px;background:var(--navy);color:white;padding:10px 17px;font:inherit;cursor:pointer}.print{background:white;color:var(--navy);margin-top:12px}.code-label{margin:20px 0 -6px;font-size:13px;font-weight:bold;color:var(--muted)}
+@media(max-width:640px){main{padding:15px 12px 45px}header,section,nav{padding:23px 20px}h1{font-size:27px}h2{font-size:22px}table{display:block;overflow-x:auto}pre{font-size:12px}}
+@media print{body{background:white;font-size:10pt}main{max-width:none;padding:0}header{background:white;color:var(--ink);border-bottom:3px solid var(--navy);padding:15px 0;border-radius:0}header p{color:var(--muted)}.pill{color:var(--ink)}h1{font-size:25pt}h2{font-size:18pt}section,nav{border:0;border-radius:0;padding:15px 0;margin:0}nav,.print{display:none}h2,h3{break-after:avoid}pre{white-space:pre-wrap;overflow:visible;font-size:8pt;background:#f4f5fa;color:black;border:1px solid #ddd;break-inside:auto}tr,.note{break-inside:avoid}a{color:inherit}details{display:block}details>*{display:block}footer{margin:12px 0}@page{size:A4;margin:18mm}}
+</style>
+</head>
+<body><main>
+<header><div class="eyebrow">IB REPORT FORMATTER · WINDOWS</div><h1>첫 텀시트를 만드는 방법</h1><p>예제를 복사하고, 거래조건을 바꾼 뒤, Word로 변환합니다. GitHub 계정이나 Python 설치 없이 배포 폴더의 실행 프로그램을 사용할 수 있습니다.</p><span class="pill">작성 원본 .md → 검토·전달용 .docx</span><br><button class="print" onclick="window.print()">설명서 인쇄 / PDF 저장</button></header>
+<nav aria-label="목차"><a href="#start">1. 처음 실행</a><a href="#files">2. 파일 구성</a><a href="#template">3. 복사할 원본</a><a href="#metadata">4. 설정·조건 변수</a><a href="#tables">5. 표 작성</a><a href="#house">6. 기관 문구·모양</a><a href="#checks">7. 숫자 검사</a><a href="#finish">8. 최종 확인</a><a href="#faq">문제 해결</a></nav>
+
+<section id="start"><h2>1. 예제로 한 번 변환하기</h2><ol class="steps">
+<li><strong>ZIP 전체를 압축 해제합니다.</strong><br>압축파일 안에서 바로 실행하지 말고, 예를 들어 문서 폴더 안에 배포 폴더 전체를 풉니다. 실행 파일과 <code>_internal</code> 폴더는 함께 둡니다.</li>
+<li><strong><code>문서변환기.exe</code>를 실행합니다.</strong><br>첫 실행은 포함된 라이브러리를 불러오느라 시간이 걸릴 수 있습니다.</li>
+<li><strong>입력 파일을 선택합니다.</strong><br><code>예제/빠른시작/minimal-term-sheet.md</code>를 선택합니다. 같은 폴더의 <code>minimal-house.yaml</code>도 필요합니다.</li>
+<li><strong>출력 폴더를 선택합니다.</strong><br>수정할 수 있는 폴더를 지정합니다. 문서 유형은 <strong>자동</strong>으로 두면 원본의 <code>profile: term-sheet</code> 설정을 사용합니다.</li>
+<li><strong>변환을 실행하고 결과를 엽니다.</strong><br>오류가 나오면 안내에 따라 원본을 수정한 뒤 다시 변환합니다. 이 배포 앱은 엄격 검사를 적용합니다. 성공 후 출력 파일의 실제 저장 위치를 확인합니다.</li>
+</ol><div class="note"><strong>처음에는 예제를 그대로 변환하세요.</strong> 성공을 확인한 뒤 <code>빠른시작</code> 폴더 전체를 복사하여 새 거래 폴더를 만들면 경로 오류를 줄일 수 있습니다.</div>
+<p class="small">이 안내의 예제 링크는 빌드된 Windows ZIP을 전체 압축 해제한 폴더의 <code>시작하기.html</code>에서 열립니다. 저장소나 Codex 소스 묶음에서 읽는 경우 원본 예제는 <code>samples/distribution</code>과 <code>samples/profiles</code>에 있습니다. Windows ZIP 제작은 <code>docs/distribution-build.md</code>의 <code>scripts/build_portable.py</code> 실행 안내를 참고하세요.</p>
+<p>완성 모양을 먼저 보려면 <a href="예제/빠른시작/minimal-term-sheet.docx">입문 예제 Word 문서</a>를 열어보세요. <a href="예제/빠른시작/minimal-term-sheet.md">입문 예제 원본</a>은 텍스트 편집기로 열어 수정할 수 있습니다.</p><p class="small">실행 프로그램은 Markdown을 Word로 변환합니다. Markdown을 직접 편집하는 화면은 제공하지 않으므로 메모장 등 텍스트 편집기로 원본을 수정합니다.</p></section>
+
+<section id="files"><h2>2. 어떤 파일을 수정하나요?</h2><table><thead><tr><th>파일</th><th>역할 / 수정할 내용</th></tr></thead><tbody>
+<tr><td><code>minimal-term-sheet.md</code></td><td>거래별 원본. 제목, 조건 변수, 표, 본문과 상환일정을 수정합니다.</td></tr>
+<tr><td><code>minimal-house.yaml</code></td><td>기관 공통 문구. 작성 기관, 면책문구, 기밀표시, 고객확인 문구, 서식 옵션을 관리합니다.</td></tr>
+<tr><td><code>*.docx</code></td><td>생성 결과. Word에서 페이지와 내용을 검토하고 전달합니다. Word 수정분은 원본으로 자동 반영되지 않습니다.</td></tr>
+<tr><td><code>assets/</code> 등 이미지 폴더</td><td>로고나 본문 이미지가 있을 때 함께 보관합니다. 원본과 상대적인 폴더 위치를 유지합니다.</td></tr>
+</tbody></table><p><strong>메모장 저장:</strong> 파일 형식을 <strong>모든 파일</strong>로 선택하고 파일명을 <code>거래명.md</code>, 인코딩을 <strong>UTF-8</strong>로 저장합니다. 탐색기에서 파일 확장명을 표시하여 <code>거래명.md.txt</code>가 되지 않았는지 확인합니다. YAML 파일도 UTF-8로 저장합니다.</p><p>기관 공통 파일을 따로 쓰기 어렵다면 아래 <code>prepared_by</code>와 <code>disclaimer</code>를 Markdown 맨 위 설정에 직접 넣고 <code>house:</code>를 지울 수 있습니다. 고객확인란을 쓰면 <code>confirmation:</code> 문구도 필요합니다.</p></section>
+
+<section id="template"><h2>3. 가장 작은 완성 예제</h2><p>배포 폴더의 <code>예제/빠른시작/minimal-term-sheet.md</code>가 다음 원본입니다. 아래 전체 내용을 복사해도 됩니다. 단, <code>minimal-house.yaml</code>을 같은 폴더에 두세요.</p>
+<p class="code-label">minimal-term-sheet.md · 설정과 본문을 포함한 전체 파일</p>
+<pre><code>---
+profile: term-sheet
+title: "{{company}} 운전자금대출 주요조건(안)"
+subtitle: "Term Sheet"
+date: "2026-10-08"
+version: "v1.0 / 가상 예시"
+house: minimal-house.yaml
+terms:
+  company: "가나다머티리얼즈㈜"
+  amount: "100억원"
+  rate: "4.50%"
+  first_draw: "2026-10-15"
+  maturity: "2028-10-15"
+tables:
+  - columns: [text, text, text]
+    label_columns: 2
+  - columns: [text, date, number, number]
+    label_columns: 0
+    unit: "억원"
+    note: "※ 이자·수수료 및 실제 영업일 조정은 포함하지 않은 가상 예시"
+    schedule: {repayment: 3, balance: 4, principal: "{{amount}}", total: true}
+---
+
+## 1. 주요 금융조건
+
+| 구 분 | &lt;&lt; | 내 용 |
+|---|---|---|
+| 차주 | &lt;&lt; | {{company}} |
+| 대출 | 약정금액 | {{amount}} |
+| ^^ | 적용금리 | 연 {{rate}} (가상 고정금리) |
+| ^^ | 실행·만기 | • 실행예정일: {{first_draw}}&lt;br&gt;• 최종만기일: {{maturity}} |
+| 자금용도 | &lt;&lt; | • 원재료 구매 및 운전자금&lt;br&gt;• 실제 사용범위는 최종 약정에서 확정 |
+| 선행조건 | &lt;&lt; | • 내부 승인 및 최종 계약 체결&lt;br&gt;• 필요한 서류 제출과 선행조건 충족 |
+
+## 2. 원금 상환일정
+
+아래 원금상환액과 상환 후 잔액은 작성자가 직접 입력한 값입니다. 프로그램은 선언된 검사 규칙에 따라 일치 여부를 확인하며 금액을 자동 계산하여 채우지 않습니다.
+
+| 회차 | 지급예정일 | 원금상환액 | 상환 후 잔액 |
+|---|---|---:|---:|
+| 1 | 2027-10-15 | 50 | 50 |
+| 2 | 2028-10-15 | 50 | 0 |
+| 합계 | | 100 | 0 |
+
+※ 모든 기관명, 거래조건, 금액과 일정은 문서 작성 연습용으로 만든 예시입니다.
+
+```confirmation
+```</code></pre>
+<p><strong>처음 수정할 곳:</strong> <code>terms.company</code>, <code>amount</code>, <code>rate</code>, 날짜와 본문 조건입니다. 금액·만기를 바꾸면 <strong>두 번째 표의 날짜·상환액·잔액·합계도 직접 수정</strong>하세요. 표의 숫자는 자동으로 갱신되지 않습니다.</p></section>
+
+<section id="metadata"><h2>4. 맨 위 설정과 조건 변수</h2><p>파일 첫 줄과 설정 마지막 줄의 <code>---</code> 사이가 YAML 설정입니다. 그 뒤가 Markdown 본문입니다. YAML 들여쓰기는 <strong>탭 대신 공백 2칸</strong>을 사용하고 같은 단계의 항목은 시작 위치를 맞춥니다.</p>
+<table><thead><tr><th>항목</th><th>작성 방법</th></tr></thead><tbody>
+<tr><td><code>profile</code></td><td>정확히 <code>term-sheet</code>입니다. <code>term_sheet</code>나 <code>termsheet</code>로 쓰지 않습니다.</td></tr>
+<tr><td><code>title</code></td><td>필수 제목. 공백만 입력할 수 없습니다. 예: <code>"가나다㈜ 대출 주요조건(안)"</code></td></tr>
+<tr><td><code>subtitle</code></td><td>부제. 생략하면 <code>Term Sheet</code>를 사용합니다.</td></tr>
+<tr><td><code>date</code>, <code>version</code></td><td>표시할 날짜와 버전. 날짜는 <code>"2026-10-08"</code>처럼 따옴표로 감쌉니다. 버전은 바닥글에 쓰입니다.</td></tr>
+<tr><td><code>house</code></td><td>기관 공통 YAML의 경로. <code>minimal-house.yaml</code>이면 Markdown과 같은 폴더에서 찾습니다.</td></tr>
+<tr><td><code>terms</code></td><td>여러 곳에서 반복하는 값. 값은 모두 따옴표로 감싼 한 줄 문자열로 씁니다.</td></tr>
+<tr><td><code>tables</code></td><td>본문에 나오는 표의 순서대로 지정하는 목록. 표 추가·삭제 시 함께 조정합니다.</td></tr>
+</tbody></table>
+<h3>같은 조건을 한 번만 입력하기</h3><pre><code>terms:
+  amount: "100억원"
+  rate: "4.50%"
+  maturity: "2028-10-15"</code></pre><p>본문에 <code>약정금액은 {{amount}}, 금리는 연 {{rate}}</code>라고 쓰면 값이 들어갑니다. 키는 영문 소문자로 시작하며 소문자·숫자·밑줄을 조합한 40자 이내 이름을 사용합니다. 값에 줄바꿈을 넣지 않습니다.</p><p>변수는 제목·본문·표에서 쓸 수 있습니다. 코드 블록이나 링크 주소에는 치환하지 않습니다. <code>terms:</code>에 없는 키를 참조하면 엄격 검사에서 저장을 중단합니다. <code>terms:</code> 자체가 없으면 중괄호는 일반 글자로 취급하므로 변수 사용 시 이 설정을 유지하세요.</p><div class="note">변수 값은 입력한 표기 그대로 들어갑니다. <code>"10000000000"</code>을 자동으로 <code>100억원</code>으로 바꾸지 않습니다. <code>"100억원"</code>, <code>"4.50%"</code>처럼 원하는 최종 표기로 입력하세요.</div>
+<h3>본문 제목과 줄바꿈</h3><pre><code>## 1. 주요 금융조건
+### 담보 조건
+
+• 첫 번째 조건&lt;br&gt;• 두 번째 조건&lt;br&gt;※ 별도 협의사항</code></pre><p>제목 앞에는 <code>##</code> 또는 <code>###</code>와 공백을 씁니다. 셀 안의 줄바꿈은 <code>&lt;br&gt;</code>를 사용합니다. 텀시트에서는 본문에서도 이 표시가 별도 Word 문단을 만듭니다. 원본에서 Enter만 누른 일반 문단 줄은 공백으로 합쳐질 수 있습니다. 두 칸짜리 후행 공백에 의존하지 마세요.</p></section>
+
+<section id="tables"><h2>5. 표를 추가하고 병합하기</h2><h3>표의 기본 구조</h3><pre><code>| 항목 | 내용 |
+|---|---|
+| 대출금액 | 100억원 |
+| 조건 | • 내부 승인&lt;br&gt;• 최종 계약 체결 |
+| 비고 | |</code></pre><p>첫 행은 머리글, 둘째 행은 구분선입니다. 각 행의 칸 수를 맞추고 표 앞뒤에는 빈 줄을 둡니다. 빈칸은 그대로 유지됩니다. 셀 안에 세로줄 자체를 쓰려면 <code>A\|B</code>처럼 입력합니다.</p>
+<h3>설정은 표 이름이 아니라 등장 순서로 연결됩니다</h3><pre><code>tables:
+  - {}                         # 첫 번째 표: 기본 서식
+  - columns: [text, date, number, number]
+    label_columns: 0            # 두 번째 표: 라벨 음영 없음
+    unit: "억원"
+  - {}                         # 세 번째 표: 기본 서식</code></pre><p><code>{}</code>는 그 표의 자리를 유지하는 표시입니다. 중간에 표를 추가했다면 해당 위치에 항목도 추가하세요. 고객확인용 <code>confirmation</code> 블록은 이 본문 표 목록에 넣지 않습니다.</p>
+<table><thead><tr><th>설정</th><th>용도</th></tr></thead><tbody>
+<tr><td><code>columns</code></td><td>열 수만큼 역할을 지정합니다. <code>text</code> 문장, <code>code</code> 코드, <code>date</code> 날짜, <code>number</code> 숫자, <code>money</code> 금액, <code>percent</code> %, <code>bps</code> bp, <code>multiple</code> 배수.</td></tr>
+<tr><td><code>label_columns</code></td><td>왼쪽 라벨 열의 수. 0 이상 전체 열 수 미만입니다. 두 단계 조건표는 2, 일반 상환표는 0으로 지정할 수 있습니다.</td></tr>
+<tr><td><code>unit</code>, <code>note</code></td><td>표 위의 단위와 표 아래 오른쪽 주석. 단위를 적는 것만으로 숫자를 환산하지 않습니다.</td></tr>
+<tr><td><code>header_rows</code></td><td>반복할 머리행 수. 기본 1. 2로 지정하면 구분선 바로 뒤 첫 행도 머리행에 포함합니다.</td></tr>
+<tr><td><code>spans</code></td><td><code>false</code>이면 그 표의 병합 기호 해석을 끕니다. 텀시트에서는 기본으로 켜져 있습니다.</td></tr>
+</tbody></table><p>날짜·코드는 역할을 명시하여 앞자리 0과 표기를 지키세요. <code>percent</code>에서 <code>4.5</code>는 <code>4.5%</code>이며 <code>450%</code>가 아닙니다. YAML의 날짜·코드·변수 값은 따옴표로 감싸고, Markdown 표의 일반 날짜는 따옴표 없이 작성합니다.</p>
+<h3>가로·세로 병합</h3><pre><code>| 구 분 | &lt;&lt; | 내 용 |
+|---|---|---|
+| 대출 | 금액 | 100억원 |
+| ^^ | 금리 | 연 4.50% |
+| 기타 | &lt;&lt; | 별도 협의 |</code></pre><ul><li><code>&lt;&lt;</code>만 들어 있는 칸은 왼쪽 칸에 합쳐집니다. 위 예의 머리글 ‘구 분’과 ‘기타’는 각각 두 칸을 차지합니다.</li><li><code>^^</code>만 들어 있는 칸은 위 칸에 합쳐집니다. ‘대출’이 두 행을 차지합니다.</li><li>병합 영역은 완전한 직사각형이어야 하며 머리행과 본문행의 경계를 넘을 수 없습니다. 첫 열에서 왼쪽 병합, 첫 행에서 위쪽 병합을 할 수 없습니다.</li><li>기호를 글자로 표시하려면 <code>\^^</code>, <code>\&lt;&lt;</code>로 씁니다. 잘못된 병합은 엄격 검사에서 저장을 중단합니다.</li></ul></section>
+
+<section id="house"><h2>6. 기관 공통 문구와 모양 바꾸기</h2><p>다음은 빠른시작 예제의 공통 파일입니다. 실제 배포·사용 시 작성 기관과 문구를 승인된 내용으로 바꾸세요. 아래 파일에는 Markdown 설정용 <code>---</code> 구분선을 넣을 필요가 없습니다.</p><p class="code-label">minimal-house.yaml · 전체 파일</p><pre><code># 문서 작성 연습용 가상 문구입니다. 실제 사용 시 승인된 기관 문구로 교체하십시오.
+prepared_by: "라마바은행 금융솔루션팀 (가상)"
+confidential_label: "Strictly Confidential | 작성 연습용"
+disclaimer: &gt;-
+  본 문서는 문서 작성 기능을 설명하기 위한 가상의 조건표입니다.
+  기재된 조건은 금융 제공이나 거래 체결의 약속이 아니며,
+  실제 거래조건은 별도의 심사, 당사자 협의 및 최종 계약으로 확정됩니다.
+confirmation:
+  intro: "아래는 고객확인란의 가상 서식 예시입니다."
+  items:
+    - "□ 주요 조건 및 상환일정을 확인하였습니다."
+    - "□ 추가 협의가 필요한 사항은 별도로 기재합니다."
+  signature: "확인일: 20    년    월    일 | 확인자: ____________________"
+style:
+  cover: inline
+  disclaimer: rules
+  table_header: light
+  table_sides: closed</code></pre>
+<p><code>prepared_by</code>와 <code>disclaimer</code>는 필수이며 빈 문자열일 수 없습니다. Markdown 설정에 같은 키가 있으면 공통 파일보다 우선합니다. 공통 문구를 쓰려면 Markdown에 빈 값으로 덮어쓰지 말고 해당 키를 생략하세요.</p>
+<h3>고객확인란을 넣는 위치</h3><pre><code>```confirmation
+```</code></pre><p>위처럼 <strong>내용 없이 닫힌</strong> 블록을 원하는 본문 위치에 둡니다. 문구는 <code>confirmation.intro</code>, <code>items</code>, <code>signature</code>에서 가져옵니다. 블록 안에 확인문구를 직접 입력하거나 닫는 기호를 빼면 오류가 됩니다. 확인란이 필요 없으면 본문 블록을 지우면 됩니다.</p>
+<h3>자주 쓰는 모양 옵션</h3><p>기존 공통 파일의 <code>style:</code> 부분을 다음으로 교체할 수 있습니다. 한 파일에 <code>style:</code>을 두 번 만들지 마세요.</p><pre><code>style:
+  cover: page                 # inline: 첫 페이지 본문과 함께 / page: 별도 표지
+  disclaimer: box             # rules: 위아래 선 / box: 상자
+  header_rule: true
+  footer_rule: true
+  label_color: "#C00000"
+  page_number: "- {page} -"    # 전체 쪽 수도 필요하면 "{page} / {pages}"
+  page_number_align: center   # right 또는 center
+  table_header: dark          # light 또는 dark
+  table_sides: open           # closed 또는 open</code></pre><p>로고를 쓸 때는 <code>style</code> 아래에 <code>logo: assets/logo.png</code>와 <code>logo_width_mm: 40</code>을 추가합니다. 공통 파일에서 지정한 로고는 <strong>공통 파일 폴더 기준</strong>, Markdown 설정에서 지정한 로고는 <strong>Markdown 폴더 기준</strong>입니다. 실제 이미지가 없으면 해당 옵션을 넣지 마세요.</p><p>기밀 머리글을 없애려면 공통 파일에 <code>confidential_label: ""</code>을 사용합니다. 첫머리의 면책문구는 계속 필요합니다. 글꼴·강조색·여백 전체를 바꾸는 <code>theme</code>와 위 <code>style</code>은 서로 다른 설정입니다. 처음에는 제공된 기본값을 권장합니다.</p></section>
+
+<section id="checks"><h2>7. 숫자 검사는 선택한 규칙만 확인합니다</h2><p>프로그램은 작성한 상환표를 자동으로 계산하거나 금융조건을 확정하지 않습니다. 검사를 선언하면 입력한 값 사이의 불일치를 찾아 알려줍니다.</p>
+<h3>빠른시작 예제의 상환표 검사</h3><pre><code>schedule: {repayment: 3, balance: 4, principal: "{{amount}}", total: true}</code></pre><p>두 번째 표에서 <strong>3열은 원금상환액, 4열은 상환 후 잔액</strong>입니다. 열 번호는 1부터 셉니다. <code>total: true</code>는 마지막 본문행이 합계행이라는 뜻입니다. 100억원에서 50억원을 상환하면 50억원, 다시 50억원을 상환하면 0원이 되는지와 상환 합계 등을 검사합니다. 날짜를 실제 영업일에 맞춰 조정하는 기능은 아닙니다.</p>
+<h3>반복되는 조건값의 산식 검사</h3><p>아래 항목은 Markdown 맨 위 YAML 설정에 통합합니다. 이미 <code>terms:</code>가 있으면 그 아래에 새 변수만 추가하세요.</p><pre><code>terms:
+  base_rate: "3.00%"
+  spread: "1.50%p"
+  rate: "4.50%"
+checks:
+  - "rate = base_rate + spread"</code></pre><p>이 산식은 값의 일치 여부만 확인하며 <code>rate</code>를 계산해서 넣지 않습니다. 선언한 검사가 실패하거나 읽을 수 없으면 엄격 검사에서 저장하지 않습니다. 금액·금리처럼 서로 다른 종류의 값을 섞는 식을 쓰지 마세요.</p><p class="small">Word에서 조건 변수를 고쳐도 다른 위치의 같은 값이나 원본 YAML이 자동 갱신되지 않습니다. 조건 변경은 원본의 <code>terms</code>를 고쳐 다시 변환하는 방식으로 관리하세요.</p></section>
+
+<section id="finish"><h2>8. 완성본 검토와 전달</h2><ol><li>생성된 DOCX를 Word에서 열어 <strong>모든 페이지</strong>의 표 잘림·줄바꿈·머리글·바닥글·쪽 번호를 확인합니다.</li><li>회사명, 금액, 금리, 만기, 상환 합계와 승인된 면책문구가 맞는지 검토합니다. 엄격 검사 통과는 시각적 완성이나 거래조건의 타당성을 보장하지 않습니다.</li><li>최종 전달용은 검토한 DOCX 또는 Word에서 저장한 PDF를 사용합니다. 이 변환기는 DOCX를 생성하며 문서 PDF 변환은 Word 등에서 수행합니다.</li><li>다음에 수정할 수 있도록 <strong>원본 MD + house YAML + 사용한 이미지</strong>를 같은 폴더 구조로 보관합니다. 다른 작성자에게 넘길 때는 이 원본 폴더 전체를 ZIP으로 묶습니다.</li></ol><p>더 긴 예제는 <code>예제/전체예제/term-sheet.md</code>와 <code>term-sheet-house.yaml</code>을 함께 참고하세요. <a href="예제/전체예제/term-sheet.docx">전체 예제 Word 문서</a>도 포함되어 있습니다. 여러 조건표·고객확인란·상환스케줄·산식 검사를 포함한 가상 ABCP 예제입니다. 문서의 일부 표만 가져올 때는 맨 위 <code>tables:</code>도 새 표 순서에 맞게 다시 구성합니다.</p></section>
+
+<section id="faq"><h2>문제 해결</h2>
+<details open><summary>house 파일이나 이미지가 없다고 나옵니다</summary><p>입력 MD 옆에 공통 YAML이 있는지, <code>house:</code> 파일명이 실제 이름과 같은지 확인합니다. 파일명 변경 후에는 설정도 바꿉니다. 공유할 때 MD만 보내지 말고 공통 파일·이미지를 함께 전달하세요.</p></details>
+<details open><summary>YAML 오류가 납니다</summary><p>들여쓰기를 공백으로 맞추고 따옴표 쌍, 콜론 뒤 공백을 확인합니다. 날짜·숫자처럼 보이는 변수 값은 <code>"100억원"</code>, <code>"2028-10-15"</code>처럼 따옴표로 감쌉니다. 복사한 코드 블록의 <code>```yaml</code> 표시를 파일의 맨 위 설정에 넣지 마세요.</p></details>
+<details open><summary>표를 추가한 후 열 수·병합 오류가 납니다</summary><p>표의 모든 행에서 칸 수를 맞추고, 그 표에 대응하는 <code>tables</code> 항목과 <code>columns</code> 개수를 확인합니다. 중간 표에 설정이 없더라도 <code>{}</code>로 순서를 유지합니다. 병합이 직사각형인지, 머리행과 본문을 넘지 않는지도 확인합니다.</p></details>
+<details open><summary>Word에서 바꾼 내용이 다시 변환하니 없어졌습니다</summary><p>재변환은 MD 원본으로 새 문서를 만듭니다. Word 수정분을 자동으로 읽어오지 않습니다. 보존할 변경은 MD·YAML에 반영한 뒤 새 출력 위치에 변환하세요.</p></details>
+<details open><summary>저장할 수 없거나 예상과 다른 이름으로 저장됩니다</summary><p>변환 결과 안내에 표시된 실제 저장 경로를 확인하세요. 기존 결과를 Word에서 닫고 쓰기 권한이 있는 폴더로 변환합니다. 같은 이름이 열려 있으면 엔진이 시각을 붙인 별도 이름으로 저장할 수 있습니다.</p></details>
+<details open><summary>실행 파일이 열리지 않습니다</summary><p>ZIP 전체를 다시 압축 해제하고 <code>_internal</code> 폴더가 실행 파일 옆에 있는지 확인합니다. 조직 보안정책이나 출처 확인 화면으로 실행이 제한되면 배포 담당자에게 표시된 메시지를 전달하세요.</p></details>
+<details open><summary>설명서를 PDF로 보관하려면?</summary><p>이 페이지 위쪽의 인쇄 버튼 또는 <kbd>Ctrl</kbd> + <kbd>P</kbd>를 누르고 프린터에서 PDF로 저장을 선택합니다. 인터넷 연결 없이 열고 인쇄할 수 있습니다.</p></details>
+</section><footer>IB 문서변환기 · 텀시트 작성 안내 · 2026-10-08<br>제공된 샘플의 기관명·금액·일정·문구는 모두 가상 예시입니다.</footer>
+</main></body></html>
