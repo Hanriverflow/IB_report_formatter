@@ -1,0 +1,10 @@
+{
+  "name": "ib-report-formatter-local",
+  "plugins": [
+    {
+      "name": "ib-report-formatter",
+      "source": {"source": "local", "path": "./"},
+      "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"}
+    }
+  ]
+}

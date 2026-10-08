@@ -1,0 +1,23 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "ib-report-formatter",
+  "version": "0.1.0",
+  "description": "Create Korean business documents and term sheets from source material, then strictly render Markdown to Word.",
+  "author": {"name": "Hanriverflow"},
+  "repository": "https://github.com/Hanriverflow/IB_report_formatter",
+  "license": "MIT",
+  "keywords": ["documents", "word", "markdown", "term-sheet", "korean"],
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/setup/SKILL.md",
+      "interface": {
+        "displayName": "IB Report Formatter",
+        "shortDescription": "자료에서 텀시트·업무 문서를 작성하고 Word로 변환",
+        "developerName": "Hanriverflow",
+        "category": "Productivity",
+        "capabilities": ["Read", "Write"],
+        "defaultPrompt": ["제공한 조건표를 근거로 텀시트를 작성하고 Word 문서로 만들어줘."]
+      }
+    }
+  }
+}

@@ -58,6 +58,8 @@ This is a **Markdown-to-Word-only engine**. In-house Word→Markdown development
 
 ### Choose a distribution
 
+- **Claude Code / Codex plugin:** install or load the extracted plugin directory in either host, then ask its `ib-document` skill to write documents in your own workspace. The shared skills and bundled engine use an external runtime cache. See the [plugin setup and authoring guide](docs/plugin-guide.md). Claude web and native Cowork execution are not claimed as verified targets.
+
 - **Windows portable ZIP:** extract the entire archive, open `시작하기.html`, and run `문서변환기.exe` to convert prepared Markdown. Python is bundled; no LLM or Codex account is involved. See the [portable guide](docs/distribution/시작하기.html).
 - **Codex source ZIP:** open the extracted project in Codex to draft and revise documents from supplied materials. Requires your Codex account, uv and Python 3.12+; the ZIP does not bundle a runtime. See the [Codex guide](docs/codex-start.html).
 

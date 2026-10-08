@@ -1,0 +1,12 @@
+{
+  "name": "ib-report-formatter-local",
+  "description": "Local installation catalog for the IB Report Formatter document plugin.",
+  "owner": {"name": "Hanriverflow"},
+  "plugins": [
+    {
+      "name": "ib-report-formatter",
+      "source": "./",
+      "description": "Source-backed Korean document authoring and strict Markdown-to-Word rendering."
+    }
+  ]
+}

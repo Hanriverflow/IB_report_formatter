@@ -1,0 +1,14 @@
+{
+  "name": "ib-report-formatter",
+  "version": "0.1.0",
+  "description": "Source-backed Korean document authoring and strict Markdown-to-Word rendering.",
+  "author": {"name": "Hanriverflow"},
+  "repository": "https://github.com/Hanriverflow/IB_report_formatter",
+  "license": "MIT",
+  "skills": "./skills/",
+  "extensions": {"com.openai": {"onboardingSkill": "./skills/setup/SKILL.md"}},
+  "interface": {
+    "displayName": "IB Report Formatter",
+    "shortDescription": "자료에서 텀시트·업무 문서를 작성하고 Word로 변환"
+  }
+}

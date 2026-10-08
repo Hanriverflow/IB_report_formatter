@@ -24,8 +24,13 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 PUBLIC_FILES = (
+    "docs/verification-plugin-20261008.md",
     "pyproject.toml", "uv.lock", ".python-version", ".gitignore", "LICENSE",
     "AGENTS.md", "README.md", "README.ko.md", "CHANGELOG.md",
+    "plugin.json", ".codex-plugin/plugin.json", ".claude-plugin/plugin.json",
+    ".agents/plugins/marketplace.json", ".claude-plugin/marketplace.json",
+    "skills/ib-document/SKILL.md", "skills/ib-document/references/term-sheet.md",
+    "skills/setup/SKILL.md", "docs/plugin-guide.md",
     ".agents/skills/ib-document/SKILL.md",
     ".agents/skills/ib-document/references/term-sheet.md",
     "docs/codex-start.html",
@@ -45,6 +50,7 @@ PUBLIC_FILES = (
     "docs/verification-term-sheet-20260929.md",
     "docs/verification-title-block-20260929.md",
     "scripts/agent_render.py", "scripts/build_codex_bundle.py",
+    "scripts/build_plugin_bundle.py", "scripts/plugin_runtime.py",
     "scripts/build_portable.py", "tools/portable_launcher.py",
     "scripts/word_visual_qa.ps1",
     "samples/profiles/business-report.md", "samples/profiles/company-theme.yaml",

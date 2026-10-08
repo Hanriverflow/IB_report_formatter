@@ -4,9 +4,9 @@
 
 ## Codex document-authoring workflow
 
-For requests to **write or revise a document from source material**, use `.agents/skills/ib-document/SKILL.md` (`$ib-document`). Codex supplies the LLM and orchestration; this repository remains the deterministic MD→DOCX tool. Read the skill by path if automatic discovery is unavailable. This routing does not apply to ordinary engine development.
+For requests to **write or revise a document from source material**, the source-project workflow uses `.agents/skills/ib-document/SKILL.md` (`$ib-document`). Installed Claude Code/Codex plugin work instead uses `skills/setup/SKILL.md` and `skills/ib-document/SKILL.md`, calling `scripts/plugin_runtime.py` to keep dependencies and outputs outside the plugin; see `docs/plugin-guide.md`. Both workflows remain supported. The host supplies the LLM and orchestration; this repository remains the deterministic MD→DOCX tool. Read the applicable skill by path if automatic discovery is unavailable. This routing does not apply to ordinary engine development.
 
-The workflow records source facts and unresolved conditions, drafts profile-aware Markdown/YAML, runs `scripts/agent_render.py` in strict mode, and reviews diagnostics with at most two repair revisions. Keep real source/house/output files outside the repository. Never change source facts or remove checks merely to obtain a passing render. Source review, structural audit and actual visual review are separate statuses. Beginner instructions: `docs/codex-start.html`.
+The source-project workflow records source facts and unresolved conditions, drafts profile-aware Markdown/YAML, runs `scripts/agent_render.py` in strict mode, and reviews diagnostics with at most two repair revisions. Keep real source/house/output files outside the repository. Never change source facts or remove checks merely to obtain a passing render. Source review, structural audit and actual visual review are separate statuses. Beginner instructions: `docs/codex-start.html`.
 
 ## Product boundary
 

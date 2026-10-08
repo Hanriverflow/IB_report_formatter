@@ -12,6 +12,8 @@ Word→MD는 일시 중단이 아니라 **자체 개발 폐기**입니다. 이�
 
 ### 배포본 선택
 
+- **Claude Code / Codex 플러그인:** 압축 해제한 플러그인 폴더를 사용하는 앱에 설치하거나 로드한 뒤 `ib-document` 스킬로 자신의 작업 폴더에서 문서를 작성합니다. 공통 스킬과 내장 엔진을 사용하고 실행 환경은 플러그인 밖 캐시에 준비합니다. [플러그인 설치·작성 안내](docs/plugin-guide.md). Claude 웹과 네이티브 Cowork에서의 실행 검증을 뜻하지 않습니다.
+
 - **Windows 실행 프로그램 ZIP:** 전체 압축 해제 → `시작하기.html` 확인 → `문서변환기.exe` 실행. 작성된 Markdown을 Word로 변환하며 Python이 포함되어 있습니다. LLM이나 Codex 계정은 필요 없습니다. [실행 프로그램 안내](docs/distribution/시작하기.html)
 - **Codex 소스 ZIP:** 압축을 푼 폴더를 Codex 프로젝트로 열어 자료를 바탕으로 문서를 작성·수정합니다. 본인의 Codex 계정과 uv, Python 3.12 이상이 필요하며 ZIP에는 실행 환경이 포함되지 않습니다. [Codex 시작 안내](docs/codex-start.html)
 

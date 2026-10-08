@@ -1,0 +1,9 @@
+{
+  "name": "ib-report-formatter",
+  "version": "0.1.0",
+  "description": "Source-backed Korean document authoring and strict Markdown-to-Word rendering.",
+  "author": {"name": "Hanriverflow"},
+  "repository": "https://github.com/Hanriverflow/IB_report_formatter",
+  "license": "MIT",
+  "keywords": ["documents", "word", "markdown", "term-sheet", "korean"]
+}

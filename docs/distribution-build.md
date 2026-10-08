@@ -1,11 +1,12 @@
-# 두 배포본 만들기
+# 배포본 만들기
 
-같은 Markdown → Word 엔진을 두 방식으로 전달합니다.
+같은 Markdown → Word 엔진을 실행 프로그램, Codex 프로젝트 또는 호스트 플러그인으로 전달합니다.
 
 | 배포본 | 받는 사람이 하는 일 | 필요한 환경 |
 |---|---|---|
 | Windows portable ZIP | 작성한 MD를 실행 프로그램에서 변환 | Windows x64, Python 설치 불필요 |
 | Codex source ZIP | 자료와 요청을 주고 Codex에서 MD 작성·변환 | Codex 계정·앱, uv, Python 3.12 이상 |
+| Claude Code / Codex plugin ZIP | 플러그인을 불러와 별도 작업 폴더에서 문서 작성·변환 | 해당 호스트 계정·플러그인 지원 버전, uv; Python 3.12는 uv로 준비 가능 |
 
 사용 안내는 [실행 프로그램 시작하기](distribution/시작하기.html)와 [Codex 시작하기](codex-start.html)를 참고합니다. Codex 방식에는 별도 프로젝트 API 키가 필요하지 않습니다. 실행 프로그램 자체는 LLM을 호출하지 않습니다.
 
@@ -40,6 +41,18 @@ uv run python scripts/build_codex_bundle.py --output-dir dist
 빌더는 명시된 공개 파일만 포함하고 ZIP, SHA-256 파일, 묶음 내부의 `bundle-manifest.json`을 생성합니다. 소스·작성 스킬·검증 도구·시작 안내·가상 자료가 포함되며 Python 런타임, 개인 자료, 실제 거래 문서와 생성 결과는 포함되지 않습니다. 파일 목록은 `scripts/build_codex_bundle.py`에서 관리합니다.
 
 받는 사람은 전체 압축 해제 후 `docs/codex-start.html`을 읽고 폴더를 Codex 프로젝트로 엽니다. 새 폴더에서 의존성 설치와 가상 요청 예제를 실행해 묶음만으로 작성·변환이 되는지 확인합니다. 원자료 일치와 페이지 검토는 구조 검사 결과와 별도로 기록합니다.
+
+## Claude Code / Codex 공용 플러그인
+
+```powershell
+uv run python scripts/build_plugin_bundle.py --output-dir dist
+```
+
+새 출력 폴더에 `ib-report-formatter-0.1.0.zip`과 같은 바이트의 `.plugin` 파일, 각각의 SHA-256 파일을 생성합니다. 플러그인 버전은 엔진 버전과 별도로 관리되므로 실제 파일명은 매니페스트의 버전을 따릅니다. ZIP 최상위에는 `plugin.json`, 호스트별 매니페스트, `skills/`, 엔진 소스와 잠금 파일이 있습니다. 빌드 당시 소스 상태와 파일별 해시는 내부 `bundle-manifest.json`에 기록합니다.
+
+이 묶음은 소스 배포본입니다. Python 런타임·라이브러리·EXE는 포함되지 않으며, `setup` 스킬이 `scripts/plugin_runtime.py`를 통해 플러그인 밖 캐시에 잠긴 의존성을 준비합니다. 사용자는 [플러그인 안내](plugin-guide.md)에 따라 ZIP을 별도 폴더에 전체 압축 해제하고 사용하는 호스트에서 불러옵니다. 실제 자료와 생성 문서는 설치 폴더 밖에 둡니다.
+
+`.plugin`은 수동 가져오기를 위한 동일 ZIP의 다른 확장자이며, Claude 웹·네이티브 Cowork에서 가져오기 또는 실행에 성공했다는 의미가 아닙니다. [검증 기록](verification-plugin-20261008.md)은 패키지·런타임 시험, 호스트 인식과 실제 모델 작성 시험의 범위를 구분합니다.
 
 ## 전달
 
