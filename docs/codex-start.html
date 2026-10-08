@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IB Report Formatter · Codex로 문서 작성하기</title>
+<style>
+:root{color-scheme:light;--ink:#17283b;--muted:#536274;--line:#dbe2eb;--accent:#145b78;--paper:#fff;--wash:#f2f6fa}
+*{box-sizing:border-box}body{margin:0;background:var(--wash);color:var(--ink);font:16px/1.8 system-ui,"Malgun Gothic",sans-serif}main{max-width:940px;margin:38px auto;padding:48px 58px;background:var(--paper);border:1px solid var(--line);border-radius:16px}h1{font-size:34px;line-height:1.35;margin:10px 0 20px}h2{font-size:24px;margin:44px 0 14px;border-top:1px solid var(--line);padding-top:26px}h3{font-size:18px;margin:25px 0 8px}p{margin:12px 0}a{color:var(--accent)}.eyebrow{font-size:13px;letter-spacing:.1em;font-weight:700;color:var(--accent)}.lead{font-size:19px}.note{background:#edf5f7;border-left:4px solid var(--accent);padding:14px 20px;margin:20px 0}.muted{color:var(--muted)}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f2f5f9;border:1px solid var(--line);border-radius:8px;padding:18px;font:14px/1.7 Consolas,"Malgun Gothic",monospace}code{font-family:Consolas,"Malgun Gothic",monospace;font-size:.92em}table{border-collapse:collapse;width:100%;margin:16px 0}th,td{border:1px solid var(--line);text-align:left;padding:10px 13px;vertical-align:top}th{background:var(--wash)}li{margin:7px 0}footer{margin-top:42px;font-size:13px;color:var(--muted)}@media(max-width:700px){main{margin:0;padding:24px;border-radius:0}h1{font-size:28px}table{font-size:14px}th,td{padding:8px}}@media print{body{background:white}main{border:0;margin:0;padding:0;max-width:none}pre,.note{break-inside:avoid}h2,h3{break-after:avoid}a{color:inherit}}
+</style>
+</head>
+<body><main>
+<div class="eyebrow">IB REPORT FORMATTER · CODEX SOURCE EDITION</div>
+<h1>자료를 주고 요청하면,<br>Codex가 텀시트를 만듭니다.</h1>
+<p class="lead">이 프로젝트 폴더를 Codex 앱에서 열고 “이 자료로 Word 문서를 작성해줘”라고 요청하세요. 직접 Markdown 문법을 배울 필요 없이 초안 작성부터 변환까지 맡길 수 있습니다.</p>
+<p>원래도 Codex는 이 프로젝트의 설명과 코드를 읽고 문서를 작성할 수 있습니다. 이 묶음은 그 작업을 반복하기 쉽게 <strong>작성 스킬, 근거 대조, 엄격 변환, 오류 수정 절차</strong>를 더한 소스 배포본입니다.</p>
+<div class="note"><strong>역할은 두 가지입니다.</strong> Codex가 자료를 읽고 문장을 작성합니다. 이 프로젝트의 Python 엔진이 MD/YAML을 정해진 규칙으로 Word에 옮깁니다. 별도의 AI 프로그램이나 EXE를 실행하지 않습니다.</div>
+
+<h2>1. 처음 열기</h2>
+<ol>
+<li><strong>Codex 앱에 로그인합니다.</strong> 이 작업은 사용 중인 Codex 계정과 이용 범위 안에서 실행됩니다. 프로젝트 전용 API 키는 필요하지 않습니다.</li>
+<li><strong>전달받은 소스 ZIP을 전체 압축 해제합니다.</strong> <code>AGENTS.md</code>, <code>pyproject.toml</code>, <code>.agents</code>, <code>samples</code>가 함께 있는 폴더가 프로젝트 루트입니다. 숨김 폴더를 포함한 전체 구조를 유지하세요. GitHub에서 받는 경우에도 전체 소스를 내려받아 압축 해제하거나 복제하면 됩니다.</li>
+<li><strong>Codex 앱에서 그 폴더를 로컬 프로젝트로 열고 새 대화를 시작합니다.</strong> 전역 스킬 설치나 설정 파일 수정은 필요하지 않습니다. 다른 프로젝트 폴더에서 요청하면 이 프로젝트의 스킬과 실행 파일을 찾지 못할 수 있습니다.</li>
+<li>아래 요청을 복사해 보냅니다. Codex가 현재 환경을 확인하고 필요한 초기 설정과 예제 작성을 진행합니다. 실행 환경의 권한 확인이 표시되면 실제 요청 내용을 확인하세요.</li>
+</ol>
+<pre>$ib-document
+이 프로젝트로 처음 문서를 작성하려고 해.
+AGENTS.md와 .agents/skills/ib-document/SKILL.md를 읽고 진행해줘.
+Python 3.12 이상과 uv 실행 환경을 확인하고, 필요한 프로젝트 의존성을 준비해줘.
+samples/harness/request.txt의 요청과 brief.md의 가상 거래조건,
+house.yaml의 가상 기관 문구로 텀시트 Word를 작성해줘.
+samples/harness/expected-terms.json의 확정값을 그대로 대조하고,
+자료에 없는 조건은 추측하지 말고 문서에 확인 필요로 표시해줘.
+저장소 밖의 새 작업 폴더에 Word, 수정 가능한 MD, 근거 정리,
+미확정 질문과 변환 검사 결과를 저장하고 실제 경로를 알려줘.</pre>
+<p class="muted"><code>$ib-document</code>가 목록에 보이지 않아도 위 요청의 파일 경로를 읽고 진행할 수 있습니다. 폴더를 다시 연 뒤 새 대화에서 시도할 수도 있습니다. Python/uv와 의존성의 최초 설치, Codex의 모델 사용에는 인터넷이 필요할 수 있습니다. 변환 엔진 자체는 LLM을 호출하지 않지만 AI 작성 전체가 오프라인이라는 뜻은 아닙니다.</p>
+
+<h2>2. 첫 예제에서 무엇을 확인하나요?</h2>
+<table><thead><tr><th>파일</th><th>역할</th></tr></thead><tbody>
+<tr><td><code>samples/harness/request.txt</code></td><td>문서 작성 요청. 구성과 결과물에 대한 안내입니다.</td></tr>
+<tr><td><code>samples/harness/brief.md</code></td><td>가상 거래의 원자료. 당사자·금액·금리·만기와 미확정 조건을 구분합니다.</td></tr>
+<tr><td><code>samples/harness/house.yaml</code></td><td>가상 작성기관과 공통 문구. 실제 기관의 승인 양식이 아닙니다.</td></tr>
+<tr><td><code>samples/harness/expected-terms.json</code></td><td>일부 원자료 값을 고정한 비교 기준. 생성된 MD에서 다시 뽑아 덮어쓰면 대조 의미가 없어집니다.</td></tr>
+</tbody></table>
+<p>이 예제의 300억원, 금리, 만기 등은 실제 거래에 재사용할 기본 조건이 아닙니다. 첫 결과에서 주선수수료처럼 정해지지 않은 항목이 <strong>확인 필요</strong>로 남는지 확인하세요. Word 생성 성공과 거래조건 확정은 별개입니다.</p>
+
+<h2>3. 실제 텀시트 요청하기</h2>
+<p>실제 자료와 기관 파일은 저장소 밖의 작업 폴더에 두세요. 예를 들어 <code>C:\문서작업\거래A\</code>에 조건표와 기관 문구를 보관하고, Codex에는 정확한 경로 또는 첨부한 파일을 지정합니다. 아래 경로는 본인의 실제 파일로 바꿔주세요.</p>
+<pre>$ib-document
+C:\문서작업\거래A\거래조건.md를 근거로 term-sheet 프로필의 텀시트를 작성해줘.
+기관 공통 문구는 C:\문서작업\거래A\house.yaml을 사용해줘.
+거래개요, 주요 금융조건, 상환조건, 확인 필요 사항 순서로 구성해줘.
+금액·금리·당사자·일정은 자료의 표기와 확정 여부를 그대로 유지해줘.
+자료끼리 충돌하거나 빠진 조건은 질문 목록에 남기고 임의로 채우지 마.
+C:\문서작업\거래A\작성결과에 새 작업 폴더를 만들어 저장해줘.
+초안 작성 후 원자료 대조와 엄격 변환을 수행하고,
+페이지를 실제로 확인했는지도 별도로 알려줘.</pre>
+<p>자료가 PDF·Word·한글 문서라면 Codex가 사용할 수 있는 읽기 도구로 확인합니다. 표나 스캔 문서가 정확히 읽히지 않으면 해당 위치를 확인해야 합니다. 이 프로젝트 자체에 Word→MD 변환 기능을 추가하는 방식은 사용하지 않습니다.</p>
+<h3>자료에 넣으면 좋은 항목</h3>
+<ul>
+<li><strong>당사자와 역할:</strong> 차주, 발행인/SPC, 대주, 주선기관, 담보제공자 등 실제 등장하는 역할</li>
+<li><strong>금액과 비용:</strong> 약정금액, 실행금액, 금리 기준과 가산금리, 수수료와 계산 기준</li>
+<li><strong>일정과 상환:</strong> 실행일, 만기, 거치·분할상환, 휴일 처리 등 자료에 명시된 사항</li>
+<li><strong>거래조건:</strong> 자금용도, 담보, 실행 선행조건과 사후 약정 중 포함할 내용</li>
+<li><strong>문서 정보:</strong> 제목, 작성일, 버전, 작성기관, 승인된 공통 문구, 확인란 필요 여부</li>
+</ul>
+<p>모르는 값을 억지로 채울 필요는 없습니다. “금리 협의 중”, “수수료 미정”처럼 상태를 알려주세요. 다만 필수 기관 문구가 없거나 상환 산식이 모순되면 엄격 변환이 중단될 수 있습니다. 그때는 초안과 구체적인 확인사항을 받게 됩니다.</p>
+
+<h2>4. 텀시트가 만들어지는 규칙</h2>
+<p>다음은 Codex가 관리하는 원본의 핵심입니다. 직접 편집하고 싶을 때 참고하세요. 가상 문구와 값으로 구성한 문법 예시이며, 그 자체가 완성된 실거래 텀시트는 아닙니다.</p>
+<pre>---
+profile: term-sheet
+title: "{{company}} 금융조건 협의안"
+date: "2026-10-08"
+version: "v0.1 (검토용)"
+house: house.yaml
+terms:
+  company: "가상회사㈜"
+  amount: "300억원"
+tables:
+  - {}
+---
+## 1. 주요 조건
+
+| 구 분 | 내 용 |
+|---|---|
+| 조달금액 | {{amount}} |
+| 실행일 | [확인 필요: 실행일] |</pre>
+<h3>① 반복되는 값은 한 곳에</h3>
+<p><code>terms:</code>에 금액·회사명·날짜를 문자열로 정의하고 본문에서는 <code>{{amount}}</code>처럼 사용합니다. 숫자·날짜도 따옴표로 감싸 원문 표기를 보존합니다. 원자료에서 먼저 정리한 값과 비교하며, 검사 통과를 위해 원자료 금액을 바꾸지 않습니다.</p>
+<h3>② 기관 문구는 house 파일로</h3>
+<p><code>house.yaml</code>에는 <code>prepared_by</code>(작성기관), <code>disclaimer</code>(공통 고지), 기밀 표시·고객확인 문구·서식 등을 넣습니다. 텀시트에는 제목, 작성기관, 공통 고지가 필요합니다. 실제 기관 문구를 제공하지 않았다면 샘플 문구를 승인된 양식처럼 사용하지 않습니다. MD의 <code>house:</code> 상대 경로는 MD 위치 기준이며, 기관 파일 내부 로고 경로는 기관 파일 위치 기준입니다. 파일을 이동할 때 이 관계를 유지하세요.</p>
+<h3>③ 조건표와 병합</h3>
+<p>셀 안 줄바꿈은 <code>&lt;br&gt;</code>를 사용합니다. <code>&lt;&lt;</code>만 있는 셀은 왼쪽으로, <code>^^</code>만 있는 셀은 위로 병합됩니다. 직사각형 범위여야 하고 머리행과 본문 사이를 넘을 수 없습니다. <code>tables:</code> 설정은 본문 표의 등장 순서와 일치해야 합니다. 설정이 없는 표도 <code>{}</code>를 두면 순서를 유지할 수 있습니다.</p>
+<h3>④ 산식·상환표 검사</h3>
+<p><code>checks:</code>는 원자료가 정한 금리 합계 등의 관계를, <code>schedule:</code>은 작성된 상환표의 합계·잔액을 검사합니다. 엔진이 계약조건이나 상환일을 알아서 결정하지 않습니다. “확인 필요”인 값으로 계산을 통과시킬 수는 없으므로, 오류가 원자료의 모순인지 작성 실수인지 구분합니다.</p>
+<h3>⑤ 수정은 원본을 통해</h3>
+<pre>방금 만든 텀시트의 만기를 수정해줘.
+수정 근거는 새로 제공한 거래조건표의 만기 항목이야.
+근거 정리와 MD의 terms를 함께 갱신하고 모든 사용 위치를 반영해줘.
+기존 결과는 보존하고 새 폴더로 다시 엄격 변환해줘.</pre>
+<p>Word에서 직접 수정할 수도 있지만 다음 생성에 반영하려면 MD·근거 파일도 갱신해야 합니다. Word의 조건 태그 검사는 태그된 값의 일관성을 보는 기능이며 문서 전체의 모든 수치 변경을 추적하지는 않습니다.</p>
+
+<h2>5. 결과물과 검사 상태 읽기</h2>
+<table><thead><tr><th>결과</th><th>확인할 내용</th></tr></thead><tbody>
+<tr><td>Word / Markdown</td><td>검토할 문서와 다시 생성할 수 있는 원본. 실패한 변환에서는 Word가 없을 수 있습니다.</td></tr>
+<tr><td><code>source-ledger.md</code></td><td>주요 사실의 값·출처 위치·미확정 여부. 단순 MD 변환에는 생략할 수 있습니다.</td></tr>
+<tr><td><code>questions.md</code></td><td>자료 누락·충돌·사용자에게 확인할 조건이 있을 때 생성합니다.</td></tr>
+<tr><td>변환 결과 JSON</td><td>실행 단계, 진단, 실제 파일 경로, 해시와 구조 감사. 검사 범위와 실패 이유를 확인합니다.</td></tr>
+</tbody></table>
+<div class="note"><strong>세 가지 상태를 구분하세요.</strong><br>원자료 대조: 내용이 출처와 맞는가?<br>엔진·구조 검사: 입력과 문서 구조가 검사 규칙을 통과했는가?<br>시각 검토: 실제 페이지를 열어 표 잘림·쪽 나눔·글꼴을 확인했는가?<br>구조 검사 통과만으로 금융·법률적 타당성이나 시각 품질이 확인된 것은 아닙니다.</div>
+<p>작성 오류는 진단을 보고 최대 두 차례 수정합니다. 해결되지 않으면 엄격 검사를 끄거나 수치를 바꾸는 대신 초안과 미해결 이유를 전달합니다. 실제 Word 페이지를 확인하지 못했다면 시각 검토는 미수행으로 표시합니다.</p>
+
+<h2>6. 다른 사람에게 전달하기</h2>
+<p><strong>이 소스 ZIP 전체</strong>를 전달하면 됩니다. GitHub 계정은 필요 없습니다. 받는 분은 Codex 앱에서 압축 해제한 루트 폴더를 열고 1번 요청을 실행합니다. ZIP에는 실행 엔진 소스, 프로젝트 작성 스킬, 이 설명서와 가상 예제가 포함됩니다. Codex 앱·로그인 계정·Python 실행 환경까지 포함된 설치 프로그램은 아닙니다.</p>
+<p>실제 거래자료와 기관 문구는 배포 ZIP에 넣지 말고 각자의 별도 작업 폴더에서 지정하세요. MD와 기관 파일 또는 이미지를 함께 이동한다면 상대 경로가 유지되는지 확인합니다.</p>
+<p>프로젝트: <a href="https://github.com/Hanriverflow/IB_report_formatter">Hanriverflow/IB_report_formatter</a><br>Codex 공식 안내: <a href="https://learn.chatgpt.com/docs/build-skills">스킬 만들기와 사용하기</a></p>
+<footer>문서 작성용 소스 배포 안내 · 2026-10-08 · 이 안내서는 인터넷 없이 열 수 있으며, 브라우저 인쇄 기능으로 출력할 수 있습니다. Codex 모델 사용과 최초 환경 설치의 연결 요구사항은 별도입니다.</footer>
+</main></body></html>

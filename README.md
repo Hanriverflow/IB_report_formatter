@@ -56,6 +56,17 @@ This is a **Markdown-to-Word-only engine**. In-house Word→Markdown development
 
 ## Quick start
 
+### Choose a distribution
+
+- **Windows portable ZIP:** extract the entire archive, open `시작하기.html`, and run `문서변환기.exe` to convert prepared Markdown. Python is bundled; no LLM or Codex account is involved. See the [portable guide](docs/distribution/시작하기.html).
+- **Codex source ZIP:** open the extracted project in Codex to draft and revise documents from supplied materials. Requires your Codex account, uv and Python 3.12+; the ZIP does not bundle a runtime. See the [Codex guide](docs/codex-start.html).
+
+Maintainers can build either package using the [distribution build instructions](docs/distribution-build.md). Generated ZIPs and executable files stay under ignored `dist/`; source inclusion does not mean a GitHub release has been published.
+
+### Write with Codex
+
+Open this source folder as a local project in the Codex app and ask `$ib-document` to draft a document from your supplied facts. Codex writes/revises Markdown and runs this repository's strict renderer; no separate LLM client, project API key or EXE is needed. GitHub users can clone the project; other users can extract the source ZIP. See the [Korean getting-started guide](docs/codex-start.html), [repository skill](.agents/skills/ib-document/SKILL.md) and [fictional authoring exercise](samples/harness/). If the skill is not discovered, ask Codex to read its file path explicitly. Initial Python/uv setup and Codex model use can require internet access. Structural checks do not certify source accuracy or page layout.
+
 Requires Python 3.12+. CI checks Python 3.12 and 3.13 on Ubuntu and Windows. Install with [uv](https://docs.astral.sh/uv/):
 
 ```sh

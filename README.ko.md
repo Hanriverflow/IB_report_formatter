@@ -10,6 +10,21 @@ Word→MD는 일시 중단이 아니라 **자체 개발 폐기**입니다. 이�
 
 ## 바로 사용하기
 
+### 배포본 선택
+
+- **Windows 실행 프로그램 ZIP:** 전체 압축 해제 → `시작하기.html` 확인 → `문서변환기.exe` 실행. 작성된 Markdown을 Word로 변환하며 Python이 포함되어 있습니다. LLM이나 Codex 계정은 필요 없습니다. [실행 프로그램 안내](docs/distribution/시작하기.html)
+- **Codex 소스 ZIP:** 압축을 푼 폴더를 Codex 프로젝트로 열어 자료를 바탕으로 문서를 작성·수정합니다. 본인의 Codex 계정과 uv, Python 3.12 이상이 필요하며 ZIP에는 실행 환경이 포함되지 않습니다. [Codex 시작 안내](docs/codex-start.html)
+
+관리자는 [배포본 빌드 방법](docs/distribution-build.md)에 따라 두 묶음을 만들 수 있습니다. 생성한 ZIP·EXE는 Git에서 제외된 `dist/`에 보관합니다. 소스 추가는 GitHub Release 게시를 의미하지 않습니다.
+
+### Codex에서 자료를 주고 문서 작성하기
+
+이 소스 폴더를 Codex 앱의 로컬 프로젝트로 열고 `$ib-document`에 문서 작성을 요청할 수 있습니다. Codex가 자료를 읽어 MD/YAML을 작성·수정하고, 기존 엔진이 엄격 검사 후 Word를 생성합니다. 별도 LLM 프로그램·프로젝트 API 키·EXE는 필요 없습니다. GitHub를 쓰지 않는 분은 소스 ZIP을 전체 압축 해제하면 됩니다.
+
+**[시작하기: 설치부터 텀시트 작성까지](docs/codex-start.html)** · [Codex 작성 스킬](.agents/skills/ib-document/SKILL.md) · [가상 자료 연습](samples/harness/)
+
+스킬이 표시되지 않으면 `.agents/skills/ib-document/SKILL.md`를 읽고 진행해 달라고 요청하십시오. Python/uv 최초 설치와 Codex 모델 사용에는 인터넷이 필요할 수 있습니다. 원자료 대조·문서 구조 검사·실제 페이지 검토는 각각 별도입니다.
+
 ```sh
 uv sync
 uv run md-to-word samples/profiles/office-letter.md 공문.docx --strict

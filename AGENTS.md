@@ -2,6 +2,12 @@
 
 > Markdown → Word engine for IB reports and Korean business documents.
 
+## Codex document-authoring workflow
+
+For requests to **write or revise a document from source material**, use `.agents/skills/ib-document/SKILL.md` (`$ib-document`). Codex supplies the LLM and orchestration; this repository remains the deterministic MD→DOCX tool. Read the skill by path if automatic discovery is unavailable. This routing does not apply to ordinary engine development.
+
+The workflow records source facts and unresolved conditions, drafts profile-aware Markdown/YAML, runs `scripts/agent_render.py` in strict mode, and reviews diagnostics with at most two repair revisions. Keep real source/house/output files outside the repository. Never change source facts or remove checks merely to obtain a passing render. Source review, structural audit and actual visual review are separate statuses. Beginner instructions: `docs/codex-start.html`.
+
 ## Product boundary
 
 Word→MD development is deliberately retired by the project owner. Do not restore the inverse CLI/parser/renderer/OMML converter or roundtrip audit as a roadmap item. Use external projects for reverse conversion. Historical source: `d819bbb` / `codex/archive-word-to-md-d819bbb`.
