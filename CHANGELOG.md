@@ -32,6 +32,7 @@ Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Bet
 - Logo paths written with percent-encoding are resolved and judged candidate by candidate, like body images. A relative logo path is made absolute without following links, so a Windows drive-relative path (`Z:logo.png`) keeps working.
 - A line that starts with `+ ` is a bullet item, like `- ` and `* `. Such a line also ends the paragraph before it.
 - `#####` and `######` headings are headings, rendered with the level 4 style; they used to be paragraphs that kept their hash marks.
+- A backslash escapes every ASCII punctuation character, as in CommonMark. The fourteen that kept their backslash (`! # % & + , / : ; < = > ? @`) now lose it in paragraphs, headings, lists, quotes, emphasis, link text and table cells. Code, math, link destinations and an escaped `<br>` are unchanged. With table spans off, an escaped `<<` shows as `<<`, as an escaped `^^` already showed as `^^`.
 - A closed code fence keeps its text exactly: blank lines and spaces at its end are no longer dropped, and a blank line no longer carries a one-space run. Line heights in Word are unchanged.
 - Headings keep the characters of code spans and escaped punctuation (`` # `**kwargs` `` and `# \*literal\*` used to lose their asterisks). Other headings render as before.
 - A whitespace-only line in a fenced code block keeps its own whitespace.

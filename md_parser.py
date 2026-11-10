@@ -491,8 +491,10 @@ def _rebase_link_target(target: str, source_dir: Path, output_dir: Path) -> str:
 class TextParser:
     """Parses inline text formatting (bold, italic, inline LaTeX, etc.)"""
 
-    # Compiled once — used by cleanup_text
-    _ESCAPE_RE = re.compile(r'\\([\\$`^~.*"\'()\[\]{}|_-])')
+    # Compiled once — used by cleanup_text. A backslash escapes any ASCII
+    # punctuation character, as in CommonMark; an escaped HTML break is left
+    # for normalize_html_breaks, which keeps the tag as text.
+    _ESCAPE_RE = re.compile(r"\\(?!<br\s*/?>)([!-/:-@\[-`{-~])", re.IGNORECASE)
     _HTML_BREAK_RE = re.compile(r"(?<!\\)<br\s*/?>", re.IGNORECASE)
     _ESCAPED_HTML_BREAK_RE = re.compile(r"\\(<br\s*/?>)", re.IGNORECASE)
     _CODE_SPAN_RE = re.compile(r"(?<![\\`])(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.DOTALL)

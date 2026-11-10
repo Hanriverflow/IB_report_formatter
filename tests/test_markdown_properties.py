@@ -11,11 +11,10 @@ backticks, HTML breaks and footnote/term-looking text. Expected text is composed
 alongside the source, never obtained from parser/model text or engine helpers.
 ATX levels 1-6 and all three bullet markers are in scope and checked; levels 5
 and 6 render with the level 4 style.
-Backslash escapes cover all ASCII punctuation in two groups: the characters the
-engine resolves (TextParser's escapable set: backslash $ ` ^ ~ . * " ' ( ) [ ] { }
-| _ -) are generated inside documents, tables and the escape property; the other
-fourteen (! # % & + , / : ; < = > ? @) keep their backslash in the output today
-and stay as strict xfail groups until the owner decides the escape set.
+Backslash escapes cover all ASCII punctuation in two groups, both checked: the
+eighteen characters the engine always resolved (backslash $ ` ^ ~ . * " ' ( ) [ ]
+{ } | _ -) are generated inside documents, tables and the escape property; the
+other fourteen (! # % & + , / : ; < = > ? @) are covered by the escape property.
 
 Exclusions from the structured preservation grammar (README.md, "Supported
 Markdown and limitations"): raw HTML other than documented breaks, and complex
@@ -100,11 +99,6 @@ CODE = LETTERS + string.punctuation + " \t"
 # Written out here, not read from the engine, so the oracle stays independent.
 RESOLVED_ESCAPES = "\\$`^~.*\"'()[]{}|_-"
 RETAINED_ESCAPES = "".join(char for char in string.punctuation if char not in RESOLVED_ESCAPES)
-RETAINED_ESCAPE_REASON = (
-    "'가상\\!예시' renders '가상\\!예시', expected '가상!예시'; TextParser._ESCAPE_RE "
-    "resolves only its own set. Widening it changes visible text for existing input "
-    "and one pinned table test, so the owner decides."
-)
 
 
 @dataclass(frozen=True)
@@ -330,10 +324,7 @@ def test_cell_count_and_characters_preserved(
     (
         "span",
         "escape",
-        pytest.param(
-            "escape-retained",
-            marks=pytest.mark.xfail(strict=True, reason=RETAINED_ESCAPE_REASON),
-        ),
+        "escape-retained",
     ),
 )
 @given(case=_code_case())
@@ -765,10 +756,7 @@ def test_handbuilt_model_strict_dichotomy(
     "punctuation",
     (
         *RESOLVED_ESCAPES,
-        *(
-            pytest.param(char, marks=pytest.mark.xfail(strict=True, reason=RETAINED_ESCAPE_REASON))
-            for char in RETAINED_ESCAPES
-        ),
+        *RETAINED_ESCAPES,
     ),
 )
 def test_ascii_punctuation_escape(punctuation: str) -> None:

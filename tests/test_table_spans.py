@@ -159,7 +159,7 @@ def test_escaped_literal_can_anchor_an_explicit_span() -> None:
 
 
 @pytest.mark.parametrize("profile", ["plain", "term-sheet"])
-def test_disabled_spans_preserve_marker_content_and_legacy_escape_runs(profile: str) -> None:
+def test_disabled_spans_preserve_marker_content_and_unescape_runs(profile: str) -> None:
     model, table = parse_table(
         "| 구분 | 내용 |\n|---|---|\n| ^^ | << |\n" + r"| \^^ | \<< |",
         "{spans: false}",
@@ -169,7 +169,7 @@ def test_disabled_spans_preserve_marker_content_and_legacy_escape_runs(profile: 
     assert [cell.content for cell in table.rows[2].cells] == [r"\^^", r"\<<"]
     assert ["".join(run.text for run in cell.runs) for cell in table.rows[2].cells] == [
         "^^",
-        r"\<<",
+        "<<",
     ]
     assert not model.warnings
 
