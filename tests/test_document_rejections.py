@@ -569,3 +569,47 @@ def test_operator_error_text_cannot_trigger_a_document_rejection():
         renderer.render(model)
     assert not isinstance(caught.value, StrictValidationError)
     assert "XML compatible" in str(caught.value)
+
+
+# Python refuses to convert integers beyond 4,300 digits to or from text.
+TOO_LONG = "9" * 4301
+
+
+@pytest.mark.parametrize("profile", ["plain", "ib-report"])
+@pytest.mark.parametrize("route", ["text", "stream", "file", "cli"])
+@pytest.mark.parametrize(
+    "body",
+    [f"가상 문단[^{TOO_LONG}]", f"가상 문단[^1]\n\n[^{TOO_LONG}]: 가상 각주"],
+)
+def test_overlong_footnote_number_is_a_document_rejection(tmp_path, profile, route, body):
+    output = tmp_path / "example.docx"
+    with pytest.raises(Exception) as caught:
+        _convert(f"---\nprofile: {profile}\n---\n{body}", output, profile, route)
+    rejection = _strict_cause(caught.value)
+    assert str(rejection) == "Number is too long to read (4301 digits): 999999999999..."
+    assert not list(tmp_path.glob("*.docx"))
+
+
+@pytest.mark.parametrize("profile", ["plain", "ib-report"])
+@pytest.mark.parametrize("route", ["text", "stream", "file", "cli"])
+@pytest.mark.parametrize("setting", ["title: {}", "date: {}", "layout: {{cover: {}}}"])
+def test_overlong_yaml_integer_is_a_document_rejection(tmp_path, profile, route, setting):
+    """YAML loads the integer; writing it out as text is what Python refuses."""
+    output = tmp_path / "example.docx"
+    source = f"---\nprofile: {profile}\n{setting.format('0x' + 'f' * 3600)}\n---\n가상 본문"
+    with pytest.raises(Exception) as caught:
+        _convert(source, output, profile, route)
+    rejection = _strict_cause(caught.value)
+    assert str(rejection) == "Invalid YAML frontmatter: YAML integer is too long to use"
+    assert not list(tmp_path.glob("*.docx"))
+
+
+@pytest.mark.parametrize("profile", ["plain", "ib-report"])
+def test_long_numbers_python_can_convert_are_unchanged(profile):
+    model = MarkdownParser(profile=profile).parse(
+        "---\ntitle: 20260929001\n---\n가상 문단[^20260929001]\n\n[^20260929001]: 가상 각주"
+    )
+    assert model.metadata.title == "20260929001"
+    assert model.footnotes == {20260929001: "가상 각주"}
+    heading = MarkdownParser(profile=profile).parse(f"{TOO_LONG}. 가상 제목\n\n가상 문단")
+    assert not heading.warnings
