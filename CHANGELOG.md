@@ -25,6 +25,7 @@ Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Bet
 - The plugin runner's `result.json` adds one diagnostic per coded issue (`code` is the rejection code); its other `code` values and keys are unchanged. The runner applies the input-size limit before it hashes the Markdown, so an oversized draft is rejected at stage `input`. The portable converter window explains each code in Korean.
 - Control characters that XML cannot hold are diagnosed before rendering: in the Markdown body as an input warning that strict mode rejects, and in metadata or house/theme values (including YAML escapes) as a rejection. Strict rendering checks every string of the model, so a hand-built model is covered too. Non-strict rendering still replaces an affected body element with a marker; where such a character is in text outside that per-element handling (a footnote, a report-profile heading), the failure is now a `StrictValidationError` naming the character.
 - A chart fence whose YAML holds a value that cannot be constructed is reported as that chart's error, like a YAML syntax error, instead of stopping the parser.
+- A footnote or reference number, or a YAML integer, longer than Python converts (more than 4,300 digits) is a document rejection instead of a plain `ValueError`.
 
 ### Fixes
 - `w:updateFields` is inserted at its schema position in `settings.xml` in every profile. Output changes only in element order.
