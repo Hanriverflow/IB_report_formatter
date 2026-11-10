@@ -389,6 +389,59 @@ Without roles, a column is numeric (right-aligned) when most of its first body v
 
 Sensitivity highlighting is **explicit only**: row 1 is the first data row; columns are one-based and include the label column. The old guessed centre-cell highlight is removed. Risk highlighting recognises supported risk headers and levels such as high/medium/low or 높음/중간/낮음.
 
+## Allowed asset folders, input limits and rejections
+
+**The image/logo path restriction changes earlier behaviour:** a local image that previously loaded can now be rejected if it is outside the allowed folders. For a Markdown file, its own folder and subfolders are allowed by default. Markdown text or a stream without a source file, and a directly constructed document model, have no default allowed folder; the current working directory is not implicitly allowed.
+
+An operator can add folders with repeatable `--asset-root FOLDER` options. The API equivalent is `asset_roots`, accepted by `parse_markdown_file`, `MarkdownParser`, `IBDocumentRenderer.render` and registry conversion calls; `RenderOptions(asset_roots=(... ,))` also supports converter configuration. Parsed models carry their allowed folders through a separate render/registry step. Added folders include subfolders and cannot remove the default folder. Only operator CLI/API arguments can add folders or change limits; document content, frontmatter, house and theme files cannot do so.
+
+```sh
+uv run md-to-word job/draft.md output.docx --strict --asset-root shared-assets
+```
+
+Paths are checked after resolving relative components, symbolic links and junctions to their final location, before checking whether the file exists. An escaping `../`, absolute or UNC path, or a link to an outside file is rejected. Absolute and UNC paths resolving inside an allowed folder are accepted, including the folder of a Markdown file on a network share. Original and percent-decoded path candidates receive the same check.
+
+| Asset or reference | Path restriction |
+|---|---|
+| Body, reference-style, HTML and table-cell images | Applies |
+| Frontmatter `style.logo` | Applies |
+| Logo in a house file selected by document frontmatter | Applies, even if the house file itself is elsewhere |
+| Logo in a house file supplied directly by operator `--house` or API `RenderOptions(house=...)` | Exempt; a frontmatter logo override remains restricted |
+| `data:` / Base64 images | No path restriction; image size limits still apply |
+| Frontmatter `house:` and `theme:` file paths themselves | No path restriction |
+| Local file hyperlinks | No path restriction; their file contents are not embedded |
+
+House logo paths remain relative to the house file; frontmatter logo paths are relative to the Markdown file. Without a source file, relative house/logo paths remain unsupported; absolute document-selected logos need an explicit allowed folder. Remote HTTP(S) images remain unsupported. Outside images are not read: normal mode leaves a body-image placeholder or omits a logo and warns with `asset_outside_root`; strict mode refuses to save.
+
+The following limits stop conversion in **both normal and strict modes**, without creating a DOCX. MiB means 1,048,576 bytes; CLI values are integer counts, not unit-suffixed strings.
+
+| Code | Measurement | Default | CLI option / `InputLimits` field |
+|---|---|---|---|
+| `limit_input_bytes` | Original Markdown bytes | 16 MiB (16,777,216) | `--max-input-bytes` / `max_input_bytes` |
+| `limit_table_cells` | Cells per table, including headers: rows × columns; expanded grid for HTML merges | 50,000 | `--max-table-cells` / `max_table_cells` |
+| `limit_list_depth` | Nested list levels | 32 | `--max-list-depth` / `max_list_depth` |
+| `limit_image_bytes` | Bytes per image or logo; decoded size for Base64 / `data:` | 20 MiB (20,971,520) | `--max-image-bytes` / `max_image_bytes` |
+| `limit_image_pixels` | Width × height per image or logo | 50,000,000 | `--max-image-pixels` / `max_image_pixels` |
+
+Image limits apply to all sources, including logos from operator-supplied house files. Oversized Base64 is rejected from its encoded length before decoding. Options accept positive integers only; there is no unlimited value. Pass an `InputLimits` instance as the API `limits` argument (parser, renderer, registry or `IBReportConverter`), or through `RenderOptions(limits=...)`. For example:
+
+```python
+from input_safety import InputLimits
+from md_parser import parse_markdown_file
+
+model = parse_markdown_file(
+    "job/draft.md",
+    asset_roots=("shared-assets",),
+    limits=InputLimits(max_table_cells=60_000),
+)
+```
+
+The policy applies to `md-to-word`, `ib-report`, file/text/stream APIs, direct model rendering, the registry and batch conversion. Text inputs are measured as UTF-8 bytes. With `--format` or other conversion preprocessing, Markdown size is checked before cleanup and again before parsing the cleaned result. In a batch, an over-limit file fails while the other files continue; the overall exit status reports failure. Standalone `md-format` and `docx-audit` inputs are outside these size limits.
+
+There are exactly six rejection codes: `asset_outside_root` and the five `limit_*` codes above. Each coded warning/issue starts with `[code] `, including inside combined strict-error messages; existing uncoded messages stay uncoded. API rejections derive from `ConversionRejection` (`ValueError`): `StrictValidationError.codes` lists the included codes and `InputLimitError` exposes `code`, `limit` and `measured`. Wrapped failures retain the rejection in `__cause__`. In the plugin runner's `result.json`, each coded issue also has its own diagnostic with that `code` and the full prefixed sentence as `message`; existing `input_validation`, `structural_issue`, exception-type and `invalid_arguments` entries remain, with strict rejections still reported as `ValueError` in the existing entry.
+
+The plugin runner and portable converter always use strict mode and provide **no option to add allowed folders or raise limits**. Copy the needed images, house file and its logo into the job folder holding the draft (subfolders allowed), and reference them with relative paths. Keep real document workspaces outside the repository/plugin. For `asset_outside_root`, copy the needed files and correct the references. For a limit rejection, use the reported limit and measured value to reduce or split the input, table or image while preserving source facts. The portable window explains each code in Korean; the runner writes diagnostics to `result.json` and requires a new output directory for each attempt. Absolute launcher, draft and output-directory command-line paths remain valid.
+
 ## Supported Markdown and limitations
 
 - Headings, paragraphs, emphasis, pipe tables, lists, blockquotes/callouts, local/base64 images, code blocks and existing diagram/LaTeX rendering.

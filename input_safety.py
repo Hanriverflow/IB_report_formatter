@@ -197,6 +197,7 @@ class StrictValidationError(ConversionRejection):
 
     def __init__(self, message: str, issues: Iterable[str]) -> None:
         issues = tuple(issues)
+        self.issues = issues
         codes = (
             code.value
             for issue in issues
