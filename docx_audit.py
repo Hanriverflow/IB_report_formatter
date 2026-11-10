@@ -1,5 +1,9 @@
 """Inspect generated DOCX structure without an inverse Word-to-Markdown parser.
 
+Changelog (XML safety):
+    - Disable entity resolution, DTD loading and network access for raw XML parts.
+    - Report unreadable or DTD-bearing parts without consuming their values.
+
 Changelog (output encoding):
     - Write the JSON report as UTF-8 regardless of the console code page.
 
@@ -323,13 +327,38 @@ def _is_removed(node: Any, stop: Any = None) -> bool:
     return False
 
 
+def _parse_xml_part(blob: bytes) -> Any | None:
+    """Read an untrusted XML part without resolving entities or loading a DTD.
+
+    Args:
+        blob: Raw XML bytes from the document package.
+
+    Returns:
+        The root element, or None for malformed XML or a DTD-bearing part.
+        Callers report rejected parts without exposing parser error contents.
+    """
+    parser = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True)
+    try:
+        root = etree.fromstring(blob, parser=parser)
+    except etree.XMLSyntaxError:
+        return None
+    # Even with entity resolution disabled, internal entities in attributes
+    # can be substituted. Do not consume any values from a DTD-bearing tree.
+    if root.getroottree().docinfo.doctype:
+        return None
+    return root
+
+
 def _custom_property(doc: DocxDocument, name: str) -> str | None:
     """Text of one custom document property, or None when it is absent."""
     try:
         part = doc.part.package.part_related_by(RT.CUSTOM_PROPERTIES)
     except KeyError:
         return None
-    for prop in etree.fromstring(part.blob):
+    root = _parse_xml_part(part.blob)
+    if root is None:
+        return None
+    for prop in root:
         if isinstance(prop.tag, str) and prop.get("name") == name:
             value = next((child for child in prop if isinstance(child.tag, str)), None)
             return (value.text or "") if value is not None else ""
@@ -342,8 +371,11 @@ def _generated_term_values(doc: DocxDocument) -> dict[str, str]:
         part = doc.part.package.part_related_by(RT.CUSTOM_PROPERTIES)
     except KeyError:
         return {}
+    root = _parse_xml_part(part.blob)
+    if root is None:
+        return {}
     values: dict[str, str] = {}
-    for prop in etree.fromstring(part.blob):
+    for prop in root:
         if not isinstance(prop.tag, str):
             continue  # comments and processing instructions
         name = prop.get("name") or ""
@@ -408,11 +440,14 @@ def inspect_document_issues(doc: DocxDocument) -> list[str]:
     if references:
         try:
             part = doc.part.part_related_by(RT.FOOTNOTES)
-            notes = etree.fromstring(part.blob)
-            ids = {node.get(qn("w:id")) for node in notes}
-            for reference in references:
-                if reference.get(qn("w:id")) not in ids:
-                    issues.append("Footnote reference has no definition")
+            notes = _parse_xml_part(part.blob)
+            if notes is None:
+                issues.append("Footnote definitions part cannot be read safely")
+            else:
+                ids = {node.get(qn("w:id")) for node in notes}
+                for reference in references:
+                    if reference.get(qn("w:id")) not in ids:
+                        issues.append("Footnote reference has no definition")
         except KeyError:
             issues.append("Footnote definitions part is missing")
     for hyperlink in doc.element.xpath(".//w:hyperlink"):
@@ -448,7 +483,10 @@ def _numbering_issues(doc: DocxDocument) -> list[str]:
         if root is None:
             if not part.content_type.endswith("+xml"):
                 continue
-            root = etree.fromstring(part.blob)
+            root = _parse_xml_part(part.blob)
+            if root is None:
+                issues.append(f"XML part cannot be read safely: {part.partname}")
+                continue
         for properties in root.iter(qn("w:numPr")):
             for reference in properties.findall(qn("w:numId")):
                 num_id = reference.get(qn("w:val"))
