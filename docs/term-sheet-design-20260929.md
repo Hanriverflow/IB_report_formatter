@@ -47,7 +47,7 @@ profile: term-sheet
 title: "가나다머티리얼즈㈜ 구조화금융 {{amount}}"
 date: "2026. 09."
 version: v3
-house: ../private/termsheet-house.yaml
+house: termsheet-house.yaml
 terms:
   amount: "500억원"
   cap: "CD(3개월) + [1.10]%"
@@ -121,7 +121,7 @@ confirmation:
   signature: "고객확인 : 20    .    .    .   (서명/인)"
 ```
 
-위 문구는 가상 예시다. 저장소에는 `samples/profiles/term-sheet-house.yaml`로 가상 문구만 둔다. 실제 문구는 저장소 밖 경로에 두고 `house:`나 `--house`로 지정한다.
+위 문구는 가상 예시다. 저장소에는 `samples/profiles/term-sheet-house.yaml`로 가상 문구만 둔다. 실제 문서의 작업 폴더는 저장소 밖에 둔다. 플러그인 실행기와 휴대용 변환기를 쓸 때는 필요한 이미지, 기관 파일과 로고를 초안 MD가 있는 작업 폴더(하위 폴더 포함)로 복사하고 상대 경로로 가리킨다. `house:`는 MD 기준, 기관 파일 안의 로고는 기관 파일 기준이다. 초안 폴더 밖의 이미지·로고는 `asset_outside_root`로 거부하므로 파일을 복사하고 경로를 수정한다. 입력 크기·표 칸 수·목록 중첩·이미지 바이트 수와 픽셀 수 한도를 넘으면 `limit_*` 진단의 한도·측정값에 맞춰 입력을 줄이거나 나눈다. 두 실행기는 항상 엄격 모드이며 허용 폴더 추가나 한도 상향 옵션을 제공하지 않는다. 엔진 CLI의 운영자 지정 `--house` 규칙은 README를 참고한다.
 
 ### 4.4 본문 규칙
 

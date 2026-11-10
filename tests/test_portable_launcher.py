@@ -7,9 +7,78 @@ from pathlib import Path
 import pytest
 from docx import Document
 
+from input_safety import InputLimitError, RejectionCode, StrictValidationError
 from scripts import build_portable
 from scripts.build_portable import package_inputs
 from tools import portable_launcher
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+@pytest.mark.parametrize(
+    "code, cause, remedy",
+    [
+        (RejectionCode.ASSET_OUTSIDE_ROOT, "폴더 밖", "상대 경로"),
+        (RejectionCode.LIMIT_INPUT_BYTES, "Markdown 파일의 바이트 수", "여러 Markdown 파일"),
+        (RejectionCode.LIMIT_TABLE_CELLS, "표 하나의 칸 수", "여러 표 또는 문서"),
+        (RejectionCode.LIMIT_LIST_DEPTH, "목록의 중첩 단계 수", "들여쓰기 단계를 줄이거나"),
+        (RejectionCode.LIMIT_IMAGE_BYTES, "이미지 또는 로고 하나의 바이트 수", "이미지를 압축"),
+        (RejectionCode.LIMIT_IMAGE_PIXELS, "픽셀 수(가로 × 세로)", "해상도를 낮추거나"),
+    ],
+)
+def test_korean_rejection_causes_and_remedies(code, cause, remedy, wrapped):
+    rejection = (
+        StrictValidationError("Document validation failed: ", [f"[{code}] 예시 경로"])
+        if code == RejectionCode.ASSET_OUTSIDE_ROOT
+        else InputLimitError(code, 1000, 2000)
+    )
+    error = rejection
+    if wrapped:
+        error = RuntimeError(f"Rendering failed: {rejection}")
+        error.__cause__ = rejection
+    message = portable_launcher.conversion_error_message(error)
+    assert f"[{code}] " in message
+    assert cause in message and remedy in message
+    assert message.endswith(str(error))
+    if code != RejectionCode.ASSET_OUTSIDE_ROOT:
+        assert "한도: 1,000, 측정값: 2,000." in message
+    else:
+        assert "같은 폴더나 그 하위 폴더로 복사" in message
+
+
+def test_portable_outside_image_rejection_has_korean_guidance(tmp_path):
+    job = tmp_path / "job"
+    job.mkdir()
+    source = job / "예시.md"
+    source.write_text("---\nprofile: plain\n---\n![예시](../outside.png)\n", encoding="utf-8")
+    with pytest.raises(RuntimeError) as caught:
+        portable_launcher.convert_document(str(source), str(tmp_path / "out"))
+    message = portable_launcher.conversion_error_message(caught.value)
+    assert "[asset_outside_root]" in message
+    assert "폴더 밖" in message and "상대 경로" in message
+    assert not list(tmp_path.rglob("*.docx"))
+
+
+def test_uncoded_portable_errors_keep_original_message():
+    error = ValueError("기존 입력 오류")
+    assert portable_launcher.conversion_error_message(error) == str(error)
+
+
+@pytest.mark.parametrize(
+    "option",
+    [
+        "--asset-root",
+        "--max-input-bytes",
+        "--max-table-cells",
+        "--max-list-depth",
+        "--max-image-bytes",
+        "--max-image-pixels",
+    ],
+)
+def test_portable_rejects_safety_override_arguments(option, monkeypatch):
+    monkeypatch.setattr(portable_launcher.sys, "argv", ["portable_launcher", option, "1"])
+    with pytest.raises(SystemExit) as caught:
+        portable_launcher.main()
+    assert caught.value.code == 2
 
 
 def test_conversion_preserves_yaml_and_korean_spaced_paths(tmp_path):

@@ -15,9 +15,66 @@ if not getattr(sys, "frozen", False):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from document_profiles import PROFILES, RenderOptions
+from input_safety import ConversionRejection, InputLimitError, RejectionCode
 from md_to_word import IBReportConverter
 
 AUTO_PROFILE = "자동 (문서의 YAML 설정 사용)"
+
+REJECTION_GUIDANCE = {
+    RejectionCode.ASSET_OUTSIDE_ROOT: (
+        "이미지 또는 로고가 Markdown 파일의 폴더 밖에 있습니다. "
+        "문서에 필요한 이미지, 기관 파일과 로고를 Markdown 파일과 같은 폴더나 "
+        "그 하위 폴더로 복사하고 상대 경로로 지정하세요. "
+        "기관 파일 안의 로고 경로는 기관 파일의 위치를 기준으로 적으세요."
+    ),
+    RejectionCode.LIMIT_INPUT_BYTES: (
+        "Markdown 파일의 바이트 수가 입력 한도를 넘었습니다. "
+        "입력 내용을 줄이거나 여러 Markdown 파일로 나누세요."
+    ),
+    RejectionCode.LIMIT_TABLE_CELLS: (
+        "표 하나의 칸 수가 한도를 넘었습니다. 머리행을 포함한 행 수 × 열 수로 계산하며, "
+        "HTML 표는 병합을 펼친 칸 수를 셉니다. 표를 줄이거나 여러 표 또는 문서로 나누세요."
+    ),
+    RejectionCode.LIMIT_LIST_DEPTH: (
+        "목록의 중첩 단계 수가 한도를 넘었습니다. "
+        "들여쓰기 단계를 줄이거나 목록을 여러 부분으로 나누세요."
+    ),
+    RejectionCode.LIMIT_IMAGE_BYTES: (
+        "이미지 또는 로고 하나의 바이트 수가 한도를 넘었습니다. "
+        "Base64 이미지도 디코딩한 크기를 검사합니다. "
+        "이미지를 압축하거나 크기를 줄이거나 여러 이미지로 나누세요."
+    ),
+    RejectionCode.LIMIT_IMAGE_PIXELS: (
+        "이미지 또는 로고 하나의 픽셀 수(가로 × 세로)가 한도를 넘었습니다. "
+        "이미지의 해상도를 낮추거나 여러 이미지로 나누세요."
+    ),
+}
+
+
+def conversion_error_message(error: BaseException) -> str:
+    """Explain documented failures in Korean while retaining the engine details.
+
+    Args:
+        error: Conversion failure, possibly wrapping a documented rejection.
+
+    Returns:
+        Korean causes and remedies followed by the original error message.
+    """
+    explanations: list[str] = []
+    current: BaseException | None = error
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        if isinstance(current, ConversionRejection):
+            for code in current.codes:
+                guidance = REJECTION_GUIDANCE[RejectionCode(code)]
+                if isinstance(current, InputLimitError):
+                    guidance += f" 한도: {current.limit:,}, 측정값: {current.measured:,}."
+                explanation = f"[{code}] {guidance}"
+                if explanation not in explanations:
+                    explanations.append(explanation)
+        current = current.__cause__
+    return "\n\n".join([*explanations, str(error)])
 
 
 def application_root() -> Path:
@@ -130,7 +187,7 @@ def launch_gui(self_test: bool = False) -> None:
         try:
             messages.put(("done", str(convert_document(*values))))
         except Exception as exc:
-            messages.put(("error", str(exc)))
+            messages.put(("error", conversion_error_message(exc)))
 
     def convert() -> None:
         nonlocal busy

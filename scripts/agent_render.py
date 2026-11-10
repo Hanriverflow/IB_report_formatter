@@ -9,13 +9,42 @@ import argparse
 import hashlib
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any, Never
 
 # This source-checkout tool must also work when invoked from another directory.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
+def _coded_diagnostics(issues: Iterable[str]) -> list[dict[str, str]]:
+    """Keep each coded issue intact, including punctuation inside file paths."""
+    from input_safety import RejectionCode
+
+    return [
+        {"code": code.value, "message": issue}
+        for issue in issues
+        for code in RejectionCode
+        if issue.startswith(f"[{code}] ")
+    ]
+
+
+def _rejection_diagnostics(error: BaseException) -> list[dict[str, str]]:
+    """Collect individual issues from documented rejections in a cause chain."""
+    from input_safety import InputLimitError, StrictValidationError
+
+    diagnostics = []
+    current: BaseException | None = error
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        if isinstance(current, StrictValidationError):
+            diagnostics.extend(_coded_diagnostics(current.issues))
+        elif isinstance(current, InputLimitError):
+            diagnostics.extend(_coded_diagnostics((str(current),)))
+        current = current.__cause__
+    return diagnostics
 
 
 def _sha256(path: Path) -> str:
@@ -69,6 +98,7 @@ def render_document(
         },
     }
     owned_directory: Path | None = None
+    rejection_types: tuple[type[ValueError], ...] = ()
     try:
         source_path = Path(source).resolve()
         destination = Path(output_dir).resolve()
@@ -84,6 +114,9 @@ def render_document(
         result["stage"] = "input"
         result["input"]["sha256"] = _sha256(source_path)
         with redirect_stdout(sys.stderr):
+            from input_safety import ConversionRejection
+
+            rejection_types = (ConversionRejection,)
             from converters import get_default_registry
 
             registry = get_default_registry()
@@ -94,6 +127,7 @@ def render_document(
                 result["diagnostics"].extend(
                     {"code": "input_validation", "message": message} for message in model.warnings
                 )
+                result["diagnostics"].extend(_coded_diagnostics(model.warnings))
                 raise ValueError("Strict input validation failed")
             if expected_path is not None:
                 result["stage"] = "expected_terms"
@@ -150,7 +184,11 @@ def render_document(
                 raise ValueError("Structural audit failed; generated DOCX retained for diagnosis")
         result.update({"ok": True, "status": "ready_for_review", "stage": "complete"})
     except Exception as exc:
-        result["diagnostics"].append({"code": type(exc).__name__, "message": str(exc)})
+        # Dedicated rejection subclasses retain the runner's earlier ValueError entry.
+        code = "ValueError" if isinstance(exc, rejection_types) else type(exc).__name__
+        result["diagnostics"].append({"code": code, "message": str(exc)})
+        if rejection_types:
+            result["diagnostics"].extend(_rejection_diagnostics(exc))
     if owned_directory is not None:
         try:
             with (owned_directory / "result.json").open("x", encoding="utf-8") as stream:

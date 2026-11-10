@@ -138,3 +138,16 @@ def test_repeated_plugin_build_preserves_artifacts(plugin_checkout, tmp_path):
     second = builder.build_bundle(plugin_checkout, tmp_path / "release")
     assert first != second
     assert first.read_bytes() == data
+
+
+def test_bundled_authoring_guidance_matches_source_asset_policy(plugin_checkout):
+    for relative in ("SKILL.md", "references/term-sheet.md"):
+        installed = (plugin_checkout / "skills/ib-document" / relative).read_text(encoding="utf-8")
+        source = (ROOT / ".agents/skills/ib-document" / relative).read_text(encoding="utf-8")
+        for paragraph in installed.split("\n\n"):
+            if paragraph.startswith(("Copy the images,", "The runner always uses strict mode")):
+                assert paragraph in source
+        assert "asset_outside_root" in installed and "limit_*" in installed
+        assert "house: /absolute/job/house.yaml" not in installed
+        if relative.endswith("term-sheet.md"):
+            assert "house: house.yaml" in installed

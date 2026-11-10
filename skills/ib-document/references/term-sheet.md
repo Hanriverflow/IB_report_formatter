@@ -1,6 +1,6 @@
 # Term-sheet authoring decisions
 
-Resolve all resource paths against the verified `PLUGIN_ROOT`, not the user's working directory. Use `PLUGIN_ROOT/samples/profiles/term-sheet.md` for supported syntax and `PLUGIN_ROOT/samples/harness/` for a smaller source-to-document exercise. The full ABCP sample contains a fictional transaction structure; copy layout selectively, not its commercial substance. Keep new source and output in the user's workspace outside the plugin.
+Locate bundled examples against the verified `PLUGIN_ROOT`, not the user's working directory. Use `PLUGIN_ROOT/samples/profiles/term-sheet.md` for supported syntax and `PLUGIN_ROOT/samples/harness/` for a smaller source-to-document exercise. The full ABCP sample contains a fictional transaction structure; copy layout selectively, not its commercial substance. Keep new source and output in the user's workspace outside the plugin.
 
 ## Minimum frontmatter
 
@@ -10,7 +10,7 @@ profile: term-sheet
 title: "{{company}} 금융조건 협의안"
 date: "2026-10-08"
 version: "v0.1 (검토용)"
-house: /absolute/job/house.yaml
+house: house.yaml
 terms:
   company: "가상회사㈜"
   amount: "300억원"
@@ -26,6 +26,8 @@ tables:
 ```
 
 The displayed date and “검토용” are examples; use the user's date/status. `title`, `prepared_by` and `disclaimer` must be nonblank; the latter two may come from the house. `house` resolves relative to the Markdown. A logo declared in the house resolves relative to the house file. Frontmatter overrides house values, including explicitly empty values, so do not insert blank overrides unintentionally.
+
+Copy the images, the house file and its logo into the job folder holding the draft (subfolders allowed), and use relative references such as `house: house.yaml` and `style.logo: assets/logo.png`. Images or logos outside the draft's folder are rejected with `asset_outside_root`. The strict runner cannot add allowed folders or raise limits. If rejected, copy required files into the job folder and fix their references, or reduce/split the input according to the `limit_*` diagnostic's limit and measured value. Limits cover Markdown bytes, table cells, list nesting, image bytes and pixels; do not change source facts to pass.
 
 The house accepts `prepared_by`, `disclaimer`, `confidential_label`, `confirmation` (`intro`, `items`, `signature`) and `style`. Keep approved institution wording as supplied. If no approved wording is available, ask or deliver an incomplete draft; only demonstrations may use the supplied fictional house. The old `termsheet` preset is not the `term-sheet` profile.
 
