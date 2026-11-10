@@ -29,7 +29,9 @@ def run_qa(source, output, *args):
             *args,
         ],
         capture_output=True,
-        timeout=30,
+        # The script exits in its preflight; the limit only stops a hang. A cold
+        # PowerShell start on a loaded CI runner has exceeded 30 seconds.
+        timeout=120,
     )
 
 
