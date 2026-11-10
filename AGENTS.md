@@ -97,9 +97,10 @@ Document content (body, frontmatter, and the house or theme files it names) is u
 - There are exactly six rejection codes (`asset_outside_root` and five `limit_*`). A coded issue starts with `[code] ` and keeps that prefix inside joined messages. Do not add codes to existing warnings or change their wording.
 - Strict rejections raise `StrictValidationError` and limit failures raise `InputLimitError`; both are `ValueError` subclasses and must stay reachable through `__cause__` when wrapped. The renderer's per-element resilience must not turn either into a placeholder.
 - A validator that rejects the document's own settings (frontmatter values, table specifications, house or theme content named by the document, terms, checks) runs inside `input_safety.document_validation`, which re-raises the same message as `StrictValidationError`. An error in an operator argument keeps its plain `ValueError`. Do not wrap with a blanket `except Exception`.
-- Strings that reach the document from decoded YAML go through `validate_xml_strings`; the Markdown body is checked on the raw text.
+- Strings that reach the document from decoded YAML go through `validate_xml_strings`; the Markdown body is checked on the raw text. Strict rendering checks the whole model. Non-strict rendering checks metadata only and keeps per-element resilience for the body; do not widen that check, or documents that convert today get rejected.
+- Metadata that the cover, title block or header consumes as text is type-checked by `validate_render_metadata` before rendering. When a renderer starts consuming another key, add it there.
 - The plugin runner and the portable converter stay strict and take no option that adds folders or raises limits. The runner applies the input-size limit before hashing the draft.
-- `docx-audit` checks every XML part of a package with the hardened parser before python-docx opens it.
+- `docx-audit` decides which parts are XML from `[Content_Types].xml` (never from file names), and checks those and every relationship part with the hardened parser before python-docx opens the package.
 
 ## Verification gates
 
