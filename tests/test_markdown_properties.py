@@ -42,6 +42,15 @@ content.encode("utf-8")), so the arbitrary alphabet is Unicode scalar values.
 Explicit examples cover NUL, empty input, malformed YAML and known rejections.
 All strict examples exercise text->model->registry save, stream->registry save
 and the CLI converter class, under both requested profiles.
+Valid YAML with wrong scalar/collection types and nested settings is generated
+for every known metadata key. Separate per-key cases let YAML select the profile
+(including term-sheet and office-letter), so operator overrides cannot mask
+profile or profile-specific validation. Escaped XML-incompatible metadata
+characters, including surrogate escapes, are also in the strict source grammar.
+Fenced-code generation partitions the original alphabet: nonempty lines and a
+non-whitespace final character have an active text/formatting property; empty
+lines and trailing whitespace retain generated strict xfail groups. Tree-value
+emphasis retains its separate minimal strict xfail. No payload is filtered out.
 
 Determinism: local default profile markdown-properties, derandomize=True, deadline=None,
 database=None, max_examples=24. TemporaryDirectory is created per example under
@@ -56,6 +65,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pytest
+import yaml
 from docx import Document
 from docx.document import Document as WordDocument
 from docx.oxml.ns import qn
@@ -326,13 +336,6 @@ def test_cell_count_and_characters_preserved(
             "escape-retained",
             marks=pytest.mark.xfail(strict=True, reason=RETAINED_ESCAPE_REASON),
         ),
-        pytest.param(
-            "fence",
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="'```text\\n0\\n\\n```' renders '0', expected '0\\n'; MarkdownParser._parse_elements rstrip() and IBDocumentRenderer._render_code_block splitlines() drop the trailing line. Restoring it changes layout.",
-            ),
-        ),
     ),
 )
 @given(case=_code_case())
@@ -340,23 +343,74 @@ def test_cell_count_and_characters_preserved(
     case=("가상 **예시** <br> [^1] {{예시}} \\_", "가상\n", "\\$`*_[](){}|~^", "!#%&+/:;<=>?@")
 )
 def test_code_and_escapes_unchanged(kind: str, case: tuple[str, str, str, str]) -> None:
-    span, fenced, escaped, retained = case
+    span, _, escaped, retained = case
     if kind == "span":
         source, expected = _span(span).source, span
-    elif kind == "fence":
-        source, expected = _fence(fenced), fenced
     else:
         characters = escaped if kind == "escape" else retained
         source = "가상 " + "".join("\\" + char for char in characters) + " 예시"
         expected = ParagraphNormalization.apply("가상 " + characters + " 예시")
     document = _render(source)
-    if kind == "fence":
-        assert len(document.tables) == 1
-        assert document.tables[0].cell(0, 0).text == expected
-    elif kind == "span":
+    if kind == "span":
         assert document.paragraphs[0].text == expected
     else:
         assert ParagraphNormalization.apply(document.paragraphs[0].text) == expected
+    _assert_literal_runs(document)
+
+
+@st.composite
+def _working_fenced_payload(draw: st.DrawFn) -> str:
+    # Partition the original line alphabet, rather than discard examples. All
+    # nonempty intermediate lines (including whitespace-only lines) are active;
+    # empty lines and trailing whitespace are in the strict xfail groups below.
+    lines = draw(st.lists(st.text(CODE, min_size=1, max_size=25), max_size=3))
+    last = draw(st.text(CODE, max_size=24)) + draw(st.sampled_from(tuple(CODE.rstrip(" \t"))))
+    return "\n".join([*lines, last])
+
+
+@pytest.mark.parametrize("marker", ("`", "~"))
+@example(payload=" ")
+@example(payload="가상\n \t \n**예시** <br> [^1] {{예시}} `x`")
+@given(payload=_working_fenced_payload())
+def test_generated_fenced_code_preserves_lines_and_formatting(marker: str, payload: str) -> None:
+    document = _render(_fence(payload, marker))
+    assert len(document.tables) == 1
+    cell = document.tables[0].cell(0, 0)
+    assert [paragraph.text for paragraph in cell.paragraphs] == payload.split("\n")
+    _assert_literal_runs(document)
+
+
+@pytest.mark.parametrize("marker", ("`", "~"))
+@pytest.mark.xfail(
+    strict=True,
+    reason="An empty fenced line receives a one-space spacer; removing it needs a layout decision.",
+)
+@given(lines=st.lists(st.text(CODE, max_size=25), max_size=3), tail=_working_fenced_payload())
+def test_generated_fenced_empty_lines_have_no_spacer(
+    marker: str, lines: list[str], tail: str
+) -> None:
+    # Includes every original line kind, plus a guaranteed empty line.
+    payload = "\n".join([*lines, "", tail])
+    document = _render(_fence(payload, marker))
+    assert document.tables[0].cell(0, 0).text == payload
+    _assert_literal_runs(document)
+
+
+@pytest.mark.parametrize("marker", ("`", "~"))
+@pytest.mark.xfail(
+    strict=True,
+    reason="Trailing fenced whitespace/blank lines are dropped by rstrip/splitlines; restoring them needs a layout decision.",
+)
+@given(
+    lines=st.lists(st.text(CODE, max_size=25), min_size=1, max_size=4),
+    ending=st.text(" \t\n", min_size=1, max_size=4),
+)
+def test_generated_fenced_trailing_whitespace_is_preserved(
+    marker: str, lines: list[str], ending: str
+) -> None:
+    payload = "\n".join(lines) + "예시" + ending
+    document = _render(_fence(payload, marker))
+    assert document.tables[0].cell(0, 0).text == payload
     _assert_literal_runs(document)
 
 
@@ -373,9 +427,125 @@ BROKEN = st.sampled_from(
         "[^1]",
     )
 )
+
+FRONTMATTER_KEYS = (
+    "profile",
+    "title",
+    "subtitle",
+    "company",
+    "ticker",
+    "sector",
+    "analyst",
+    "date",
+    "layout",
+    "style",
+    "tables",
+    "terms",
+    "checks",
+    "letter",
+    "sender",
+    "recipients",
+    "cc",
+    "attachments",
+    "attendees",
+    "charts",
+    "preset",
+    "house",
+    "theme",
+    "prepared_by",
+    "disclaimer",
+    "confidential_label",
+    "confirmation",
+)
+YAML_VALUE = st.recursive(
+    st.one_of(
+        st.none(), st.booleans(), st.integers(-2, 5), st.sampled_from(("wrong", "", "예시", 1.5))
+    ),
+    lambda child: st.one_of(
+        st.lists(child, max_size=2),
+        st.dictionaries(st.sampled_from(("예시", "wrong", 0)), child, max_size=2),
+    ),
+    max_leaves=5,
+)
+NESTED_SETTINGS = {
+    "layout": (
+        "cover",
+        "toc",
+        "disclaimer",
+        "confidential",
+        "separator_mode",
+        "strict",
+        "term_tags",
+    ),
+    "style": (
+        "cover",
+        "disclaimer",
+        "header_rule",
+        "footer_rule",
+        "logo",
+        "logo_width_mm",
+        "label_color",
+        "page_number",
+        "page_number_align",
+        "table_header",
+        "table_sides",
+    ),
+    "tables": (
+        "type",
+        "columns",
+        "caption",
+        "unit",
+        "source",
+        "as_of",
+        "landscape",
+        "base_case",
+        "spans",
+        "label_columns",
+        "note",
+        "header_rows",
+        "schedule",
+    ),
+    "letter": ("appendix_heading", "appendix_label"),
+    "sender": ("organization", "department", "name"),
+    "confirmation": ("intro", "items", "signature"),
+    "terms": ("amount",),
+}
+
+
+@st.composite
+def _frontmatter(draw: st.DrawFn, key: str | None = None) -> str:
+    key = key or draw(st.sampled_from(FRONTMATTER_KEYS))
+    value = draw(YAML_VALUE)
+    if key in NESTED_SETTINGS and draw(st.booleans()):
+        value = {draw(st.sampled_from(NESTED_SETTINGS[key])): value}
+        if key == "tables":
+            value = [value]
+    data = {
+        "profile": "plain",
+        "title": "예시 문서",
+        "prepared_by": "가상 기관",
+        "disclaimer": "예시 문구",
+        "recipients": ["가상 수신처"],
+        "sender": {"organization": "가상 기관"},
+    }
+    if key in {"style", "confirmation", "prepared_by", "disclaimer", "confidential_label"}:
+        data["profile"] = "term-sheet"
+    elif key in {"letter", "sender", "recipients", "cc", "attachments"}:
+        data["profile"] = "office-letter"
+    data[key] = value
+    return "---\n" + yaml.safe_dump(data, allow_unicode=True) + "---\n| 예시 |\n| --- |\n| 가상 |"
+
+
+ESCAPED_METADATA = st.tuples(
+    st.sampled_from(("title", "subtitle", "company", "analyst", "date")),
+    st.sampled_from((r"\0", r"\x0b", r"\u001F", r"\uFFFE", r"\uFFFF", r"\uD800")),
+).map(lambda pair: f'---\n{pair[0]}: "예시{pair[1]}"\n---\n가상 본문')
+
 STRICT_SOURCE = st.one_of(
     _document().map(lambda case: case.source),
     BROKEN,
+    _frontmatter(),
+    ESCAPED_METADATA,
     st.text(st.characters(exclude_categories=("Cs",)), max_size=100),
 )
 
@@ -391,7 +561,9 @@ def _is_rejection(error: Exception) -> bool:
     return False
 
 
-def _strict_save(source: str, output: Path, profile: str, route: str, limits: InputLimits) -> str:
+def _strict_save(
+    source: str, output: Path, profile: str | None, route: str, limits: InputLimits
+) -> str:
     registry = get_default_registry()
     if route == "cli":
         input_path = output.with_suffix(".md")
@@ -411,7 +583,7 @@ def _strict_save(source: str, output: Path, profile: str, route: str, limits: In
 
 
 def _assert_strict_outcome(
-    source: str, directory: Path, profile: str, route: str, limits: InputLimits
+    source: str, directory: Path, profile: str | None, route: str, limits: InputLimits
 ) -> None:
     output = directory / "example.docx"
     try:
@@ -448,11 +620,23 @@ def _assert_saved_output(saved: str, output: Path, route: str) -> None:
 @example(source="# \x00", small_limit=False)
 @example(source="![예시](missing.png)", small_limit=False)
 @example(source="가상" * 20, small_limit=True)
+@example(source="---\nlayout: {cover: wrong}\n---\n가상", small_limit=False)
+@example(source='---\ntitle: "예시\\0"\n---\n가상', small_limit=False)
 @given(source=STRICT_SOURCE, small_limit=st.booleans())
 def test_strict_mode_dichotomy(profile: str, route: str, source: str, small_limit: bool) -> None:
     limits = InputLimits(max_input_bytes=32) if small_limit else InputLimits()
     with TemporaryDirectory(prefix="ib-prop-") as temporary:
         _assert_strict_outcome(source, Path(temporary), profile, route, limits)
+
+
+@pytest.mark.parametrize("key", FRONTMATTER_KEYS)
+@pytest.mark.parametrize("route", ("text", "stream", "cli"))
+@given(data=st.data())
+def test_frontmatter_strict_mode_dichotomy(key: str, route: str, data: st.DataObject) -> None:
+    """Exercise every key without an operator profile masking the YAML profile."""
+    source = data.draw(_frontmatter(key))
+    with TemporaryDirectory(prefix="ib-prop-frontmatter-") as temporary:
+        _assert_strict_outcome(source, Path(temporary), None, route, InputLimits())
 
 
 @pytest.mark.parametrize(

@@ -65,6 +65,31 @@ def test_model_rejects_unknown_types_instead_of_repr(tmp_path: Path) -> None:
         ModelSerializer(tmp_path).convert(object())
 
 
+@pytest.mark.parametrize("text", [r"C:\example\title.txt", "/example/title.txt"])
+def test_absolute_looking_title_and_paragraph_are_literal_text(tmp_path, text):
+    source = "---\nprofile: plain\ntitle: '" + text + "'\n---\n" + text
+    model = MarkdownParser(profile="plain").parse(source)
+    model.metadata.extra["note"] = text
+    # Even a path-named key inside arbitrary prose metadata is not a file field.
+    model.metadata.extra["example"] = {"house": text, "logo": text, "source": text}
+    serialized = json.loads(model_json(model, tmp_path))
+    assert serialized["metadata"]["title"] == text
+    assert serialized["metadata"]["extra"]["note"] == text
+    assert serialized["metadata"]["extra"]["example"] == model.metadata.extra["example"]
+    assert serialized["elements"][0]["content"]["text"] == text
+    assert serialized["elements"][0]["content"]["runs"][0]["text"] == text
+
+
+def test_known_path_fields_are_normalized_without_rewriting_labels(tmp_path):
+    path = str(tmp_path / "example.png")
+    model = MarkdownParser(profile="plain").parse(f"![예시]({path})")
+    model.metadata.extra.update({"house": path, "theme": path, "style": {"logo": path}})
+    serialized = json.loads(model_json(model, tmp_path))
+    extra = serialized["metadata"]["extra"]
+    assert extra["house"] == extra["theme"] == extra["style"]["logo"] == "example.png"
+    assert serialized["elements"][0]["content"]["path"] == "example.png"
+
+
 def test_xml_normalization_preserves_content_ids_and_semantics() -> None:
     word = XMLNormalizer.WORD
     data = f'''<w:document xmlns:w="{word}" xmlns:x="urn:example">

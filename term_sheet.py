@@ -50,7 +50,9 @@ from input_safety import (
     InputLimitError,
     check_image_source,
     decode_image,
+    document_validation,
     local_asset_path,
+    validate_xml_strings,
 )
 from md_parser import TextParser
 from render_styles import STYLE
@@ -290,7 +292,9 @@ def validate_style(value: Any, base_dir: Path | None = None) -> dict[str, Any]:
             and base_dir is not None
             and not Path(logo).is_absolute()
         ):
-            settings["logo"] = str((base_dir / logo).resolve())
+            # Keep the written components until local_asset_path judges each
+            # candidate; resolving a junction here would lose the decoded one.
+            settings["logo"] = str(base_dir / logo)
     return settings
 
 
@@ -352,6 +356,7 @@ def load_house(path: str | Path) -> dict[str, Any]:
         raise ValueError(f"Invalid house YAML: {exc}") from exc
     if not isinstance(data, dict):
         raise ValueError("house must be a YAML mapping")
+    validate_xml_strings(data)
     _validate_house_fields(data)
     if "style" in data:
         # A house logo path is relative to the house file.
@@ -360,7 +365,7 @@ def load_house(path: str | Path) -> dict[str, Any]:
 
 
 def resolve_term_sheet_texts(
-    metadata: DocumentMetadata, house_path: str | None = None
+    metadata: DocumentMetadata, house_path: str | None = None, *, document_house: bool = False
 ) -> TermSheetTexts:
     """Resolve boilerplate before rendering, preserving explicit empty values.
 
@@ -368,6 +373,7 @@ def resolve_term_sheet_texts(
         metadata: Term-sheet metadata containing optional boilerplate overrides.
         house_path: Effective house path after caller/frontmatter precedence.
             Source-relative paths must already be absolute; absent paths use no file.
+        document_house: Whether the document, rather than the operator, named the file.
 
     Returns:
         Immutable texts for the renderer's current request.
@@ -378,27 +384,30 @@ def resolve_term_sheet_texts(
     """
     house: dict[str, Any] = {}
     if house_path is not None:
-        if not isinstance(house_path, str) or not house_path.strip():
-            raise ValueError("house must be a YAML file path")
-        if not Path(house_path).is_absolute():
-            raise ValueError("house path must be absolute for input without a source file")
-        house = load_house(house_path)
+        with document_validation(document_house, errors=(ValueError, OSError)):
+            if not isinstance(house_path, str) or not house_path.strip():
+                raise ValueError("house must be a YAML file path")
+            if not Path(house_path).is_absolute():
+                raise ValueError("house path must be absolute for input without a source file")
+            house = load_house(house_path)
     values = {
         key: metadata.extra[key] if key in metadata.extra else house[key]
         for key in _HOUSE_KEYS - {"style"}
         if key in metadata.extra or key in house
     }
-    _validate_house_fields(values)
-    for key in ("prepared_by", "disclaimer"):
-        if key not in values or not values[key].strip():
-            raise ValueError(f"term-sheet requires non-empty {key}")
+    with document_validation():
+        _validate_house_fields(values)
+        for key in ("prepared_by", "disclaimer"):
+            if key not in values or not values[key].strip():
+                raise ValueError(f"term-sheet requires non-empty {key}")
     # Style settings merge key by key: frontmatter `style` overrides the house file's.
     style = dict(house.get("style", {}))
-    if "style" in metadata.extra:
-        style.update(validate_style(metadata.extra["style"]))
-    logo = style.get("logo")
-    if logo and not logo.lower().startswith("data:") and not Path(logo).is_absolute():
-        raise ValueError("style.logo must be absolute for input without a source file")
+    with document_validation():
+        if "style" in metadata.extra:
+            style.update(validate_style(metadata.extra["style"]))
+        logo = style.get("logo")
+        if logo and not logo.lower().startswith("data:") and not Path(logo).is_absolute():
+            raise ValueError("style.logo must be absolute for input without a source file")
     return TermSheetTexts(
         prepared_by=values["prepared_by"],
         disclaimer=values["disclaimer"],
@@ -1066,7 +1075,9 @@ def _add_logo(doc: Any, style: TermSheetStyle) -> None:
             source = decode_image(payload, limits)
         elif not getattr(doc.part, "_ib_trusted_house_logo", False):
             location = local_asset_path(
-                style.logo, asset_roots=getattr(doc.part, "_ib_asset_roots", ())
+                style.logo,
+                base_dir=getattr(doc.part, "_ib_source_dir", None),
+                asset_roots=getattr(doc.part, "_ib_asset_roots", ()),
             )
             # For an allowed missing/unreadable path, retain python-docx's existing
             # diagnostic text. Outside candidates have already raised above.

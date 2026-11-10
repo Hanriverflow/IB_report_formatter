@@ -109,7 +109,9 @@ def test_audit_does_not_expand_entities(
     document = Document(output)
     result = docx_audit.audit_file(str(output))
     terms = docx_audit.inspect_terms(document)
-    payload = docx_audit.audit_to_dict(result, terms)
+    # File audits now stop before opening any part of a rejected package.
+    assert MARKER not in json.dumps(docx_audit.audit_to_dict(result, terms), ensure_ascii=False)
+    payload = docx_audit.audit_to_dict(result)
     assert MARKER not in json.dumps(payload, ensure_ascii=False)
     assert result.issues
     monkeypatch.setattr("sys.argv", ["docx-audit", str(output)])
@@ -158,3 +160,56 @@ def test_normal_audit_result_and_json_are_unchanged(
     assert exc.value.code == 0
     [report] = [record.getMessage() for record in caplog.records if record.name == "docx_audit"]
     assert report == json.dumps(expected, ensure_ascii=False, indent=2)
+
+
+@pytest.mark.parametrize(
+    "part_name",
+    [
+        "word/document.xml",
+        "word/numbering.xml",
+        "word/styles.xml",
+        "word/_rels/document.xml.rels",
+        "[Content_Types].xml",
+        "unused.xml",
+    ],
+)
+@pytest.mark.parametrize("entity_kind", ["internal", "external"])
+@pytest.mark.parametrize("entry_point", ["api", "cli"])
+def test_package_preflight_rejects_dtd_before_python_docx(
+    tmp_path, monkeypatch, caplog, part_name, entity_kind, entry_point
+):
+    package = _render_package()
+    with ZipFile(BytesIO(package)) as archive:
+        blob = archive.read(part_name) if part_name != "unused.xml" else b"<unused/>"
+    root = etree.fromstring(blob)
+    root.set("audit_probe", REFERENCE)
+    declaration = f'<!ENTITY probe "{MARKER}">'
+    if entity_kind == "external":
+        external = tmp_path / "example-entity.txt"
+        external.write_text(MARKER, encoding="utf-8")
+        declaration = f'<!ENTITY probe SYSTEM "{external.as_uri()}">'
+    xml = (
+        f"<!DOCTYPE probe [{declaration}]>"
+        + etree.tostring(root, encoding="unicode").replace(REFERENCE, "&probe;")
+    ).encode("utf-8")
+    path = tmp_path / "example-dtd.docx"
+    with ZipFile(BytesIO(package)) as source, ZipFile(path, "w") as destination:
+        for item in source.infolist():
+            if item.filename != part_name:
+                destination.writestr(item, source.read(item))
+        destination.writestr(part_name, xml)
+
+    def forbidden_open(*args, **kwargs):
+        pytest.fail("python-docx consumed a DTD-bearing package")
+
+    monkeypatch.setattr(docx_audit, "Document", forbidden_open)
+    if entry_point == "api":
+        payload = docx_audit.audit_to_dict(docx_audit.audit_file(str(path)))
+    else:
+        monkeypatch.setattr("sys.argv", ["docx-audit", str(path)])
+        with caplog.at_level(logging.INFO), pytest.raises(SystemExit) as caught:
+            docx_audit.main()
+        assert caught.value.code == 1
+        payload = json.loads(caplog.records[-1].getMessage())
+    assert payload["issues"] == [f"XML part cannot be read safely: /{part_name}"]
+    assert MARKER not in json.dumps(payload, ensure_ascii=False)

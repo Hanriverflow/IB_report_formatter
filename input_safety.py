@@ -8,8 +8,10 @@ Changelog (asset boundary):
 
 import base64
 import logging
-from collections.abc import Iterable
-from dataclasses import dataclass, fields
+import re
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass, fields, is_dataclass
 from enum import StrEnum
 from io import BytesIO
 from pathlib import Path
@@ -217,6 +219,64 @@ class AssetOutsideRootError(ValueError):
                 f"Image or logo is outside allowed folders: {path}",
             )
         )
+
+
+@contextmanager
+def document_validation(
+    document: bool = True, *, errors: tuple[type[Exception], ...] = (ValueError,)
+) -> Iterator[None]:
+    """Translate a document validation boundary without relabeling caller errors.
+
+    Args:
+        document: False when the validated value came from an operator argument.
+        errors: Specific validation failures at this boundary, including file
+            reading or YAML syntax errors only for document-named configuration.
+
+    Yields:
+        Control to the validator, preserving its message and original cause.
+    """
+    try:
+        yield
+    except ConversionRejection:
+        raise
+    except errors as error:
+        if document:
+            raise StrictValidationError("", (str(error),)) from error
+        raise
+
+
+class _XMLText:
+    INVALID = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+
+
+def validate_xml_strings(value: object) -> None:
+    """Check decoded document strings before they reach Word's XML writer.
+
+    Args:
+        value: Metadata or decoded configuration, including nested YAML values.
+
+    Raises:
+        ValueError: A string contains an XML-incompatible character.
+    """
+    pending = [value]
+    visited: set[int] = set()
+    while pending:
+        item = pending.pop()
+        if isinstance(item, str):
+            invalid = _XMLText.INVALID.search(item)
+            if invalid is not None:
+                raise ValueError(
+                    f"XML-incompatible character U+{ord(invalid.group()):04X} in Markdown input"
+                )
+        elif id(item) not in visited:
+            visited.add(id(item))
+            if is_dataclass(item) and not isinstance(item, type):
+                pending.extend(getattr(item, field.name) for field in fields(item))
+            elif isinstance(item, Mapping):
+                pending.extend(item.keys())
+                pending.extend(item.values())
+            elif isinstance(item, (list, tuple, set)):
+                pending.extend(item)
 
 
 def resolve_asset_roots(roots: Iterable[str | Path]) -> tuple[Path, ...]:
