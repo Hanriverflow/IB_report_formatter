@@ -18,6 +18,8 @@ import logging
 import pathlib
 from typing import BinaryIO, Union
 
+from input_safety import DEFAULT_LIMITS, InputLimits, RejectionCode, read_input_stream
+
 logger = logging.getLogger(__name__)
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -45,6 +47,7 @@ def detect_format(
     source: BinaryIO,
     *,
     hint: str | None = None,
+    limits: InputLimits = DEFAULT_LIMITS,
 ) -> str:
     """Detect the format of a binary stream.
 
@@ -58,6 +61,7 @@ def detect_format(
     Args:
         source: A readable binary stream.
         hint: Optional file extension hint (e.g. ".docx", "docx").
+        limits: Caller policy bounding non-seekable buffering and format peeks.
 
     Returns:
         Format string: "docx", "md", or "unknown".
@@ -70,10 +74,11 @@ def detect_format(
             return fmt
 
     # 2. Peek at first bytes for signature detection
-    source = ensure_seekable(source)
+    source = ensure_seekable(source, limits=limits)
     pos = source.tell()
-    header = source.read(4)
+    header = source.read(min(4, limits.max_input_bytes + 1))
     source.seek(pos)
+    limits.check(RejectionCode.LIMIT_INPUT_BYTES, len(header))
 
     if not header:
         return "unknown"
@@ -84,8 +89,9 @@ def detect_format(
 
     # 3. Heuristic: if it looks like valid UTF-8 text, treat as markdown
     source.seek(pos)
-    sample = source.read(8192)
+    sample = source.read(min(8192, limits.max_input_bytes + 1))
     source.seek(pos)
+    limits.check(RejectionCode.LIMIT_INPUT_BYTES, len(sample))
 
     if _looks_like_text(sample):
         return "md"
@@ -93,16 +99,23 @@ def detect_format(
     return "unknown"
 
 
-def ensure_seekable(stream: BinaryIO) -> BinaryIO:
+def ensure_seekable(stream: BinaryIO, *, limits: InputLimits = DEFAULT_LIMITS) -> BinaryIO:
     """Wrap a non-seekable stream in BytesIO to make it seekable.
 
     If the stream is already seekable, returns it unchanged.
-    Otherwise, reads all content into a BytesIO wrapper.
+    Otherwise, buffers content within the caller's Markdown byte limit.
+
+    Args:
+        stream: Input stream at the start of the desired content.
+        limits: Immutable caller policy used when buffering is necessary.
+
+    Returns:
+        The original seekable stream or a bounded in-memory wrapper.
     """
     if hasattr(stream, "seekable") and stream.seekable():
         return stream
 
-    data = stream.read()
+    data = read_input_stream(stream, limits)
     return io.BytesIO(data)
 
 

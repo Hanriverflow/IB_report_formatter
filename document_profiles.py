@@ -22,6 +22,7 @@ import yaml
 from docx.shared import Inches, Pt, RGBColor
 
 from document_model import DocumentMetadata, DocumentModel, ElementType, Table, TableType
+from input_safety import InputLimits
 from numeric_checks import Quantity, ScheduleSpec, check_schedule, money_unit, read_quantity
 from render_styles import IBStyle
 from term_variables import term_cell_text
@@ -101,6 +102,7 @@ class RenderOptions:
     """Explicit caller overrides; None inherits frontmatter/profile defaults.
 
     Asset roots are additive caller settings and never inherit document values.
+    Limits inherit the parsed model unless the caller explicitly overrides them.
     """
 
     include_cover: bool | None = None
@@ -117,6 +119,8 @@ class RenderOptions:
     term_tags: bool | None = None
     # Additive operator-only folders; never inherited from YAML or presets.
     asset_roots: tuple[str | Path, ...] = ()
+    # None inherits the parsed model's policy, never frontmatter or house/theme data.
+    limits: InputLimits | None = None
 
 
 PRESETS: Mapping[str, RenderOptions] = MappingProxyType(

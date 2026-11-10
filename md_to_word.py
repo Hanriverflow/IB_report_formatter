@@ -52,6 +52,7 @@ from cli_utils import (
 from document_profiles import PRESETS, PROFILES
 from document_profiles import RenderOptions as RenderOptions
 from ib_renderer import IBDocumentRenderer, rebase_local_links
+from input_safety import DEFAULT_LIMITS, InputLimits, check_input_file, read_input_file
 from md_parser import DocumentModel, parse_markdown_file
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -80,6 +81,7 @@ def auto_format_markdown(
     cite_mode: str = "footnote",
     drop_unknown_markers: bool = False,
     cleaner_report: bool = False,
+    limits: InputLimits = DEFAULT_LIMITS,
 ) -> Path:
     """
     Auto-format a markdown file using md_formatter before conversion.
@@ -101,6 +103,7 @@ def auto_format_markdown(
             "md_formatter.py not found. Ensure it is in the same directory as md_to_word.py."
         ) from err
 
+    check_input_file(input_path, limits)
     logger.info("Auto-formatting: %s", input_path.name)
 
     formatted_path_str = format_file_with_options(
@@ -111,17 +114,19 @@ def auto_format_markdown(
         cleaner_report=cleaner_report,
     )
     formatted_path = Path(formatted_path_str)
+    check_input_file(formatted_path, limits)
 
     logger.info("Formatted output: %s", formatted_path.name)
     return formatted_path
 
 
-def _read_with_encoding(file_path: Path) -> str:
+def _read_with_encoding(file_path: Path, limits: InputLimits = DEFAULT_LIMITS) -> str:
     """Read markdown text with encoding fallback."""
     encodings = ["utf-8", "utf-8-sig", "euc-kr", "cp949"]
+    data = read_input_file(file_path, limits)
     for enc in encodings:
         try:
-            return file_path.read_text(encoding=enc)
+            return data.decode(enc).replace("\r\n", "\n").replace("\r", "\n")
         except (UnicodeDecodeError, UnicodeError):
             continue
     raise UnicodeDecodeError(
@@ -139,6 +144,7 @@ def clean_deepresearch_markdown_file(
     cite_mode: str,
     drop_unknown_markers: bool,
     cleaner_report: bool,
+    limits: InputLimits = DEFAULT_LIMITS,
 ) -> Path:
     """Conditionally clean DeepResearch markers and return path to cleaned file."""
     if cleaner_mode == "off":
@@ -151,7 +157,7 @@ def clean_deepresearch_markdown_file(
             "deep_md_cleaner.py not found. Ensure it is in the same directory as md_to_word.py."
         ) from err
 
-    content = _read_with_encoding(input_path)
+    content = _read_with_encoding(input_path, limits)
     cleaner_config = CleanerConfig(
         activation_mode=cleaner_mode,
         cite_mode=cite_mode,
@@ -223,6 +229,8 @@ class IBReportConverter:
         md_file_path: str,
         output_path: str | None = None,
         render_options: RenderOptions | None = None,
+        *,
+        limits: InputLimits | None = None,
     ):
         """
         Initialize the converter.
@@ -231,6 +239,7 @@ class IBReportConverter:
             md_file_path: Path to the input markdown file
             output_path: Optional path for output docx file
             render_options: Options controlling which sections to render
+            limits: Caller policy overriding render_options.limits for parsing and rendering.
 
         Raises:
             FileNotFoundError: If input file does not exist
@@ -238,6 +247,7 @@ class IBReportConverter:
         self.md_file_path = Path(md_file_path).resolve()
         self.output_path = output_path
         self.render_options = render_options or RenderOptions()
+        self.limits = limits or self.render_options.limits or DEFAULT_LIMITS
         self._validate_input()
 
     def _validate_input(self):
@@ -277,6 +287,7 @@ class IBReportConverter:
                 str(self.md_file_path),
                 profile=self.render_options.profile,
                 asset_roots=self.render_options.asset_roots,
+                limits=self.limits,
             )
         except UnicodeDecodeError as e:
             raise RuntimeError(
@@ -310,7 +321,7 @@ class IBReportConverter:
     def _render(self, model: DocumentModel):
         """Use the same composition service as the Python API and registry."""
         renderer = IBDocumentRenderer(options=self.render_options)
-        document = renderer.render(model)
+        document = renderer.render(model, limits=self.limits)
         for issue in renderer.errors:
             logger.warning("%s", issue)
         return document
@@ -334,6 +345,17 @@ def interactive_select(md_files: list[Path]) -> Path | None:
 # ═══════════════════════════════════════════════════════════════════════════════
 # CLI
 # ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _positive_integer(value: str) -> int:
+    """Parse a CLI limit; zero and unlimited values are not supported."""
+    try:
+        result = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("must be a positive integer") from error
+    if result <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return result
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -502,6 +524,14 @@ Examples:
         help="Enable verbose (debug) output",
     )
 
+    limit_group = parser.add_argument_group("input limits")
+    for name in ("input_bytes", "table_cells", "list_depth", "image_bytes", "image_pixels"):
+        limit_group.add_argument(
+            "--max-" + name.replace("_", "-"),
+            type=_positive_integer,
+            default=getattr(DEFAULT_LIMITS, "max_" + name),
+            help=f"Maximum {name.replace('_', ' ')} (positive integer; %(default)s by default)",
+        )
     return parser
 
 
@@ -516,6 +546,19 @@ def run_conversion(input_path: Path, args) -> int:
     Returns:
         Exit code (0 = success, 1 = error)
     """
+    limits = InputLimits(
+        **{
+            name: getattr(args, name, getattr(DEFAULT_LIMITS, name))
+            for name in InputLimits.__dataclass_fields__
+        }
+    )
+    # Check the user's original file before any optional cleanup can read it.
+    try:
+        check_input_file(input_path, limits)
+    except (OSError, ValueError) as error:
+        logger.error("%s", error)
+        return 1
+
     # Build render options
     render_options = RenderOptions(
         include_cover=False if args.no_cover else None,
@@ -531,6 +574,7 @@ def run_conversion(input_path: Path, args) -> int:
         house=str(Path(args.house).resolve()) if getattr(args, "house", None) else None,
         term_tags=getattr(args, "term_tags", None),
         asset_roots=tuple(getattr(args, "asset_root", ())),
+        limits=limits,
     )
 
     # Auto-format / cleaner if requested
@@ -543,6 +587,7 @@ def run_conversion(input_path: Path, args) -> int:
                 cite_mode=args.cite_mode,
                 drop_unknown_markers=args.drop_unknown_markers,
                 cleaner_report=args.cleaner_report,
+                limits=limits,
             )
         except ImportError as e:
             logger.error("%s", e)
@@ -562,6 +607,7 @@ def run_conversion(input_path: Path, args) -> int:
                 cite_mode=args.cite_mode,
                 drop_unknown_markers=args.drop_unknown_markers,
                 cleaner_report=args.cleaner_report,
+                limits=limits,
             )
         except ImportError as e:
             logger.error("%s", e)
