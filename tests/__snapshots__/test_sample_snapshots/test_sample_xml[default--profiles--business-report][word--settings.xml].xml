@@ -5,6 +5,7 @@
   <w:defaultTabStop w:val="720"/>
   <w:characterSpacingControl w:val="doNotCompress"/>
   <w:savePreviewPicture/>
+  <w:updateFields w:val="true"/>
   <w:compat>
     <w:useFELayout/>
     <w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="14"/>
@@ -50,5 +51,4 @@
   <w:listSeparator w:val=","/>
   <w14:docId w14:val="24062061"/>
   <w14:defaultImageDpi w14:val="300"/>
-  <w:updateFields w:val="true"/>
 </w:settings>

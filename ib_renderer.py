@@ -3810,7 +3810,7 @@ class IBDocumentRenderer:
                 setup_korean_spacing(self.doc)
             update_fields = OxmlElement("w:updateFields")
             update_fields.set(qn("w:val"), "true")
-            self.doc.settings.element.append(update_fields)
+            insert_ordered(self.doc.settings.element, update_fields)
             if resolved.profile.a4:
                 for section in self.doc.sections:
                     section.page_width, section.page_height = Mm(210), Mm(297)

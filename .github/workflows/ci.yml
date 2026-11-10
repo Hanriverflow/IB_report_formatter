@@ -73,10 +73,8 @@ jobs:
           logging.info("Python 3.12 syntax verified: %d modules", len(sources))
 
   word-schema:
-    name: Word schema report (non-blocking)
+    name: Word schema gate
     runs-on: ubuntu-latest
-    # Report-only until snapshots and the engine fixes are reviewed separately.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

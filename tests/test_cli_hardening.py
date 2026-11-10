@@ -351,6 +351,10 @@ def _ci_workflow():
 def test_ci_workflow_config_and_python312_gate():
     workflow = _ci_workflow()
     assert set(workflow["on"]) == {"push", "pull_request"}
+    schema_job = workflow["jobs"]["word-schema"]
+    assert schema_job["name"] == "Word schema gate"
+    assert "continue-on-error" not in schema_job
+    assert "if" not in schema_job
     job = workflow["jobs"]["quality"]
     assert job["strategy"]["fail-fast"] is False
     assert job["strategy"]["matrix"] == {

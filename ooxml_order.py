@@ -7,12 +7,115 @@ inserts them through `insert_ordered` instead of appending.
 
 Changelog (schema order):
     - NEW: shared tblPr/tcPr/pPr/rPr sequences and an ordered insert.
+    - FIXED: settings sequence keeps updateFields before its schema successors.
 """
 
 from lxml import etree
 
-# Child sequences of CT_TblPr, CT_TcPr, CT_PPr and CT_RPr (ECMA-376 Part 1, §17).
+# Child sequences of ECMA-376 Part 1, §17 property and settings elements.
 SEQUENCES: dict[str, tuple[str, ...]] = {
+    # Full CT_Settings._tag_seq from python-docx 1.2.0, docx/oxml/settings.py.
+    # As below, use local names (including m:mathPr and sl:schemaLibrary).
+    "settings": (
+        "writeProtection",
+        "view",
+        "zoom",
+        "removePersonalInformation",
+        "removeDateAndTime",
+        "doNotDisplayPageBoundaries",
+        "displayBackgroundShape",
+        "printPostScriptOverText",
+        "printFractionalCharacterWidth",
+        "printFormsData",
+        "embedTrueTypeFonts",
+        "embedSystemFonts",
+        "saveSubsetFonts",
+        "saveFormsData",
+        "mirrorMargins",
+        "alignBordersAndEdges",
+        "bordersDoNotSurroundHeader",
+        "bordersDoNotSurroundFooter",
+        "gutterAtTop",
+        "hideSpellingErrors",
+        "hideGrammaticalErrors",
+        "activeWritingStyle",
+        "proofState",
+        "formsDesign",
+        "attachedTemplate",
+        "linkStyles",
+        "stylePaneFormatFilter",
+        "stylePaneSortMethod",
+        "documentType",
+        "mailMerge",
+        "revisionView",
+        "trackRevisions",
+        "doNotTrackMoves",
+        "doNotTrackFormatting",
+        "documentProtection",
+        "autoFormatOverride",
+        "styleLockTheme",
+        "styleLockQFSet",
+        "defaultTabStop",
+        "autoHyphenation",
+        "consecutiveHyphenLimit",
+        "hyphenationZone",
+        "doNotHyphenateCaps",
+        "showEnvelope",
+        "summaryLength",
+        "clickAndTypeStyle",
+        "defaultTableStyle",
+        "evenAndOddHeaders",
+        "bookFoldRevPrinting",
+        "bookFoldPrinting",
+        "bookFoldPrintingSheets",
+        "drawingGridHorizontalSpacing",
+        "drawingGridVerticalSpacing",
+        "displayHorizontalDrawingGridEvery",
+        "displayVerticalDrawingGridEvery",
+        "doNotUseMarginsForDrawingGridOrigin",
+        "drawingGridHorizontalOrigin",
+        "drawingGridVerticalOrigin",
+        "doNotShadeFormData",
+        "noPunctuationKerning",
+        "characterSpacingControl",
+        "printTwoOnOne",
+        "strictFirstAndLastChars",
+        "noLineBreaksAfter",
+        "noLineBreaksBefore",
+        "savePreviewPicture",
+        "doNotValidateAgainstSchema",
+        "saveInvalidXml",
+        "ignoreMixedContent",
+        "alwaysShowPlaceholderText",
+        "doNotDemarcateInvalidXml",
+        "saveXmlDataOnly",
+        "useXSLTWhenSaving",
+        "saveThroughXslt",
+        "showXMLTags",
+        "alwaysMergeEmptyNamespace",
+        "updateFields",
+        "hdrShapeDefaults",
+        "footnotePr",
+        "endnotePr",
+        "compat",
+        "docVars",
+        "rsids",
+        "mathPr",
+        "attachedSchema",
+        "themeFontLang",
+        "clrSchemeMapping",
+        "doNotIncludeSubdocsInStats",
+        "doNotAutoCompressPictures",
+        "forceUpgrade",
+        "captions",
+        "readModeInkLockDown",
+        "smartTagType",
+        "schemaLibrary",
+        "shapeDefaults",
+        "doNotEmbedSmartTags",
+        "decimalSymbol",
+        "listSeparator",
+    ),
     "tblPr": (
         "tblStyle",
         "tblpPr",
@@ -145,7 +248,7 @@ def insert_ordered(parent: etree._Element, child: etree._Element, replace: bool 
     """Insert a property child before the first sibling that must follow it.
 
     Args:
-        parent: A `w:tblPr`, `w:tcPr`, `w:pPr` or `w:rPr` element.
+        parent: A `w:settings`, `w:tblPr`, `w:tcPr`, `w:pPr` or `w:rPr` element.
         child: The new child element (for example `w:shd` or `w:pBdr`).
         replace: Remove existing children with the same name first, so the
             element occurs once as the schema requires.

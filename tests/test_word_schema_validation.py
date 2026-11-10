@@ -394,16 +394,20 @@ def test_shared_corpus_really_renders_all_samples_strictly(tmp_path):
         sample_corpus.render_corpus(tmp_path / "corpus")
 
 
-def test_ci_schema_job_is_independent_nonblocking_and_always_reports():
+def test_ci_schema_job_is_blocking_and_always_reports():
     root = sample_corpus.PROJECT_ROOT
     workflow = yaml.safe_load((root / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
     job = workflow["jobs"]["word-schema"]
     assert job["runs-on"] == "ubuntu-latest"
-    assert job["continue-on-error"] is True
+    assert job["name"] == "Word schema gate"
+    assert "continue-on-error" not in job
+    assert "if" not in job
+    assert set(workflow["on"]) == {"push", "pull_request"}
     assert "needs" not in job and "needs" not in workflow["jobs"]["quality"]
     steps = job["steps"]
     download = next(step for step in steps if step.get("name") == "Download and verify validator")
     command = download["run"]
+    assert "continue-on-error" not in download
     assert "word_schema_validator_assets.json" in command
     assert command.index("curl --fail") < command.index("verify-asset") < command.index("unzip")
     validation = next(
