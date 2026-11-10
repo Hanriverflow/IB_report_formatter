@@ -1,0 +1,1291 @@
+{
+  "metadata": {
+    "title": "예시기업 거래검토 메모",
+    "subtitle": "",
+    "company": "예시금융",
+    "ticker": "",
+    "sector": "산업재",
+    "analyst": "기업금융팀",
+    "extra": {
+      "date": "2026-09-14",
+      "tables": [
+        {
+          "type": "financial",
+          "columns": [
+            "text",
+            "money",
+            "money",
+            "percent",
+            "code"
+          ],
+          "caption": "핵심 실적 요약",
+          "unit": "금액 백만원, 증감률 %",
+          "as_of": "2026-06-30",
+          "source": "기능 검증용 가상 데이터"
+        },
+        {
+          "type": "sensitivity",
+          "columns": [
+            "text",
+            "money",
+            "money",
+            "money"
+          ],
+          "caption": "가상 시나리오 비교",
+          "unit": "백만원",
+          "base_case": {
+            "row": 2,
+            "column": 3
+          },
+          "source": "예시 가정; 기준 셀은 입력에서 명시"
+        }
+      ]
+    },
+    "profile": "ib-memo",
+    "display_runs": {}
+  },
+  "sections": [],
+  "elements": [
+    {
+      "element_type": "HEADING_1",
+      "content": {
+        "level": 1,
+        "text": "예시기업 거래검토 메모",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "# 예시기업 거래검토 메모",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "검토 요지",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 검토 요지",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "실적·가정·출처를 함께 표시하여 숫자의 해석 기준을 분명히 합니다. 본 예시는 투자판단이나 실제 기업가치 평가를 위한 자료가 아닙니다.[^1]",
+        "runs": [
+          {
+            "text": "실적·가정·출처를 함께 표시하여 숫자의 해석 기준을 분명히 합니다. 본 예시는 투자판단이나 실제 기업가치 평가를 위한 자료가 아닙니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "1",
+            "bold": false,
+            "italic": false,
+            "superscript": true,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": 1,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "실적·가정·출처를 함께 표시하여 숫자의 해석 기준을 분명히 합니다. 본 예시는 투자판단이나 실제 기업가치 평가를 위한 자료가 아닙니다.[^1]",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "TABLE",
+      "content": {
+        "rows": [
+          {
+            "cells": [
+              {
+                "content": "지표",
+                "runs": [
+                  {
+                    "text": "지표",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "전기",
+                "runs": [
+                  {
+                    "text": "전기",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "당기",
+                "runs": [
+                  {
+                    "text": "당기",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "증감률",
+                "runs": [
+                  {
+                    "text": "증감률",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "코드",
+                "runs": [
+                  {
+                    "text": "코드",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": true
+          },
+          {
+            "cells": [
+              {
+                "content": "매출",
+                "runs": [
+                  {
+                    "text": "매출",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "120000",
+                "runs": [
+                  {
+                    "text": "120000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "**135000**",
+                "runs": [
+                  {
+                    "text": "135000",
+                    "bold": true,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "12.5",
+                "runs": [
+                  {
+                    "text": "12.5",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "001234",
+                "runs": [
+                  {
+                    "text": "001234",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "영업이익",
+                "runs": [
+                  {
+                    "text": "영업이익",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "15000",
+                "runs": [
+                  {
+                    "text": "15000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "16800",
+                "runs": [
+                  {
+                    "text": "16800",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "12.0",
+                "runs": [
+                  {
+                    "text": "12.0",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "005678",
+                "runs": [
+                  {
+                    "text": "005678",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "일회성 비용",
+                "runs": [
+                  {
+                    "text": "일회성 비용",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "(1200)",
+                "runs": [
+                  {
+                    "text": "(1200)",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "**(1800)**",
+                "runs": [
+                  {
+                    "text": "(1800)",
+                    "bold": true,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "",
+                "runs": [],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "009900",
+                "runs": [
+                  {
+                    "text": "009900",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          }
+        ],
+        "table_type": "FINANCIAL",
+        "col_count": 5,
+        "alignments": [
+          "left",
+          "left",
+          "left",
+          "left",
+          "left"
+        ],
+        "column_types": [
+          "text",
+          "money",
+          "money",
+          "percent",
+          "code"
+        ],
+        "caption": "핵심 실적 요약",
+        "unit": "금액 백만원, 증감률 %",
+        "source": "기능 검증용 가상 데이터",
+        "as_of": "2026-06-30",
+        "landscape": false,
+        "warnings": [],
+        "spans": null,
+        "label_columns": null,
+        "note": "",
+        "header_rows": 1,
+        "schedule": null
+      },
+      "raw_text": "| 지표 | 전기 | 당기 | 증감률 | 코드 |\n|---|---|---|---|---|\n| 매출 | 120000 | **135000** | 12.5 | 001234 |\n| 영업이익 | 15000 | 16800 | 12.0 | 005678 |\n| 일회성 비용 | (1200) | **(1800)** | | 009900 |",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "시나리오",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 시나리오",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "TABLE",
+      "content": {
+        "rows": [
+          {
+            "cells": [
+              {
+                "content": "구분",
+                "runs": [
+                  {
+                    "text": "구분",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "하단",
+                "runs": [
+                  {
+                    "text": "하단",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "기준",
+                "runs": [
+                  {
+                    "text": "기준",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "상단",
+                "runs": [
+                  {
+                    "text": "상단",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": true
+          },
+          {
+            "cells": [
+              {
+                "content": "보수",
+                "runs": [
+                  {
+                    "text": "보수",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "8000",
+                "runs": [
+                  {
+                    "text": "8000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "9000",
+                "runs": [
+                  {
+                    "text": "9000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "10000",
+                "runs": [
+                  {
+                    "text": "10000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "기본",
+                "runs": [
+                  {
+                    "text": "기본",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "10000",
+                "runs": [
+                  {
+                    "text": "10000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "11000",
+                "runs": [
+                  {
+                    "text": "11000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": true,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "12000",
+                "runs": [
+                  {
+                    "text": "12000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "낙관",
+                "runs": [
+                  {
+                    "text": "낙관",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "12000",
+                "runs": [
+                  {
+                    "text": "12000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "13000",
+                "runs": [
+                  {
+                    "text": "13000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "14000",
+                "runs": [
+                  {
+                    "text": "14000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          }
+        ],
+        "table_type": "BEP_SENSITIVITY",
+        "col_count": 4,
+        "alignments": [
+          "left",
+          "left",
+          "left",
+          "left"
+        ],
+        "column_types": [
+          "text",
+          "money",
+          "money",
+          "money"
+        ],
+        "caption": "가상 시나리오 비교",
+        "unit": "백만원",
+        "source": "예시 가정; 기준 셀은 입력에서 명시",
+        "as_of": "",
+        "landscape": false,
+        "warnings": [],
+        "spans": null,
+        "label_columns": null,
+        "note": "",
+        "header_rows": 1,
+        "schedule": null
+      },
+      "raw_text": "| 구분 | 하단 | 기준 | 상단 |\n|---|---|---|---|\n| 보수 | 8000 | 9000 | 10000 |\n| 기본 | 10000 | 11000 | 12000 |\n| 낙관 | 12000 | 13000 | 14000 |",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "확인할 사항",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 확인할 사항",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "BULLET_LIST",
+      "content": {
+        "text": "일회성 항목의 정상화 근거",
+        "runs": [
+          {
+            "text": "일회성 항목의 정상화 근거",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "indent_level": 0
+      },
+      "raw_text": "- 일회성 항목의 정상화 근거",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "BULLET_LIST",
+      "content": {
+        "text": "재무수치 기준일과 자료 버전",
+        "runs": [
+          {
+            "text": "재무수치 기준일과 자료 버전",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "indent_level": 0
+      },
+      "raw_text": "- 재무수치 기준일과 자료 버전",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "BULLET_LIST",
+      "content": {
+        "text": "거래구조 확정 전 추가 실사 범위",
+        "runs": [
+          {
+            "text": "거래구조 확정 전 추가 실사 범위",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "indent_level": 0
+      },
+      "raw_text": "- 거래구조 확정 전 추가 실사 범위",
+      "inferred_subtitle": false
+    }
+  ],
+  "footnotes": {
+    "1": "모든 수치는 문서 엔진 검증을 위해 임의로 만든 가상 값입니다."
+  },
+  "warnings": [],
+  "parsed_profile": "ib-memo",
+  "source_dir": ".",
+  "asset_roots": [
+    "."
+  ],
+  "limits": {
+    "max_input_bytes": 16777216,
+    "max_table_cells": 50000,
+    "max_list_depth": 32,
+    "max_image_bytes": 20971520,
+    "max_image_pixels": 50000000
+  }
+}

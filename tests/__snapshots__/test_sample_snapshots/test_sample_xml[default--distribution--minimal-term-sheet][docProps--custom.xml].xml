@@ -1,0 +1,27 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes'?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="generator" pid="2">
+    <vt:lpwstr>ib_report_formatter</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="generator_version" pid="3">
+    <vt:lpwstr>2.0.0</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="generator_profile" pid="4">
+    <vt:lpwstr>term-sheet</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.amount" pid="5">
+    <vt:lpwstr>100억원</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.company" pid="6">
+    <vt:lpwstr>가나다머티리얼즈㈜</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.first_draw" pid="7">
+    <vt:lpwstr>2026-10-15</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.maturity" pid="8">
+    <vt:lpwstr>2028-10-15</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.rate" pid="9">
+    <vt:lpwstr>4.50%</vt:lpwstr>
+  </property>
+</Properties>

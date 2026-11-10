@@ -1,0 +1,1049 @@
+{
+  "metadata": {
+    "title": "가로 표 전환 검증",
+    "subtitle": "",
+    "company": "예시금융",
+    "ticker": "",
+    "sector": "SECTOR",
+    "analyst": "DCM Team 1",
+    "extra": {
+      "tables": [
+        {
+          "type": "financial",
+          "landscape": true,
+          "columns": [
+            "text",
+            "money",
+            "money",
+            "money",
+            "money",
+            "money",
+            "money",
+            "money"
+          ],
+          "caption": "연도별 가상 실적",
+          "unit": "백만원",
+          "source": "렌더링 검증용 가상 데이터",
+          "as_of": "2026-09-14"
+        }
+      ]
+    },
+    "profile": "ib-memo",
+    "display_runs": {}
+  },
+  "sections": [],
+  "elements": [
+    {
+      "element_type": "HEADING_1",
+      "content": {
+        "level": 1,
+        "text": "가로 표 전환 검증",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "# 가로 표 전환 검증",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "이 문단은 A4 세로 페이지입니다. 다음 표만 가로 구역으로 전환됩니다.",
+        "runs": [
+          {
+            "text": "이 문단은 A4 세로 페이지입니다. 다음 표만 가로 구역으로 전환됩니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "이 문단은 A4 세로 페이지입니다. 다음 표만 가로 구역으로 전환됩니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "TABLE",
+      "content": {
+        "rows": [
+          {
+            "cells": [
+              {
+                "content": "지표",
+                "runs": [
+                  {
+                    "text": "지표",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2020",
+                "runs": [
+                  {
+                    "text": "2020",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2021",
+                "runs": [
+                  {
+                    "text": "2021",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2022",
+                "runs": [
+                  {
+                    "text": "2022",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2023",
+                "runs": [
+                  {
+                    "text": "2023",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2024",
+                "runs": [
+                  {
+                    "text": "2024",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2025",
+                "runs": [
+                  {
+                    "text": "2025",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2026",
+                "runs": [
+                  {
+                    "text": "2026",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": true
+          },
+          {
+            "cells": [
+              {
+                "content": "매출",
+                "runs": [
+                  {
+                    "text": "매출",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "100000",
+                "runs": [
+                  {
+                    "text": "100000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "110000",
+                "runs": [
+                  {
+                    "text": "110000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "120000",
+                "runs": [
+                  {
+                    "text": "120000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "125000",
+                "runs": [
+                  {
+                    "text": "125000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "130000",
+                "runs": [
+                  {
+                    "text": "130000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "135000",
+                "runs": [
+                  {
+                    "text": "135000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "140000",
+                "runs": [
+                  {
+                    "text": "140000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "영업이익",
+                "runs": [
+                  {
+                    "text": "영업이익",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "10000",
+                "runs": [
+                  {
+                    "text": "10000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "12000",
+                "runs": [
+                  {
+                    "text": "12000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "14000",
+                "runs": [
+                  {
+                    "text": "14000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "15000",
+                "runs": [
+                  {
+                    "text": "15000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "16000",
+                "runs": [
+                  {
+                    "text": "16000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "17000",
+                "runs": [
+                  {
+                    "text": "17000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "18000",
+                "runs": [
+                  {
+                    "text": "18000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "일회성 비용",
+                "runs": [
+                  {
+                    "text": "일회성 비용",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "(1000)",
+                "runs": [
+                  {
+                    "text": "(1000)",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "(1100)",
+                "runs": [
+                  {
+                    "text": "(1100)",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "(1200)",
+                "runs": [
+                  {
+                    "text": "(1200)",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "(1300)",
+                "runs": [
+                  {
+                    "text": "(1300)",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "(1400)",
+                "runs": [
+                  {
+                    "text": "(1400)",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "(1500)",
+                "runs": [
+                  {
+                    "text": "(1500)",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "**(1600)**",
+                "runs": [
+                  {
+                    "text": "(1600)",
+                    "bold": true,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          }
+        ],
+        "table_type": "FINANCIAL",
+        "col_count": 8,
+        "alignments": [
+          "left",
+          "left",
+          "left",
+          "left",
+          "left",
+          "left",
+          "left",
+          "left"
+        ],
+        "column_types": [
+          "text",
+          "money",
+          "money",
+          "money",
+          "money",
+          "money",
+          "money",
+          "money"
+        ],
+        "caption": "연도별 가상 실적",
+        "unit": "백만원",
+        "source": "렌더링 검증용 가상 데이터",
+        "as_of": "2026-09-14",
+        "landscape": true,
+        "warnings": [],
+        "spans": null,
+        "label_columns": null,
+        "note": "",
+        "header_rows": 1,
+        "schedule": null
+      },
+      "raw_text": "| 지표 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 |\n|---|---|---|---|---|---|---|---|\n| 매출 | 100000 | 110000 | 120000 | 125000 | 130000 | 135000 | 140000 |\n| 영업이익 | 10000 | 12000 | 14000 | 15000 | 16000 | 17000 | 18000 |\n| 일회성 비용 | (1000) | (1100) | (1200) | (1300) | (1400) | (1500) | **(1600)** |",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "세로 페이지 복구",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 세로 페이지 복구",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "표 이후 문단은 원래 A4 세로 구역으로 돌아와야 합니다. 쪽번호는 구역에 관계없이 연속됩니다.",
+        "runs": [
+          {
+            "text": "표 이후 문단은 원래 A4 세로 구역으로 돌아와야 합니다. 쪽번호는 구역에 관계없이 연속됩니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "표 이후 문단은 원래 A4 세로 구역으로 돌아와야 합니다. 쪽번호는 구역에 관계없이 연속됩니다.",
+      "inferred_subtitle": false
+    }
+  ],
+  "footnotes": {},
+  "warnings": [],
+  "parsed_profile": "ib-memo",
+  "source_dir": ".",
+  "asset_roots": [
+    "."
+  ],
+  "limits": {
+    "max_input_bytes": 16777216,
+    "max_table_cells": 50000,
+    "max_list_depth": 32,
+    "max_image_bytes": 20971520,
+    "max_image_pixels": 50000000
+  }
+}
