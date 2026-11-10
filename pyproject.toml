@@ -51,6 +51,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 only-include = [
+    "input_safety.py",
     "chart_renderer.py", "converted_md_cleaner.py",
     "cli_utils.py", "converters.py", "deep_md_cleaner.py", "diagram_renderer.py",
     "document_model.py", "document_profiles.py", "docx_audit.py", "ib_renderer.py",
@@ -60,6 +61,7 @@ only-include = [
 
 [tool.hatch.build.targets.sdist]
 include = [
+    "/input_safety.py",
     "/chart_renderer.py", "/converted_md_cleaner.py",
     "/cli_utils.py", "/converters.py", "/deep_md_cleaner.py", "/diagram_renderer.py",
     "/document_model.py", "/document_profiles.py", "/docx_audit.py", "/ib_renderer.py",
@@ -96,6 +98,7 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = [
+    "input_safety",
     "chart_renderer",
     "cli_utils",
     "converted_md_cleaner",

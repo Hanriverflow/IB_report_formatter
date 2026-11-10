@@ -98,7 +98,10 @@ def validate_term_sheet_metadata(metadata: DocumentMetadata, check_length: bool 
 
 @dataclass(frozen=True)
 class RenderOptions:
-    """Explicit caller overrides; None inherits frontmatter/profile defaults."""
+    """Explicit caller overrides; None inherits frontmatter/profile defaults.
+
+    Asset roots are additive caller settings and never inherit document values.
+    """
 
     include_cover: bool | None = None
     include_toc: bool | None = None
@@ -112,6 +115,8 @@ class RenderOptions:
     preset: str | None = None
     house: str | None = None
     term_tags: bool | None = None
+    # Additive operator-only folders; never inherited from YAML or presets.
+    asset_roots: tuple[str | Path, ...] = ()
 
 
 PRESETS: Mapping[str, RenderOptions] = MappingProxyType(

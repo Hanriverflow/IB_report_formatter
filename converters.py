@@ -162,12 +162,19 @@ class MarkdownInputConverter(InputConverter):
     def convert(
         self, source: str | Path | BinaryIO | DocumentModel, **kwargs: Any
     ) -> DocumentModel:
+        from document_profiles import RenderOptions
         from md_parser import parse_markdown_file
+
+        options = kwargs.get("render_options")
+        roots = kwargs.get("asset_roots", ())
+        profile = kwargs.get("profile")
+        if isinstance(options, RenderOptions):
+            roots = (*options.asset_roots, *roots)
 
         # parse_markdown_file now accepts both str and BinaryIO
         if is_stream(source):
-            return parse_markdown_file(cast(BinaryIO, source), profile=kwargs.get("profile"))
-        return parse_markdown_file(str(source), profile=kwargs.get("profile"))
+            return parse_markdown_file(cast(BinaryIO, source), profile=profile, asset_roots=roots)
+        return parse_markdown_file(str(source), profile=profile, asset_roots=roots)
 
 
 class DocxOutputConverter(OutputConverter):
@@ -203,7 +210,7 @@ class DocxOutputConverter(OutputConverter):
         if not isinstance(options, RenderOptions):
             raise TypeError("render_options must be RenderOptions")
         renderer = IBDocumentRenderer(options=options)
-        doc = renderer.render(source)
+        doc = renderer.render(source, asset_roots=kwargs.get("asset_roots", ()))
         output_path = kwargs.get("output_path")
         if output_path:
             from cli_utils import safe_save

@@ -355,6 +355,8 @@ class DocumentModel:
     # Folder of the source file; None for text or stream input. Relative link
     # targets refer to it until a save rebases them on the output folder.
     source_dir: Path | None = None
+    # Trusted caller context, deliberately separate from frontmatter metadata.
+    asset_roots: tuple[Path, ...] = ()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

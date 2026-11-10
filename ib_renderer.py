@@ -63,7 +63,7 @@ import os
 import platform
 import re
 import time
-from collections.abc import Callable, Mapping, Set
+from collections.abc import Callable, Mapping, Sequence, Set
 from copy import deepcopy
 from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
@@ -73,7 +73,6 @@ from typing import (
     Any,
     cast,
 )
-from urllib.parse import unquote
 from uuid import uuid4
 from xml.sax.saxutils import escape
 
@@ -100,6 +99,12 @@ from document_profiles import (
     resolve_options,
     validate_office_metadata,
     validate_term_sheet_metadata,
+)
+from input_safety import (
+    AssetOutsideRootError,
+    StrictValidationError,
+    local_asset_path,
+    resolve_asset_roots,
 )
 from md_parser import (
     Blockquote,
@@ -893,9 +898,12 @@ class TextRenderer:
         A picture that cannot be loaded leaves a visible marker and a diagnostic
         that strict mode rejects.
         """
+        message = "Image could not be rendered: " + (image.alt_text or image.path)
         try:
             source = ImageRenderer.image_source(
-                image, getattr(paragraph.part, "_ib_source_dir", None)
+                image,
+                getattr(paragraph.part, "_ib_source_dir", None),
+                getattr(paragraph.part, "_ib_asset_roots", ()),
             )
             if source is None:
                 raise FileNotFoundError(image.path)
@@ -906,6 +914,9 @@ class TextRenderer:
                 shape.width = limit
             ImageRenderer._apply_alt_text(shape, image.alt_text)
             return
+        except AssetOutsideRootError as err:
+            message = str(err)
+            logger.warning("%s", message)
         except Exception as err:
             logger.warning("Inline image could not be inserted (%s): %s", image.alt_text, err)
         FontStyler.apply_run_style(
@@ -916,7 +927,7 @@ class TextRenderer:
         )
         errors = getattr(paragraph.part, "_ib_render_errors", None)
         if errors is not None:
-            errors.append("Image could not be rendered: " + (image.alt_text or image.path))
+            errors.append(message)
 
     @staticmethod
     def _render_inline_latex(paragraph, expression: str, font_size: Pt):
@@ -3040,12 +3051,15 @@ class ImageRenderer:
     MAX_WIDTH_INCHES: float = 5.5
     # Word's default left/right cell margin when a table does not set one.
     _DEFAULT_CELL_MARGIN_TWIPS = 108
+    _URI_RE = re.compile(r"^(?:[a-zA-Z][a-zA-Z0-9+.-]*://|data:)", re.IGNORECASE)
 
     def __init__(self, doc: DocxDocument):
         self.doc = doc
 
     @staticmethod
-    def local_path(path: str, base_dir: Path | None = None) -> Path | None:
+    def local_path(
+        path: str, base_dir: Path | None = None, asset_roots: Sequence[str | Path] = ()
+    ) -> Path | None:
         """Return the existing local file an image destination names.
 
         Markdown destinations are URLs, so converters write `a%20b.png`; the
@@ -3055,32 +3069,23 @@ class ImageRenderer:
         Args:
             path: Destination as written.
             base_dir: Folder for a relative path; None keeps it cwd-relative.
+            asset_roots: Operator-supplied allowed folders.
 
         Returns:
             The file, or None when neither form names an existing file.
         """
-        candidates = [path]
-        decoded = unquote(path)
-        if decoded != path:
-            candidates.append(decoded)
-        for candidate in candidates:
-            location = Path(candidate)
-            if base_dir is not None and not location.is_absolute():
-                location = base_dir / location
-            try:
-                if location.is_file():
-                    return location
-            except (OSError, ValueError):
-                continue
-        return None
+        return local_asset_path(path, base_dir, asset_roots)
 
     @classmethod
-    def image_source(cls, image: Image, base_dir: Path | None = None) -> str | BytesIO | None:
+    def image_source(
+        cls, image: Image, base_dir: Path | None = None, asset_roots: Sequence[str | Path] = ()
+    ) -> str | BytesIO | None:
         """Return what python-docx inserts for an image: decoded bytes or a file path.
 
         Args:
             image: Parsed image; Base64 data or a `data:` URI wins over a path.
             base_dir: Folder for a relative path (see `local_path`).
+            asset_roots: Operator-supplied allowed folders.
 
         Returns:
             A stream or path, or None when the file does not exist.
@@ -3092,7 +3097,9 @@ class ImageRenderer:
                 data = payload
         if data is not None:
             return BytesIO(base64.b64decode(data))
-        location = cls.local_path(image.path, base_dir)
+        if cls._URI_RE.match(image.path) and not Path(image.path).is_absolute():
+            return None
+        location = cls.local_path(image.path, base_dir, asset_roots)
         return str(location) if location is not None else None
 
     @classmethod
@@ -3148,6 +3155,7 @@ class ImageRenderer:
 
         inserted = False
         temp_file_path = None
+        message = "Image could not be rendered"
 
         try:
             # ── Case 1: Base64 embedded image ──────────────────────────────────
@@ -3171,7 +3179,11 @@ class ImageRenderer:
             # ── Case 2: File path image ────────────────────────────────────────
             elif image.path:
                 # File-backed parses made the path absolute; others stay cwd-relative.
-                source = self.image_source(image)
+                source = self.image_source(
+                    image,
+                    getattr(self.doc.part, "_ib_source_dir", None),
+                    getattr(self.doc.part, "_ib_asset_roots", ()),
+                )
                 if source is None:
                     logger.warning(
                         "Image file not found: %s — inserting placeholder",
@@ -3182,6 +3194,9 @@ class ImageRenderer:
                     inserted = True
                     logger.debug("Inserted file image: %s", image.path[:80])
 
+        except AssetOutsideRootError as e:
+            message = str(e)
+            logger.warning("%s", message)
         except Exception as e:
             logger.warning(
                 "Failed to insert image '%s': %s — inserting placeholder",
@@ -3200,6 +3215,9 @@ class ImageRenderer:
         # ── Fallback: Placeholder ──────────────────────────────────────────────
         if not inserted:
             self._render_placeholder(image.alt_text)
+            errors = getattr(self.doc.part, "_ib_render_errors", None)
+            if errors is not None:
+                errors.append(message)
         return inserted
 
     def _insert_image(self, file_path: str | BytesIO, alt_text: str):
@@ -3655,10 +3673,21 @@ class IBDocumentRenderer:
         self.disclaimer_renderer = DisclaimerRenderer(self.doc)
         self.chart_renderer = ChartRenderer(self.doc)
 
-    def render(self, model: DocumentModel) -> DocxDocument:
-        """Render through one composition path, using request-local settings."""
+    def render(
+        self, model: DocumentModel, *, asset_roots: Sequence[str | Path] = ()
+    ) -> DocxDocument:
+        """Render through one composition path, using request-local settings.
+
+        Args:
+            model: Parsed or hand-built document with its carried allowed folders.
+            asset_roots: Operator folders added to model and RenderOptions folders.
+
+        Returns:
+            The rendered document; strict rejections occur before callers can save it.
+        """
         self.term_sheet_texts = None
         model = deepcopy(model)
+        roots = resolve_asset_roots((*model.asset_roots, *self.options.asset_roots, *asset_roots))
         resolved = resolve_options(model.metadata, self.options)
         if model.parsed_profile is not None and model.parsed_profile != resolved.profile.name:
             raise ValueError(
@@ -3710,12 +3739,19 @@ class IBDocumentRenderer:
                     break
         appendix_index = letter_appendix_index(model)
         if resolved.strict and model.warnings:
-            raise ValueError("Input validation failed: " + "; ".join(model.warnings))
+            raise StrictValidationError("Input validation failed: ", model.warnings)
         self.errors = list(model.warnings)
         self._term_sheet = term_sheet
         self._reset_document()
         # Inline images (table cells, text) resolve relative paths against the source.
         cast(Any, self.doc.part)._ib_source_dir = model.source_dir
+        cast(Any, self.doc.part)._ib_asset_roots = roots
+        # Only an operator-selected house can exempt its own logo. A frontmatter
+        # override remains document content even when it names the identical path.
+        style = model.metadata.extra.get("style", {})
+        cast(Any, self.doc.part)._ib_trusted_house_logo = (
+            self.options.house is not None and isinstance(style, dict) and "logo" not in style
+        )
         self.separator_mode = resolved.separator_mode
         self.charts = resolved.charts
         with (
@@ -3850,7 +3886,7 @@ class IBDocumentRenderer:
             issues = inspect_document_issues(self.doc)
             self.errors.extend(issue for issue in issues if issue not in self.errors)
             if resolved.strict and self.errors:
-                raise ValueError("Document validation failed: " + "; ".join(self.errors))
+                raise StrictValidationError("Document validation failed: ", self.errors)
         return self.doc
 
     def apply_generator_signature(self, profile: str = "ib_generated") -> None:
@@ -3974,8 +4010,7 @@ class IBDocumentRenderer:
             self.callout_renderer.render(cast(Blockquote, element.content))
 
         elif etype == ElementType.IMAGE:
-            if not self.image_renderer.render(cast(Image, element.content)):
-                self.errors.append("Image could not be rendered")
+            self.image_renderer.render(cast(Image, element.content))
 
         elif etype == ElementType.LATEX_BLOCK:
             self._render_latex_block(cast(LaTeXEquation, element.content))

@@ -19,6 +19,7 @@ def _render(
     profile: str = "plain",
     strict: bool = True,
     cover: bool | None = None,
+    asset_roots: tuple[Path, ...] = (),
 ) -> tuple[DocumentModel, DocxDocument]:
     """Parse and render with matching profiles and explicit strictness."""
     model = MarkdownParser(profile=profile).parse(markdown)
@@ -29,6 +30,7 @@ def _render(
             include_cover=cover,
             include_toc=False,
             include_disclaimer=False,
+            asset_roots=asset_roots,
         )
     ).render(model)
     return model, doc
@@ -162,7 +164,7 @@ def test_p2e_image_destination_excludes_title(tmp_path: Path, angled: bool) -> N
         )
     )
     destination = f"<{image.as_posix()}>" if angled else image.as_posix()
-    _, doc = _render(f'![Chart]({destination} "Revenue")')
+    _, doc = _render(f'![Chart]({destination} "Revenue")', asset_roots=(tmp_path,))
     target = tmp_path / "image.docx"
     doc.save(str(target))
     assert len(Document(str(target)).inline_shapes) == 1
