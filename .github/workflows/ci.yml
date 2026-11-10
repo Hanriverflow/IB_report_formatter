@@ -71,3 +71,46 @@ jobs:
           for source in sources:
               ast.parse(source.read_text(encoding="utf-8-sig"), filename=str(source), feature_version=(3, 12))
           logging.info("Python 3.12 syntax verified: %d modules", len(sources))
+
+  word-schema:
+    name: Word schema report (non-blocking)
+    runs-on: ubuntu-latest
+    # Report-only until snapshots and the engine fixes are reviewed separately.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+      - name: Install Korean fonts
+        run: sudo apt-get update && sudo apt-get install -y fonts-nanum
+      - name: Download and verify validator
+        shell: bash
+        run: |
+          url=$(uv run --no-sync python -c 'import json, sys; from pathlib import Path; sys.stdout.write(json.loads(Path("scripts/word_schema_validator_assets.json").read_text())["assets"]["linux-x64.zip"]["url"])')
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/linux-x64.zip" "$url"
+          uv run --no-sync python -m scripts.validate_word_schema verify-asset "$RUNNER_TEMP/linux-x64.zip"
+          unzip -q "$RUNNER_TEMP/linux-x64.zip" -d "$RUNNER_TEMP/ooxml-validator"
+          chmod +x "$RUNNER_TEMP/ooxml-validator/OOXMLValidatorCLI"
+      - name: Render corpus and validate Word schema
+        run: >-
+          uv run --no-sync python -m scripts.validate_word_schema validate
+          "$RUNNER_TEMP/ooxml-validator/OOXMLValidatorCLI"
+          --output-dir "$RUNNER_TEMP/word-schema-docx"
+          --report word-schema-report.json
+      - name: Ensure a report exists after setup failures
+        if: always()
+        shell: bash
+        run: |
+          if [ ! -f word-schema-report.json ]; then
+            printf '%s\n' '{"ok": false, "stage": "setup", "documents": [], "failure": "Validation did not run; see the job log."}' > word-schema-report.json
+          fi
+      - name: Upload Word schema report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: word-schema-report
+          path: word-schema-report.json
+          if-no-files-found: error
