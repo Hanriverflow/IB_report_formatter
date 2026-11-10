@@ -2,6 +2,9 @@
 MD to IB Style Word Report Converter
 Main entry point for converting Markdown files to professional IB-style Word documents.
 
+Changelog (B-7 property regressions):
+    - Reject empty input files with the documented StrictValidationError type.
+
 Usage:
     uv run md_to_word.py input.md [output.docx]
     uv run md_to_word.py --list                    # Show available md files
@@ -52,7 +55,13 @@ from cli_utils import (
 from document_profiles import PRESETS, PROFILES
 from document_profiles import RenderOptions as RenderOptions
 from ib_renderer import IBDocumentRenderer, rebase_local_links
-from input_safety import DEFAULT_LIMITS, InputLimits, check_input_file, read_input_file
+from input_safety import (
+    DEFAULT_LIMITS,
+    InputLimits,
+    StrictValidationError,
+    check_input_file,
+    read_input_file,
+)
 from md_parser import DocumentModel, parse_markdown_file
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -266,7 +275,7 @@ class IBReportConverter:
 
         # Check file is not empty
         if self.md_file_path.stat().st_size == 0:
-            raise ValueError(f"Input file is empty: {self.md_file_path}")
+            raise StrictValidationError("", [f"Input file is empty: {self.md_file_path}"])
 
     def convert(self) -> str:
         """
