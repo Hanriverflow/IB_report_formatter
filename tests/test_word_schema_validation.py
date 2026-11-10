@@ -103,6 +103,19 @@ def test_exception_identity_requires_all_three_exact_fields(tmp_path, field):
     assert len(result["unused_exceptions"]) == 1
 
 
+@pytest.mark.parametrize("field", ["Description", "ErrorType"])
+def test_exception_does_not_cover_different_error_at_same_location(tmp_path, field):
+    exceptions = _load_entries(tmp_path, [_exception_entry()])
+    different = copy.deepcopy(ERROR)
+    different[field] += " "
+    path = tmp_path / "example.docx"
+    result = schema.evaluate_output(_payload(path, [different]), [path], exceptions)
+    assert result["ok"] is False
+    assert result["uncovered_error_count"] == 1
+    assert len(result["unused_exceptions"]) == 1
+    assert result["documents"][0]["errors"][0]["covered_by_exception"] is False
+
+
 def test_unused_exception_fails_even_without_errors(tmp_path):
     exceptions = _load_entries(tmp_path, [_exception_entry()])
     path = tmp_path / "example.docx"
@@ -239,21 +252,100 @@ def test_hash_command_fails_for_wrong_release_asset(tmp_path):
     assert schema.main(["verify-asset", str(asset)]) == 1
 
 
+@pytest.mark.parametrize("name", ["unverified.exe", "win-x64.zip", "linux-x64.zip"])
+def test_validate_never_executes_unverified_or_mismatched_asset(tmp_path, monkeypatch, name):
+    from unittest.mock import Mock
+
+    asset = tmp_path / name
+    asset.write_bytes(b"example unverified executable or mismatched archive")
+    run = Mock(return_value=subprocess.CompletedProcess([], 0, "[]", ""))
+    monkeypatch.setattr(schema.subprocess, "run", run)
+    monkeypatch.setattr(schema, "render_corpus", lambda _: (tmp_path / "example.docx",))
+    report = tmp_path / "report.json"
+    assert (
+        schema.main(
+            ["validate", str(asset), "--output-dir", str(tmp_path / "out"), "--report", str(report)]
+        )
+        == 1
+    )
+    run.assert_not_called()
+
+
+@pytest.fixture
+def pinned_archive(tmp_path, monkeypatch):
+    asset = tmp_path / "example.zip"
+    with ZipFile(asset, "w") as archive:
+        for name in ("OOXMLValidatorCLI", "OOXMLValidatorCLI.exe"):
+            archive.writestr(name, b"example verified executable")
+    manifest = tmp_path / "assets.json"
+    manifest.write_text(
+        json.dumps(
+            {"assets": {asset.name: {"sha256": hashlib.sha256(asset.read_bytes()).hexdigest()}}}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(schema, "ASSET_MANIFEST", manifest)
+    return asset
+
+
+def test_validate_runs_the_verified_copy_even_if_download_changes(
+    tmp_path, monkeypatch, pinned_archive
+):
+    path = tmp_path / "example.docx"
+    verify = schema.verify_asset
+    verified = []
+    executed = []
+
+    def verify_and_change_download(asset, manifest):
+        verify(asset, manifest)
+        assert asset != pinned_archive
+        verified.append(asset)
+        pinned_archive.write_bytes(b"example changed download")
+
+    def fake_run(command, **kwargs):
+        executable = Path(command[0])
+        assert verified
+        assert executable.parent.parent == verified[0].parent
+        assert executable.read_bytes() == b"example verified executable"
+        executed.append(executable)
+        return subprocess.CompletedProcess(command, 0, _payload(path, []), "")
+
+    monkeypatch.setattr(schema, "verify_asset", verify_and_change_download)
+    monkeypatch.setattr(schema, "render_corpus", lambda _: (path,))
+    monkeypatch.setattr(schema.subprocess, "run", fake_run)
+    assert (
+        schema.main(
+            [
+                "validate",
+                str(pinned_archive),
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--report",
+                str(tmp_path / "report.json"),
+            ]
+        )
+        == 0
+    )
+    assert len(executed) == 1
+    assert not executed[0].exists()
+
+
 @pytest.mark.parametrize(
     "outcome, exit_code",
     [("clean", 0), ("errors", 1), ("bad_json", 1), ("process_failure", 1), ("timeout", 1)],
 )
 def test_cli_writes_report_and_uses_content_not_process_success(
-    tmp_path, monkeypatch, outcome, exit_code
+    tmp_path, monkeypatch, outcome, exit_code, pinned_archive
 ):
     output_dir = tmp_path / "rendered"
     path = output_dir / "example.docx"
     monkeypatch.setattr(schema, "render_corpus", lambda destination: (path,))
-    validator = tmp_path / "not-executed-validator"
 
     def fake_run(command, **kwargs):
-        assert command == [
-            str(validator.resolve()),
+        executable = Path(command[0])
+        assert executable.read_bytes() == b"example verified executable"
+        assert executable.parent != pinned_archive.parent
+        assert command[1:] == [
             str(output_dir.resolve()),
             "Microsoft365",
             "--recursive",
@@ -275,7 +367,14 @@ def test_cli_writes_report_and_uses_content_not_process_success(
     monkeypatch.setattr(schema.subprocess, "run", fake_run)
     report_path = tmp_path / "report.json"
     result = schema.main(
-        ["validate", str(validator), "--output-dir", str(output_dir), "--report", str(report_path)]
+        [
+            "validate",
+            str(pinned_archive),
+            "--output-dir",
+            str(output_dir),
+            "--report",
+            str(report_path),
+        ]
     )
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert result == exit_code
@@ -287,7 +386,7 @@ def test_cli_writes_report_and_uses_content_not_process_success(
         assert report["failure"]
 
 
-def test_render_failure_still_writes_report(tmp_path, monkeypatch):
+def test_render_failure_still_writes_report(tmp_path, monkeypatch, pinned_archive):
     def fail_render(destination):
         raise ValueError("Example strict rendering failure")
 
@@ -297,7 +396,7 @@ def test_render_failure_still_writes_report(tmp_path, monkeypatch):
         schema.main(
             [
                 "validate",
-                "unused",
+                str(pinned_archive),
                 "--output-dir",
                 str(tmp_path / "new"),
                 "--report",
@@ -312,7 +411,9 @@ def test_render_failure_still_writes_report(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("has_error", [False, True])
-def test_cli_applies_exception_file_and_office_override(tmp_path, monkeypatch, has_error):
+def test_cli_applies_exception_file_and_office_override(
+    tmp_path, monkeypatch, has_error, pinned_archive
+):
     _load_entries(tmp_path, [_exception_entry()])
     path = tmp_path / "example.docx"
     monkeypatch.setattr(schema, "render_corpus", lambda destination: (path,))
@@ -328,7 +429,7 @@ def test_cli_applies_exception_file_and_office_override(tmp_path, monkeypatch, h
     result = schema.main(
         [
             "validate",
-            "unused",
+            str(pinned_archive),
             "--output-dir",
             str(tmp_path / "new"),
             "--report",
@@ -409,12 +510,15 @@ def test_ci_schema_job_is_blocking_and_always_reports():
     command = download["run"]
     assert "continue-on-error" not in download
     assert "word_schema_validator_assets.json" in command
-    assert command.index("curl --fail") < command.index("verify-asset") < command.index("unzip")
+    assert command.index("curl --fail") < command.index("verify-asset")
+    assert "unzip" not in command and "chmod" not in command
     validation = next(
         step for step in steps if step.get("name") == "Render corpus and validate Word schema"
     )
     assert steps.index(download) < steps.index(validation)
     assert "--report word-schema-report.json" in validation["run"]
+    assert '"$RUNNER_TEMP/linux-x64.zip"' in validation["run"]
+    assert "OOXMLValidatorCLI" not in validation["run"]
     assert "continue-on-error" not in validation
     fallback = next(
         step for step in steps if step.get("name") == "Ensure a report exists after setup failures"

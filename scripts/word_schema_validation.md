@@ -4,14 +4,21 @@ This checkout-only tool uses OOXML-Validator v2.1.6 (MIT), targeting
 `Microsoft365` by default. It is neither a product nor a test dependency.
 Only CI downloads the executable. Release URLs and SHA-256 values from the
 first downloads on 2026-11-10 are pinned in `word_schema_validator_assets.json`.
-Verify the archive before extracting or running its executable:
+Pass the downloaded archive to `validate`. It copies the archive into a fresh
+OS temporary directory, verifies that copy against the pinned manifest, extracts
+it there, and runs only that executable. The temporary directory is removed
+afterwards. A changed or unrecognized archive fails at stage `verify_asset`
+before rendering or execution. `verify-asset` remains available as a standalone
+check; `validate` always verifies again during its own invocation:
 
 ```sh
 uv run --no-sync python -m scripts.validate_word_schema verify-asset /absolute/path/linux-x64.zip
-uv run --no-sync python -m scripts.validate_word_schema validate /absolute/path/OOXMLValidatorCLI --output-dir /new/output/directory --report /output/word-schema-report.json
+uv run --no-sync python -m scripts.validate_word_schema validate /absolute/path/linux-x64.zip --output-dir /new/output/directory --report /output/word-schema-report.json
 ```
 
 The script also supports direct invocation as `python scripts/validate_word_schema.py`.
+On Windows, pass `win-x64.zip` instead. The report's `asset` field identifies the
+downloaded archive; `validator` identifies the temporary executable when verified.
 `--office-version` changes the validation target; `--exceptions` selects an
 exception file. The output directory must not already exist. The shared
 `scripts.sample_corpus.sample_cases` definition discovers every `*.md` recursively
@@ -83,8 +90,11 @@ evidence. Standards citations, assumptions, and engine-produced documents alone
 are insufficient. Preserve the observed validator output (string-encoded or list
 `ValidationErrors` are both accepted). The script checks the required fields and
 that the evidence contains the exact identity; reviewers must verify the
-reproduction itself. Matching uses the exact `(id, part_uri, xpath)` tuple across
-the whole corpus, with no wildcards. Duplicate identities and entries matching no
+reproduction itself. Matching requires the exact `(id, part_uri, xpath)` tuple
+and the exact `ErrorType` and `Description` strings recorded together in the
+evidence's validator output, including whitespace. A different error at the same
+location is not covered. Matching applies across the whole corpus, with no
+wildcards. Duplicate identities and entries matching no
 current error fail the run. Never commit the Word reproduction document, which
 can contain author information. Do not exempt real engine defects. The
 `updateFields` ordering defect in `/word/settings.xml` is fixed in the engine

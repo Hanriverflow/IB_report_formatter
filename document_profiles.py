@@ -22,7 +22,7 @@ import yaml
 from docx.shared import Inches, Pt, RGBColor
 
 from document_model import DocumentMetadata, DocumentModel, ElementType, Table, TableType
-from input_safety import InputLimits
+from input_safety import InputLimits, document_validation, validate_xml_strings
 from numeric_checks import Quantity, ScheduleSpec, check_schedule, money_unit, read_quantity
 from render_styles import IBStyle
 from term_variables import term_cell_text
@@ -174,10 +174,12 @@ class ResolvedOptions:
 
 def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> ResolvedOptions:
     """Resolve CLI/API > frontmatter > profile, validating known settings."""
-    profile = get_profile(options.profile or metadata.profile)
-    layout = metadata.extra.get("layout", {})
-    if not isinstance(layout, dict):
-        raise ValueError("layout must be a YAML mapping")
+    with document_validation(not options.profile):
+        profile = get_profile(options.profile or metadata.profile)
+    with document_validation():
+        layout = metadata.extra.get("layout", {})
+        if not isinstance(layout, dict):
+            raise ValueError("layout must be a YAML mapping")
     allowed = {
         "cover",
         "toc",
@@ -188,11 +190,13 @@ def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> Resol
         "term_tags",
     }
     unknown = set(layout) - allowed
-    if unknown:
-        raise ValueError("Unknown layout settings: {}".format(", ".join(sorted(unknown))))
+    with document_validation(errors=(ValueError, TypeError)):
+        if unknown:
+            raise ValueError("Unknown layout settings: {}".format(", ".join(sorted(unknown))))
 
     caller_preset = get_preset(options.preset)
-    yaml_preset = get_preset(metadata.extra.get("preset"))
+    with document_validation():
+        yaml_preset = get_preset(metadata.extra.get("preset"))
 
     def flag(key: str, override: bool | None, default: bool) -> bool:
         attribute = "include_" + key
@@ -204,27 +208,33 @@ def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> Resol
             value = caller_value
         if override is not None:
             value = override
-        if not isinstance(value, bool):
-            raise ValueError(f"layout.{key} must be true or false")
+        with document_validation(override is None):
+            if not isinstance(value, bool):
+                raise ValueError(f"layout.{key} must be true or false")
         return value
 
     separator = options.separator_mode or layout.get("separator_mode", "auto")
-    if separator not in {"auto", "rule", "page-break"}:
-        raise ValueError("separator_mode must be auto, rule or page-break")
+    with document_validation(not options.separator_mode, errors=(ValueError, TypeError)):
+        if separator not in {"auto", "rule", "page-break"}:
+            raise ValueError("separator_mode must be auto, rule or page-break")
     theme = options.theme if options.theme is not None else metadata.extra.get("theme")
-    if theme is not None and not isinstance(theme, str):
-        raise ValueError("theme must be a name or YAML file path")
+    with document_validation(options.theme is None):
+        if theme is not None and not isinstance(theme, str):
+            raise ValueError("theme must be a name or YAML file path")
     charts = options.charts if options.charts is not None else metadata.extra.get("charts", False)
-    if not isinstance(charts, bool):
-        raise ValueError("charts must be true or false")
+    with document_validation(options.charts is None):
+        if not isinstance(charts, bool):
+            raise ValueError("charts must be true or false")
     house = options.house if options.house is not None else metadata.extra.get("house")
-    if house is not None and (not isinstance(house, str) or not house.strip()):
-        raise ValueError("house must be a YAML file path")
+    with document_validation(options.house is None):
+        if house is not None and (not isinstance(house, str) or not house.strip()):
+            raise ValueError("house must be a YAML file path")
     term_tags = (
         options.term_tags if options.term_tags is not None else layout.get("term_tags", True)
     )
-    if not isinstance(term_tags, bool):
-        raise ValueError("layout.term_tags must be true or false")
+    with document_validation(options.term_tags is None):
+        if not isinstance(term_tags, bool):
+            raise ValueError("layout.term_tags must be true or false")
     return ResolvedOptions(
         profile=profile,
         cover=flag("cover", options.include_cover, profile.cover),
@@ -322,6 +332,7 @@ def load_style(profile: DocumentProfile, theme: str | None = None) -> IBStyle:
         return style
     path = Path(theme)
     data = yaml.safe_load(path.read_text(encoding="utf-8-sig"))
+    validate_xml_strings(data)
     if not isinstance(data, dict):
         raise ValueError("Theme must be a YAML mapping")
     aliases = {

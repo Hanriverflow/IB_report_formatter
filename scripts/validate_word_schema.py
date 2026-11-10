@@ -9,12 +9,17 @@ import argparse
 import hashlib
 import json
 import logging
+import shutil
+import stat
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
+from zipfile import ZipFile
 
 # Support both direct invocation and imports from tests in the source checkout.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -164,9 +169,17 @@ def evaluate_output(
         raise ValueError(
             f"Validator document coverage differs: missing={missing}, unexpected={unexpected}"
         )
-    lookup = {entry.identity: index for index, entry in enumerate(exceptions)}
-    if len(lookup) != len(exceptions):
+    if len({entry.identity for entry in exceptions}) != len(exceptions):
         raise ValueError("Duplicate exception identities")
+    lookup = {
+        error: index
+        for index, entry in enumerate(exceptions)
+        for errors in parse_validator_output(
+            json.dumps(entry.evidence["validator_output"])
+        ).values()
+        for error in errors
+        if error.identity == entry.identity
+    }
     matched: set[int] = set()
     reported_documents: list[dict[str, Any]] = []
     uncovered = 0
@@ -174,7 +187,7 @@ def evaluate_output(
     for path in expected_files:
         reported_errors: list[dict[str, Any]] = []
         for error in documents[path.resolve()]:
-            index = lookup.get(error.identity)
+            index = lookup.get(error)
             if index is None:
                 uncovered += 1
             else:
@@ -221,6 +234,31 @@ def verify_asset(path: Path, manifest_path: Path = ASSET_MANIFEST) -> None:
     LOGGER.info("Verified SHA-256 for %s", path.name)
 
 
+@contextmanager
+def _verified_validator(asset: Path) -> Iterator[Path]:
+    """Extract only a private copy verified during this invocation.
+
+    Args:
+        asset: Downloaded archive whose name and hash must match the pinned manifest.
+
+    Yields:
+        Executable from a fresh directory, removed after the validator finishes.
+    """
+    with TemporaryDirectory(prefix="word-schema-validator-") as directory:
+        root = Path(directory)
+        copied = root / asset.name
+        shutil.copyfile(asset, copied)
+        verify_asset(copied, ASSET_MANIFEST)
+        extracted = root / "extracted"
+        with ZipFile(copied) as archive:
+            archive.extractall(extracted)
+        executable = extracted / (
+            "OOXMLValidatorCLI.exe" if sys.platform == "win32" else "OOXMLValidatorCLI"
+        )
+        executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+        yield executable
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run archive verification or render and validate the sample corpus.
 
@@ -235,7 +273,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     verify = commands.add_parser("verify-asset", help="Verify an archive before extraction")
     verify.add_argument("asset", type=Path)
     validate = commands.add_parser("validate", help="Render and validate all sample cases")
-    validate.add_argument("validator", type=Path)
+    validate.add_argument("asset", type=Path, help="Pinned release archive to verify and extract")
     validate.add_argument("--output-dir", type=Path, required=True)
     validate.add_argument("--report", type=Path, required=True)
     validate.add_argument("--exceptions", type=Path, default=EXCEPTIONS_FILE)
@@ -254,28 +292,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         "ok": False,
         "stage": "exceptions",
         "office_version": args.office_version,
-        "validator": str(args.validator.resolve()),
+        "asset": str(args.asset.resolve()),
         "documents": [],
     }
     try:
         exceptions = load_exceptions(args.exceptions)
-        report["stage"] = "render"
-        outputs = render_corpus(args.output_dir)
-        report["stage"] = "validator"
-        result = subprocess.run(
-            [
-                str(args.validator.resolve()),
-                str(args.output_dir.resolve()),
-                args.office_version,
-                "--recursive",
-                "--all",
-            ],
-            capture_output=True,
-            text=True,
-            encoding="utf-8-sig",
-            timeout=300,
-            check=False,
-        )
+        report["stage"] = "verify_asset"
+        with _verified_validator(args.asset) as validator:
+            report["validator"] = str(validator)
+            report["stage"] = "render"
+            outputs = render_corpus(args.output_dir)
+            report["stage"] = "validator"
+            result = subprocess.run(
+                [
+                    str(validator),
+                    str(args.output_dir.resolve()),
+                    args.office_version,
+                    "--recursive",
+                    "--all",
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8-sig",
+                timeout=300,
+                check=False,
+            )
         report["validator_exit_code"] = result.returncode
         report["validator_stderr"] = result.stderr
         if result.returncode:

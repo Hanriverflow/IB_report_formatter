@@ -90,12 +90,10 @@ jobs:
           url=$(uv run --no-sync python -c 'import json, sys; from pathlib import Path; sys.stdout.write(json.loads(Path("scripts/word_schema_validator_assets.json").read_text())["assets"]["linux-x64.zip"]["url"])')
           curl --fail --location --retry 3 --output "$RUNNER_TEMP/linux-x64.zip" "$url"
           uv run --no-sync python -m scripts.validate_word_schema verify-asset "$RUNNER_TEMP/linux-x64.zip"
-          unzip -q "$RUNNER_TEMP/linux-x64.zip" -d "$RUNNER_TEMP/ooxml-validator"
-          chmod +x "$RUNNER_TEMP/ooxml-validator/OOXMLValidatorCLI"
       - name: Render corpus and validate Word schema
         run: >-
           uv run --no-sync python -m scripts.validate_word_schema validate
-          "$RUNNER_TEMP/ooxml-validator/OOXMLValidatorCLI"
+          "$RUNNER_TEMP/linux-x64.zip"
           --output-dir "$RUNNER_TEMP/word-schema-docx"
           --report word-schema-report.json
       - name: Ensure a report exists after setup failures

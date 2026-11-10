@@ -169,9 +169,11 @@ from input_safety import (
     InputLimits,
     RejectionCode,
     StrictValidationError,
+    document_validation,
     read_input_file,
     read_input_stream,
     resolve_asset_roots,
+    validate_xml_strings,
 )
 from numeric_checks import evaluate_checks, parse_checks
 from term_variables import (
@@ -258,7 +260,8 @@ class FrontmatterParser:
             str(key).strip().lower(): value for key, value in parsed_data.items() if key is not None
         }
 
-        metadata = default_metadata(profile or str(data.get("profile", "ib-report")))
+        with document_validation(profile is None):
+            metadata = default_metadata(profile or str(data.get("profile", "ib-report")))
 
         # Map to metadata fields
         if metadata.profile == "term-sheet":
@@ -2545,16 +2548,19 @@ class MarkdownParser:
         # Parse frontmatter
         metadata, remaining_lines = FrontmatterParser.parse(lines, self.profile)
         # Required-text checks precede heading inference; length waits for terms.
-        validate_term_sheet_metadata(metadata, check_length=False)
+        with document_validation():
+            validate_term_sheet_metadata(metadata, check_length=False)
         self._financial_rules = get_profile(metadata.profile).is_ib
         self._term_sheet = metadata.profile == "term-sheet"
         self._parse_warnings = []
         # An empty mapping enables checking: every reference is then undefined.
-        self._terms = (
-            TermResolver(validate_terms(metadata.extra["terms"]), corpus=content)
-            if "terms" in metadata.extra
-            else None
-        )
+        with document_validation():
+            self._terms = (
+                TermResolver(validate_terms(metadata.extra["terms"]), corpus=content)
+                if "terms" in metadata.extra
+                else None
+            )
+            validate_xml_strings(metadata)
 
         # Detect whether YAML frontmatter was present
         has_frontmatter = len(remaining_lines) < len(lines)
@@ -2619,7 +2625,8 @@ class MarkdownParser:
         # Title inference follows what the author wrote, not a substituted value.
         written_title = metadata.title
         self._substitute_metadata(metadata)
-        validate_term_sheet_metadata(metadata)
+        with document_validation():
+            validate_term_sheet_metadata(metadata)
         model = DocumentModel(
             metadata=metadata,
             elements=elements,
@@ -2647,7 +2654,8 @@ class MarkdownParser:
                 metadata.title = first_heading.text
                 if first_heading.runs:
                     metadata.display_runs["title"] = [replace(run) for run in first_heading.runs]
-        apply_table_specs(model)
+        with document_validation(errors=(ValueError, TypeError)):
+            apply_table_specs(model)
         # Span markers are classified on raw cell source, before term text changes.
         for element in elements:
             if element.element_type == ElementType.TABLE and isinstance(element.content, Table):
@@ -2661,7 +2669,8 @@ class MarkdownParser:
         )
         check_schedules(model)
         if "checks" in metadata.extra:
-            checks = parse_checks(metadata.extra["checks"])
+            with document_validation():
+                checks = parse_checks(metadata.extra["checks"])
             values = dict(self._terms.values) if self._terms is not None else {}
             model.warnings.extend(evaluate_checks(checks, values))
         if self._terms is not None:
@@ -3728,10 +3737,11 @@ def parse_markdown_file(
     if not is_stream(source) and isinstance(style, dict) and isinstance(style.get("logo"), str):
         logo = style["logo"].strip()
         if logo and not logo.lower().startswith("data:") and not Path(logo).is_absolute():
-            # A frontmatter logo is relative to the Markdown file, like `house`.
+            # Anchor the written destination without following links yet: the
+            # asset helper must resolve written and decoded candidates separately.
             model.metadata.extra["style"] = {
                 **style,
-                "logo": str((Path(str(source)).resolve().parent / logo).resolve()),
+                "logo": str(Path(str(source)).resolve().parent / logo),
             }
 
     if not is_stream(source):

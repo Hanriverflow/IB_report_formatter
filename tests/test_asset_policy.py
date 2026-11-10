@@ -16,6 +16,7 @@ from converters import get_default_registry
 from document_model import DocumentModel, Element, ElementType, Image
 from document_profiles import RenderOptions
 from ib_renderer import IBDocumentRenderer
+from input_safety import StrictValidationError
 from md_parser import MarkdownParser, parse_markdown_file
 from md_to_word import IBReportConverter, build_parser, run_conversion
 
@@ -592,3 +593,73 @@ def test_junction_escape(tmp_path: Path) -> None:
             parse_markdown_file(str(source))
         )
     _assert_rejection(caught.value)
+
+
+@pytest.mark.parametrize("origin", ["body", "frontmatter", "house"])
+@pytest.mark.parametrize("escaped_candidate", ["written", "decoded"])
+def test_logo_candidates_resolve_independently_through_links(tmp_path, origin, escaped_candidate):
+    import subprocess
+
+    outside = _image(tmp_path / "outside" / "example.png")
+    folder = tmp_path / "doc"
+    base = folder / "config" if origin == "house" else folder
+    base.mkdir(parents=True)
+    names = {"written": "example%20logo", "decoded": "example logo"}
+    junction = base / names[escaped_candidate]
+    if os.name == "nt":
+        result = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(junction), str(outside.parent)], capture_output=True
+        )
+        if result.returncode:
+            pytest.skip("Junction creation is not permitted")
+    else:
+        junction.symlink_to(outside.parent, target_is_directory=True)
+    if escaped_candidate == "written":
+        _image(base / names["decoded"] / "example.png")
+    destination = "example%20logo/example.png"
+    metadata = {}
+    body = "가상 본문"
+    if origin == "body":
+        body = f"![가상]({destination})"
+    else:
+        metadata = {
+            "profile": "term-sheet",
+            "prepared_by": "가상 금융",
+            "disclaimer": "예시 검토용",
+        }
+        if origin == "house":
+            metadata["house"] = str(_house(base, destination))
+        else:
+            metadata["style"] = {"logo": destination}
+    source = _source(folder, body, **metadata)
+    renderer = IBDocumentRenderer(options=RenderOptions(strict=True))
+    model = parse_markdown_file(str(source))
+    if escaped_candidate == "written":
+        # The outside written candidate must not destroy the allowed decoded one.
+        assert len(renderer.render(model).inline_shapes) == 1
+    else:
+        with pytest.raises(StrictValidationError) as caught:
+            renderer.render(model)
+        _assert_rejection(caught.value)
+
+
+@pytest.mark.parametrize("origin", ["frontmatter", "house"])
+def test_logos_already_try_written_then_decoded_filenames(tmp_path, origin):
+    raw = _image(tmp_path / "example%20logo.png")
+    decoded = raw.with_name("example logo.png")
+    decoded.write_bytes(PNG + b"example decoded candidate")
+    metadata = {"profile": "term-sheet", "prepared_by": "가상 금융", "disclaimer": "예시 검토용"}
+    if origin == "house":
+        metadata["house"] = str(_house(tmp_path, raw.name))
+    else:
+        metadata["style"] = {"logo": raw.name}
+    source = _source(tmp_path, "가상 본문", **metadata)
+    for expected in (raw, decoded):
+        document = IBDocumentRenderer(options=RenderOptions(strict=True)).render(
+            parse_markdown_file(str(source))
+        )
+        assert len(document.inline_shapes) == 1
+        relation = document.inline_shapes[0]._inline.graphic.graphicData.pic.blipFill.blip.embed
+        assert document.part.related_parts[relation].blob == expected.read_bytes()
+        if expected == raw:
+            raw.unlink()

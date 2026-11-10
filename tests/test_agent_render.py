@@ -405,3 +405,47 @@ def test_missing_runtime_dependency_still_reports_json(tmp_path):
     assert result["diagnostics"] == [
         {"code": "ModuleNotFoundError", "message": "No module named 'docx'"}
     ]
+
+
+@pytest.mark.parametrize("grows", [False, True])
+def test_markdown_hash_is_bounded_before_parsing(tmp_path, monkeypatch, grows):
+    import input_safety
+
+    source = make_source(tmp_path, "x")
+    limit = input_safety.DEFAULT_LIMITS.max_input_bytes
+    original_open = Path.open
+    if not grows:
+        with original_open(source, "wb") as stream:
+            stream.truncate(limit + 1)
+    reads = []
+
+    class GrowingStream:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, size=-1):
+            assert size > 0
+            reads.append(size)
+            assert sum(reads) <= limit + 1
+            return b"x" * size
+
+    def guarded_open(path, *args, **kwargs):
+        if path == source:
+            assert grows, "oversized Markdown was opened before rejection"
+            return GrowingStream()
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", guarded_open)
+    output = tmp_path / "out"
+    result = render_document(str(source), str(output))
+    assert_rejection_manifest(result, output, "input")
+    message = f"[limit_input_bytes] Limit {limit} exceeded; measured {limit + 1}"
+    assert result["diagnostics"] == [
+        {"code": "ValueError", "message": message},
+        {"code": "limit_input_bytes", "message": message},
+    ]
+    assert result["input"]["sha256"] is None
+    assert bool(reads) is grows

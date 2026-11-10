@@ -27,6 +27,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from typing import Any, cast
+from zipfile import ZipFile
 
 from docx import Document
 from docx.document import Document as DocxDocument
@@ -506,7 +507,31 @@ def _numbering_issues(doc: DocxDocument) -> list[str]:
 
 def audit_file(path: str) -> DocumentAudit:
     """Open an output file and inspect its structure."""
-    return inspect_document(Document(path))
+    return _audit_package(path)[0]
+
+
+def _audit_package(path: str) -> tuple[DocumentAudit, TermAudit | None]:
+    """Check every XML part before allowing python-docx to consume the package.
+
+    Args:
+        path: Untrusted DOCX package to inspect.
+
+    Returns:
+        A rejection naming unsafe parts, or the ordinary document and term audit.
+    """
+    with open(path, "rb") as stream:
+        with ZipFile(stream) as archive:
+            issues = [
+                f"XML part cannot be read safely: /{part.filename}"
+                for part in archive.infolist()
+                if part.filename.endswith((".xml", ".rels"))
+                and _parse_xml_part(archive.read(part)) is None
+            ]
+        if issues:
+            return DocumentAudit(issues=issues), None
+        stream.seek(0)
+        document = Document(stream)
+        return inspect_document(document), inspect_terms(document)
 
 
 @contextmanager
@@ -547,9 +572,7 @@ def main() -> None:
     with _utf8_log_stream():
         logging.basicConfig(level=logging.INFO, format="%(message)s")
         try:
-            document = Document(args.input_file)
-            result = inspect_document(document)
-            terms = inspect_terms(document)
+            result, terms = _audit_package(args.input_file)
         except Exception as exc:
             logger.error("Cannot inspect DOCX: %s", exc)
             raise SystemExit(1) from exc

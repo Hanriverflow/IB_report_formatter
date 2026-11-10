@@ -81,6 +81,7 @@ from typing import (
 from uuid import uuid4
 from xml.sax.saxutils import escape
 
+import yaml
 from docx import Document
 from docx.document import Document as DocxDocument
 from docx.enum.section import WD_ORIENT, WD_SECTION_START
@@ -114,8 +115,10 @@ from input_safety import (
     StrictValidationError,
     check_image_source,
     decode_image,
+    document_validation,
     local_asset_path,
     resolve_asset_roots,
+    validate_xml_strings,
 )
 from md_parser import (
     Blockquote,
@@ -3741,11 +3744,15 @@ class IBDocumentRenderer:
                 if getattr(model.metadata, field_name) == getattr(old_defaults, field_name):
                     setattr(model.metadata, field_name, getattr(new_defaults, field_name))
             model.metadata.profile = resolved.profile.name
-        if not resolved.profile.is_ib:
-            validate_office_metadata(model.metadata)
+        with document_validation():
+            if not resolved.profile.is_ib:
+                validate_office_metadata(model.metadata)
         if resolved.profile.name == "term-sheet":
-            validate_term_sheet_metadata(model.metadata)
-            self.term_sheet_texts = resolve_term_sheet_texts(model.metadata, resolved.house)
+            with document_validation():
+                validate_term_sheet_metadata(model.metadata)
+            self.term_sheet_texts = resolve_term_sheet_texts(
+                model.metadata, resolved.house, document_house=self.options.house is None
+            )
         report_title_block = (
             not resolved.cover
             and resolved.profile.name == "ib-report"
@@ -3777,9 +3784,12 @@ class IBDocumentRenderer:
                 ):
                     model.elements.pop(index)
                     break
-        appendix_index = letter_appendix_index(model)
+        with document_validation():
+            appendix_index = letter_appendix_index(model)
         if resolved.strict and model.warnings:
             raise StrictValidationError("Input validation failed: ", model.warnings)
+        with document_validation():
+            validate_xml_strings(model.metadata)
         self.errors = list(model.warnings)
         self._term_sheet = term_sheet
         self._reset_document()
@@ -3795,8 +3805,12 @@ class IBDocumentRenderer:
         )
         self.separator_mode = resolved.separator_mode
         self.charts = resolved.charts
+        with document_validation(
+            self.options.theme is None, errors=(ValueError, OSError, yaml.YAMLError)
+        ):
+            style_values = load_style(resolved.profile, resolved.theme)
         with (
-            use_style(load_style(resolved.profile, resolved.theme)),
+            use_style(style_values),
             collect_raster_font_diagnostics() as font_warnings,
             collect_term_runs(resolved.term_tags) as term_runs,
         ):
@@ -3903,17 +3917,17 @@ class IBDocumentRenderer:
             self._apply_term_controls(term_runs)
             if "checks" in model.metadata.extra:
                 # Stored so docx-audit can re-evaluate the relations after edits in Word.
+                with document_validation(errors=(ValueError, AttributeError)):
+                    checks_json = checks_to_json(
+                        parse_checks(model.metadata.extra["checks"]),
+                        {
+                            str(key): str(value)
+                            for key, value in (model.metadata.extra.get("terms") or {}).items()
+                        },
+                    )
                 GeneratorSignatureWriter.upsert_properties(
                     self.doc,
-                    {
-                        CHECKS_PROPERTY: checks_to_json(
-                            parse_checks(model.metadata.extra["checks"]),
-                            {
-                                str(key): str(value)
-                                for key, value in (model.metadata.extra.get("terms") or {}).items()
-                            },
-                        )
-                    },
+                    {CHECKS_PROPERTY: checks_json},
                 )
             ImageRenderer.fit_table_cell_images(self.doc)
             from docx_audit import inspect_document_issues

@@ -21,7 +21,7 @@ from zipfile import ZipFile
 from lxml import etree
 from syrupy.extensions.single_file import SingleFileSnapshotExtension, WriteMode
 
-from document_model import DocumentModel, Image
+from document_model import DocumentMetadata, DocumentModel, Image
 
 
 class JSONTextSnapshotExtension(SingleFileSnapshotExtension):
@@ -67,11 +67,12 @@ class ModelSerializer:
         summary = self.binary_summary(data)
         return f"{match[1]}[length={summary['length']};sha256={summary['sha256']}]"
 
-    def convert(self, value: Any) -> Any:
+    def convert(self, value: Any, *, path_field: bool = False) -> Any:
         """Convert every model field, rejecting unsupported values.
 
         Args:
             value: Model, nested dataclass, collection, or scalar.
+            path_field: Whether a string occupies a known file-path field.
 
         Returns:
             JSON-compatible data in the original order.
@@ -90,7 +91,12 @@ class ModelSerializer:
                 # it as text. Hash decoded bytes, not an encoding/line-wrap choice.
                 if isinstance(value, Image) and field.name == "base64_data" and item is not None:
                     item = base64.b64decode("".join(item.split()), validate=True)
-                converted[field.name] = self.convert(item)
+                if isinstance(value, DocumentMetadata) and field.name == "extra":
+                    converted[field.name] = self.metadata_extra(item)
+                else:
+                    converted[field.name] = self.convert(
+                        item, path_field=isinstance(value, Image) and field.name == "path"
+                    )
             return converted
         if isinstance(value, Mapping):
             return {str(key): self.convert(item) for key, item in value.items()}
@@ -105,12 +111,25 @@ class ModelSerializer:
             value = self._DATA_URI_RE.sub(self.summarize_data_uri, value)
             # parse_markdown_file resolves house/theme/logo/image paths to absolute
             # strings, in addition to the Path-valued source_dir and asset_roots.
-            if "\n" not in value and Path(value).is_absolute():
+            if path_field and "\n" not in value and Path(value).is_absolute():
                 return self.relative_path(Path(value))
             return value
         if value is None or isinstance(value, bool | int | float):
             return value
         raise TypeError(f"Unsupported snapshot model type: {type(value).__name__}")
+
+    def metadata_extra(self, extra: Mapping[str, Any]) -> dict[str, Any]:
+        """Normalize only the named file fields in frontmatter metadata."""
+        converted = {}
+        for key, value in extra.items():
+            if key == "style" and isinstance(value, Mapping):
+                converted[key] = {
+                    str(name): self.convert(item, path_field=name == "logo")
+                    for name, item in value.items()
+                }
+            else:
+                converted[key] = self.convert(value, path_field=key in {"house", "theme"})
+        return converted
 
 
 def model_json(model: DocumentModel, sample_dir: Path) -> str:

@@ -47,7 +47,11 @@ def _rejection_diagnostics(error: BaseException) -> list[dict[str, str]]:
     return diagnostics
 
 
-def _sha256(path: Path) -> str:
+def _sha256(path: Path, *, markdown: bool = False) -> str:
+    if markdown:
+        from input_safety import read_input_file
+
+        return hashlib.sha256(read_input_file(path)).hexdigest()
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
@@ -112,11 +116,11 @@ def render_document(
         destination.mkdir(parents=True, exist_ok=False)
         owned_directory = destination
         result["stage"] = "input"
-        result["input"]["sha256"] = _sha256(source_path)
         with redirect_stdout(sys.stderr):
             from input_safety import ConversionRejection
 
             rejection_types = (ConversionRejection,)
+            result["input"]["sha256"] = _sha256(source_path, markdown=True)
             from converters import get_default_registry
 
             registry = get_default_registry()
