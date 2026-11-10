@@ -491,8 +491,14 @@ def _rebase_link_target(target: str, source_dir: Path, output_dir: Path) -> str:
 class TextParser:
     """Parses inline text formatting (bold, italic, inline LaTeX, etc.)"""
 
-    # Compiled once — used by cleanup_text
-    _ESCAPE_RE = re.compile(r'\\([\\$`^~.*"\'()\[\]{}|_-])')
+    # Compiled once — used by cleanup_text. A backslash escapes any ASCII
+    # punctuation character, as in CommonMark; an escaped HTML break is left
+    # for normalize_html_breaks, which keeps the tag as text.
+    _ESCAPE_RE = re.compile(r"\\(?!<br\s*/?>)([!-/:-@\[-`{-~])", re.IGNORECASE)
+    # The set resolved before the escape set was widened. cleanup_text still
+    # applies only this set inside code spans, inline math and link destinations,
+    # so LaTeX commands such as \% and \, keep their backslash there.
+    _LEGACY_ESCAPE_RE = re.compile(r'\\([\\$`^~.*"\'()\[\]{}|_-])')
     _HTML_BREAK_RE = re.compile(r"(?<!\\)<br\s*/?>", re.IGNORECASE)
     _ESCAPED_HTML_BREAK_RE = re.compile(r"\\(<br\s*/?>)", re.IGNORECASE)
     _CODE_SPAN_RE = re.compile(r"(?<![\\`])(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.DOTALL)
@@ -520,6 +526,11 @@ class TextParser:
 
     # Inline LaTeX: $...$ but not $$...$$
     _INLINE_LATEX_RE = re.compile(r"(?<![\\$])\$(?!\$)((?:\\.|[^$\\\n])+?)\$(?!\$)")
+    # Spans whose characters are not prose: code, inline math, a link destination.
+    _LITERAL_SPAN_RE = re.compile(
+        _CODE_SPAN_RE.pattern + "|" + _INLINE_LATEX_RE.pattern + r"|(?<=\])\([^()\s]*\)",
+        re.DOTALL,
+    )
 
     @classmethod
     def parse_runs(cls, text: str) -> list[TextRun]:
@@ -726,7 +737,16 @@ class TextParser:
             literals[token] = match.group(1)
             return token
 
-        return cls._ESCAPE_RE.sub(replace, text), literals
+        # Text between dollar signs keeps the legacy set whether or not this
+        # context renders math, so `$12\%$` reads the same in a callout or a cell.
+        pieces: list[str] = []
+        offset = 0
+        for span in cls._INLINE_LATEX_RE.finditer(text):
+            pieces.append(cls._ESCAPE_RE.sub(replace, text[offset : span.start()]))
+            pieces.append(cls._LEGACY_ESCAPE_RE.sub(replace, span.group(0)))
+            offset = span.end()
+        pieces.append(cls._ESCAPE_RE.sub(replace, text[offset:]))
+        return "".join(pieces), literals
 
     @classmethod
     def _split_code_runs(cls, runs: list[TextRun], literals: dict[str, str]) -> list[TextRun]:
@@ -982,15 +1002,34 @@ class TextParser:
         text, _ = cls._protect_images(text)
         return bool(cls._INLINE_LATEX_RE.search(text))
 
+    @classmethod
+    def _unescape(cls, text: str) -> str:
+        """Resolve escapes in text that is not tokenized; literal spans keep the legacy set.
+
+        Args:
+            text: Raw inline Markdown of a heading, quote line or emphasis part.
+
+        Returns:
+            Text with escapes resolved once.
+        """
+        pieces: list[str] = []
+        offset = 0
+        for match in cls._LITERAL_SPAN_RE.finditer(text):
+            pieces.append(cls._ESCAPE_RE.sub(r"\1", text[offset : match.start()]))
+            pieces.append(cls._LEGACY_ESCAPE_RE.sub(r"\1", match.group(0)))
+            offset = match.end()
+        pieces.append(cls._ESCAPE_RE.sub(r"\1", text[offset:]))
+        return "".join(pieces)
+
     @staticmethod
     def cleanup_text(text: str) -> str:
         """Remove markdown artifacts and escape characters (single-pass regex)"""
-        return TextParser.normalize_html_breaks(TextParser._ESCAPE_RE.sub(r"\1", text).strip())
+        return TextParser.normalize_html_breaks(TextParser._unescape(text).strip())
 
     @staticmethod
     def cleanup_text_preserve_spacing(text: str) -> str:
         """Remove markdown escape characters while preserving surrounding spacing."""
-        return TextParser.normalize_html_breaks(TextParser._ESCAPE_RE.sub(r"\1", text))
+        return TextParser.normalize_html_breaks(TextParser._unescape(text))
 
     @classmethod
     def normalize_html_breaks(cls, text: str) -> str:
@@ -1594,7 +1633,9 @@ class TableParser:
         while index < len(text):
             char = text[index]
             if char == "\\" and index + 1 < len(text) and text[index + 1] in {"|", "\\"}:
-                current.append(text[index + 1])
+                # An escaped pipe is cell text. An escaped backslash stays escaped:
+                # the cell's inline parse resolves it, once, with every other escape.
+                current.append("|" if text[index + 1] == "|" else "\\\\")
                 index += 2
                 continue
             if char == "|":
@@ -2463,12 +2504,14 @@ class MarkdownParser:
     H2_PATTERN = re.compile(r"^##\s+(.+)$")
     H3_PATTERN = re.compile(r"^###\s+(.+)$")
     H4_PATTERN = re.compile(r"^####\s+(.+)$")
+    # Levels 5 and 6 have no style of their own; they render as the deepest styled level.
+    DEEP_HEADING_PATTERN = re.compile(r"^#{5,6}\s+(.+)$")
 
     # Numbered heading pattern: **1. Title** or **1\. Title**
     NUMBERED_HEADING_PATTERN = re.compile(r"^\*\*\d+(\.|\\.)")
 
     # ── List patterns ───────────────────────────────────────────────────────
-    BULLET_PATTERN = re.compile(r"^([ \t]*)[-*]\s+(.+)$")
+    BULLET_PATTERN = re.compile(r"^([ \t]*)[-*+]\s+(.+)$")
     NUMBERED_LIST_PATTERN = re.compile(r"^([ \t]*)(\d+)\.\s+(.+)$")
 
     # Heuristic: numbered line that looks like a section heading
@@ -2975,6 +3018,10 @@ class MarkdownParser:
 
                 # ── ASCII art detection ────────────────────────────────
                 is_ascii = CodeBlock.detect_ascii_art(code_text)
+                # A closed fence is literal: its trailing blank lines and spaces stay.
+                # An unclosed one runs to the end of the input, so its tail is trimmed.
+                if i - fence_start == len(code_lines) + 2:
+                    code_text = "\n".join(code_lines)
 
                 elements.append(
                     Element(
@@ -3374,8 +3421,8 @@ class MarkdownParser:
                 raw_text=line,
             )
 
-        # H4 (check longer prefixes first to avoid partial match)
-        match = self.H4_PATTERN.match(line)
+        # H5 and H6 share the deepest styled level (check longer prefixes first)
+        match = self.DEEP_HEADING_PATTERN.match(line) or self.H4_PATTERN.match(line)
         if match:
             text = match.group(1).strip()
             return Element(
@@ -3620,13 +3667,14 @@ class MarkdownParser:
             or self.H2_PATTERN.match(line)
             or self.H3_PATTERN.match(line)
             or self.H4_PATTERN.match(line)
+            or self.DEEP_HEADING_PATTERN.match(line)
             or self.NUMBERED_HEADING_PATTERN.match(line)
         )
 
     def _is_reference_header(self, line: str) -> bool:
         """Check if line is a references section header"""
         stripped = line.strip().lower()
-        cleaned = re.sub(r"^#{1,4}\s+", "", stripped)
+        cleaned = re.sub(r"^#{1,6}\s+", "", stripped)
         return cleaned.strip("* :：") in self._REFERENCE_KEYWORDS
 
     # ── Blockquote helpers ──────────────────────────────────────────────────

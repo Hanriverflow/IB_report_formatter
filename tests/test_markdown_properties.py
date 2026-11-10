@@ -9,13 +9,12 @@ are permuted, and inline constructs occur in paragraphs, headings, list items
 and table cells. Code includes Markdown-looking text, tabs, spaces, blank lines,
 backticks, HTML breaks and footnote/term-looking text. Expected text is composed
 alongside the source, never obtained from parser/model text or engine helpers.
-ATX levels 1-6 and all three bullet markers remain in scope; unsupported output
-for levels 5/6 and '+' is retained as strict xfail parameter groups, not filtered.
-Backslash escapes cover all ASCII punctuation in two groups: the characters the
-engine resolves (TextParser's escapable set: backslash $ ` ^ ~ . * " ' ( ) [ ] { }
-| _ -) are generated inside documents, tables and the escape property; the other
-fourteen (! # % & + , / : ; < = > ? @) keep their backslash in the output today
-and stay as strict xfail groups until the owner decides the escape set.
+ATX levels 1-6 and all three bullet markers are in scope and checked; levels 5
+and 6 render with the level 4 style.
+Backslash escapes cover all ASCII punctuation in two groups, both checked: the
+eighteen characters the engine always resolved (backslash $ ` ^ ~ . * " ' ( ) [ ]
+{ } | _ -) are generated inside documents, tables and the escape property; the
+other fourteen (! # % & + , / : ; < = > ? @) are covered by the escape property.
 
 Exclusions from the structured preservation grammar (README.md, "Supported
 Markdown and limitations"): raw HTML other than documented breaks, and complex
@@ -59,7 +58,7 @@ or aliases, every combination of nested settings, or arbitrary malformed model
 shapes. Dedicated regressions cover selected named-configuration and asset cases.
 Fenced-code generation partitions the original alphabet: nonempty lines and a
 non-whitespace final character have an active text/formatting property; empty
-lines and trailing whitespace retain generated strict xfail groups. Tree-value
+lines and trailing whitespace have their own active properties. Tree-value
 emphasis retains its separate minimal strict xfail. No payload is filtered out.
 
 Determinism: local default profile markdown-properties, derandomize=True, deadline=None,
@@ -100,11 +99,6 @@ CODE = LETTERS + string.punctuation + " \t"
 # Written out here, not read from the engine, so the oracle stays independent.
 RESOLVED_ESCAPES = "\\$`^~.*\"'()[]{}|_-"
 RETAINED_ESCAPES = "".join(char for char in string.punctuation if char not in RESOLVED_ESCAPES)
-RETAINED_ESCAPE_REASON = (
-    "'가상\\!예시' renders '가상\\!예시', expected '가상!예시'; TextParser._ESCAPE_RE "
-    "resolves only its own set. Widening it changes visible text for existing input "
-    "and one pinned table test, so the owner decides."
-)
 
 
 @dataclass(frozen=True)
@@ -292,13 +286,7 @@ def _assert_literal_runs(document: WordDocument) -> None:
     (
         "-",
         "*",
-        pytest.param(
-            "+",
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="'+ 0' renders '+ 0', expected list text '0'; MarkdownParser.BULLET_PATTERN omits '+'. Fix changes visible list layout.",
-            ),
-        ),
+        "+",
         "1.",
     ),
 )
@@ -306,13 +294,7 @@ def _assert_literal_runs(document: WordDocument) -> None:
     "levels",
     (
         (1, 2, 3, 4),
-        pytest.param(
-            (5, 6),
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="'##### 0' renders '##### 0', expected heading text '0'; MarkdownParser._try_parse_heading only defines H1-H4. Adding H5/H6 needs layout design.",
-            ),
-        ),
+        (5, 6),
     ),
 )
 @given(data=st.data())
@@ -342,10 +324,7 @@ def test_cell_count_and_characters_preserved(
     (
         "span",
         "escape",
-        pytest.param(
-            "escape-retained",
-            marks=pytest.mark.xfail(strict=True, reason=RETAINED_ESCAPE_REASON),
-        ),
+        "escape-retained",
     ),
 )
 @given(case=_code_case())
@@ -391,10 +370,6 @@ def test_generated_fenced_code_preserves_lines_and_formatting(marker: str, paylo
 
 
 @pytest.mark.parametrize("marker", ("`", "~"))
-@pytest.mark.xfail(
-    strict=True,
-    reason="An empty fenced line receives a one-space spacer; removing it needs a layout decision.",
-)
 @given(lines=st.lists(st.text(CODE, max_size=25), max_size=3), tail=_working_fenced_payload())
 def test_generated_fenced_empty_lines_have_no_spacer(
     marker: str, lines: list[str], tail: str
@@ -407,10 +382,6 @@ def test_generated_fenced_empty_lines_have_no_spacer(
 
 
 @pytest.mark.parametrize("marker", ("`", "~"))
-@pytest.mark.xfail(
-    strict=True,
-    reason="Trailing fenced whitespace/blank lines are dropped by rstrip/splitlines; restoring them needs a layout decision.",
-)
 @given(
     lines=st.lists(st.text(CODE, max_size=25), min_size=1, max_size=4),
     ending=st.text(" \t\n", min_size=1, max_size=4),
@@ -785,10 +756,7 @@ def test_handbuilt_model_strict_dichotomy(
     "punctuation",
     (
         *RESOLVED_ESCAPES,
-        *(
-            pytest.param(char, marks=pytest.mark.xfail(strict=True, reason=RETAINED_ESCAPE_REASON))
-            for char in RETAINED_ESCAPES
-        ),
+        *RETAINED_ESCAPES,
     ),
 )
 def test_ascii_punctuation_escape(punctuation: str) -> None:
@@ -840,20 +808,12 @@ def test_fenced_whitespace_regression() -> None:
 
 
 @pytest.mark.parametrize("payload", ("", "가상\n\n예시"))
-@pytest.mark.xfail(
-    strict=True,
-    reason="'```text\\n가상\\n\\n예시\\n```' renders '가상\\n \\n예시': IBDocumentRenderer._render_code_block_line puts a one-space spacer run on an empty line. Removing it may change the panel's line height, so the owner decides.",
-)
 def test_fenced_empty_line_has_no_spacer(payload: str) -> None:
     document = _render(_fence(payload))
     assert document.tables[0].cell(0, 0).text == payload
 
 
 @pytest.mark.parametrize("payload", ("  ", "\t", "가상\n", "가상\n\n", "가상\n \t "))
-@pytest.mark.xfail(
-    strict=True,
-    reason="'```text\\n \\n```' renders '', expected ' '; MarkdownParser._parse_elements rstrip() also drops trailing blank lines. Full literal preservation needs the owner to approve code-panel layout changes.",
-)
 def test_fenced_trailing_whitespace_preserved(payload: str) -> None:
     document = _render(_fence(payload))
     assert document.tables[0].cell(0, 0).text == payload
