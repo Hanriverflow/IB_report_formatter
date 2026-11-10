@@ -1,0 +1,724 @@
+{
+  "metadata": {
+    "title": "문서 표준화 실무회의 회의록",
+    "subtitle": "",
+    "company": "",
+    "ticker": "",
+    "sector": "",
+    "analyst": "홍길동",
+    "extra": {
+      "date": "2026-09-14",
+      "meeting_time": "2026-09-14 10:00–10:40",
+      "location": "본사 회의실 A",
+      "attendees": [
+        "김담당",
+        "이검토",
+        "박승인"
+      ],
+      "sender": {
+        "organization": "주식회사 예시",
+        "department": "경영기획팀"
+      }
+    },
+    "profile": "meeting-minutes",
+    "display_runs": {}
+  },
+  "sections": [],
+  "elements": [
+    {
+      "element_type": "HEADING_1",
+      "content": {
+        "level": 1,
+        "text": "문서 표준화 실무회의 회의록",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "# 문서 표준화 실무회의 회의록",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "안건",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 안건",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "NUMBERED_LIST",
+      "content": [
+        "1",
+        {
+          "text": "회사 대외공문 필수 항목 확정",
+          "runs": [
+            {
+              "text": "회사 대외공문 필수 항목 확정",
+              "bold": false,
+              "italic": false,
+              "superscript": false,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": null,
+              "term_key": null,
+              "code": false,
+              "image": null
+            }
+          ],
+          "indent_level": 0
+        }
+      ],
+      "raw_text": "1. 회사 대외공문 필수 항목 확정",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "NUMBERED_LIST",
+      "content": [
+        "2",
+        {
+          "text": "업무보고와 회의록의 시범운영 범위 결정",
+          "runs": [
+            {
+              "text": "업무보고와 회의록의 시범운영 범위 결정",
+              "bold": false,
+              "italic": false,
+              "superscript": false,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": null,
+              "term_key": null,
+              "code": false,
+              "image": null
+            }
+          ],
+          "indent_level": 0
+        }
+      ],
+      "raw_text": "2. 업무보고와 회의록의 시범운영 범위 결정",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "주요 논의",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 주요 논의",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "BULLET_LIST",
+      "content": {
+        "text": "공문에는 문서번호·수신·발신·붙임 정보를 포함합니다.",
+        "runs": [
+          {
+            "text": "공문에는 문서번호·수신·발신·붙임 정보를 포함합니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "indent_level": 0
+      },
+      "raw_text": "- 공문에는 문서번호·수신·발신·붙임 정보를 포함합니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "BULLET_LIST",
+      "content": {
+        "text": "일반 문서에는 금융보고서용 면책문구를 자동으로 넣지 않습니다.",
+        "runs": [
+          {
+            "text": "일반 문서에는 금융보고서용 면책문구를 자동으로 넣지 않습니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "indent_level": 0
+      },
+      "raw_text": "- 일반 문서에는 금융보고서용 면책문구를 자동으로 넣지 않습니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "BULLET_LIST",
+      "content": {
+        "text": "출력 후 Word에서 번호와 표를 편집할 수 있어야 합니다.",
+        "runs": [
+          {
+            "text": "출력 후 Word에서 번호와 표를 편집할 수 있어야 합니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "indent_level": 0
+      },
+      "raw_text": "- 출력 후 Word에서 번호와 표를 편집할 수 있어야 합니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "결정사항 및 후속 조치",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 결정사항 및 후속 조치",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "TABLE",
+      "content": {
+        "rows": [
+          {
+            "cells": [
+              {
+                "content": "결정사항",
+                "runs": [
+                  {
+                    "text": "결정사항",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "담당자",
+                "runs": [
+                  {
+                    "text": "담당자",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "기한",
+                "runs": [
+                  {
+                    "text": "기한",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "상태",
+                "runs": [
+                  {
+                    "text": "상태",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": true
+          },
+          {
+            "cells": [
+              {
+                "content": "공문 초안 검토",
+                "runs": [
+                  {
+                    "text": "공문 초안 검토",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "김담당",
+                "runs": [
+                  {
+                    "text": "김담당",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2026-09-18",
+                "runs": [
+                  {
+                    "text": "2026-09-18",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "진행 중",
+                "runs": [
+                  {
+                    "text": "진행 중",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "예제 수집",
+                "runs": [
+                  {
+                    "text": "예제 수집",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "이검토",
+                "runs": [
+                  {
+                    "text": "이검토",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2026-09-21",
+                "runs": [
+                  {
+                    "text": "2026-09-21",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "예정",
+                "runs": [
+                  {
+                    "text": "예정",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "양식 승인",
+                "runs": [
+                  {
+                    "text": "양식 승인",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "박승인",
+                "runs": [
+                  {
+                    "text": "박승인",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2026-09-28",
+                "runs": [
+                  {
+                    "text": "2026-09-28",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "예정",
+                "runs": [
+                  {
+                    "text": "예정",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          }
+        ],
+        "table_type": "GENERIC",
+        "col_count": 4,
+        "alignments": [
+          "left",
+          "left",
+          "left",
+          "left"
+        ],
+        "column_types": [],
+        "caption": "",
+        "unit": "",
+        "source": "",
+        "as_of": "",
+        "landscape": false,
+        "warnings": [],
+        "spans": null,
+        "label_columns": null,
+        "note": "",
+        "header_rows": 1,
+        "schedule": null
+      },
+      "raw_text": "| 결정사항 | 담당자 | 기한 | 상태 |\n|---|---|---|---|\n| 공문 초안 검토 | 김담당 | 2026-09-18 | 진행 중 |\n| 예제 수집 | 이검토 | 2026-09-21 | 예정 |\n| 양식 승인 | 박승인 | 2026-09-28 | 예정 |",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "다음 회의는 검토 의견 취합 후 별도로 안내합니다. 위 내용은 시험용 가상 회의 기록입니다.",
+        "runs": [
+          {
+            "text": "다음 회의는 검토 의견 취합 후 별도로 안내합니다. 위 내용은 시험용 가상 회의 기록입니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "다음 회의는 검토 의견 취합 후 별도로 안내합니다. 위 내용은 시험용 가상 회의 기록입니다.",
+      "inferred_subtitle": false
+    }
+  ],
+  "footnotes": {},
+  "warnings": [],
+  "parsed_profile": "meeting-minutes",
+  "source_dir": ".",
+  "asset_roots": [
+    "."
+  ],
+  "limits": {
+    "max_input_bytes": 16777216,
+    "max_table_cells": 50000,
+    "max_list_depth": 32,
+    "max_image_bytes": 20971520,
+    "max_image_pixels": 50000000
+  }
+}

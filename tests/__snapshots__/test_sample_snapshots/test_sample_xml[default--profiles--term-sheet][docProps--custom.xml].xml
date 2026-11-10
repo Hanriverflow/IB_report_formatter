@@ -1,0 +1,60 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes'?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="generator" pid="2">
+    <vt:lpwstr>ib_report_formatter</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="generator_version" pid="3">
+    <vt:lpwstr>2.0.0</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="generator_profile" pid="4">
+    <vt:lpwstr>term-sheet</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.all_in" pid="5">
+    <vt:lpwstr>[4.90]%</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.amortization" pid="6">
+    <vt:lpwstr>37.5억원</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.amount" pid="7">
+    <vt:lpwstr>300억원</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.base_rate" pid="8">
+    <vt:lpwstr>[2.70]%</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.cap_spread" pid="9">
+    <vt:lpwstr>[1.10]%p</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.company" pid="10">
+    <vt:lpwstr>가나다머티리얼즈㈜</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.credit_fee" pid="11">
+    <vt:lpwstr>[0.90]%</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.facility" pid="12">
+    <vt:lpwstr>315억원</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.first_draw" pid="13">
+    <vt:lpwstr>2026-10-15</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.issue_rate" pid="14">
+    <vt:lpwstr>[3.80]%</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.maturity" pid="15">
+    <vt:lpwstr>2029-10-15</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.reserve" pid="16">
+    <vt:lpwstr>10억원</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.running_cost" pid="17">
+    <vt:lpwstr>[0.20]%</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.spc" pid="18">
+    <vt:lpwstr>가나다제일차(유)</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.tenor" pid="19">
+    <vt:lpwstr>36개월</vt:lpwstr>
+  </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.checks" pid="20">
+    <vt:lpwstr>{"checks": [{"check": "issue_rate = base_rate + cap_spread", "tolerance": null}, {"check": "all_in = issue_rate + credit_fee + running_cost", "tolerance": null}, {"check": "facility = amount * 1.05", "tolerance": null}], "values": {"issue_rate": "[3.80]%", "base_rate": "[2.70]%", "cap_spread": "[1.10]%p", "all_in": "[4.90]%", "credit_fee": "[0.90]%", "running_cost": "[0.20]%", "facility": "315억원", "amount": "300억원"}}</vt:lpwstr>
+  </property>
+</Properties>

@@ -1,0 +1,521 @@
+{
+  "metadata": {
+    "title": "2026년 하반기 운영자료 제출 요청",
+    "subtitle": "",
+    "company": "",
+    "ticker": "",
+    "sector": "",
+    "analyst": "",
+    "extra": {
+      "document_no": "기획-2026-015",
+      "date": "2026-09-14",
+      "sender": {
+        "organization": "주식회사 예시",
+        "department": "경영기획팀",
+        "signatory": "주식회사 예시 대표이사",
+        "contact": "planning@example.com"
+      },
+      "recipients": [
+        "협력회사 운영지원부서장"
+      ],
+      "cc": [
+        "재무담당자"
+      ],
+      "attachments": [
+        "운영자료 제출 양식 1부",
+        "작성 안내 1부"
+      ]
+    },
+    "profile": "office-letter",
+    "display_runs": {}
+  },
+  "sections": [],
+  "elements": [
+    {
+      "element_type": "HEADING_1",
+      "content": {
+        "level": 1,
+        "text": "2026년 하반기 운영자료 제출 요청",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "# 2026년 하반기 운영자료 제출 요청",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "귀사의 협조에 감사드립니다. 하반기 운영계획 수립을 위해 아래 자료의 제출을 요청드립니다.",
+        "runs": [
+          {
+            "text": "귀사의 협조에 감사드립니다. 하반기 운영계획 수립을 위해 아래 자료의 제출을 요청드립니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "귀사의 협조에 감사드립니다. 하반기 운영계획 수립을 위해 아래 자료의 제출을 요청드립니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "NUMBERED_LIST",
+      "content": [
+        "1",
+        {
+          "text": "제출 자료",
+          "runs": [
+            {
+              "text": "제출 자료",
+              "bold": false,
+              "italic": false,
+              "superscript": false,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": null,
+              "term_key": null,
+              "code": false,
+              "image": null
+            }
+          ],
+          "indent_level": 0
+        }
+      ],
+      "raw_text": "1. 제출 자료",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "NUMBERED_LIST",
+      "content": [
+        "1",
+        {
+          "text": "월별 운영실적 및 주요 변동 사유",
+          "runs": [
+            {
+              "text": "월별 운영실적 및 주요 변동 사유",
+              "bold": false,
+              "italic": false,
+              "superscript": false,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": null,
+              "term_key": null,
+              "code": false,
+              "image": null
+            }
+          ],
+          "indent_level": 1
+        }
+      ],
+      "raw_text": "    1. 월별 운영실적 및 주요 변동 사유",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "NUMBERED_LIST",
+      "content": [
+        "2",
+        {
+          "text": "연말까지의 인력·설비 운영계획",
+          "runs": [
+            {
+              "text": "연말까지의 인력·설비 운영계획",
+              "bold": false,
+              "italic": false,
+              "superscript": false,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": null,
+              "term_key": null,
+              "code": false,
+              "image": null
+            }
+          ],
+          "indent_level": 1
+        }
+      ],
+      "raw_text": "    2. 연말까지의 인력·설비 운영계획",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "NUMBERED_LIST",
+      "content": [
+        "2",
+        {
+          "text": "제출 기한: 2026년 9월 25일(금)",
+          "runs": [
+            {
+              "text": "제출 기한: 2026년 9월 25일(금)",
+              "bold": false,
+              "italic": false,
+              "superscript": false,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": null,
+              "term_key": null,
+              "code": false,
+              "image": null
+            }
+          ],
+          "indent_level": 0
+        }
+      ],
+      "raw_text": "2. 제출 기한: 2026년 9월 25일(금)",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "NUMBERED_LIST",
+      "content": [
+        "3",
+        {
+          "text": "제출 방법: 담당자 전자우편으로 회신",
+          "runs": [
+            {
+              "text": "제출 방법: 담당자 전자우편으로 회신",
+              "bold": false,
+              "italic": false,
+              "superscript": false,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": null,
+              "term_key": null,
+              "code": false,
+              "image": null
+            }
+          ],
+          "indent_level": 0
+        }
+      ],
+      "raw_text": "3. 제출 방법: 담당자 전자우편으로 회신",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "TABLE",
+      "content": {
+        "rows": [
+          {
+            "cells": [
+              {
+                "content": "구분",
+                "runs": [
+                  {
+                    "text": "구분",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "담당",
+                "runs": [
+                  {
+                    "text": "담당",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "비고",
+                "runs": [
+                  {
+                    "text": "비고",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": true
+          },
+          {
+            "cells": [
+              {
+                "content": "운영실적",
+                "runs": [
+                  {
+                    "text": "운영실적",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "운영지원팀",
+                "runs": [
+                  {
+                    "text": "운영지원팀",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "제출 양식 사용",
+                "runs": [
+                  {
+                    "text": "제출 양식 사용",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "설비계획",
+                "runs": [
+                  {
+                    "text": "설비계획",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "",
+                "runs": [],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "담당자 지정 후 회신",
+                "runs": [
+                  {
+                    "text": "담당자 지정 후 회신",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          }
+        ],
+        "table_type": "GENERIC",
+        "col_count": 3,
+        "alignments": [
+          "left",
+          "left",
+          "left"
+        ],
+        "column_types": [],
+        "caption": "",
+        "unit": "",
+        "source": "",
+        "as_of": "",
+        "landscape": false,
+        "warnings": [],
+        "spans": null,
+        "label_columns": null,
+        "note": "",
+        "header_rows": 1,
+        "schedule": null
+      },
+      "raw_text": "| 구분 | 담당 | 비고 |\n|---|---|---|\n| 운영실적 | 운영지원팀 | 제출 양식 사용 |\n| 설비계획 | | 담당자 지정 후 회신 |",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "일정 조정이 필요한 경우 제출 기한 전에 경영기획팀으로 연락해 주시기 바랍니다.",
+        "runs": [
+          {
+            "text": "일정 조정이 필요한 경우 제출 기한 전에 경영기획팀으로 연락해 주시기 바랍니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "일정 조정이 필요한 경우 제출 기한 전에 경영기획팀으로 연락해 주시기 바랍니다.",
+      "inferred_subtitle": false
+    }
+  ],
+  "footnotes": {},
+  "warnings": [],
+  "parsed_profile": "office-letter",
+  "source_dir": ".",
+  "asset_roots": [
+    "."
+  ],
+  "limits": {
+    "max_input_bytes": 16777216,
+    "max_table_cells": 50000,
+    "max_list_depth": 32,
+    "max_image_bytes": 20971520,
+    "max_image_pixels": 50000000
+  }
+}

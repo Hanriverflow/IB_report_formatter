@@ -1,0 +1,866 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes'?>
+<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" xmlns:mo="http://schemas.microsoft.com/office/mac/office/2008/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:mv="urn:schemas-microsoft-com:mac:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" mc:Ignorable="w14 wp14">
+  <w:body>
+    <w:p/>
+    <w:p/>
+    <w:p>
+      <w:pPr>
+        <w:jc w:val="center"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="20"/>
+        </w:rPr>
+        <w:t>기업금융</w:t>
+      </w:r>
+    </w:p>
+    <w:p/>
+    <w:p>
+      <w:pPr>
+        <w:pBdr>
+          <w:bottom w:color="003366" w:space="1" w:sz="14" w:val="single"/>
+        </w:pBdr>
+        <w:jc w:val="center"/>
+      </w:pPr>
+    </w:p>
+    <w:p/>
+    <w:p/>
+    <w:p>
+      <w:pPr>
+        <w:jc w:val="center"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="30"/>
+        </w:rPr>
+        <w:t>예시금융</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:jc w:val="center"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="48"/>
+        </w:rPr>
+        <w:t>문서 엔진 검증 보고서</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:jc w:val="center"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:i/>
+          <w:color w:val="404040"/>
+          <w:sz w:val="24"/>
+        </w:rPr>
+        <w:t>IB 보고서 프로파일 예시</w:t>
+      </w:r>
+    </w:p>
+    <w:p/>
+    <w:p/>
+    <w:p>
+      <w:pPr>
+        <w:pBdr>
+          <w:bottom w:color="C8C8C8" w:space="1" w:sz="6" w:val="single"/>
+        </w:pBdr>
+        <w:jc w:val="center"/>
+      </w:pPr>
+    </w:p>
+    <w:p/>
+    <w:p/>
+    <w:tbl>
+      <w:tblPr>
+        <w:tblStyle w:val="TableGrid"/>
+        <w:tblW w:type="auto" w:w="0"/>
+        <w:jc w:val="center"/>
+        <w:tblBorders>
+          <w:top w:color="003366" w:sz="12" w:val="single"/>
+          <w:left w:color="003366" w:sz="12" w:val="single"/>
+          <w:bottom w:color="003366" w:sz="12" w:val="single"/>
+          <w:right w:color="003366" w:sz="12" w:val="single"/>
+          <w:insideH w:color="C8C8C8" w:sz="4" w:val="single"/>
+          <w:insideV w:color="C8C8C8" w:sz="4" w:val="dotted"/>
+        </w:tblBorders>
+        <w:tblLook w:firstColumn="1" w:firstRow="1" w:lastColumn="0" w:lastRow="0" w:noHBand="0" w:noVBand="1" w:val="04A0"/>
+      </w:tblPr>
+      <w:tblGrid>
+        <w:gridCol w:w="4824"/>
+        <w:gridCol w:w="4824"/>
+      </w:tblGrid>
+      <w:tr>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="4824"/>
+            <w:shd w:color="auto" w:fill="F5F5F5" w:val="clear"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:jc w:val="left"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+                <w:b/>
+                <w:color w:val="404040"/>
+                <w:sz w:val="19"/>
+              </w:rPr>
+              <w:t>REPORT DATE</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="4824"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:jc w:val="left"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+                <w:color w:val="404040"/>
+                <w:sz w:val="21"/>
+              </w:rPr>
+              <w:t>2026-09-14</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+      </w:tr>
+      <w:tr>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="4824"/>
+            <w:shd w:color="auto" w:fill="F5F5F5" w:val="clear"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:jc w:val="left"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+                <w:b/>
+                <w:color w:val="404040"/>
+                <w:sz w:val="19"/>
+              </w:rPr>
+              <w:t>PREPARED BY</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="4824"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:jc w:val="left"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+                <w:color w:val="404040"/>
+                <w:sz w:val="21"/>
+              </w:rPr>
+              <w:t>기업금융팀</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+      </w:tr>
+      <w:tr>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="4824"/>
+            <w:shd w:color="auto" w:fill="F5F5F5" w:val="clear"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:jc w:val="left"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+                <w:b/>
+                <w:color w:val="404040"/>
+                <w:sz w:val="19"/>
+              </w:rPr>
+              <w:t>INSTITUTION</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="4824"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:jc w:val="left"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+                <w:color w:val="404040"/>
+                <w:sz w:val="21"/>
+              </w:rPr>
+              <w:t>예시금융</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+      </w:tr>
+      <w:tr>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="4824"/>
+            <w:shd w:color="auto" w:fill="F5F5F5" w:val="clear"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:jc w:val="left"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+                <w:b/>
+                <w:color w:val="404040"/>
+                <w:sz w:val="19"/>
+              </w:rPr>
+              <w:t>SECTOR</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="4824"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:jc w:val="left"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+                <w:color w:val="404040"/>
+                <w:sz w:val="21"/>
+              </w:rPr>
+              <w:t>기업금융</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+      </w:tr>
+    </w:tbl>
+    <w:p/>
+    <w:tbl>
+      <w:tblPr>
+        <w:tblStyle w:val="TableGrid"/>
+        <w:tblW w:type="auto" w:w="0"/>
+        <w:jc w:val="center"/>
+        <w:tblBorders>
+          <w:top w:color="C8C8C8" w:sz="4" w:val="single"/>
+          <w:left w:color="C8C8C8" w:sz="4" w:val="single"/>
+          <w:bottom w:color="C8C8C8" w:sz="4" w:val="single"/>
+          <w:right w:color="C8C8C8" w:sz="4" w:val="single"/>
+          <w:insideH w:val="nil"/>
+          <w:insideV w:val="nil"/>
+        </w:tblBorders>
+        <w:tblLook w:firstColumn="1" w:firstRow="1" w:lastColumn="0" w:lastRow="0" w:noHBand="0" w:noVBand="1" w:val="04A0"/>
+      </w:tblPr>
+      <w:tblGrid>
+        <w:gridCol w:w="9648"/>
+      </w:tblGrid>
+      <w:tr>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="9648"/>
+            <w:shd w:color="auto" w:fill="F5F5F5" w:val="clear"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="40" w:before="40" w:line="276" w:lineRule="auto"/>
+              <w:jc w:val="both"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+                <w:color w:val="404040"/>
+                <w:sz w:val="17"/>
+              </w:rPr>
+              <w:t>당행은 해당 문서에 최대한 정확하고 완전한 정보를 담고자 노력하였으나, 오류와 중요정보의 누락이 있을 수 있으며, 정보의 정확성, 완전성 및 적정성을 보장하지 않습니다. 이 문서는 고객의 이해를 돕기 위하여 작성된 설명자료에 불과하므로, 고객은 각자의 책임으로 개별 계약서나 공시된 정보를 통하여 거래의 내용을 숙지하여야 합니다. 이 문서는 확정적인 거래조건을 구성하지 않으며 법적인 책임을 위한 근거자료로 사용될 수 없습니다. 본 자료는 당행의 저작물로서 모든 저작권은 당행에게 있으며, 당행의 동의 없이 어떠한 경우에도 어떠한 형태로든 복제, 배포, 전송, 변경, 대여할 수 없으며, 당행의 요청 시에 즉시 반환, 파기하여 주시기 바랍니다.</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+      </w:tr>
+    </w:tbl>
+    <w:p>
+      <w:r>
+        <w:br w:type="page"/>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="TOCHeading"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="28"/>
+        </w:rPr>
+        <w:t>TABLE OF CONTENTS</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:r>
+        <w:fldChar w:fldCharType="begin"/>
+        <w:instrText xml:space="preserve">TOC \o "1-4" \h \z \u</w:instrText>
+        <w:fldChar w:fldCharType="separate"/>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="40" w:before="0"/>
+        <w:ind w:left="288"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:b w:val="0"/>
+          <w:color w:val="404040"/>
+          <w:sz w:val="20"/>
+        </w:rPr>
+        <w:t>1. Executive Summary</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="40" w:before="0"/>
+        <w:ind w:left="288"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:b w:val="0"/>
+          <w:color w:val="404040"/>
+          <w:sz w:val="20"/>
+        </w:rPr>
+        <w:t>2. 재무 현황</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="40" w:before="0"/>
+        <w:ind w:left="288"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:b w:val="0"/>
+          <w:color w:val="404040"/>
+          <w:sz w:val="20"/>
+        </w:rPr>
+        <w:t>3. 검토 의견</w:t>
+      </w:r>
+      <w:r>
+        <w:fldChar w:fldCharType="end"/>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:r>
+        <w:br w:type="page"/>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="Heading2"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Arial" w:eastAsia="Malgun Gothic" w:hAnsi="Arial"/>
+          <w:b/>
+          <w:i w:val="0"/>
+          <w:color w:val="404040"/>
+          <w:sz w:val="24"/>
+        </w:rPr>
+        <w:t>1. Executive Summary</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>IB 보고서의 기존 표지·목차·머리말·쪽번호·면책 구성을 유지합니다. 금융표에는 숫자 형식과 출처를 명시할 수 있습니다.</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="Heading2"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Arial" w:eastAsia="Malgun Gothic" w:hAnsi="Arial"/>
+          <w:b/>
+          <w:i w:val="0"/>
+          <w:color w:val="404040"/>
+          <w:sz w:val="24"/>
+        </w:rPr>
+        <w:t>2. 재무 현황</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>가상 실적 비교</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>단위: 백만원</w:t>
+      </w:r>
+    </w:p>
+    <w:tbl>
+      <w:tblPr>
+        <w:tblStyle w:val="TableGrid"/>
+        <w:tblW w:type="auto" w:w="0"/>
+        <w:jc w:val="left"/>
+        <w:tblBorders>
+          <w:top w:color="003366" w:sz="12" w:val="single"/>
+          <w:left w:color="003366" w:sz="12" w:val="single"/>
+          <w:bottom w:color="003366" w:sz="12" w:val="single"/>
+          <w:right w:color="003366" w:sz="12" w:val="single"/>
+          <w:insideH w:color="C8C8C8" w:sz="4" w:val="single"/>
+          <w:insideV w:color="C8C8C8" w:sz="4" w:val="dotted"/>
+        </w:tblBorders>
+        <w:tblLayout w:type="fixed"/>
+        <w:tblLook w:firstColumn="1" w:firstRow="1" w:lastColumn="0" w:lastRow="0" w:noHBand="0" w:noVBand="1" w:val="04A0"/>
+      </w:tblPr>
+      <w:tblGrid>
+        <w:gridCol w:w="5306"/>
+        <w:gridCol w:w="1944"/>
+        <w:gridCol w:w="1944"/>
+      </w:tblGrid>
+      <w:tr>
+        <w:trPr>
+          <w:tblHeader/>
+          <w:cantSplit/>
+        </w:trPr>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="5306"/>
+            <w:shd w:color="auto" w:fill="003366" w:val="clear"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="center"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Arial" w:eastAsia="Malgun Gothic" w:hAnsi="Arial"/>
+                <w:b/>
+                <w:i w:val="0"/>
+                <w:color w:val="FFFFFF"/>
+                <w:sz w:val="20"/>
+              </w:rPr>
+              <w:t>지표</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="1944"/>
+            <w:shd w:color="auto" w:fill="003366" w:val="clear"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="center"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Arial" w:eastAsia="Malgun Gothic" w:hAnsi="Arial"/>
+                <w:b/>
+                <w:i w:val="0"/>
+                <w:color w:val="FFFFFF"/>
+                <w:sz w:val="20"/>
+              </w:rPr>
+              <w:t>전기</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="1944"/>
+            <w:shd w:color="auto" w:fill="003366" w:val="clear"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="center"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Arial" w:eastAsia="Malgun Gothic" w:hAnsi="Arial"/>
+                <w:b/>
+                <w:i w:val="0"/>
+                <w:color w:val="FFFFFF"/>
+                <w:sz w:val="20"/>
+              </w:rPr>
+              <w:t>당기</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+      </w:tr>
+      <w:tr>
+        <w:trPr>
+          <w:cantSplit/>
+        </w:trPr>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="5306"/>
+            <w:shd w:color="auto" w:fill="F5F5F5" w:val="clear"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="left"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+                <w:b w:val="0"/>
+                <w:i w:val="0"/>
+                <w:sz w:val="20"/>
+              </w:rPr>
+              <w:t>매출</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="1944"/>
+            <w:shd w:color="auto" w:fill="F5F5F5" w:val="clear"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="right"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+                <w:b w:val="0"/>
+                <w:i w:val="0"/>
+                <w:sz w:val="20"/>
+              </w:rPr>
+              <w:t>120,000</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="1944"/>
+            <w:shd w:color="auto" w:fill="F5F5F5" w:val="clear"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="right"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+                <w:b/>
+                <w:i w:val="0"/>
+                <w:sz w:val="20"/>
+              </w:rPr>
+              <w:t>135,000</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+      </w:tr>
+      <w:tr>
+        <w:trPr>
+          <w:cantSplit/>
+        </w:trPr>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="5306"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="left"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+                <w:b w:val="0"/>
+                <w:i w:val="0"/>
+                <w:sz w:val="20"/>
+              </w:rPr>
+              <w:t>영업이익</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="1944"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="right"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+                <w:b w:val="0"/>
+                <w:i w:val="0"/>
+                <w:sz w:val="20"/>
+              </w:rPr>
+              <w:t>15,000</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="1944"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="right"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+                <w:b w:val="0"/>
+                <w:i w:val="0"/>
+                <w:sz w:val="20"/>
+              </w:rPr>
+              <w:t>16,800</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+      </w:tr>
+    </w:tbl>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>출처: 기능 검증용 가상 데이터</w:t>
+      </w:r>
+    </w:p>
+    <w:p/>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="Heading2"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Arial" w:eastAsia="Malgun Gothic" w:hAnsi="Arial"/>
+          <w:b/>
+          <w:i w:val="0"/>
+          <w:color w:val="404040"/>
+          <w:sz w:val="24"/>
+        </w:rPr>
+        <w:t>3. 검토 의견</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>문서 내용과 수치의 정확성은 작성자가 검토해야 합니다. 이 문서는 기능 검증을 위한 가상 예시입니다.</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:r>
+        <w:br w:type="page"/>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="Heading1"/>
+      </w:pPr>
+      <w:r>
+        <w:t>면책 조항</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:spacing w:after="60" w:before="80"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Arial" w:eastAsia="Arial" w:hAnsi="Arial"/>
+          <w:b/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>면책 조항</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="120" w:line="288" w:lineRule="auto"/>
+        <w:jc w:val="both"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Calibri" w:hAnsi="Calibri"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>본 자료는 해당 문서에 최대한 정확하고 완전한 정보를 담고자 노력하였으나, 오류와 중요정보의 누락이 있을 수 있으며, 정보의 정확성, 완전성 및 적정성을 보장하지 않습니다. 이 문서는 고객의 이해를 돕기 위하여 작성된 설명자료에 불과하므로, 고객은 각자의 책임으로 개별 계약서나 공시된 정보를 통하여 거래의 내용을 숙지하여야 합니다. 이 문서는 확정적인 거래조건을 구성하지 않으며 법적인 책임을 위한 근거자료로 사용될 수 없습니다.</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:spacing w:after="60" w:before="80"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Arial" w:eastAsia="Arial" w:hAnsi="Arial"/>
+          <w:b/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>저작권 및 비밀유지</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="120" w:line="288" w:lineRule="auto"/>
+        <w:jc w:val="both"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Calibri" w:hAnsi="Calibri"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>본 자료는 당행의 저작물로서 모든 저작권은 당행에게 있으며, 당행의 동의 없이 어떠한 경우에도 어떠한 형태로든 복제, 배포, 전송, 변경, 대여할 수 없습니다. 당행의 요청 시에 즉시 반환, 파기하여 주시기 바랍니다. 본 자료는 상기 제한에 대하여 동의하는 조건으로 제공되며 동의하지 않으시는 경우에는 즉시 파기하여 주시기 바랍니다.</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:spacing w:after="60" w:before="80"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Arial" w:eastAsia="Arial" w:hAnsi="Arial"/>
+          <w:b/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>조건부 제공</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="120" w:line="288" w:lineRule="auto"/>
+        <w:jc w:val="both"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Calibri" w:hAnsi="Calibri"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>본 제안서의 내용은 현재의 시장상황 및 발행구조에 대한 기초정보에 근거한 것으로 유동화대상 자산 등 구조에 대한 변경이나 기타 중대한 사유 발생시 변경될 수 있으며, 당행의 내부 여신심의위원회 승인을 조건으로 합니다.</w:t>
+      </w:r>
+    </w:p>
+    <w:p/>
+    <w:p>
+      <w:pPr>
+        <w:jc w:val="center"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:i/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>(c) YEAR 예시금융. All rights reserved.</w:t>
+      </w:r>
+    </w:p>
+    <w:sectPr w:rsidR="REVISION" w:rsidRPr="REVISION" w:rsidSect="REVISION">
+      <w:headerReference r:id="rId9" w:type="default"/>
+      <w:footerReference r:id="rId10" w:type="default"/>
+      <w:pgSz w:h="15840" w:w="12240"/>
+      <w:pgMar w:bottom="1080" w:footer="720" w:gutter="0" w:header="720" w:left="1440" w:right="1152" w:top="1440"/>
+      <w:cols w:space="720"/>
+      <w:docGrid w:linePitch="360"/>
+    </w:sectPr>
+  </w:body>
+</w:document>

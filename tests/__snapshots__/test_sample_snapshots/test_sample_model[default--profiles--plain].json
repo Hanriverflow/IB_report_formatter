@@ -1,0 +1,526 @@
+{
+  "metadata": {
+    "title": "일반 문서 예시",
+    "subtitle": "",
+    "company": "",
+    "ticker": "",
+    "sector": "",
+    "analyst": "",
+    "extra": {},
+    "profile": "plain",
+    "display_runs": {}
+  },
+  "sections": [],
+  "elements": [
+    {
+      "element_type": "HEADING_1",
+      "content": {
+        "level": 1,
+        "text": "일반 문서 예시",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "# 일반 문서 예시",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "Markdown 본문을 편집 가능한 Word 문서로 변환합니다. 금융표 추정·IB 표지·면책문구는 기본으로 적용하지 않습니다.",
+        "runs": [
+          {
+            "text": "Markdown 본문을 편집 가능한 Word 문서로 변환합니다. 금융표 추정·IB 표지·면책문구는 기본으로 적용하지 않습니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "Markdown 본문을 편집 가능한 Word 문서로 변환합니다. 금융표 추정·IB 표지·면책문구는 기본으로 적용하지 않습니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "안내",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 안내",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "NUMBERED_LIST",
+      "content": [
+        "1",
+        {
+          "text": "제목과 본문을 작성합니다.",
+          "runs": [
+            {
+              "text": "제목과 본문을 작성합니다.",
+              "bold": false,
+              "italic": false,
+              "superscript": false,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": null,
+              "term_key": null,
+              "code": false,
+              "image": null
+            }
+          ],
+          "indent_level": 0
+        }
+      ],
+      "raw_text": "1. 제목과 본문을 작성합니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "NUMBERED_LIST",
+      "content": [
+        "1",
+        {
+          "text": "중첩 목록은 4칸씩 들여씁니다.",
+          "runs": [
+            {
+              "text": "중첩 목록은 4칸씩 들여씁니다.",
+              "bold": false,
+              "italic": false,
+              "superscript": false,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": null,
+              "term_key": null,
+              "code": false,
+              "image": null
+            }
+          ],
+          "indent_level": 1
+        }
+      ],
+      "raw_text": "    1. 중첩 목록은 4칸씩 들여씁니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "NUMBERED_LIST",
+      "content": [
+        "2",
+        {
+          "text": "필요한 표와 출처를 추가합니다.",
+          "runs": [
+            {
+              "text": "필요한 표와 출처를 추가합니다.",
+              "bold": false,
+              "italic": false,
+              "superscript": false,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": null,
+              "term_key": null,
+              "code": false,
+              "image": null
+            }
+          ],
+          "indent_level": 0
+        }
+      ],
+      "raw_text": "2. 필요한 표와 출처를 추가합니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "TABLE",
+      "content": {
+        "rows": [
+          {
+            "cells": [
+              {
+                "content": "항목",
+                "runs": [
+                  {
+                    "text": "항목",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "코드",
+                "runs": [
+                  {
+                    "text": "코드",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "참고",
+                "runs": [
+                  {
+                    "text": "참고",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": true
+          },
+          {
+            "cells": [
+              {
+                "content": "첫 항목",
+                "runs": [
+                  {
+                    "text": "첫 항목",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "001234",
+                "runs": [
+                  {
+                    "text": "001234",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "빈칸과 코드를 보존",
+                "runs": [
+                  {
+                    "text": "빈칸과 코드를 보존",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "둘째 항목",
+                "runs": [
+                  {
+                    "text": "둘째 항목",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "",
+                "runs": [],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "A|B",
+                "runs": [
+                  {
+                    "text": "A|B",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          }
+        ],
+        "table_type": "GENERIC",
+        "col_count": 3,
+        "alignments": [
+          "left",
+          "left",
+          "left"
+        ],
+        "column_types": [],
+        "caption": "",
+        "unit": "",
+        "source": "",
+        "as_of": "",
+        "landscape": false,
+        "warnings": [],
+        "spans": null,
+        "label_columns": null,
+        "note": "",
+        "header_rows": 1,
+        "schedule": null
+      },
+      "raw_text": "| 항목 | 코드 | 참고 |\n|---|---|---|\n| 첫 항목 | 001234 | 빈칸과 코드를 보존 |\n| 둘째 항목 | | A\\|B |",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "[링크 예시](https://example.com)는 Word의 클릭 가능한 링크로 들어갑니다.[^1]",
+        "runs": [
+          {
+            "text": "링크 예시",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": "https://example.com",
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "는 Word의 클릭 가능한 링크로 들어갑니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "1",
+            "bold": false,
+            "italic": false,
+            "superscript": true,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": 1,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "[링크 예시](https://example.com)는 Word의 클릭 가능한 링크로 들어갑니다.[^1]",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "References",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## References",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "NUMBERED_LIST",
+      "content": [
+        "1",
+        {
+          "text": "참고자료 목록도 일반 본문으로 유지합니다.",
+          "runs": [
+            {
+              "text": "참고자료 목록도 일반 본문으로 유지합니다.",
+              "bold": false,
+              "italic": false,
+              "superscript": false,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": null,
+              "term_key": null,
+              "code": false,
+              "image": null
+            }
+          ],
+          "indent_level": 0
+        }
+      ],
+      "raw_text": "1. 참고자료 목록도 일반 본문으로 유지합니다.",
+      "inferred_subtitle": false
+    }
+  ],
+  "footnotes": {
+    "1": "숫자 식별자와 한 줄 정의를 사용하는 각주 예시입니다."
+  },
+  "warnings": [],
+  "parsed_profile": "plain",
+  "source_dir": ".",
+  "asset_roots": [
+    "."
+  ],
+  "limits": {
+    "max_input_bytes": 16777216,
+    "max_table_cells": 50000,
+    "max_list_depth": 32,
+    "max_image_bytes": 20971520,
+    "max_image_pixels": 50000000
+  }
+}

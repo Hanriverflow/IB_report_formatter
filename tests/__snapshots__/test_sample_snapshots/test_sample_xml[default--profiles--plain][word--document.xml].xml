@@ -1,0 +1,411 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes'?>
+<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" xmlns:mo="http://schemas.microsoft.com/office/mac/office/2008/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:mv="urn:schemas-microsoft-com:mac:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" mc:Ignorable="w14 wp14">
+  <w:body>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="Heading1"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:b/>
+          <w:i w:val="0"/>
+          <w:color w:val="202020"/>
+          <w:sz w:val="32"/>
+        </w:rPr>
+        <w:t>일반 문서 예시</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="22"/>
+        </w:rPr>
+        <w:t>Markdown 본문을 편집 가능한 Word 문서로 변환합니다. 금융표 추정·IB 표지·면책문구는 기본으로 적용하지 않습니다.</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="Heading2"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:b/>
+          <w:i w:val="0"/>
+          <w:color w:val="404040"/>
+          <w:sz w:val="24"/>
+        </w:rPr>
+        <w:t>안내</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:numPr>
+          <w:ilvl w:val="0"/>
+          <w:numId w:val="10"/>
+        </w:numPr>
+        <w:ind w:hanging="360" w:left="360"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="22"/>
+        </w:rPr>
+        <w:t>제목과 본문을 작성합니다.</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:numPr>
+          <w:ilvl w:val="1"/>
+          <w:numId w:val="11"/>
+        </w:numPr>
+        <w:ind w:hanging="360" w:left="720"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="22"/>
+        </w:rPr>
+        <w:t>중첩 목록은 4칸씩 들여씁니다.</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:numPr>
+          <w:ilvl w:val="0"/>
+          <w:numId w:val="10"/>
+        </w:numPr>
+        <w:ind w:hanging="360" w:left="360"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="22"/>
+        </w:rPr>
+        <w:t>필요한 표와 출처를 추가합니다.</w:t>
+      </w:r>
+    </w:p>
+    <w:tbl>
+      <w:tblPr>
+        <w:tblStyle w:val="TableGrid"/>
+        <w:tblW w:type="auto" w:w="0"/>
+        <w:jc w:val="left"/>
+        <w:tblBorders>
+          <w:top w:color="202020" w:sz="12" w:val="single"/>
+          <w:left w:color="202020" w:sz="12" w:val="single"/>
+          <w:bottom w:color="202020" w:sz="12" w:val="single"/>
+          <w:right w:color="202020" w:sz="12" w:val="single"/>
+          <w:insideH w:color="C8C8C8" w:sz="4" w:val="single"/>
+          <w:insideV w:color="C8C8C8" w:sz="4" w:val="dotted"/>
+        </w:tblBorders>
+        <w:tblLayout w:type="fixed"/>
+        <w:tblLook w:firstColumn="1" w:firstRow="1" w:lastColumn="0" w:lastRow="0" w:noHBand="0" w:noVBand="1" w:val="04A0"/>
+      </w:tblPr>
+      <w:tblGrid>
+        <w:gridCol w:w="3570"/>
+        <w:gridCol w:w="1944"/>
+        <w:gridCol w:w="4116"/>
+      </w:tblGrid>
+      <w:tr>
+        <w:trPr>
+          <w:tblHeader/>
+          <w:cantSplit/>
+        </w:trPr>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="3570"/>
+            <w:shd w:color="auto" w:fill="EEEEEE" w:val="clear"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="center"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+                <w:b/>
+                <w:i w:val="0"/>
+                <w:color w:val="202020"/>
+                <w:sz w:val="20"/>
+              </w:rPr>
+              <w:t>항목</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="1944"/>
+            <w:shd w:color="auto" w:fill="EEEEEE" w:val="clear"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="center"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+                <w:b/>
+                <w:i w:val="0"/>
+                <w:color w:val="202020"/>
+                <w:sz w:val="20"/>
+              </w:rPr>
+              <w:t>코드</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="4116"/>
+            <w:shd w:color="auto" w:fill="EEEEEE" w:val="clear"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="center"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+                <w:b/>
+                <w:i w:val="0"/>
+                <w:color w:val="202020"/>
+                <w:sz w:val="20"/>
+              </w:rPr>
+              <w:t>참고</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+      </w:tr>
+      <w:tr>
+        <w:trPr>
+          <w:cantSplit/>
+        </w:trPr>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="3570"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="left"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+                <w:b w:val="0"/>
+                <w:i w:val="0"/>
+                <w:sz w:val="20"/>
+              </w:rPr>
+              <w:t>첫 항목</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="1944"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="right"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+                <w:b w:val="0"/>
+                <w:i w:val="0"/>
+                <w:sz w:val="20"/>
+              </w:rPr>
+              <w:t>001234</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="4116"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="left"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+                <w:b w:val="0"/>
+                <w:i w:val="0"/>
+                <w:sz w:val="20"/>
+              </w:rPr>
+              <w:t>빈칸과 코드를 보존</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+      </w:tr>
+      <w:tr>
+        <w:trPr>
+          <w:cantSplit/>
+        </w:trPr>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="3570"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="left"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+                <w:b w:val="0"/>
+                <w:i w:val="0"/>
+                <w:sz w:val="20"/>
+              </w:rPr>
+              <w:t>둘째 항목</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="1944"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="right"/>
+            </w:pPr>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:type="dxa" w:w="4116"/>
+            <w:vAlign w:val="center"/>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
+              <w:jc w:val="left"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+                <w:b w:val="0"/>
+                <w:i w:val="0"/>
+                <w:sz w:val="20"/>
+              </w:rPr>
+              <w:t>A|B</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+      </w:tr>
+    </w:tbl>
+    <w:p/>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+      </w:pPr>
+      <w:hyperlink r:id="rId9">
+        <w:r>
+          <w:rPr>
+            <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+            <w:b w:val="0"/>
+            <w:i w:val="0"/>
+            <w:color w:val="202020"/>
+            <w:sz w:val="22"/>
+            <w:u w:val="single"/>
+          </w:rPr>
+          <w:t>링크 예시</w:t>
+        </w:r>
+      </w:hyperlink>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="22"/>
+        </w:rPr>
+        <w:t>는 Word의 클릭 가능한 링크로 들어갑니다.</w:t>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rStyle w:val="FootnoteReference"/>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="22"/>
+          <w:vertAlign w:val="superscript"/>
+        </w:rPr>
+        <w:footnoteReference w:id="1"/>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="Heading2"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:b/>
+          <w:i w:val="0"/>
+          <w:color w:val="404040"/>
+          <w:sz w:val="24"/>
+        </w:rPr>
+        <w:t>References</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:numPr>
+          <w:ilvl w:val="0"/>
+          <w:numId w:val="12"/>
+        </w:numPr>
+        <w:ind w:hanging="360" w:left="360"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="22"/>
+        </w:rPr>
+        <w:t>참고자료 목록도 일반 본문으로 유지합니다.</w:t>
+      </w:r>
+    </w:p>
+    <w:sectPr w:rsidR="REVISION" w:rsidRPr="REVISION" w:rsidSect="REVISION">
+      <w:headerReference r:id="rId11" w:type="default"/>
+      <w:footerReference r:id="rId12" w:type="default"/>
+      <w:pgSz w:h="16838" w:w="11906"/>
+      <w:pgMar w:bottom="1138" w:footer="720" w:gutter="0" w:header="720" w:left="1138" w:right="1138" w:top="1138"/>
+      <w:cols w:space="720"/>
+      <w:docGrid w:linePitch="360"/>
+    </w:sectPr>
+  </w:body>
+</w:document>
