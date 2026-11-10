@@ -495,6 +495,10 @@ class TextParser:
     # punctuation character, as in CommonMark; an escaped HTML break is left
     # for normalize_html_breaks, which keeps the tag as text.
     _ESCAPE_RE = re.compile(r"\\(?!<br\s*/?>)([!-/:-@\[-`{-~])", re.IGNORECASE)
+    # The set resolved before the escape set was widened. cleanup_text still
+    # applies only this set inside code spans, inline math and link destinations,
+    # so LaTeX commands such as \% and \, keep their backslash there.
+    _LEGACY_ESCAPE_RE = re.compile(r'\\([\\$`^~.*"\'()\[\]{}|_-])')
     _HTML_BREAK_RE = re.compile(r"(?<!\\)<br\s*/?>", re.IGNORECASE)
     _ESCAPED_HTML_BREAK_RE = re.compile(r"\\(<br\s*/?>)", re.IGNORECASE)
     _CODE_SPAN_RE = re.compile(r"(?<![\\`])(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.DOTALL)
@@ -522,6 +526,11 @@ class TextParser:
 
     # Inline LaTeX: $...$ but not $$...$$
     _INLINE_LATEX_RE = re.compile(r"(?<![\\$])\$(?!\$)((?:\\.|[^$\\\n])+?)\$(?!\$)")
+    # Spans whose characters are not prose: code, inline math, a link destination.
+    _LITERAL_SPAN_RE = re.compile(
+        _CODE_SPAN_RE.pattern + "|" + _INLINE_LATEX_RE.pattern + r"|(?<=\])\([^()\s]*\)",
+        re.DOTALL,
+    )
 
     @classmethod
     def parse_runs(cls, text: str) -> list[TextRun]:
@@ -728,7 +737,16 @@ class TextParser:
             literals[token] = match.group(1)
             return token
 
-        return cls._ESCAPE_RE.sub(replace, text), literals
+        # Text between dollar signs keeps the legacy set whether or not this
+        # context renders math, so `$12\%$` reads the same in a callout or a cell.
+        pieces: list[str] = []
+        offset = 0
+        for span in cls._INLINE_LATEX_RE.finditer(text):
+            pieces.append(cls._ESCAPE_RE.sub(replace, text[offset : span.start()]))
+            pieces.append(cls._LEGACY_ESCAPE_RE.sub(replace, span.group(0)))
+            offset = span.end()
+        pieces.append(cls._ESCAPE_RE.sub(replace, text[offset:]))
+        return "".join(pieces), literals
 
     @classmethod
     def _split_code_runs(cls, runs: list[TextRun], literals: dict[str, str]) -> list[TextRun]:
@@ -984,15 +1002,34 @@ class TextParser:
         text, _ = cls._protect_images(text)
         return bool(cls._INLINE_LATEX_RE.search(text))
 
+    @classmethod
+    def _unescape(cls, text: str) -> str:
+        """Resolve escapes in text that is not tokenized; literal spans keep the legacy set.
+
+        Args:
+            text: Raw inline Markdown of a heading, quote line or emphasis part.
+
+        Returns:
+            Text with escapes resolved once.
+        """
+        pieces: list[str] = []
+        offset = 0
+        for match in cls._LITERAL_SPAN_RE.finditer(text):
+            pieces.append(cls._ESCAPE_RE.sub(r"\1", text[offset : match.start()]))
+            pieces.append(cls._LEGACY_ESCAPE_RE.sub(r"\1", match.group(0)))
+            offset = match.end()
+        pieces.append(cls._ESCAPE_RE.sub(r"\1", text[offset:]))
+        return "".join(pieces)
+
     @staticmethod
     def cleanup_text(text: str) -> str:
         """Remove markdown artifacts and escape characters (single-pass regex)"""
-        return TextParser.normalize_html_breaks(TextParser._ESCAPE_RE.sub(r"\1", text).strip())
+        return TextParser.normalize_html_breaks(TextParser._unescape(text).strip())
 
     @staticmethod
     def cleanup_text_preserve_spacing(text: str) -> str:
         """Remove markdown escape characters while preserving surrounding spacing."""
-        return TextParser.normalize_html_breaks(TextParser._ESCAPE_RE.sub(r"\1", text))
+        return TextParser.normalize_html_breaks(TextParser._unescape(text))
 
     @classmethod
     def normalize_html_breaks(cls, text: str) -> str:
@@ -1596,7 +1633,9 @@ class TableParser:
         while index < len(text):
             char = text[index]
             if char == "\\" and index + 1 < len(text) and text[index + 1] in {"|", "\\"}:
-                current.append(text[index + 1])
+                # An escaped pipe is cell text. An escaped backslash stays escaped:
+                # the cell's inline parse resolves it, once, with every other escape.
+                current.append("|" if text[index + 1] == "|" else "\\\\")
                 index += 2
                 continue
             if char == "|":
