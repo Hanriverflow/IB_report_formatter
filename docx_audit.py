@@ -27,7 +27,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from typing import Any, cast
-from zipfile import ZipFile
+from zipfile import BadZipFile, ZipFile
 
 from docx import Document
 from docx.document import Document as DocxDocument
@@ -510,6 +510,15 @@ def audit_file(path: str) -> DocumentAudit:
     return _audit_package(path)[0]
 
 
+def _read_package_xml(archive: ZipFile, name: str) -> Any | None:
+    """Read a package XML member without exposing unreadable or unsafe contents."""
+    try:
+        return _parse_xml_part(archive.read(name))
+    except (KeyError, OSError, BadZipFile, RuntimeError, NotImplementedError) as error:
+        logger.debug("Cannot read XML part %s: %s", name, error)
+        return None
+
+
 def _audit_package(path: str) -> tuple[DocumentAudit, TermAudit | None]:
     """Check every XML part before allowing python-docx to consume the package.
 
@@ -521,12 +530,42 @@ def _audit_package(path: str) -> tuple[DocumentAudit, TermAudit | None]:
     """
     with open(path, "rb") as stream:
         with ZipFile(stream) as archive:
-            issues = [
-                f"XML part cannot be read safely: /{part.filename}"
-                for part in archive.infolist()
-                if part.filename.endswith((".xml", ".rels"))
-                and _parse_xml_part(archive.read(part)) is None
-            ]
+            types_name = "[Content_Types].xml"
+            types = _read_package_xml(archive, types_name)
+            namespace = "{http://schemas.openxmlformats.org/package/2006/content-types}"
+            if types is None or types.tag != namespace + "Types":
+                return DocumentAudit(
+                    issues=[f"XML part cannot be read safely: /{types_name}"]
+                ), None
+            defaults: dict[str, str] = {}
+            overrides: dict[str, str] = {}
+            for node in types:
+                if node.tag not in {namespace + "Default", namespace + "Override"}:
+                    continue
+                key = "Extension" if node.tag == namespace + "Default" else "PartName"
+                name, content_type = node.get(key), node.get("ContentType")
+                if name is None or content_type is None:
+                    return DocumentAudit(
+                        issues=[f"XML part cannot be read safely: /{types_name}"]
+                    ), None
+                mapping = defaults if key == "Extension" else overrides
+                mapping[name.lower()] = content_type.lower()
+            # Match python-docx's case-insensitive content-type lookup, including
+            # override precedence. PartFactory's registered XML classes all use
+            # XML content types; generic binary Parts retain their bytes unchanged.
+            issues = []
+            for part in archive.infolist():
+                if part.filename == types_name:
+                    continue
+                name = part.filename.lower()
+                content_type = overrides.get("/" + name, defaults.get(name.rsplit(".", 1)[-1], ""))
+                is_xml = (
+                    name.endswith(".rels")
+                    or content_type in {"application/xml", "text/xml"}
+                    or content_type.endswith("+xml")
+                )
+                if is_xml and _read_package_xml(archive, part.filename) is None:
+                    issues.append(f"XML part cannot be read safely: /{part.filename}")
         if issues:
             return DocumentAudit(issues=issues), None
         stream.seek(0)

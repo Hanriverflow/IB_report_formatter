@@ -16,6 +16,7 @@ from document_profiles import RenderOptions
 from ib_renderer import IBDocumentRenderer
 from md_parser import MarkdownParser
 from numeric_checks import CHECKS_PROPERTY
+from scripts.sample_corpus import render_corpus
 
 SOURCE = (
     "---\nterms:\n  amount: '500'\nchecks:\n  - amount = 500\n---\n"
@@ -24,6 +25,130 @@ SOURCE = (
 )
 MARKER = "가상_ENTITY_REPLACEMENT_MUST_NOT_BE_READ"
 REFERENCE = "AUDIT_ENTITY_REFERENCE"
+CT_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
+
+
+def _write_parts(path, parts):
+    with ZipFile(path, "w") as archive:
+        for name, blob in parts.items():
+            archive.writestr(name, blob)
+
+
+def _package_parts():
+    with ZipFile(BytesIO(_render_package())) as archive:
+        return {name: archive.read(name) for name in archive.namelist()}
+
+
+@pytest.mark.parametrize("name", ["document.bin", "document.XML"])
+@pytest.mark.parametrize("mapping", ["override", "default"])
+def test_renamed_xml_main_part_is_checked(tmp_path, monkeypatch, name, mapping):
+    parts = _package_parts()
+    root = etree.fromstring(parts.pop("word/document.xml"))
+    root.set("audit_probe", REFERENCE)
+    parts["word/" + name] = (
+        f'<!DOCTYPE probe [<!ENTITY probe "{MARKER}">]>'
+        + etree.tostring(root, encoding="unicode").replace(REFERENCE, "&probe;")
+    ).encode()
+    parts["_rels/.rels"] = parts["_rels/.rels"].replace(b"document.xml", name.encode())
+    parts[f"word/_rels/{name}.rels"] = parts.pop("word/_rels/document.xml.rels")
+    types = etree.fromstring(parts["[Content_Types].xml"])
+    main = next(node for node in types if node.get("PartName") == "/word/document.xml")
+    if mapping == "override":
+        main.set("PartName", "/WORD/" + name.upper())
+    else:
+        extension = name.rsplit(".", 1)[1].upper()
+        etree.SubElement(
+            types, f"{{{CT_NS}}}Default", Extension=extension, ContentType=main.get("ContentType")
+        )
+        types.remove(main)
+    parts["[Content_Types].xml"] = etree.tostring(types)
+    path = tmp_path / "example-renamed.docx"
+    _write_parts(path, parts)
+    # Demonstrate that the installed python-docx parses the renamed part and expands it.
+    assert Document(path).element.get("audit_probe") == MARKER
+    monkeypatch.setattr(docx_audit, "Document", lambda *a: pytest.fail("unsafe package opened"))
+    assert docx_audit.audit_file(str(path)).issues == [
+        f"XML part cannot be read safely: /word/{name}"
+    ]
+
+
+def test_binary_attachment_named_xml_is_not_xml(tmp_path):
+    parts = _package_parts()
+    types = etree.fromstring(parts["[Content_Types].xml"])
+    etree.SubElement(
+        types,
+        f"{{{CT_NS}}}Override",
+        PartName="/WORD/EXAMPLE.XML",
+        ContentType="application/octet-stream",
+    )
+    parts["[Content_Types].xml"] = etree.tostring(types)
+    parts["word/example.xml"] = b"\x00\xffexample binary"
+    rels = etree.fromstring(parts["word/_rels/document.xml.rels"])
+    etree.SubElement(
+        rels,
+        "{" + etree.QName(rels).namespace + "}Relationship",
+        Id="rIdExample",
+        Type="urn:example:attachment",
+        Target="example.xml",
+    )
+    parts["word/_rels/document.xml.rels"] = etree.tostring(rels)
+    path = tmp_path / "example-binary.docx"
+    _write_parts(path, parts)
+    expected = docx_audit.inspect_document(Document(path))
+    assert not expected.issues
+    assert docx_audit.audit_file(str(path)) == expected
+
+
+@pytest.mark.parametrize("failure", ["missing", "malformed", "dtd"])
+def test_content_types_checked_before_open(tmp_path, monkeypatch, failure):
+    parts = _package_parts()
+    if failure == "missing":
+        del parts["[Content_Types].xml"]
+    elif failure == "malformed":
+        parts["[Content_Types].xml"] = b"not XML"
+    else:
+        parts["[Content_Types].xml"] = (
+            b"<!DOCTYPE Types>" + parts["[Content_Types].xml"].split(b"?>", 1)[1]
+        )
+    path = tmp_path / "example-types.docx"
+    _write_parts(path, parts)
+    monkeypatch.setattr(docx_audit, "Document", lambda *a: pytest.fail("unsafe package opened"))
+    assert docx_audit.audit_file(str(path)).issues == [
+        "XML part cannot be read safely: /[Content_Types].xml"
+    ]
+
+
+@pytest.mark.parametrize("content_type", ["application/xml", "text/xml", "application/example+xml"])
+@pytest.mark.parametrize("name", ["example.BIN", "example.RELS"])
+def test_xml_types_and_uppercase_relationships_checked(tmp_path, monkeypatch, content_type, name):
+    parts = _package_parts()
+    types = etree.fromstring(parts["[Content_Types].xml"])
+    etree.SubElement(
+        types,
+        f"{{{CT_NS}}}Default",
+        Extension=name.rsplit(".", 1)[1].lower(),
+        ContentType=content_type if name.endswith("BIN") else "application/octet-stream",
+    )
+    parts["[Content_Types].xml"] = etree.tostring(types)
+    parts[name] = b"<!DOCTYPE example><example/>"
+    path = tmp_path / "example-extra.docx"
+    _write_parts(path, parts)
+    monkeypatch.setattr(docx_audit, "Document", lambda *a: pytest.fail("unsafe package opened"))
+    assert docx_audit.audit_file(str(path)).issues == [f"XML part cannot be read safely: /{name}"]
+
+
+def test_all_sample_audits_and_json_unchanged(tmp_path):
+    for path in render_corpus(tmp_path / "corpus"):
+        document = Document(path)
+        expected = docx_audit.inspect_document(document)
+        expected_terms = docx_audit.inspect_terms(document)
+        actual, actual_terms = docx_audit._audit_package(str(path))
+        assert actual == expected, path.name
+        assert json.dumps(
+            docx_audit.audit_to_dict(actual, actual_terms), ensure_ascii=False
+        ) == json.dumps(docx_audit.audit_to_dict(expected, expected_terms), ensure_ascii=False), (
+            path.name
+        )
 
 
 def _render_package() -> bytes:

@@ -237,7 +237,7 @@ class FrontmatterParser:
         yaml_content = "\n".join(frontmatter_lines)
         try:
             parsed_data = yaml.safe_load(yaml_content) or {}
-        except yaml.YAMLError as exc:
+        except (yaml.YAMLError, ValueError) as exc:
             if declared:
                 raise StrictValidationError("Invalid YAML frontmatter: ", [str(exc)]) from exc
             # Fallback to simple key: value parsing only for simple YAML-like blocks
@@ -3734,15 +3734,16 @@ def parse_markdown_file(
             )
 
     style = model.metadata.extra.get("style")
-    if not is_stream(source) and isinstance(style, dict) and isinstance(style.get("logo"), str):
+    if base_dir is not None and isinstance(style, dict) and isinstance(style.get("logo"), str):
         logo = style["logo"].strip()
         if logo and not logo.lower().startswith("data:") and not Path(logo).is_absolute():
             # Anchor the written destination without following links yet: the
             # asset helper must resolve written and decoded candidates separately.
-            model.metadata.extra["style"] = {
-                **style,
-                "logo": str(Path(str(source)).resolve().parent / logo),
-            }
+            with document_validation(errors=(ValueError, OSError)):
+                model.metadata.extra["style"] = {
+                    **style,
+                    "logo": str(Path(str(base_dir / logo)).absolute()),
+                }
 
     if not is_stream(source):
         source_dir = Path(str(source)).resolve().parent
