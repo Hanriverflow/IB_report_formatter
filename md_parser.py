@@ -2977,6 +2977,10 @@ class MarkdownParser:
 
                 # ── ASCII art detection ────────────────────────────────
                 is_ascii = CodeBlock.detect_ascii_art(code_text)
+                # A closed fence is literal: its trailing blank lines and spaces stay.
+                # An unclosed one runs to the end of the input, so its tail is trimmed.
+                if i - fence_start == len(code_lines) + 2:
+                    code_text = "\n".join(code_lines)
 
                 elements.append(
                     Element(

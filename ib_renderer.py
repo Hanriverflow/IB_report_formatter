@@ -4286,6 +4286,9 @@ class IBDocumentRenderer:
         self._style_code_block_table(table)
 
         lines = code_block.code.splitlines() or [""]
+        if code_block.code.endswith("\n"):
+            # splitlines() drops the empty line after a final line break.
+            lines.append("")
         for idx, line in enumerate(lines):
             paragraph = cell.paragraphs[0] if idx == 0 else cell.add_paragraph()
             paragraph.clear()
@@ -4331,13 +4334,15 @@ class IBDocumentRenderer:
     def _render_code_block_line(self, paragraph, line: str) -> None:
         """Render one line of a code block with light semantic emphasis for tree diagrams."""
         if not line.strip():
-            spacer = paragraph.add_run(line or " ")
+            spacer = paragraph.add_run(line)
             FontStyler.apply_run_style(
                 spacer,
                 font_name="Consolas",
                 font_size=Pt(9.5),
                 color=STYLE.MEDIUM_GRAY,
             )
+            # A blank line needs no spacer text: the paragraph mark, which keeps the
+            # body font, sets the height of every line of the panel (checked in Word).
             return
 
         prefix_match = self._TREE_PREFIX_RE.match(line)

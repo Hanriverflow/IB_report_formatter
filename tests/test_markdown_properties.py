@@ -379,10 +379,6 @@ def test_generated_fenced_code_preserves_lines_and_formatting(marker: str, paylo
 
 
 @pytest.mark.parametrize("marker", ("`", "~"))
-@pytest.mark.xfail(
-    strict=True,
-    reason="An empty fenced line receives a one-space spacer; removing it needs a layout decision.",
-)
 @given(lines=st.lists(st.text(CODE, max_size=25), max_size=3), tail=_working_fenced_payload())
 def test_generated_fenced_empty_lines_have_no_spacer(
     marker: str, lines: list[str], tail: str
@@ -395,10 +391,6 @@ def test_generated_fenced_empty_lines_have_no_spacer(
 
 
 @pytest.mark.parametrize("marker", ("`", "~"))
-@pytest.mark.xfail(
-    strict=True,
-    reason="Trailing fenced whitespace/blank lines are dropped by rstrip/splitlines; restoring them needs a layout decision.",
-)
 @given(
     lines=st.lists(st.text(CODE, max_size=25), min_size=1, max_size=4),
     ending=st.text(" \t\n", min_size=1, max_size=4),
@@ -828,20 +820,12 @@ def test_fenced_whitespace_regression() -> None:
 
 
 @pytest.mark.parametrize("payload", ("", "가상\n\n예시"))
-@pytest.mark.xfail(
-    strict=True,
-    reason="'```text\\n가상\\n\\n예시\\n```' renders '가상\\n \\n예시': IBDocumentRenderer._render_code_block_line puts a one-space spacer run on an empty line. Removing it may change the panel's line height, so the owner decides.",
-)
 def test_fenced_empty_line_has_no_spacer(payload: str) -> None:
     document = _render(_fence(payload))
     assert document.tables[0].cell(0, 0).text == payload
 
 
 @pytest.mark.parametrize("payload", ("  ", "\t", "가상\n", "가상\n\n", "가상\n \t "))
-@pytest.mark.xfail(
-    strict=True,
-    reason="'```text\\n \\n```' renders '', expected ' '; MarkdownParser._parse_elements rstrip() also drops trailing blank lines. Full literal preservation needs the owner to approve code-panel layout changes.",
-)
 def test_fenced_trailing_whitespace_preserved(payload: str) -> None:
     document = _render(_fence(payload))
     assert document.tables[0].cell(0, 0).text == payload
