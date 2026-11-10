@@ -2468,7 +2468,7 @@ class MarkdownParser:
     NUMBERED_HEADING_PATTERN = re.compile(r"^\*\*\d+(\.|\\.)")
 
     # ── List patterns ───────────────────────────────────────────────────────
-    BULLET_PATTERN = re.compile(r"^([ \t]*)[-*]\s+(.+)$")
+    BULLET_PATTERN = re.compile(r"^([ \t]*)[-*+]\s+(.+)$")
     NUMBERED_LIST_PATTERN = re.compile(r"^([ \t]*)(\d+)\.\s+(.+)$")
 
     # Heuristic: numbered line that looks like a section heading

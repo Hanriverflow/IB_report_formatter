@@ -292,13 +292,7 @@ def _assert_literal_runs(document: WordDocument) -> None:
     (
         "-",
         "*",
-        pytest.param(
-            "+",
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="'+ 0' renders '+ 0', expected list text '0'; MarkdownParser.BULLET_PATTERN omits '+'. Fix changes visible list layout.",
-            ),
-        ),
+        "+",
         "1.",
     ),
 )
