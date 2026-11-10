@@ -27,16 +27,25 @@ does not mean validation passed. JSON records each document's errors (id,
 part URI, XPath, description, error type, and exception coverage) and the decision.
 It requires results for every rendered document using `--all --recursive`.
 
-The Ubuntu `word-schema` job is deliberately report-only: job-level
-`continue-on-error: true` keeps its failures from failing the workflow, and neither
-job has a `needs` dependency on the other. The script retains failure exit codes.
+The Ubuntu `word-schema` job, named `Word schema gate`, is a blocking gate on
+both `push` and `pull_request`. It has no `continue-on-error`; an uncovered error,
+stale exception, or setup failure fails the workflow. It runs independently of
+the quality matrix, and the script retains its failure exit codes.
 An `always()` step supplies a failure JSON if setup prevented the script from
-running; another `always()` step uploads the report. Removing job-level
-`continue-on-error` is reserved for the later blocking-gate task.
+running; another `always()` step uploads the report even when validation fails.
+
+On failure, inspect the report's part URI, XPath, and description and reproduce
+the error locally with the pinned validator. Fix real errors in the engine;
+review all XML snapshot differences and complete Word visual QA for changed
+samples before accepting the fix. Do not weaken validation or add an exception
+to cover an engine defect. If a fix changes appearance or requires a design
+choice, stop for owner review. A suspected false positive requires a Word-saved
+reproduction with the same error, Word version, reproduction procedure, and
+validator output; without that evidence, stop for owner review.
 
 ## Exception format
 
-`word_schema_exceptions.json` starts as an empty JSON list. Each entry must have
+`word_schema_exceptions.json` remains an empty JSON list. Each proposed entry must have
 this shape (the values below are placeholders, not an accepted exception):
 
 ```json
@@ -77,5 +86,6 @@ that the evidence contains the exact identity; reviewers must verify the
 reproduction itself. Matching uses the exact `(id, part_uri, xpath)` tuple across
 the whole corpus, with no wildcards. Duplicate identities and entries matching no
 current error fail the run. Never commit the Word reproduction document, which
-can contain author information. Do not exempt real engine defects, including
-the currently known `updateFields` ordering error in `/word/settings.xml`.
+can contain author information. Do not exempt real engine defects. The
+`updateFields` ordering defect in `/word/settings.xml` is fixed in the engine
+through the shared ordered-insert helper, without an exception.
