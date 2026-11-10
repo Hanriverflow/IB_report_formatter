@@ -18,11 +18,10 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-import yaml
 from docx.shared import Inches, Pt, RGBColor
 
 from document_model import DocumentMetadata, DocumentModel, ElementType, Table, TableType
-from input_safety import InputLimits, document_validation, validate_xml_strings
+from input_safety import InputLimits, document_validation, load_yaml, validate_xml_strings
 from numeric_checks import Quantity, ScheduleSpec, check_schedule, money_unit, read_quantity
 from render_styles import IBStyle
 from term_variables import term_cell_text
@@ -331,7 +330,7 @@ def load_style(profile: DocumentProfile, theme: str | None = None) -> IBStyle:
     if not theme or theme in {"default", "mono"}:
         return style
     path = Path(theme)
-    data = yaml.safe_load(path.read_text(encoding="utf-8-sig"))
+    data = load_yaml(path.read_text(encoding="utf-8-sig"))
     validate_xml_strings(data)
     if not isinstance(data, dict):
         raise ValueError("Theme must be a YAML mapping")
@@ -494,65 +493,6 @@ def validate_office_metadata(metadata: DocumentMetadata) -> None:
             raise ValueError("letter settings must be non-empty text")
         if "appendix_label" in letter and "appendix_heading" not in letter:
             raise ValueError("letter.appendix_label requires appendix_heading")
-
-
-def validate_render_metadata(metadata: DocumentMetadata, *, cover: bool) -> None:
-    """Validate text consumed by the selected cover, title block and header.
-
-    Args:
-        metadata: Parsed or hand-built document metadata, after profile validation.
-        cover: Whether the cover composer will consume its text fields.
-
-    Raises:
-        ValueError: A consumed text field has an incompatible type.
-    """
-
-    def text(key: str, value: object) -> None:
-        if not isinstance(value, str):
-            raise ValueError(f"{key} must be a string")
-
-    if cover:
-        # The parser already stringifies ordinary scalar metadata. Hand-built
-        # models must satisfy the .strip() contract of the cover composer too.
-        if metadata.title:
-            text("title", metadata.title)
-        for key in ("subtitle", "ticker", "sector", "analyst", "company"):
-            text(key, getattr(metadata, key))
-        for key in (
-            "subject_company",
-            "date",
-            "recipient",
-            "report_type",
-            "analysis_period",
-            "analysis_basis",
-        ):
-            text(key, metadata.extra.get(key, ""))
-    elif metadata.profile != "plain":
-        text("title", metadata.title)
-        if metadata.profile == "ib-report":
-            text("subtitle", metadata.subtitle)
-
-    sender = metadata.extra.get("sender", {})
-    opening = not cover and metadata.profile not in {"plain", "term-sheet", "office-letter"}
-    if opening and (metadata.profile != "ib-report" or metadata.title.strip()):
-        if not isinstance(sender, dict):
-            raise ValueError("sender must be a mapping of text fields")
-        string_list(metadata.extra, "attendees")
-        # department, date, analyst, meeting_time and location are interpolated
-        # by render_office_opening, so keep their existing scalar coercions.
-    if metadata.profile not in {"term-sheet", "office-letter"}:
-        company = (
-            sender.get("organization", metadata.company)
-            if isinstance(sender, dict)
-            else metadata.company
-        )
-        if company:
-            key = (
-                "sender.organization"
-                if isinstance(sender, dict) and "organization" in sender
-                else "company"
-            )
-            text(key, company)
 
 
 def header_labels(rows: Sequence[Sequence[str]]) -> list[str]:

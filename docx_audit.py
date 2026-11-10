@@ -21,6 +21,7 @@ import argparse
 import codecs
 import json
 import logging
+import posixpath
 import re
 import sys
 from collections.abc import Callable, Iterator
@@ -558,7 +559,10 @@ def _audit_package(path: str) -> tuple[DocumentAudit, TermAudit | None]:
                 if part.filename == types_name:
                     continue
                 name = part.filename.lower()
-                content_type = overrides.get("/" + name, defaults.get(name.rsplit(".", 1)[-1], ""))
+                # The extension as python-docx's PackURI.ext derives it: empty for a
+                # name without one and for a dotfile, which a Default may also declare.
+                extension = posixpath.splitext(name)[1].removeprefix(".")
+                content_type = overrides.get("/" + name, defaults.get(extension, ""))
                 is_xml = (
                     name.endswith(".rels")
                     or content_type in {"application/xml", "text/xml"}

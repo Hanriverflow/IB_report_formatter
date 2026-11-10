@@ -15,6 +15,7 @@ from typing import Any
 import yaml
 
 from document_model import ChartSeries, ChartSpec
+from input_safety import load_yaml
 from render_styles import STYLE, RasterFontPolicy
 
 
@@ -62,8 +63,8 @@ def parse_chart_spec(text: str) -> ChartSpec:
         ChartSpecError: Invalid YAML, fields or values, including the title if known.
     """
     try:
-        data = yaml.safe_load(text)
-    except yaml.YAMLError as exc:
+        data = load_yaml(text)
+    except (yaml.YAMLError, ValueError) as exc:
         raise ChartSpecError(f"YAML is invalid: {exc}") from exc
     if not isinstance(data, dict):
         raise ChartSpecError("spec must be a YAML mapping")

@@ -170,6 +170,7 @@ from input_safety import (
     RejectionCode,
     StrictValidationError,
     document_validation,
+    load_yaml,
     read_input_file,
     read_input_stream,
     resolve_asset_roots,
@@ -236,7 +237,7 @@ class FrontmatterParser:
         # Parse YAML content
         yaml_content = "\n".join(frontmatter_lines)
         try:
-            parsed_data = yaml.safe_load(yaml_content) or {}
+            parsed_data = load_yaml(yaml_content) or {}
         except (yaml.YAMLError, ValueError) as exc:
             if declared:
                 raise StrictValidationError("Invalid YAML frontmatter: ", [str(exc)]) from exc

@@ -51,6 +51,7 @@ from input_safety import (
     check_image_source,
     decode_image,
     document_validation,
+    load_yaml,
     local_asset_path,
     validate_xml_strings,
 )
@@ -353,7 +354,7 @@ def load_house(path: str | Path) -> dict[str, Any]:
         OSError: The selected file cannot be read.
     """
     try:
-        data = yaml.safe_load(Path(path).read_text(encoding="utf-8-sig"))
+        data = load_yaml(Path(path).read_text(encoding="utf-8-sig"))
     except yaml.YAMLError as exc:
         raise ValueError(f"Invalid house YAML: {exc}") from exc
     if not isinstance(data, dict):

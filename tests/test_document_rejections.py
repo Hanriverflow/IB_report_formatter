@@ -451,3 +451,121 @@ def test_non_strict_operator_error_is_not_relabelled_by_body_characters():
     with pytest.raises(ValueError, match="reparse the Markdown") as caught:
         renderer.render(model)
     assert not isinstance(caught.value, StrictValidationError)
+
+
+# Tagged scalars the safe loader fails on with AttributeError, KeyError or IndexError.
+TAGGED_FAILURES = ("!!timestamp example", "!!bool example", '!!int ""', '!!float ""')
+
+
+@pytest.mark.parametrize("scalar", TAGGED_FAILURES)
+@pytest.mark.parametrize("profile", ["plain", "ib-report"])
+@pytest.mark.parametrize("route", ["text", "stream", "file", "cli", "render", "portable"])
+def test_tagged_yaml_constructor_rejections(tmp_path, scalar, profile, route):
+    output = tmp_path / "example.docx"
+    with pytest.raises(Exception) as caught:
+        _convert(f"---\nprofile: {profile}\ndate: {scalar}\n---\n예시 본문", output, profile, route)
+    rejection = _strict_cause(caught.value)
+    assert str(rejection).startswith("Invalid YAML frontmatter: YAML value cannot be constructed: ")
+    assert type(rejection.__cause__) is ValueError
+    assert not list(tmp_path.glob("*.docx"))
+
+
+def test_deeply_nested_yaml_is_a_document_rejection():
+    source = "---\nprofile: plain\nexample: " + "[" * 5000 + "]" * 5000 + "\n---\n예시 본문"
+    with pytest.raises(StrictValidationError, match="Invalid YAML frontmatter: "):
+        MarkdownParser(profile="plain").parse(source)
+
+
+@pytest.mark.parametrize("scalar", TAGGED_FAILURES)
+@pytest.mark.parametrize("kind", ["house", "theme"])
+def test_tagged_yaml_failure_in_document_named_file(tmp_path, kind, scalar):
+    config = tmp_path / "example.yaml"
+    config.write_text(f"prepared_by: {scalar}", encoding="utf-8")
+    profile = "term-sheet" if kind == "house" else "plain"
+    source = f"---\nprofile: {profile}\ntitle: 예시 문서\nprepared_by: 가상 기관\n"
+    source += f"disclaimer: 예시 문구\n{kind}: '{config.as_posix()}'\n---\n예시 본문"
+    model = MarkdownParser().parse(source)
+    with pytest.raises(StrictValidationError) as caught:
+        IBDocumentRenderer(options=RenderOptions(strict=True)).render(model)
+    assert "YAML value cannot be constructed" in str(caught.value)
+
+
+@pytest.mark.parametrize("scalar", ["2026-99-01", "!!timestamp example", '!!int ""'])
+def test_chart_fence_with_unconstructible_yaml_is_a_chart_error(scalar):
+    """The parser records it on the chart, as it does for a YAML syntax error."""
+    source = f"---\nprofile: plain\n---\n\n```chart\ntitle: 예시\nvalue: {scalar}\n```\n"
+    model = MarkdownParser(profile="plain").parse(source)
+    chart = model.elements[0].content
+    assert chart.spec is None
+    assert chart.error.startswith("YAML is invalid: ")
+
+
+@pytest.mark.parametrize("strict", [True, False])
+def test_metadata_shapes_that_rendered_before_still_render(tmp_path, strict):
+    """Nothing is checked ahead of use: a list of header text and unused fields stay accepted."""
+    listed = MarkdownParser(profile="ib-report").parse(
+        "---\nprofile: ib-report\ntitle: 예시 문서\nsender: {organization: [가상, 기관]}\n---\n가상 본문"
+    )
+    unused = MarkdownParser(profile="ib-report").parse("---\nprofile: ib-report\n---\n가상 본문")
+    unused.metadata.title = ""
+    unused.metadata.subtitle = None
+    for index, (model, cover) in enumerate(((listed, None), (unused, False))):
+        output = tmp_path / f"example-{index}.docx"
+        IBDocumentRenderer(
+            options=RenderOptions(profile="ib-report", strict=strict, include_cover=cover)
+        ).render(model).save(output)
+        assert output.exists()
+
+
+@pytest.mark.parametrize("strict", [True, False])
+@pytest.mark.parametrize(
+    "profile, settings, message",
+    [
+        (
+            "ib-memo",
+            "sender: 가상 기관",
+            "Metadata for the title block has a value of the wrong type",
+        ),
+        ("ib-report", "sender: {organization: 12}", "Metadata for the header (sender.organization"),
+        (
+            "ib-memo",
+            "attendees: [1, 2]",
+            "attendees must be a string or a list of non-empty strings",
+        ),
+    ],
+)
+def test_wrong_metadata_type_is_reported_where_it_is_used(profile, settings, message, strict):
+    model = MarkdownParser(profile=profile).parse(
+        f"---\nprofile: {profile}\ntitle: 예시 문서\n{settings}\n---\n가상 본문"
+    )
+    with pytest.raises(StrictValidationError) as caught:
+        IBDocumentRenderer(
+            options=RenderOptions(profile=profile, strict=strict, include_cover=False)
+        ).render(model)
+    assert str(caught.value).startswith(message)
+    assert isinstance(caught.value.__cause__, (TypeError, AttributeError, ValueError))
+
+
+def test_non_strict_names_lone_surrogate_outside_element_resilience():
+    from document_model import DocumentModel, Element, ElementType, Paragraph, TextRun
+    from document_profiles import default_metadata
+
+    model = DocumentModel(metadata=default_metadata("plain"))
+    model.elements = [
+        Element(ElementType.PARAGRAPH, Paragraph("예시", [TextRun("", footnote_id=1)]))
+    ]
+    model.footnotes[1] = "가상 \ud800 각주"
+    with pytest.raises(StrictValidationError) as caught:
+        IBDocumentRenderer(options=RenderOptions(profile="plain", strict=False)).render(model)
+    assert str(caught.value) == "XML-incompatible character U+D800 in Markdown input"
+    assert isinstance(caught.value.__cause__, ValueError)
+
+
+def test_operator_error_text_cannot_trigger_a_document_rejection():
+    """An operator mistake is never relabelled, whatever its message says."""
+    model = MarkdownParser().parse("가상 문단 \x01")
+    renderer = IBDocumentRenderer(options=RenderOptions(profile="XML compatible", strict=False))
+    with pytest.raises(ValueError) as caught:
+        renderer.render(model)
+    assert not isinstance(caught.value, StrictValidationError)
+    assert "XML compatible" in str(caught.value)
