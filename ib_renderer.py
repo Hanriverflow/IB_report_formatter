@@ -104,6 +104,7 @@ from document_profiles import (
     load_style,
     resolve_options,
     validate_office_metadata,
+    validate_render_metadata,
     validate_term_sheet_metadata,
 )
 from input_safety import (
@@ -3726,6 +3727,37 @@ class IBDocumentRenderer:
         Returns:
             The rendered document; strict rejections occur before callers can save it.
         """
+        try:
+            return self._render_model(model, asset_roots=asset_roots, limits=limits)
+        except StrictValidationError:
+            raise
+        except ValueError as error:
+            # Non-strict rendering keeps per-element resilience, so a character the
+            # XML writer cannot hold only gets this far from text outside it
+            # (footnotes, outline headings). "XML compatible" is lxml's wording.
+            if "XML compatible" not in str(error):
+                raise
+            with document_validation():
+                validate_xml_strings(model)
+            raise
+
+    def _render_model(
+        self,
+        model: DocumentModel,
+        *,
+        asset_roots: Sequence[str | Path],
+        limits: InputLimits | None,
+    ) -> DocxDocument:
+        """Compose the document for render(), which names XML-writer failures.
+
+        Args:
+            model: Parsed or hand-built document with its carried allowed folders.
+            asset_roots: Operator folders added to model and RenderOptions folders.
+            limits: Explicit policy overriding options and the parsed model's policy.
+
+        Returns:
+            The rendered document.
+        """
         self.term_sheet_texts = None
         limits = limits or self.options.limits or model.limits
         self._check_model_limits(model, limits)
@@ -3753,6 +3785,8 @@ class IBDocumentRenderer:
             self.term_sheet_texts = resolve_term_sheet_texts(
                 model.metadata, resolved.house, document_house=self.options.house is None
             )
+        with document_validation():
+            validate_render_metadata(model.metadata, cover=resolved.cover)
         report_title_block = (
             not resolved.cover
             and resolved.profile.name == "ib-report"
@@ -3788,8 +3822,10 @@ class IBDocumentRenderer:
             appendix_index = letter_appendix_index(model)
         if resolved.strict and model.warnings:
             raise StrictValidationError("Input validation failed: ", model.warnings)
+        # Strict mode rejects such a character anywhere in the model. Otherwise the
+        # elements keep their per-element resilience and only metadata is checked here.
         with document_validation():
-            validate_xml_strings(model.metadata)
+            validate_xml_strings(model if resolved.strict else model.metadata)
         self.errors = list(model.warnings)
         self._term_sheet = term_sheet
         self._reset_document()

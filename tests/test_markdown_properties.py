@@ -47,6 +47,16 @@ for every known metadata key. Separate per-key cases let YAML select the profile
 (including term-sheet and office-letter), so operator overrides cannot mask
 profile or profile-specific validation. Escaped XML-incompatible metadata
 characters, including surrogate escapes, are also in the strict source grammar.
+Invalid date/month/hour scalars and explicit failing int/float constructors are
+generated as raw YAML (safe_dump would quote them). Each renderer text key and
+sender/letter child is also exercised under plain and ib-report with both cover
+settings, so profile selection cannot hide an unvalidated IB field. Hand-built
+models vary paragraph/heading/run/cell/list/footnote/metadata text, including NUL,
+vertical tab, U+FFFF and a lone surrogate, and go through registry save/reject.
+This is bounded coverage, not a claim about all input. It does not generate
+house/theme file contents, asset bytes or filesystem graphs, arbitrary YAML tags
+or aliases, every combination of nested settings, or arbitrary malformed model
+shapes. Dedicated regressions cover selected named-configuration and asset cases.
 Fenced-code generation partitions the original alphabet: nonempty lines and a
 non-whitespace final character have an active text/formatting property; empty
 lines and trailing whitespace retain generated strict xfail groups. Tree-value
@@ -456,6 +466,15 @@ FRONTMATTER_KEYS = (
     "disclaimer",
     "confidential_label",
     "confirmation",
+    "subject_company",
+    "recipient",
+    "report_type",
+    "analysis_period",
+    "analysis_basis",
+    "meeting_time",
+    "location",
+    "document_no",
+    "version",
 )
 YAML_VALUE = st.recursive(
     st.one_of(
@@ -506,7 +525,7 @@ NESTED_SETTINGS = {
         "schedule",
     ),
     "letter": ("appendix_heading", "appendix_label"),
-    "sender": ("organization", "department", "name"),
+    "sender": ("organization", "department", "name", "signatory", "contact"),
     "confirmation": ("intro", "items", "signature"),
     "terms": ("amount",),
 }
@@ -546,6 +565,9 @@ STRICT_SOURCE = st.one_of(
     BROKEN,
     _frontmatter(),
     ESCAPED_METADATA,
+    st.sampled_from(("2026-99-01", "2026-01-01T25:00:00Z", "!!int example", "!!float example")).map(
+        lambda scalar: f"---\nprofile: plain\ndate: {scalar}\n---\n가상 본문"
+    ),
     st.text(st.characters(exclude_categories=("Cs",)), max_size=100),
 )
 
@@ -622,6 +644,8 @@ def _assert_saved_output(saved: str, output: Path, route: str) -> None:
 @example(source="가상" * 20, small_limit=True)
 @example(source="---\nlayout: {cover: wrong}\n---\n가상", small_limit=False)
 @example(source='---\ntitle: "예시\\0"\n---\n가상', small_limit=False)
+@example(source="---\nprofile: plain\ndate: 2026-99-01\n---\n가상", small_limit=False)
+@example(source="---\nprofile: ib-report\nsender: {organization: 12}\n---\n가상", small_limit=False)
 @given(source=STRICT_SOURCE, small_limit=st.booleans())
 def test_strict_mode_dichotomy(profile: str, route: str, source: str, small_limit: bool) -> None:
     limits = InputLimits(max_input_bytes=32) if small_limit else InputLimits()
@@ -637,6 +661,115 @@ def test_frontmatter_strict_mode_dichotomy(key: str, route: str, data: st.DataOb
     source = data.draw(_frontmatter(key))
     with TemporaryDirectory(prefix="ib-prop-frontmatter-") as temporary:
         _assert_strict_outcome(source, Path(temporary), None, route, InputLimits())
+
+
+RENDER_TEXT_KEYS = (
+    "title",
+    "subtitle",
+    "company",
+    "ticker",
+    "sector",
+    "analyst",
+    "date",
+    "subject_company",
+    "recipient",
+    "report_type",
+    "analysis_period",
+    "analysis_basis",
+    "meeting_time",
+    "location",
+    "document_no",
+    "version",
+    "attendees",
+    "recipients",
+    "cc",
+    "attachments",
+    "sender",
+    "sender.organization",
+    "sender.department",
+    "sender.name",
+    "sender.signatory",
+    "sender.contact",
+    "letter.appendix_heading",
+    "letter.appendix_label",
+)
+
+
+@pytest.mark.parametrize("profile", ("plain", "ib-report"))
+@pytest.mark.parametrize("key", RENDER_TEXT_KEYS)
+@given(value=YAML_VALUE, cover=st.booleans(), route=st.sampled_from(("text", "stream", "cli")))
+def test_render_metadata_strict_dichotomy(
+    profile: str, key: str, value: object, cover: bool, route: str
+) -> None:
+    """Generate each consumed text field with profile and cover paths held explicit."""
+    fields = {"profile": profile, "title": "예시 문서", "layout": {"cover": cover}}
+    if "." in key:
+        parent, child = key.split(".")
+        fields[parent] = {child: value}
+    else:
+        fields[key] = value
+    source = "---\n" + yaml.safe_dump(fields, allow_unicode=True) + "---\n가상 본문"
+    with TemporaryDirectory(prefix="ib-prop-render-") as temporary:
+        _assert_strict_outcome(source, Path(temporary), profile, route, InputLimits())
+
+
+@pytest.mark.parametrize("profile", ("plain", "ib-report"))
+@pytest.mark.parametrize(
+    "location", ("paragraph", "heading", "run", "table", "list", "footnote", "metadata")
+)
+@given(
+    text=st.text(PROSE, max_size=20),
+    character=st.sampled_from(("", "\x00", "\x0b", "\uffff", "\ud800")),
+)
+def test_handbuilt_model_strict_dichotomy(
+    profile: str, location: str, text: str, character: str
+) -> None:
+    from document_model import (
+        DocumentModel,
+        Element,
+        ElementType,
+        Heading,
+        ListItem,
+        Paragraph,
+        Table,
+        TableCell,
+        TableRow,
+        TextRun,
+    )
+    from document_profiles import default_metadata
+
+    value = "가상" + text + character
+    model = DocumentModel(metadata=default_metadata(profile))
+    model.elements = [
+        {
+            "paragraph": Element(ElementType.PARAGRAPH, Paragraph(value)),
+            "heading": Element(ElementType.HEADING_1, Heading(1, value)),
+            "run": Element(ElementType.PARAGRAPH, Paragraph("예시", [TextRun(value)])),
+            "table": Element(
+                ElementType.TABLE, Table(rows=[TableRow(cells=[TableCell(value)])], col_count=1)
+            ),
+            "list": Element(ElementType.BULLET_LIST, ListItem(value)),
+            "footnote": Element(
+                ElementType.PARAGRAPH, Paragraph("예시", [TextRun("", footnote_id=1)])
+            ),
+            "metadata": Element(ElementType.PARAGRAPH, Paragraph("예시")),
+        }[location]
+    ]
+    if location == "footnote":
+        model.footnotes[1] = value
+    elif location == "metadata":
+        model.metadata.title = value
+    with TemporaryDirectory(prefix="ib-prop-model-") as temporary:
+        output = Path(temporary) / "example.docx"
+        try:
+            saved = get_default_registry().convert(
+                model, output_format="docx", output_path=output, strict=True
+            )
+        except Exception as error:
+            assert list(output.parent.iterdir()) == []
+            assert _is_rejection(error), f"undocumented rejection: {type(error).__name__}: {error}"
+        else:
+            _assert_saved_output(saved, output, "model")
 
 
 @pytest.mark.parametrize(

@@ -19,6 +19,7 @@ from ib_renderer import IBDocumentRenderer
 from input_safety import StrictValidationError
 from md_parser import MarkdownParser, parse_markdown_file
 from md_to_word import IBReportConverter, build_parser, run_conversion
+from term_sheet import load_house, resolve_term_sheet_texts
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9h8AAAAASUVORK5CYII="
@@ -663,3 +664,128 @@ def test_logos_already_try_written_then_decoded_filenames(tmp_path, origin):
         assert document.part.related_parts[relation].blob == expected.read_bytes()
         if expected == raw:
             raw.unlink()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows drive-relative paths")
+@pytest.mark.parametrize("origin", ["frontmatter", "house"])
+def test_drive_relative_logos_are_anchored_without_resolving(tmp_path, monkeypatch, origin):
+    drive = "Z:" if tmp_path.drive.upper() != "Z:" else "Y:"
+    # Supply a drive CWD without depending on a mapped drive on the test host.
+    abspath = os.path.abspath
+    monkeypatch.setattr(
+        os.path, "abspath", lambda value: drive + "/" if value == drive else abspath(value)
+    )
+    logo = drive + "example-link/../example.png"
+    expected = Path(logo).absolute()
+    assert expected.is_absolute()
+    assert ".." in expected.parts
+    if origin == "house":
+        config = _house(tmp_path, logo)
+        stored = load_house(config)["style"]["logo"]
+    else:
+        source = _source(
+            tmp_path,
+            "가상 본문",
+            profile="term-sheet",
+            prepared_by="가상 기관",
+            disclaimer="예시 문구",
+            style={"logo": logo},
+        )
+        stored = parse_markdown_file(str(source)).metadata.extra["style"]["logo"]
+    assert stored == str(expected)
+
+
+@pytest.mark.parametrize("document_house", [False, True])
+@pytest.mark.parametrize("override", [False, True])
+def test_final_logo_path_validation_keeps_provenance(
+    tmp_path, monkeypatch, document_house, override
+):
+    import term_sheet
+
+    # Simulate a loader returning an unanchored path to exercise the last guard
+    # independently of platform-specific absolute-path anchoring.
+    monkeypatch.setattr(
+        term_sheet,
+        "load_house",
+        lambda path: {
+            "prepared_by": "가상 기관",
+            "disclaimer": "예시 문구",
+            "style": {"logo": "example.png"},
+        },
+    )
+    model = MarkdownParser(profile="term-sheet").parse(
+        "---\nprofile: term-sheet\ntitle: 예시 문서\n---\n가상 본문"
+    )
+    if override:
+        model.metadata.extra["style"] = {"logo": "example-override.png"}
+    with pytest.raises(
+        ValueError, match="style.logo must be absolute for input without a source file"
+    ) as caught:
+        resolve_term_sheet_texts(
+            model.metadata, str(tmp_path / "example.yaml"), document_house=document_house
+        )
+    assert isinstance(caught.value, StrictValidationError) is (document_house or override)
+
+
+@pytest.mark.parametrize("origin", ["frontmatter", "document-house", "operator-house"])
+def test_logo_anchoring_error_keeps_provenance(tmp_path, monkeypatch, origin):
+    config = _house(tmp_path, "example.png")
+    metadata = {"profile": "term-sheet", "prepared_by": "가상 기관", "disclaimer": "예시 문구"}
+    if origin == "frontmatter":
+        metadata["style"] = {"logo": "example.png"}
+    elif origin == "document-house":
+        metadata["house"] = str(config)
+    source = _source(tmp_path, "가상 본문", **metadata)
+
+    def invalid_anchor(path):
+        raise OSError("예시 logo anchoring failure")
+
+    monkeypatch.setattr(Path, "absolute", invalid_anchor)
+    with pytest.raises(
+        (OSError, StrictValidationError), match="예시 logo anchoring failure"
+    ) as caught:
+        model = parse_markdown_file(str(source))
+        IBDocumentRenderer(
+            options=RenderOptions(
+                strict=True,
+                house=str(config) if origin == "operator-house" else None,
+            )
+        ).render(model)
+    assert isinstance(caught.value, StrictValidationError) is (origin != "operator-house")
+
+
+@pytest.mark.parametrize("origin", ["frontmatter", "house"])
+def test_logo_link_parent_is_not_lexically_collapsed(tmp_path, origin):
+    import subprocess
+
+    outside = _image(tmp_path / "outside" / "example.png")
+    target = outside.parent / "nested"
+    target.mkdir()
+    folder = tmp_path / "document"
+    _image(folder / "example.png")
+    link = folder / "example-link"
+    if os.name == "nt":
+        result = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True
+        )
+        if result.returncode:
+            pytest.skip("Junction creation is not permitted")
+    else:
+        link.symlink_to(target, target_is_directory=True)
+    logo = "example-link/../example.png"
+    metadata = {"profile": "term-sheet", "prepared_by": "가상 기관", "disclaimer": "예시 문구"}
+    if origin == "house":
+        metadata["house"] = str(_house(folder, logo))
+    else:
+        metadata["style"] = {"logo": logo}
+    source = _source(folder, "가상 본문", **metadata)
+    model = parse_markdown_file(str(source))
+    stored = (
+        load_house(model.metadata.extra["house"])["style"]["logo"]
+        if origin == "house"
+        else model.metadata.extra["style"]["logo"]
+    )
+    # Anchoring must leave the components for the shared resolver. Windows and
+    # POSIX differ in how their final path resolver handles a junction plus '..'.
+    assert stored == str(folder / logo)
+    assert ".." in Path(stored).parts

@@ -10,13 +10,16 @@ from ib_renderer import IBDocumentRenderer
 from input_safety import StrictValidationError
 from md_parser import MarkdownParser, parse_markdown_file
 from md_to_word import IBReportConverter
+from tools.portable_launcher import convert_document
 
 
 def _convert(source, output, profile, route):
     registry = get_default_registry()
-    if route in {"file", "cli"}:
+    if route in {"file", "cli", "portable"}:
         path = output.with_suffix(".md")
         path.write_text(source, encoding="utf-8")
+        if route == "portable":
+            return convert_document(str(path), str(output.parent))
         if route == "cli":
             return IBReportConverter(
                 str(path), str(output), RenderOptions(profile=profile, strict=True)
@@ -109,11 +112,13 @@ def test_named_configuration_content_respects_provenance(
     config = tmp_path / "example.yaml"
     config.write_text(content, encoding="utf-8")
     profile = "term-sheet" if kind == "house" else "plain"
-    source = "---\ntitle: 예시 문서\nprepared_by: 가상 기관\ndisclaimer: 예시 문구\n"
+    source = f"---\nprofile: {profile}\ntitle: 예시 문서\nprepared_by: 가상 기관\ndisclaimer: 예시 문구\n"
     if not operator:
         source += f"{kind}: '{config.as_posix()}'\n"
     source += "---\n가상 본문"
     model = MarkdownParser(profile=profile).parse(source)
+    if not operator:
+        assert model.metadata.extra[kind] == config.as_posix()
     options = RenderOptions(
         profile=profile, strict=True, **({kind: str(config)} if operator else {})
     )
@@ -185,6 +190,167 @@ def test_existing_raw_xml_diagnosis_unchanged():
     )
 
 
+CONSTRUCTOR_FAILURES = ("2026-99-01", "2026-01-01T25:00:00Z", "!!int example", "!!float example")
+
+
+@pytest.mark.parametrize("scalar", CONSTRUCTOR_FAILURES)
+@pytest.mark.parametrize("profile", ["plain", "ib-report"])
+@pytest.mark.parametrize("route", ["text", "stream", "file", "cli", "render", "portable"])
+def test_yaml_constructor_rejections(tmp_path, scalar, profile, route):
+    output = tmp_path / "example.docx"
+    with pytest.raises(Exception) as caught:
+        _convert(f"---\nprofile: {profile}\ndate: {scalar}\n---\n예시 본문", output, profile, route)
+    rejection = _strict_cause(caught.value)
+    assert str(rejection) == "Invalid YAML frontmatter: " + str(rejection.__cause__)
+    assert type(rejection.__cause__) is ValueError
+    assert not list(tmp_path.glob("*.docx"))
+
+
+@pytest.mark.parametrize("scalar", [*CONSTRUCTOR_FAILURES, "["])
+@pytest.mark.parametrize("simple", [True, False])
+def test_undeclared_yaml_failures_preserve_fallback(scalar, simple):
+    from md_parser import FrontmatterParser
+
+    source = (
+        f"---\ndate: {scalar}\n"
+        + ("" if simple else "example:\n  - 예시 중첩\n")
+        + "---\n가상 본문"
+    )
+    metadata, remaining = FrontmatterParser.parse(source.splitlines(), "plain")
+    if simple:
+        assert metadata.extra["date"] == scalar
+        assert remaining == ["가상 본문"]
+    else:
+        assert remaining == source.splitlines()
+        assert "date" not in metadata.extra
+
+
+@pytest.mark.parametrize("kind", ["house", "theme"])
+@pytest.mark.parametrize("scalar", CONSTRUCTOR_FAILURES)
+@pytest.mark.parametrize("operator", [False, True])
+def test_named_yaml_constructor_failure_provenance(tmp_path, kind, scalar, operator):
+    config = tmp_path / "example.yaml"
+    config.write_text(f"prepared_by: {scalar}", encoding="utf-8")
+    profile = "term-sheet" if kind == "house" else "plain"
+    source = f"---\nprofile: {profile}\ntitle: 예시 문서\nsubtitle: 가상 조건\n"
+    source += "prepared_by: 가상 기관\ndisclaimer: 예시 문구\n"
+    if not operator:
+        source += f"{kind}: '{config.as_posix()}'\n"
+    model = MarkdownParser().parse(source + "---\n예시 본문")
+    if not operator:
+        assert model.metadata.extra[kind] == config.as_posix()
+    with pytest.raises(ValueError) as caught:
+        IBDocumentRenderer(
+            options=RenderOptions(strict=True, **({kind: str(config)} if operator else {}))
+        ).render(model)
+    assert isinstance(caught.value, StrictValidationError) is not operator
+    if not operator:
+        assert type(caught.value.__cause__) is ValueError
+
+
+@pytest.mark.parametrize(
+    "profile",
+    [
+        "plain",
+        "ib-report",
+        "ib-memo",
+        "office-letter",
+        "business-report",
+        "meeting-minutes",
+        "term-sheet",
+    ],
+)
+@pytest.mark.parametrize("route", ["render", "cli", "portable"])
+def test_wrong_sender_text_is_document_rejection(tmp_path, profile, route):
+    source = f"---\nprofile: {profile}\ntitle: 예시 문서\nsender: {{organization: 12}}\n"
+    source += (
+        "recipients: [가상 수신처]\nprepared_by: 가상 기관\ndisclaimer: 예시 문구\n---\n가상 본문"
+    )
+    output = tmp_path / "example.docx"
+    with pytest.raises(Exception) as caught:
+        _convert(source, output, profile, route)
+    assert "sender" in str(_strict_cause(caught.value))
+    assert not list(tmp_path.glob("*.docx"))
+
+
+@pytest.mark.parametrize(
+    "location", ["paragraph", "heading", "run", "table", "list", "footnote", "metadata"]
+)
+@pytest.mark.parametrize("profile", ["plain", "ib-report"])
+def test_handbuilt_xml_strings_reject_before_save(tmp_path, location, profile):
+    from document_model import (
+        DocumentModel,
+        Element,
+        ElementType,
+        Heading,
+        ListItem,
+        Paragraph,
+        Table,
+        TableCell,
+        TableRow,
+        TextRun,
+    )
+    from document_profiles import default_metadata
+
+    text = "가상\x00예시"
+    model = DocumentModel(metadata=default_metadata(profile))
+    content = {
+        "paragraph": Element(ElementType.PARAGRAPH, Paragraph(text)),
+        "heading": Element(ElementType.HEADING_1, Heading(1, text)),
+        "run": Element(ElementType.PARAGRAPH, Paragraph("예시", [TextRun(text)])),
+        "table": Element(
+            ElementType.TABLE, Table(rows=[TableRow(cells=[TableCell(text)])], col_count=1)
+        ),
+        "list": Element(ElementType.BULLET_LIST, ListItem(text)),
+        "footnote": Element(ElementType.PARAGRAPH, Paragraph("예시", [TextRun("", footnote_id=1)])),
+        "metadata": Element(ElementType.PARAGRAPH, Paragraph("예시")),
+    }
+    model.elements = [content[location]]
+    if location == "footnote":
+        model.footnotes[1] = text
+    elif location == "metadata":
+        model.metadata.title = text
+    output = tmp_path / "example.docx"
+    with pytest.raises(StrictValidationError, match="XML-incompatible character U\\+0000"):
+        IBDocumentRenderer(options=RenderOptions(strict=True)).render(model).save(output)
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    "profile",
+    [
+        "plain",
+        "ib-report",
+        "ib-memo",
+        "office-letter",
+        "business-report",
+        "meeting-minutes",
+        "term-sheet",
+    ],
+)
+def test_existing_metadata_scalar_coercions_render(tmp_path, profile):
+    from docx import Document
+
+    source = f"---\nprofile: {profile}\ntitle: 예시 문서\nsubtitle: 가상 조건\n"
+    source += "date: 2026-11-11\nanalyst: 12\ncompany: 34\nmeeting_time: 56\nlocation: 78\n"
+    source += "document_no: 90\nversion: 2\nsender: {organization: 가상 기관}\nrecipients: [예시 수신처]\n"
+    source += "prepared_by: 가상 기관\ndisclaimer: 예시 문구\n---\n가상 본문"
+    output = tmp_path / "example.docx"
+    _convert(source, output, profile, "render")
+    assert Document(output).element.body is not None
+
+
+@pytest.mark.parametrize("value", [12, False, None, ["예시"], {"예시": 12}])
+def test_ib_department_keeps_existing_display_coercion(value):
+    model = MarkdownParser(profile="ib-report").parse("# 예시 문서\n\n가상 본문")
+    model.metadata.extra["sender"] = {"department": value}
+    document = IBDocumentRenderer(options=RenderOptions(strict=True, include_cover=False)).render(
+        model
+    )
+    if value:
+        assert any(f"작성부서: {value}" == paragraph.text for paragraph in document.paragraphs)
+
+
 @pytest.mark.parametrize(
     "extra, message, cause_type",
     [
@@ -225,10 +391,63 @@ def test_document_named_configuration_preserves_original_failure(tmp_path, kind,
         else:
             load_style(get_profile(profile), str(path))
     model = MarkdownParser(profile=profile).parse(
-        f"---\ntitle: 예시 문서\n{kind}: '{path.as_posix()}'\n---\n가상 본문"
+        f"---\nprofile: {profile}\ntitle: 예시 문서\n{kind}: '{path.as_posix()}'\n---\n가상 본문"
     )
+    assert model.metadata.extra[kind] == path.as_posix()
     with pytest.raises(StrictValidationError) as caught:
         IBDocumentRenderer(options=RenderOptions(strict=True)).render(model)
     assert str(caught.value) == str(original.value)
     assert type(caught.value.__cause__) is type(original.value)
     assert str(caught.value.__cause__) == str(original.value)
+
+
+@pytest.mark.parametrize("profile", ["plain", "ib-report"])
+@pytest.mark.parametrize(
+    "block",
+    [
+        "가상 문단 \x01",
+        "- 가상 항목 \x01",
+        "> 가상 인용 \x01",
+        "```\n가상 코드 \x01\n```",
+        "| 예시 |\n| --- |\n| 가상\x01 |",
+    ],
+)
+def test_non_strict_keeps_element_resilience_for_xml_characters(tmp_path, profile, block):
+    """A body element the XML writer rejects becomes a marker, as before, not a rejection."""
+    model = MarkdownParser(profile=profile).parse(f"---\ntitle: 예시 문서\n---\n\n{block}\n")
+    renderer = IBDocumentRenderer(options=RenderOptions(profile=profile, strict=False))
+    output = tmp_path / "example.docx"
+    renderer.render(model).save(output)
+    assert output.exists()
+    assert any("XML-incompatible character U+0001" in error for error in renderer.errors)
+
+
+@pytest.mark.parametrize(
+    "profile, body",
+    [
+        ("plain", "가상 문단[^1].\n\n[^1]: 가상 각주 \x01"),
+        ("ib-report", "가상 문단[^1].\n\n[^1]: 가상 각주 \x01"),
+        # The report profile also uses headings for its contents preview.
+        ("ib-report", "# 가상 \x01 제목\n\n가상 문단"),
+    ],
+)
+def test_non_strict_names_xml_characters_outside_element_resilience(tmp_path, profile, body):
+    """Text rendered outside the per-element guard ends in the documented rejection."""
+    model = MarkdownParser(profile=profile).parse(f"---\ntitle: 예시 문서\n---\n\n{body}\n")
+    output = tmp_path / "example.docx"
+    with pytest.raises(StrictValidationError) as caught:
+        IBDocumentRenderer(options=RenderOptions(profile=profile, strict=False)).render(model).save(
+            output
+        )
+    assert str(caught.value) == "XML-incompatible character U+0001 in Markdown input"
+    assert isinstance(caught.value.__cause__, ValueError)
+    assert not output.exists()
+
+
+def test_non_strict_operator_error_is_not_relabelled_by_body_characters():
+    """An operator mistake keeps its type even when the body also has such a character."""
+    model = MarkdownParser(profile="plain").parse("가상 문단 \x01")
+    renderer = IBDocumentRenderer(options=RenderOptions(profile="business-report", strict=False))
+    with pytest.raises(ValueError, match="reparse the Markdown") as caught:
+        renderer.render(model)
+    assert not isinstance(caught.value, StrictValidationError)

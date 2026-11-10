@@ -294,7 +294,9 @@ def validate_style(value: Any, base_dir: Path | None = None) -> dict[str, Any]:
         ):
             # Keep the written components until local_asset_path judges each
             # candidate; resolving a junction here would lose the decoded one.
-            settings["logo"] = str(base_dir / logo)
+            # Rebuild from the joined string: on Python 3.12 a cross-drive
+            # Path join retains the old drive in its internal path segments.
+            settings["logo"] = str(Path(str(base_dir / logo)).absolute())
     return settings
 
 
@@ -405,6 +407,8 @@ def resolve_term_sheet_texts(
     with document_validation():
         if "style" in metadata.extra:
             style.update(validate_style(metadata.extra["style"]))
+    document_logo = document_house or "logo" in metadata.extra.get("style", {})
+    with document_validation(document_logo):
         logo = style.get("logo")
         if logo and not logo.lower().startswith("data:") and not Path(logo).is_absolute():
             raise ValueError("style.logo must be absolute for input without a source file")
