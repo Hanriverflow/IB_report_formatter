@@ -1,0 +1,5 @@
+# Formatting-only commits; `git blame --ignore-revs-file .git-blame-ignore-revs` skips them.
+# Hashes are from the work branch; update them if the merge method rewrites commits.
+
+# style: apply ruff format to all Python files
+45688737534816b25e134fbbca0d2b2ce6918520
