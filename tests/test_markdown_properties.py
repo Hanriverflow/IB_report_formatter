@@ -300,13 +300,7 @@ def _assert_literal_runs(document: WordDocument) -> None:
     "levels",
     (
         (1, 2, 3, 4),
-        pytest.param(
-            (5, 6),
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="'##### 0' renders '##### 0', expected heading text '0'; MarkdownParser._try_parse_heading only defines H1-H4. Adding H5/H6 needs layout design.",
-            ),
-        ),
+        (5, 6),
     ),
 )
 @given(data=st.data())

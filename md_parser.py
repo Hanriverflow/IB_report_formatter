@@ -2463,6 +2463,8 @@ class MarkdownParser:
     H2_PATTERN = re.compile(r"^##\s+(.+)$")
     H3_PATTERN = re.compile(r"^###\s+(.+)$")
     H4_PATTERN = re.compile(r"^####\s+(.+)$")
+    # Levels 5 and 6 have no style of their own; they render as the deepest styled level.
+    DEEP_HEADING_PATTERN = re.compile(r"^#{5,6}\s+(.+)$")
 
     # Numbered heading pattern: **1. Title** or **1\. Title**
     NUMBERED_HEADING_PATTERN = re.compile(r"^\*\*\d+(\.|\\.)")
@@ -3374,8 +3376,8 @@ class MarkdownParser:
                 raw_text=line,
             )
 
-        # H4 (check longer prefixes first to avoid partial match)
-        match = self.H4_PATTERN.match(line)
+        # H5 and H6 share the deepest styled level (check longer prefixes first)
+        match = self.DEEP_HEADING_PATTERN.match(line) or self.H4_PATTERN.match(line)
         if match:
             text = match.group(1).strip()
             return Element(
@@ -3620,13 +3622,14 @@ class MarkdownParser:
             or self.H2_PATTERN.match(line)
             or self.H3_PATTERN.match(line)
             or self.H4_PATTERN.match(line)
+            or self.DEEP_HEADING_PATTERN.match(line)
             or self.NUMBERED_HEADING_PATTERN.match(line)
         )
 
     def _is_reference_header(self, line: str) -> bool:
         """Check if line is a references section header"""
         stripped = line.strip().lower()
-        cleaned = re.sub(r"^#{1,4}\s+", "", stripped)
+        cleaned = re.sub(r"^#{1,6}\s+", "", stripped)
         return cleaned.strip("* :：") in self._REFERENCE_KEYWORDS
 
     # ── Blockquote helpers ──────────────────────────────────────────────────
