@@ -21,18 +21,19 @@ Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Bet
 ### Rejection codes and exception types
 - Exactly six codes: `asset_outside_root`, `limit_input_bytes`, `limit_table_cells`, `limit_list_depth`, `limit_image_bytes`, `limit_image_pixels`. A coded issue starts with `[code] ` and keeps the prefix inside joined messages. Existing warning sentences are unchanged.
 - Strict rejections raise `StrictValidationError` (`.codes`, `.issues`) and limit failures raise `InputLimitError` (`.code`, `.limit`, `.measured`). Both are `ValueError` subclasses, so existing `except ValueError` code keeps working, and both stay reachable as the cause of wrapping errors such as `Rendering failed: ...`.
-- Malformed declared YAML frontmatter, a footnote ID that is not positive and an empty input file raise `StrictValidationError`; their messages are unchanged.
-- The plugin runner's `result.json` adds one diagnostic per coded issue (`code` is the rejection code); its other `code` values and keys are unchanged. The portable converter window explains each code in Korean.
-- Control characters that XML cannot hold are reported as an input warning, so strict mode rejects them before rendering.
+- Errors that reject a document's own settings raise `StrictValidationError` with their earlier message and the original error as cause: malformed declared YAML frontmatter, invalid frontmatter values (profile, layout, style, table specifications, terms, checks, letter settings), invalid content of a house or theme file named by the document, a footnote ID that is not positive, and an empty input file. Errors in operator arguments keep their type.
+- The plugin runner's `result.json` adds one diagnostic per coded issue (`code` is the rejection code); its other `code` values and keys are unchanged. The runner applies the input-size limit before it hashes the Markdown, so an oversized draft is rejected at stage `input`. The portable converter window explains each code in Korean.
+- Control characters that XML cannot hold are diagnosed before rendering: in the Markdown body as an input warning that strict mode rejects, and in metadata or house/theme values (including YAML escapes) as a rejection.
 
 ### Fixes
 - `w:updateFields` is inserted at its schema position in `settings.xml` in every profile. Output changes only in element order.
+- Logo paths written with percent-encoding are resolved and judged candidate by candidate, like body images.
 - Headings keep the characters of code spans and escaped punctuation (`` # `**kwargs` `` and `# \*literal\*` used to lose their asterisks). Other headings render as before.
 - A whitespace-only line in a fenced code block keeps its own whitespace.
-- `docx-audit` reads XML with entity resolution, DTD loading and network access off; a part that declares a DTD is reported as an issue and not expanded. Results for ordinary documents are unchanged.
+- `docx-audit` checks every XML part of the package, with entity resolution, DTD loading and network access off, before opening the document. A package with a part that declares a DTD or entities is reported as an issue naming the part and is not opened or expanded. Results for ordinary documents are unchanged.
 
 ### Verification infrastructure
-- CI gate `word-schema`: every sample (12 Markdown samples, 13 documents with the charts-on variant) is rendered in strict mode and checked with OOXML-Validator v2.1.6, downloaded and verified against a pinned SHA-256. An error not covered by `scripts/word_schema_exceptions.json` (currently empty) fails the job. See `scripts/word_schema_validation.md`.
+- CI gate `word-schema`: every sample (12 Markdown samples, 13 documents with the charts-on variant) is rendered in strict mode and checked with OOXML-Validator v2.1.6, downloaded and verified against a pinned SHA-256. The validation script verifies the downloaded archive in the same run that executes it, so an unverified validator never runs. An error not covered by `scripts/word_schema_exceptions.json` (currently empty) fails the job, and an exception covers an error only when the error type and description also match its evidence. See `scripts/word_schema_validation.md`.
 - Snapshot tests pin the parsed model and every XML part of every sample; property tests (Hypothesis, fixed examples) check visible text, table cells, literal code and escapes, and that strict conversion either saves or rejects. Known gaps that need an owner decision are recorded as strict `xfail` cases in `tests/test_markdown_properties.py`.
 - CI also runs `ruff format --check`. `syrupy` and `hypothesis` are development-only dependencies.
 - New engine module `input_safety.py`.

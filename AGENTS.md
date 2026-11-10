@@ -96,11 +96,14 @@ Document content (body, frontmatter, and the house or theme files it names) is u
 - Five limits stop the conversion in both modes and leave no output: input bytes, cells per table, list depth, image bytes, image pixels (`InputLimits`, `--max-*`). Judge size before reading or decoding. Nothing in a document can raise a limit, and there is no unlimited value.
 - There are exactly six rejection codes (`asset_outside_root` and five `limit_*`). A coded issue starts with `[code] ` and keeps that prefix inside joined messages. Do not add codes to existing warnings or change their wording.
 - Strict rejections raise `StrictValidationError` and limit failures raise `InputLimitError`; both are `ValueError` subclasses and must stay reachable through `__cause__` when wrapped. The renderer's per-element resilience must not turn either into a placeholder.
-- The plugin runner and the portable converter stay strict and take no option that adds folders or raises limits.
+- A validator that rejects the document's own settings (frontmatter values, table specifications, house or theme content named by the document, terms, checks) runs inside `input_safety.document_validation`, which re-raises the same message as `StrictValidationError`. An error in an operator argument keeps its plain `ValueError`. Do not wrap with a blanket `except Exception`.
+- Strings that reach the document from decoded YAML go through `validate_xml_strings`; the Markdown body is checked on the raw text.
+- The plugin runner and the portable converter stay strict and take no option that adds folders or raises limits. The runner applies the input-size limit before hashing the draft.
+- `docx-audit` checks every XML part of a package with the hardened parser before python-docx opens it.
 
 ## Verification gates
 
-- Hand-built XML children go through `ooxml_order.insert_ordered`. The CI job `word-schema` renders every sample and fails on any OOXML-Validator error that `scripts/word_schema_exceptions.json` does not cover; see `scripts/word_schema_validation.md`. An exception needs a reproduction from a document saved by Word itself, and the reproduction document stays out of the repository.
+- Hand-built XML children go through `ooxml_order.insert_ordered`. The CI job `word-schema` renders every sample and fails on any OOXML-Validator error that `scripts/word_schema_exceptions.json` does not cover; see `scripts/word_schema_validation.md`. The script runs the validator only from an archive whose hash it has just verified. An exception needs a reproduction from a document saved by Word itself, and the reproduction document stays out of the repository.
 - `tests/test_sample_snapshots.py` pins the parsed model and every XML part of every sample. A missing snapshot fails. Update only for an intended output change, with `uv run pytest tests/test_sample_snapshots.py --snapshot-update`, and review the diff; a snapshot change in a sample also needs the Word page check below.
 - `tests/test_markdown_properties.py` holds four Hypothesis properties (visible text, cell count, literal code and escapes, strict save-or-reject). Do not shrink the generated input or loosen a comparison to pass. Its strict `xfail` cases record known gaps that need an owner decision; fixing one means removing its mark.
 
