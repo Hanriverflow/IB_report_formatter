@@ -253,6 +253,7 @@ def load_yaml(text: str) -> Any:
     or TypeError for malformed tagged scalars (`!!timestamp x`, `!!bool x`,
     `!!int ""`), and deep nesting ends in RecursionError. Callers already treat
     yaml.YAMLError and ValueError as invalid YAML, so those are left as they are.
+    An integer too long for Python to convert back to text is reported the same way.
 
     Args:
         text: YAML written in a document or in a file a document or operator named.
@@ -265,11 +266,26 @@ def load_yaml(text: str) -> Any:
         ValueError: A value the loader could not construct.
     """
     try:
-        return safe_load(text)
+        data = safe_load(text)
     except (AttributeError, KeyError, IndexError, TypeError, OverflowError) as error:
         raise ValueError(f"YAML value cannot be constructed: {error!r}") from error
     except RecursionError as error:
         raise ValueError("YAML is nested too deeply") from error
+    # An integer beyond Python's conversion limit loads, but cannot be written out.
+    pending = [data]
+    while pending:
+        item = pending.pop()
+        if isinstance(item, int):
+            try:
+                str(item)
+            except ValueError as error:
+                raise ValueError("YAML integer is too long to use") from error
+        elif isinstance(item, Mapping):
+            pending.extend(item.keys())
+            pending.extend(item.values())
+        elif isinstance(item, (list, tuple, set)):
+            pending.extend(item)
+    return data
 
 
 class _XMLText:

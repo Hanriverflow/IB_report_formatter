@@ -190,6 +190,23 @@ from term_variables import (
 logger = logging.getLogger(__name__)
 
 
+def _document_int(digits: str) -> int:
+    """Convert digits written in a document; a number too long to convert is a rejection.
+
+    Args:
+        digits: A run of decimal digits matched in the Markdown.
+
+    Returns:
+        The number.
+    """
+    try:
+        return int(digits)
+    except ValueError as error:
+        raise StrictValidationError(
+            "", [f"Number is too long to read ({len(digits)} digits): {digits[:12]}..."]
+        ) from error
+
+
 class FrontmatterParser:
     """Parses YAML frontmatter from markdown"""
 
@@ -868,7 +885,11 @@ class TextParser:
             runs.extend(cls._parse_plain_formatting(text[offset : match.start()]))
             if match.group(3):
                 runs.append(
-                    TextRun(text=match.group(3), superscript=True, footnote_id=int(match.group(3)))
+                    TextRun(
+                        text=match.group(3),
+                        superscript=True,
+                        footnote_id=_document_int(match.group(3)),
+                    )
                 )
             else:
                 labels = cls._parse_plain_formatting(match.group(1))
@@ -1338,7 +1359,7 @@ class FootnoteParser:
             if in_references:
                 match = FootnoteParser.REFERENCE_PATTERN.match(stripped)
                 if match:
-                    ref_num = int(match.group(1))
+                    ref_num = _document_int(match.group(1))
                     ref_text = match.group(2).strip()
                     references[ref_num] = ref_text
                 elif not stripped:
@@ -1358,7 +1379,7 @@ class FootnoteParser:
         for match in FootnoteParser.INLINE_PATTERN.finditer(text):
             group = match.group(1) or match.group(2)
             if group:
-                refs.append(int(group))
+                refs.append(_document_int(group))
         return refs
 
 
@@ -2596,7 +2617,7 @@ class MarkdownParser:
             if not self._EXT_FOOTNOTE_DEF_RE.match(scan_lines[index].strip()):
                 match = None
             if match:
-                number = int(match.group(1))
+                number = _document_int(match.group(1))
                 if number <= 0:
                     raise StrictValidationError("", ["Footnote IDs must be positive integers"])
                 if number in footnotes:
@@ -3412,7 +3433,11 @@ class MarkdownParser:
         if not match:
             return False
 
-        number = int(match.group(1))
+        try:
+            number = int(match.group(1))
+        except ValueError:
+            # Too long for Python to convert; no section number is that long.
+            return False
         title_part = match.group(2).strip()
 
         # Reject unreasonably high section numbers
@@ -3463,7 +3488,7 @@ class MarkdownParser:
     def _parse_diagram(self, language: str, code_text: str) -> Diagram | None:
         """Parse a diagram:flow YAML block into a Diagram object."""
         try:
-            data = yaml.safe_load(code_text)
+            data = load_yaml(code_text)
             if not isinstance(data, dict):
                 return None
 
