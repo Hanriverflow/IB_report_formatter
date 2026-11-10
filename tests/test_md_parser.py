@@ -571,13 +571,13 @@ def test_parse_markdown_file_infers_title_and_date_from_leading_content(tmp_path
     """Without frontmatter, first H1 and leading bold metadata should backfill metadata."""
     md_path = Path(tmp_path) / "inferred_metadata.md"
     md_path.write_text(
-        "# 일동제약 주식회사 수익성 변화 분석 보고서\n\n**분석 대상 기간:** 제9기→제10기\n\n**분석 기준:** 연결재무제표 기준\n\n**작성일:** 2026년 3월 20일\n\n## 본문\n\n내용\n",
+        "# 가상제약 주식회사 수익성 변화 분석 보고서\n\n**분석 대상 기간:** 제9기→제10기\n\n**분석 기준:** 연결재무제표 기준\n\n**작성일:** 2026년 3월 20일\n\n## 본문\n\n내용\n",
         encoding="utf-8",
     )
 
     model = parse_markdown_file(str(md_path))
 
-    assert model.metadata.title == "일동제약 주식회사 수익성 변화 분석 보고서"
+    assert model.metadata.title == "가상제약 주식회사 수익성 변화 분석 보고서"
     assert model.metadata.company == ""  # cleared when no frontmatter
     assert model.metadata.extra["analysis_period"] == "제9기→제10기"
     assert model.metadata.extra["analysis_basis"] == "연결재무제표 기준"

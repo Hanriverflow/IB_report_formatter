@@ -293,7 +293,9 @@ separator를 수평선으로만 렌더하던 동작을 확장해서, 명시적 p
 
 ### Step 15. 실제 MD→Word 사례 평가 및 usability 개선 ✅
 
-`tests/일동제약_수익성분석.md` 실제 사례를 기준으로 MD→Word 변환물을 점검하고, 사용자가 Word에서 직접 손보던 부분을 줄이도록 개선.
+실제 사례 A의 입력 파일 실제 사례를 기준으로 MD→Word 변환물을 점검하고, 사용자가 Word에서 직접 손보던 부분을 줄이도록 개선.
+
+> 실제 사례 A·B의 입력 파일과 회사명은 2026-11에 저장소에서 지우고 중립 표현으로 바꿨다.
 
 | 파일 | 역할 |
 |------|------|
@@ -304,16 +306,16 @@ separator를 수평선으로만 렌더하던 동작을 확장해서, 명시적 p
 | `tests/test_ib_renderer.py` (수정) | TOC preview heading 항목 가시성 회귀 테스트 추가 |
 
 실제 사례 평가:
-- 입력: `tests/일동제약_수익성분석.md`
+- 입력: 실제 사례 A의 입력 파일
 - 기존 문제:
   - cover title이 frontmatter 부재 시 `IB Report`로 출력됨
   - TOC는 Word field 업데이트 전 비어 보여 사용자가 목차를 직접 채운 것처럼 느껴짐
 - 개선 후:
-  - 첫 H1(`일동제약 주식회사 수익성 변화 분석 보고서`)가 cover title로 자동 승격
+  - 첫 H1(`실제 사례 A 회사 수익성 변화 분석 보고서`)가 cover title로 자동 승격
   - 선행 `**작성일:** ...` 문단이 metadata로 흡수되어 cover metadata 품질 개선
   - TOC 페이지에 heading 기반 preview가 바로 보여 field 업데이트 전에도 outline 확인 가능
   - `분석 대상 기간`, `분석 기준`이 cover metadata panel로 승격
-  - 제목 기반으로 `Institution`을 `일동제약 주식회사`로 추론
+  - 제목 기반으로 `Institution`을 `실제 사례 A 회사`로 추론
   - placeholder였던 `PREPARED BY = DCM Team 1`, `SECTOR = SECTOR` 행은 자동 숨김 처리되어 수동 정리 부담 감소
   - 표 셀 내부는 vertical alignment와 paragraph spacing을 정규화해 숫자/텍스트 정렬이 더 안정적으로 보이도록 polish
   - cover 상단에서 회사명과 제목이 중복될 때 `회사명 / 보고서명`으로 분리해 첫인상 개선
@@ -329,9 +331,9 @@ separator를 수평선으로만 렌더하던 동작을 확장해서, 명시적 p
 
 ---
 
-### Step 16. 두 번째 실제 사례(웅진 계열사) 기반 polish ✅
+### Step 16. 두 번째 실제 사례(실제 사례 B) 기반 polish ✅
 
-`tests/웅진_계열사.md` 실제 사례를 기준으로 cover 메타데이터 추론과 구조 도식 표현을 추가 개선.
+실제 사례 B의 입력 파일 실제 사례를 기준으로 cover 메타데이터 추론과 구조 도식 표현을 추가 개선.
 
 | 파일 | 역할 |
 |------|------|
@@ -341,15 +343,15 @@ separator를 수평선으로만 렌더하던 동작을 확장해서, 명시적 p
 | `tests/test_md_parser.py` / `tests/test_ib_renderer.py` (수정) | code block / cover split / metadata inference 회귀 테스트 추가 |
 
 실제 사례 평가:
-- 입력: `tests/웅진_계열사.md`
+- 입력: 실제 사례 B의 입력 파일
 - 기존 문제:
   - `**기준일: ...**` 문단이 cover metadata에 반영되지 않음
-  - `주식회사 웅진 — 자회사 보유구조 및 영업관계 분석`이 cover에서 한 덩어리로 보여 첫인상이 무거움
+  - `실제 사례 B 회사 — 자회사 보유구조 및 영업관계 분석`이 cover에서 한 덩어리로 보여 첫인상이 무거움
   - `지배구조 도식 (간략)` fenced block이 Word에서 백틱 문단으로 깨짐
   - default `DCM RESEARCH` 문구가 불필요하게 노출됨
 - 개선 후:
   - `REPORT DATE`에 `기준일`이 반영됨
-  - cover가 `주식회사 웅진` / `자회사 보유구조 및 영업관계 분석`으로 분리되어 가독성 개선
+  - cover가 `실제 사례 B 회사` / `자회사 보유구조 및 영업관계 분석`으로 분리되어 가독성 개선
   - 구조 도식이 monospaced shaded block으로 렌더되어 훨씬 읽기 쉬워짐
   - default report type는 명시되지 않은 경우 숨김 처리
 
