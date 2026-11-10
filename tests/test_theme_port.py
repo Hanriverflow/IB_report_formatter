@@ -18,10 +18,17 @@ from render_styles import STYLE, IBStyle
 
 
 def themed_document(path):
-    model = MarkdownParser().parse("---\ntitle: Test\n---\n# Heading\n\n> [요약]\n> 내용\n\n- Bullet")
-    doc = IBDocumentRenderer(options=RenderOptions(
-        theme=str(path), include_cover=False, include_toc=False, include_disclaimer=False,
-    )).render(model)
+    model = MarkdownParser().parse(
+        "---\ntitle: Test\n---\n# Heading\n\n> [요약]\n> 내용\n\n- Bullet"
+    )
+    doc = IBDocumentRenderer(
+        options=RenderOptions(
+            theme=str(path),
+            include_cover=False,
+            include_toc=False,
+            include_disclaimer=False,
+        )
+    ).render(model)
     data = BytesIO()
     doc.save(data)
     return Document(data)
@@ -29,7 +36,9 @@ def themed_document(path):
 
 def test_theme_heading_callout_and_bullet_honor_uppercase_fields(tmp_path):
     theme = tmp_path / "extended.yaml"
-    theme.write_text('NAVY: "123456"\nH1_SIZE: 23\nBODY_FONT: Arial\nTOP_MARGIN: 0.6\n', encoding="utf-8")
+    theme.write_text(
+        'NAVY: "123456"\nH1_SIZE: 23\nBODY_FONT: Arial\nTOP_MARGIN: 0.6\n', encoding="utf-8"
+    )
     doc = themed_document(theme)
     heading = next(p for p in doc.paragraphs if p.text == "Heading")
     assert heading.runs[0].font.color.rgb == RGBColor.from_string("123456")
@@ -41,15 +50,28 @@ def test_theme_heading_callout_and_bullet_honor_uppercase_fields(tmp_path):
     assert STYLE.NAVY == IBStyle().NAVY
 
 
-@pytest.mark.parametrize("field, value", [
-    ("primary_color", 123456), ("NAVY", True), ("NAVY_HEX", "bad"),
-    ("TABLE_HEADER_BG", 123456), ("BODY_SIZE", True), ("H1_SIZE", -1),
-    ("H2_SIZE", float("inf")), ("BODY_LINE_SPACING", float("nan")),
-    ("BODY_LINE_SPACING", 0), ("BODY_FONT", 123), ("KOREAN_FONT", ""),
-    ("TOP_MARGIN", -1), ("TABLE_ZEBRA", "true"),
-    ("FULL_LIST_INDENT_LEVELS", True), ("FULL_LIST_INDENT_LEVELS", -1),
-    ("no_such_key", 1), (123, "bad"),
-])
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("primary_color", 123456),
+        ("NAVY", True),
+        ("NAVY_HEX", "bad"),
+        ("TABLE_HEADER_BG", 123456),
+        ("BODY_SIZE", True),
+        ("H1_SIZE", -1),
+        ("H2_SIZE", float("inf")),
+        ("BODY_LINE_SPACING", float("nan")),
+        ("BODY_LINE_SPACING", 0),
+        ("BODY_FONT", 123),
+        ("KOREAN_FONT", ""),
+        ("TOP_MARGIN", -1),
+        ("TABLE_ZEBRA", "true"),
+        ("FULL_LIST_INDENT_LEVELS", True),
+        ("FULL_LIST_INDENT_LEVELS", -1),
+        ("no_such_key", 1),
+        (123, "bad"),
+    ],
+)
 def test_invalid_theme_rejected_atomically(field, value, tmp_path):
     theme = tmp_path / "invalid.yaml"
     theme.write_text(yaml.safe_dump({"NAVY": "123456", field: value}), encoding="utf-8")
@@ -107,7 +129,9 @@ def test_legacy_red_theme_controls_waterfall_negative_color(tmp_path, monkeypatc
         "```chart\nchart_type: waterfall\nlabels: [A, B]\n"
         "series: [{name: Value, values: [100, -30]}]\n```"
     )
-    doc = IBDocumentRenderer(options=RenderOptions(theme=str(theme), charts=True, strict=True)).render(model)
+    doc = IBDocumentRenderer(
+        options=RenderOptions(theme=str(theme), charts=True, strict=True)
+    ).render(model)
     data = BytesIO()
     doc.save(data)
     assert len(Document(data).inline_shapes) == 1
@@ -130,14 +154,31 @@ def test_themes_remain_isolated_across_threads(tmp_path):
 
 
 @pytest.mark.parametrize("invalid", [False, True])
-def test_extended_theme_cli_overrides_yaml_and_preserves_failed_destination(tmp_path, monkeypatch, invalid):
+def test_extended_theme_cli_overrides_yaml_and_preserves_failed_destination(
+    tmp_path, monkeypatch, invalid
+):
     theme = tmp_path / "cli.yaml"
-    theme.write_text('NAVY: "123456"\n' + ('H1_SIZE: true\n' if invalid else 'H1_SIZE: 21\n'), encoding="utf-8")
+    theme.write_text(
+        'NAVY: "123456"\n' + ("H1_SIZE: true\n" if invalid else "H1_SIZE: 21\n"), encoding="utf-8"
+    )
     source, output = tmp_path / "input.md", tmp_path / "output.docx"
     source.write_text("---\ntheme: mono\n---\n# Heading\n\nBody.", encoding="utf-8")
     output.write_bytes(b"keep existing")
-    monkeypatch.setattr(sys, "argv", ["md-to-word", str(source), str(output), "--theme", str(theme),
-                                     "--no-cover", "--no-toc", "--no-disclaimer", "--strict"])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "md-to-word",
+            str(source),
+            str(output),
+            "--theme",
+            str(theme),
+            "--no-cover",
+            "--no-toc",
+            "--no-disclaimer",
+            "--strict",
+        ],
+    )
     with pytest.raises(SystemExit) as exc:
         md_to_word.main()
     if invalid:

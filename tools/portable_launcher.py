@@ -97,7 +97,8 @@ def launch_gui(self_test: bool = False) -> None:
 
     def choose_source() -> None:
         selected = filedialog.askopenfilename(
-            title="Markdown 파일 선택", initialdir=str(root_path / "예제"),
+            title="Markdown 파일 선택",
+            initialdir=str(root_path / "예제"),
             filetypes=[("Markdown 문서", "*.md")],
         )
         if selected:
@@ -135,7 +136,11 @@ def launch_gui(self_test: bool = False) -> None:
         nonlocal busy
         if busy:
             return
-        values = (source.get(), destination.get(), None if profile.get() == AUTO_PROFILE else profile.get())
+        values = (
+            source.get(),
+            destination.get(),
+            None if profile.get() == AUTO_PROFILE else profile.get(),
+        )
         busy = True
         convert_button.configure(state="disabled")
         status.set("변환 중입니다. 완료될 때까지 기다려 주세요.")
@@ -156,7 +161,11 @@ def launch_gui(self_test: bool = False) -> None:
             if kind in {"done", "error"}:
                 busy = False
                 convert_button.configure(state="normal")
-                status.set("변환 완료 — 아래 저장 경로를 확인하세요." if kind == "done" else "변환 실패 — 아래 원인을 확인하세요.")
+                status.set(
+                    "변환 완료 — 아래 저장 경로를 확인하세요."
+                    if kind == "done"
+                    else "변환 실패 — 아래 원인을 확인하세요."
+                )
                 if kind == "error":
                     messagebox.showerror("변환 실패", value, parent=window)
         window.after(100, poll)
@@ -168,23 +177,39 @@ def launch_gui(self_test: bool = False) -> None:
         logging.getLogger().removeHandler(log_handler)
         window.destroy()
 
-    ttk.Label(frame, text="Markdown 파일을 Word 문서로 변환", font=("맑은 고딕", 17, "bold")).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 18))
+    ttk.Label(frame, text="Markdown 파일을 Word 문서로 변환", font=("맑은 고딕", 17, "bold")).grid(
+        row=0, column=0, columnspan=3, sticky="w", pady=(0, 18)
+    )
     ttk.Label(frame, text="입력 파일").grid(row=1, column=0, sticky="w", padx=(0, 12))
     ttk.Entry(frame, textvariable=source).grid(row=1, column=1, sticky="ew", pady=6)
     ttk.Button(frame, text="파일 선택", command=choose_source).grid(row=1, column=2, padx=(8, 0))
     ttk.Label(frame, text="저장 폴더").grid(row=2, column=0, sticky="w")
     ttk.Entry(frame, textvariable=destination).grid(row=2, column=1, sticky="ew", pady=6)
-    ttk.Button(frame, text="폴더 선택", command=choose_destination).grid(row=2, column=2, padx=(8, 0))
+    ttk.Button(frame, text="폴더 선택", command=choose_destination).grid(
+        row=2, column=2, padx=(8, 0)
+    )
     ttk.Label(frame, text="문서 유형").grid(row=3, column=0, sticky="w")
-    ttk.Combobox(frame, textvariable=profile, values=[AUTO_PROFILE, *PROFILES], state="readonly").grid(row=3, column=1, sticky="ew", pady=6)
-    ttk.Label(frame, text="자동: YAML profile 사용 · 유형을 직접 고르면 YAML보다 우선합니다.\n엄격 모드: 누락·렌더링 오류가 있으면 저장하지 않습니다. 기존 결과는 새 이름으로 보존합니다.", wraplength=720).grid(row=4, column=0, columnspan=3, sticky="w", pady=10)
+    ttk.Combobox(
+        frame, textvariable=profile, values=[AUTO_PROFILE, *PROFILES], state="readonly"
+    ).grid(row=3, column=1, sticky="ew", pady=6)
+    ttk.Label(
+        frame,
+        text="자동: YAML profile 사용 · 유형을 직접 고르면 YAML보다 우선합니다.\n엄격 모드: 누락·렌더링 오류가 있으면 저장하지 않습니다. 기존 결과는 새 이름으로 보존합니다.",
+        wraplength=720,
+    ).grid(row=4, column=0, columnspan=3, sticky="w", pady=10)
     buttons = ttk.Frame(frame)
     buttons.grid(row=5, column=0, columnspan=3, sticky="w", pady=8)
     convert_button = ttk.Button(buttons, text="Word로 변환", command=convert)
     convert_button.pack(side="left", padx=(0, 8))
-    ttk.Button(buttons, text="시작하기 · 텀시트 작성법", command=show_guide).pack(side="left", padx=(0, 8))
-    ttk.Button(buttons, text="출력 폴더 열기", command=lambda: open_path(Path(destination.get()))).pack(side="left")
-    ttk.Label(frame, textvariable=status, wraplength=720).grid(row=6, column=0, columnspan=3, sticky="w", pady=8)
+    ttk.Button(buttons, text="시작하기 · 텀시트 작성법", command=show_guide).pack(
+        side="left", padx=(0, 8)
+    )
+    ttk.Button(
+        buttons, text="출력 폴더 열기", command=lambda: open_path(Path(destination.get()))
+    ).pack(side="left")
+    ttk.Label(frame, textvariable=status, wraplength=720).grid(
+        row=6, column=0, columnspan=3, sticky="w", pady=8
+    )
     log = ScrolledText(frame, height=12, wrap="word", state="disabled", font=("맑은 고딕", 10))
     log.grid(row=7, column=0, columnspan=3, sticky="nsew")
     window.protocol("WM_DELETE_WINDOW", close)
@@ -212,7 +237,9 @@ def main() -> int:
         except Exception as exc:
             result = {"ok": False, "error": str(exc)}
         if args.result_json:
-            args.result_json.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+            args.result_json.write_text(
+                json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
         return 0 if result["ok"] else 1
     if args.convert:
         if not args.output_dir or not args.result_json:
@@ -222,7 +249,9 @@ def main() -> int:
             result = {"ok": True, "saved_path": str(saved)}
         except Exception as exc:
             result = {"ok": False, "error": str(exc)}
-        args.result_json.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        args.result_json.write_text(
+            json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         return 0 if result["ok"] else 1
     launch_gui()
     return 0

@@ -98,7 +98,13 @@ def test_term_sheet_requires_explicit_title_before_heading_inference():
 
 @pytest.mark.parametrize("title", ["", "Document", "IB Report", "가" * 256])
 def test_handbuilt_term_sheet_validates_title_in_render_preflight(title):
-    model = DocumentModel(metadata=DocumentMetadata(title=title, profile="term-sheet", extra={"prepared_by": PREPARED_BY, "disclaimer": DISCLAIMER}))
+    model = DocumentModel(
+        metadata=DocumentMetadata(
+            title=title,
+            profile="term-sheet",
+            extra={"prepared_by": PREPARED_BY, "disclaimer": DISCLAIMER},
+        )
+    )
     with pytest.raises(ValueError, match="title"):
         IBDocumentRenderer().render(model)
 
@@ -134,16 +140,31 @@ def test_term_sheet_style_values_and_immutable_defaults():
     assert str(style.NAVY) == style.NAVY_HEX == "1A2270"
     assert style.HEADING_FONT == style.BODY_FONT == style.KOREAN_FONT == "Malgun Gothic"
     expected = {
-        "BODY_SIZE": 9, "TABLE_HEADER_SIZE": 9, "TABLE_BODY_SIZE": 9,
-        "SMALL_SIZE": 8, "H1_SIZE": 14, "H2_SIZE": 13, "H3_SIZE": 10,
-        "H2_SPACE_BEFORE": 15, "H2_SPACE_AFTER": 7,
-        "H3_SPACE_BEFORE": 12, "H3_SPACE_AFTER": 5, "BODY_SPACE_AFTER": 3,
-        "TS_TITLE_SIZE": 20, "TS_SUBTITLE_SIZE": 16, "TS_META_SIZE": 10,
-        "TS_NOTE_SIZE": 8, "TS_DISCLAIMER_SIZE": 7, "TS_HEADER_FOOTER_SIZE": 7.5,
+        "BODY_SIZE": 9,
+        "TABLE_HEADER_SIZE": 9,
+        "TABLE_BODY_SIZE": 9,
+        "SMALL_SIZE": 8,
+        "H1_SIZE": 14,
+        "H2_SIZE": 13,
+        "H3_SIZE": 10,
+        "H2_SPACE_BEFORE": 15,
+        "H2_SPACE_AFTER": 7,
+        "H3_SPACE_BEFORE": 12,
+        "H3_SPACE_AFTER": 5,
+        "BODY_SPACE_AFTER": 3,
+        "TS_TITLE_SIZE": 20,
+        "TS_SUBTITLE_SIZE": 16,
+        "TS_META_SIZE": 10,
+        "TS_NOTE_SIZE": 8,
+        "TS_DISCLAIMER_SIZE": 7,
+        "TS_HEADER_FOOTER_SIZE": 7.5,
     }
     assert {key: getattr(style, key).pt for key in expected} == expected
     assert style.BODY_LINE_SPACING == 1.05
-    assert [getattr(style, key).mm for key in ("TOP_MARGIN", "BOTTOM_MARGIN", "LEFT_MARGIN", "RIGHT_MARGIN")] == pytest.approx([18, 16, 15, 15], abs=0.001)
+    assert [
+        getattr(style, key).mm
+        for key in ("TOP_MARGIN", "BOTTOM_MARGIN", "LEFT_MARGIN", "RIGHT_MARGIN")
+    ] == pytest.approx([18, 16, 15, 15], abs=0.001)
     assert style.TABLE_HEADER_BG == "DCE3F5"
     assert not style.TABLE_ZEBRA and not style.BODY_JUSTIFY and not style.HEADING_BORDER
     assert style.TS_LABEL_BG_HEX == "F2F5FC"
@@ -159,7 +180,9 @@ def test_term_sheet_style_values_and_immutable_defaults():
 
 def test_term_sheet_theme_overrides_are_local(tmp_path):
     theme = tmp_path / "theme.yaml"
-    theme.write_text("primary_color: '345678'\nTS_LABEL_BG_HEX: 'EEDDCC'\nTS_TITLE_SIZE: 22", encoding="utf-8")
+    theme.write_text(
+        "primary_color: '345678'\nTS_LABEL_BG_HEX: 'EEDDCC'\nTS_TITLE_SIZE: 22", encoding="utf-8"
+    )
     style = load_style(get_profile("term-sheet"), str(theme))
     assert str(style.NAVY) == style.NAVY_HEX == "345678"
     assert style.TS_LABEL_BG_HEX == "EEDDCC" and style.TS_TITLE_SIZE.pt == 22
@@ -171,7 +194,14 @@ def test_term_sheet_theme_overrides_are_local(tmp_path):
 
 
 def test_house_texts_are_frozen_and_confirmation_items_are_tuple(tmp_path):
-    path = house_file(tmp_path, confirmation={"intro": "가상 확인 안내", "items": ["가상 조건을 확인했습니다."], "signature": "가상 서명"})
+    path = house_file(
+        tmp_path,
+        confirmation={
+            "intro": "가상 확인 안내",
+            "items": ["가상 조건을 확인했습니다."],
+            "signature": "가상 서명",
+        },
+    )
     renderer, _ = render(house_markdown(path))
     texts = renderer.term_sheet_texts
     assert isinstance(texts, term_sheet.TermSheetTexts)
@@ -185,8 +215,17 @@ def test_house_texts_are_frozen_and_confirmation_items_are_tuple(tmp_path):
 
 
 def test_house_frontmatter_presence_wins_even_when_empty(tmp_path):
-    path = house_file(tmp_path, confidential_label="가상 기밀", confirmation={"intro": "house 안내"})
-    renderer, _ = render(house_markdown(path, prepared_by="가나다머티리얼즈㈜ 검토부", confidential_label="", confirmation={"signature": "frontmatter 서명"}))
+    path = house_file(
+        tmp_path, confidential_label="가상 기밀", confirmation={"intro": "house 안내"}
+    )
+    renderer, _ = render(
+        house_markdown(
+            path,
+            prepared_by="가나다머티리얼즈㈜ 검토부",
+            confidential_label="",
+            confirmation={"signature": "frontmatter 서명"},
+        )
+    )
     texts = renderer.term_sheet_texts
     assert texts.prepared_by == "가나다머티리얼즈㈜ 검토부"
     assert texts.disclaimer == DISCLAIMER
@@ -206,9 +245,16 @@ def test_term_sheet_requires_nonblank_text_boilerplate(key, value):
 
 @pytest.mark.parametrize("key", ["prepared_by", "disclaimer"])
 def test_term_sheet_preflight_rejects_missing_text_before_document_creation(monkeypatch, key):
-    fields = {"profile": "term-sheet", "title": TITLE, "prepared_by": PREPARED_BY, "disclaimer": DISCLAIMER}
+    fields = {
+        "profile": "term-sheet",
+        "title": TITLE,
+        "prepared_by": PREPARED_BY,
+        "disclaimer": DISCLAIMER,
+    }
     del fields[key]
-    model = MarkdownParser().parse("---\n" + yaml.safe_dump(fields, allow_unicode=True) + "---\n검토 본문.")
+    model = MarkdownParser().parse(
+        "---\n" + yaml.safe_dump(fields, allow_unicode=True) + "---\n검토 본문."
+    )
     renderer = IBDocumentRenderer()
     calls = []
     monkeypatch.setattr(ib_renderer, "Document", lambda: calls.append("created"))
@@ -217,13 +263,36 @@ def test_term_sheet_preflight_rejects_missing_text_before_document_creation(monk
     assert not calls
 
 
-@pytest.mark.parametrize("confirmation", [{}, {"typo": "값"}, {"intro": 4}, {"signature": None}, {"items": "항목"}, {"items": []}, {"items": [""]}, {"items": ["   "]}, {"items": [False]}, None])
+@pytest.mark.parametrize(
+    "confirmation",
+    [
+        {},
+        {"typo": "값"},
+        {"intro": 4},
+        {"signature": None},
+        {"items": "항목"},
+        {"items": []},
+        {"items": [""]},
+        {"items": ["   "]},
+        {"items": [False]},
+        None,
+    ],
+)
 def test_confirmation_schema_rejects_invalid_values(confirmation):
     with pytest.raises(ValueError, match="confirmation"):
         render(markdown(confirmation=confirmation))
 
 
-@pytest.mark.parametrize("confirmation", [{"intro": "가상 안내"}, {"items": ["가상 항목"]}, {"signature": "가상 서명"}, {"intro": ""}, {"signature": ""}])
+@pytest.mark.parametrize(
+    "confirmation",
+    [
+        {"intro": "가상 안내"},
+        {"items": ["가상 항목"]},
+        {"signature": "가상 서명"},
+        {"intro": ""},
+        {"signature": ""},
+    ],
+)
 def test_confirmation_schema_accepts_each_supported_field(confirmation):
     renderer, _ = render(markdown(confirmation=confirmation))
     assert renderer.term_sheet_texts.confirmation is not None
@@ -235,7 +304,21 @@ def test_confidential_label_requires_string(value):
         render(markdown(confidential_label=value))
 
 
-@pytest.mark.parametrize("content", ["- item", "null", "[]", "unknown: text", "prepared_by: 9", "disclaimer: [text]", "confidential_label: false", "confirmation: {unknown: text}", "confirmation: {items: []}", "prepared_by: ["])
+@pytest.mark.parametrize(
+    "content",
+    [
+        "- item",
+        "null",
+        "[]",
+        "unknown: text",
+        "prepared_by: 9",
+        "disclaimer: [text]",
+        "confidential_label: false",
+        "confirmation: {unknown: text}",
+        "confirmation: {items: []}",
+        "prepared_by: [",
+    ],
+)
 def test_house_schema_rejects_invalid_yaml_and_fields(tmp_path, content):
     path = tmp_path / "invalid-house.yaml"
     path.write_text(content, encoding="utf-8")
@@ -280,7 +363,9 @@ def test_sourceless_relative_house_is_rejected(entrypoint):
         elif entrypoint == "stream":
             model = parse_markdown_file(BytesIO(content.encode("utf-8")))
         else:
-            model = get_default_registry().convert(BytesIO(content.encode("utf-8")), extension_hint="md")
+            model = get_default_registry().convert(
+                BytesIO(content.encode("utf-8")), extension_hint="md"
+            )
         IBDocumentRenderer().render(model)
 
 
@@ -291,7 +376,9 @@ def test_absolute_house_on_stream_and_registry_override_skip_frontmatter_house(t
     renderer.render(model)
     assert renderer.term_sheet_texts.disclaimer == DISCLAIMER
     override_model = MarkdownParser().parse(house_markdown("unopened-house.yaml"))
-    doc = get_default_registry().convert(override_model, output_format="docx", house=str(path), strict=True)
+    doc = get_default_registry().convert(
+        override_model, output_format="docx", house=str(path), strict=True
+    )
     assert "검토 본문." in reopen(doc).element.xpath(".//w:t/text()")
 
 
@@ -303,7 +390,21 @@ def test_cli_house_is_cwd_relative_and_overrides_unopened_frontmatter_house(tmp_
     source.write_text(house_markdown("unopened-house.yaml"), encoding="utf-8")
     destination = tmp_path / "result.docx"
     script = Path(__file__).resolve().parents[1] / "md_to_word.py"
-    result = subprocess.run([sys.executable, "-B", str(script), str(source), str(destination), "--house", path.name, "--strict"], cwd=tmp_path, capture_output=True, timeout=30)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            str(script),
+            str(source),
+            str(destination),
+            "--house",
+            path.name,
+            "--strict",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        timeout=30,
+    )
     assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
     assert "검토 본문." in Document(destination).element.xpath(".//w:t/text()")
 
@@ -315,7 +416,12 @@ def test_cli_invalid_house_fails_without_output(tmp_path):
     house.write_text("unknown: true", encoding="utf-8")
     destination = tmp_path / "result.docx"
     script = Path(__file__).resolve().parents[1] / "md_to_word.py"
-    result = subprocess.run([sys.executable, "-B", str(script), str(source), str(destination), "--house", house.name], cwd=tmp_path, capture_output=True, timeout=30)
+    result = subprocess.run(
+        [sys.executable, "-B", str(script), str(source), str(destination), "--house", house.name],
+        cwd=tmp_path,
+        capture_output=True,
+        timeout=30,
+    )
     assert result.returncode != 0
     assert not destination.exists()
 
@@ -346,7 +452,14 @@ def test_closed_empty_confirmation_fence_renders_the_box(fence):
     assert "가상 확인" in text and "confirmation" not in text
 
 
-@pytest.mark.parametrize("fence", ["```confirmation\n가상 확인 내용\n```", "```confirmation\n", "```confirmation\n가상 확인 내용"])
+@pytest.mark.parametrize(
+    "fence",
+    [
+        "```confirmation\n가상 확인 내용\n```",
+        "```confirmation\n",
+        "```confirmation\n가상 확인 내용",
+    ],
+)
 def test_nonempty_or_unclosed_confirmation_fence_stays_code_with_warning(fence):
     model = MarkdownParser().parse(markdown(fence, confirmation={"intro": "가상 확인"}))
     element = model.elements[0]
@@ -414,14 +527,26 @@ def test_opening_block_order_typography_and_single_title():
     renderer, document = render(content, strict=True)
     saved = reopen(document)
     paragraphs = saved.paragraphs
-    assert [p.text for p in paragraphs[:6]] == [TITLE, "Term Sheet", "2026. 09.", PREPARED_BY, DISCLAIMER, "1. 본건 개요"]
+    assert [p.text for p in paragraphs[:6]] == [
+        TITLE,
+        "Term Sheet",
+        "2026. 09.",
+        PREPARED_BY,
+        DISCLAIMER,
+        "1. 본건 개요",
+    ]
     assert sum(TITLE in p.text for p in paragraphs) == 1
     title, subtitle, date, prepared, disclaimer = paragraphs[:5]
     assert title.style.name == "Title"
-    assert not title._p.xpath("./w:pPr/w:outlineLvl") and not title.style.element.xpath("./w:pPr/w:outlineLvl")
+    assert not title._p.xpath("./w:pPr/w:outlineLvl") and not title.style.element.xpath(
+        "./w:pPr/w:outlineLvl"
+    )
     for paragraph, size in ((title, 20), (subtitle, 16)):
         assert paragraph.alignment == WD_ALIGN_PARAGRAPH.CENTER
-        assert all(run.bold and run.font.size.pt == size and str(run.font.color.rgb) == "1A2270" for run in paragraph.runs)
+        assert all(
+            run.bold and run.font.size.pt == size and str(run.font.color.rgb) == "1A2270"
+            for run in paragraph.runs
+        )
     for paragraph in (date, prepared):
         assert paragraph.alignment == WD_ALIGN_PARAGRAPH.CENTER
         assert {run.font.size.pt for run in paragraph.runs} == {10}
@@ -429,18 +554,25 @@ def test_opening_block_order_typography_and_single_title():
     assert {run.font.size.pt for run in disclaimer.runs} == {7}
     assert {str(run.font.color.rgb) for run in disclaimer.runs} == {"555555"}
     borders = disclaimer._p.xpath("./w:pPr/w:pBdr/*")
-    assert [(etree.QName(node).localname, node.get(qn("w:sz")), node.get(qn("w:color"))) for node in borders] == [
-        ("top", "4", "9AA5C4"), ("bottom", "4", "9AA5C4"),
+    assert [
+        (etree.QName(node).localname, node.get(qn("w:sz")), node.get(qn("w:color")))
+        for node in borders
+    ] == [
+        ("top", "4", "9AA5C4"),
+        ("bottom", "4", "9AA5C4"),
     ]
     assert saved.core_properties.title == TITLE and saved.core_properties.subject == "Term Sheet"
     assert not renderer.errors
 
 
 def test_opening_prefers_display_runs_and_parses_house_emphasis():
-    model = MarkdownParser().parse(markdown(
-        date="2026. 09.", prepared_by="라마바은행 **자본시장부**",
-        disclaimer="본 자료는 ( *주요내용* ) 요약입니다.\n둘째 줄입니다.\n",
-    ))
+    model = MarkdownParser().parse(
+        markdown(
+            date="2026. 09.",
+            prepared_by="라마바은행 **자본시장부**",
+            disclaimer="본 자료는 ( *주요내용* ) 요약입니다.\n둘째 줄입니다.\n",
+        )
+    )
     model.metadata.display_runs = {
         "title": [TextRun("가나다 표시 제목", italic=True)],
         "subtitle": [TextRun("가상 부제")],
@@ -448,13 +580,21 @@ def test_opening_prefers_display_runs_and_parses_house_emphasis():
     }
     saved = reopen(IBDocumentRenderer().render(model))
     paragraphs = saved.paragraphs
-    assert [p.text for p in paragraphs[:4]] == ["가나다 표시 제목", "가상 부제", "2026. 10.", "라마바은행 자본시장부"]
+    assert [p.text for p in paragraphs[:4]] == [
+        "가나다 표시 제목",
+        "가상 부제",
+        "2026. 10.",
+        "라마바은행 자본시장부",
+    ]
     assert paragraphs[0].runs[0].italic and paragraphs[0].runs[0].bold
     assert [run.text for run in paragraphs[3].runs if run.bold] == ["자본시장부"]
     first, second = paragraphs[4:6]
     assert first.text == "본 자료는 ( 주요내용 ) 요약입니다." and second.text == "둘째 줄입니다."
     assert [run.text for run in first.runs if run.italic] == ["주요내용"]
-    assert all(p._p.xpath("./w:pPr/w:pBdr/w:top") and p._p.xpath("./w:pPr/w:pBdr/w:bottom") for p in (first, second))
+    assert all(
+        p._p.xpath("./w:pPr/w:pBdr/w:top") and p._p.xpath("./w:pPr/w:pBdr/w:bottom")
+        for p in (first, second)
+    )
     assert saved.core_properties.title == TITLE
 
 
@@ -477,8 +617,14 @@ def test_paragraph_breaks_become_marker_indented_paragraphs():
     saved = reopen(render(markdown(body), strict=True)[1])
     first, note, plain = saved.paragraphs[4:7]
     assert [first.text, note.text, plain.text] == ["① 첫째 조건", "※ 가상 주석입니다.", "둘째 줄"]
-    assert (xml_values(first._p, "./w:pPr/w:ind", "w:left"), xml_values(first._p, "./w:pPr/w:ind", "w:hanging")) == (["255"], ["255"])
-    assert (xml_values(note._p, "./w:pPr/w:ind", "w:left"), xml_values(note._p, "./w:pPr/w:ind", "w:hanging")) == (["227"], ["227"])
+    assert (
+        xml_values(first._p, "./w:pPr/w:ind", "w:left"),
+        xml_values(first._p, "./w:pPr/w:ind", "w:hanging"),
+    ) == (["255"], ["255"])
+    assert (
+        xml_values(note._p, "./w:pPr/w:ind", "w:left"),
+        xml_values(note._p, "./w:pPr/w:ind", "w:hanging"),
+    ) == (["227"], ["227"])
     assert {run.font.size.pt for run in note.runs} == {8}
     assert {run.font.size.pt for run in first.runs} == {9}
     assert not plain._p.xpath("./w:pPr/w:ind")
@@ -499,7 +645,11 @@ def test_term_sheet_headings_use_the_accent_and_heading_runs():
     heading2 = saved.styles["Heading 2"]
     assert str(heading2.font.color.rgb) == "1A2270"
     rule = heading2.element.xpath("./w:pPr/w:pBdr/w:bottom")[0]
-    assert (rule.get(qn("w:val")), rule.get(qn("w:sz")), rule.get(qn("w:color"))) == ("single", "8", "1A2270")
+    assert (rule.get(qn("w:val")), rule.get(qn("w:sz")), rule.get(qn("w:color"))) == (
+        "single",
+        "8",
+        "1A2270",
+    )
     assert str(saved.styles["Heading 3"].font.color.rgb) == "1A2270"
 
 
@@ -530,7 +680,9 @@ def test_term_sheet_document_defaults_are_local_to_term_sheets():
 
 
 def test_confirmation_box_has_two_rows_kept_on_one_page():
-    content = markdown("## 고객 확인\n\n확인 안내 문단입니다.\n\n```confirmation\n```", confirmation=CONFIRMATION)
+    content = markdown(
+        "## 고객 확인\n\n확인 안내 문단입니다.\n\n```confirmation\n```", confirmation=CONFIRMATION
+    )
     renderer, document = render(content, strict=True)
     saved = reopen(document)
     assert not renderer.errors
@@ -546,7 +698,10 @@ def test_confirmation_box_has_two_rows_kept_on_one_page():
     assert intro.xpath(".//w:r[w:rPr/w:i[not(@w:val)]]/w:t/text()") == ["자필"]
     for item in items:
         assert set(xml_values(item, ".//w:r/w:rPr/w:sz")) == {"20"}
-        assert (xml_values(item, "./w:pPr/w:ind", "w:left"), xml_values(item, "./w:pPr/w:ind", "w:hanging")) == (["255"], ["255"])
+        assert (
+            xml_values(item, "./w:pPr/w:ind", "w:left"),
+            xml_values(item, "./w:pPr/w:ind", "w:hanging"),
+        ) == (["255"], ["255"])
     signature = signature_cell.xpath("./w:p")[0]
     assert "".join(signature.xpath(".//w:t/text()")) == CONFIRMATION["signature"]
     assert xml_values(signature, "./w:pPr/w:jc") == ["center"]
@@ -559,9 +714,13 @@ def test_confirmation_box_has_two_rows_kept_on_one_page():
     spacing = spacer.xpath("./w:pPr/w:spacing")[0]
     assert (spacing.get(qn("w:line")), spacing.get(qn("w:lineRule"))) == ("120", "exact")
     previous = spacer.getprevious()
-    assert "".join(previous.xpath(".//w:t/text()")) == "확인 안내 문단입니다." and previous.xpath("./w:pPr/w:keepNext")
+    assert "".join(previous.xpath(".//w:t/text()")) == "확인 안내 문단입니다." and previous.xpath(
+        "./w:pPr/w:keepNext"
+    )
     borders = table.xpath("./w:tblPr/w:tblBorders/*")
-    assert {(node.get(qn("w:sz")), node.get(qn("w:color"))) for node in borders} == {("4", "9AA5C4")}
+    assert {(node.get(qn("w:sz")), node.get(qn("w:color"))) for node in borders} == {
+        ("4", "9AA5C4")
+    }
 
 
 def test_confirmation_box_omits_an_empty_row():
@@ -584,7 +743,9 @@ def test_blank_confirmation_texts_keep_the_lossless_fallback(confirmation):
 
 def test_header_and_footer_follow_each_section_width():
     body = "앞 문단.\n\n| 구 분 | 내 용 |\n|---|---|\n| 가 | 나 |\n\n뒤 문단."
-    saved = reopen(render(markdown(body, version="v3", tables=[{"landscape": True}]), strict=True)[1])
+    saved = reopen(
+        render(markdown(body, version="v3", tables=[{"landscape": True}]), strict=True)[1]
+    )
     assert len(saved.sections) == 3
     positions = []
     for section in saved.sections:
@@ -596,7 +757,10 @@ def test_header_and_footer_follow_each_section_width():
         footer = section.footer.paragraphs[0]
         assert footer.text.startswith("Term Sheet v3\t")
         assert footer._p.xpath(".//w:instrText/text()") == ["PAGE", "NUMPAGES"]
-        stops = [(stop.get(qn("w:val")), int(stop.get(qn("w:pos")))) for stop in footer._p.xpath("./w:pPr/w:tabs/w:tab")]
+        stops = [
+            (stop.get(qn("w:val")), int(stop.get(qn("w:pos"))))
+            for stop in footer._p.xpath("./w:pPr/w:tabs/w:tab")
+        ]
         assert stops == [("right", printable_twips(section))]
         assert set(xml_values(footer._p, ".//w:r/w:rPr/w:sz")) == {"15"}
         assert set(xml_values(footer._p, ".//w:r/w:rPr/w:color")) == {"888888"}
@@ -606,7 +770,11 @@ def test_header_and_footer_follow_each_section_width():
 
 @pytest.mark.parametrize(
     ("fields", "options"),
-    [({"layout": {"confidential": False}}, {}), ({}, {"confidential": False}), ({"confidential_label": ""}, {})],
+    [
+        ({"layout": {"confidential": False}}, {}),
+        ({}, {"confidential": False}),
+        ({"confidential_label": ""}, {}),
+    ],
 )
 def test_confidential_header_can_be_suppressed(fields, options):
     saved = reopen(render(markdown(**fields), **options)[1])
@@ -628,7 +796,10 @@ def test_complete_term_sheet_renders_strict_without_audit_issues():
         "① 가상 설명<br>② 가상 설명[^1]\n\n- 가상 목록\n\n```confirmation\n```\n\n[^1]: 가상 각주입니다.\n"
     )
     content = markdown(
-        body, date="2026. 09.", version="v3", confirmation=CONFIRMATION,
+        body,
+        date="2026. 09.",
+        version="v3",
+        confirmation=CONFIRMATION,
         tables=[{"caption": "개요", "unit": "억원"}, {"note": "(VAT 별도)", "landscape": True}],
     )
     renderer, document = render(content, strict=True)

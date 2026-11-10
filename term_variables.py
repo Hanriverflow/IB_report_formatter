@@ -60,7 +60,9 @@ def validate_terms(value: Any) -> Dict[str, str]:
             not a single-line string.
     """
     if not isinstance(value, dict):
-        raise ValueError('terms must be a YAML mapping of key: "text" pairs (write terms: {} for none)')
+        raise ValueError(
+            'terms must be a YAML mapping of key: "text" pairs (write terms: {} for none)'
+        )
     terms: Dict[str, str] = {}
     for key, text in value.items():
         if not isinstance(key, str) or not TERM_KEY_RE.fullmatch(key):
@@ -215,7 +217,9 @@ def split_term_runs(runs: List[TextRun], tokens: TokenMap) -> List[TextRun]:
 
 
 def restore_terms(
-    text: str, tokens: TokenMap, transform: Optional[Callable[[str], str]] = None,
+    text: str,
+    tokens: TokenMap,
+    transform: Optional[Callable[[str], str]] = None,
 ) -> str:
     """Insert values into a plain string field in one pass (values are not rescanned).
 
@@ -356,7 +360,8 @@ def wrap_term_controls(document: Any, collector: TermRunCollector) -> Dict[str, 
         return {}
     root = document.element
     used_ids = {
-        int(value) for value in root.xpath("//@w:id | //w:sdtPr/w:id/@w:val")
+        int(value)
+        for value in root.xpath("//@w:id | //w:sdtPr/w:id/@w:val")
         if value.lstrip("-").isdigit()
     }
     control_id = 0
@@ -387,7 +392,9 @@ def _plain_text_control(key: str, control_id: int) -> Any:
     control = OxmlElement("w:sdt")
     properties = OxmlElement("w:sdtPr")
     for tag, value in (
-        ("w:alias", key), ("w:tag", TERM_TAG_PREFIX + key), ("w:id", str(control_id)),
+        ("w:alias", key),
+        ("w:tag", TERM_TAG_PREFIX + key),
+        ("w:id", str(control_id)),
     ):
         element = OxmlElement(tag)
         element.set(qn("w:val"), value)

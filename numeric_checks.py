@@ -28,11 +28,20 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _MONEY_UNITS: Dict[str, Decimal] = {
-    "조": Decimal(10) ** 12, "억": Decimal(10) ** 8, "천만": Decimal(10) ** 7,
-    "백만": Decimal(10) ** 6, "만": Decimal(10) ** 4, "천": Decimal(1000),
+    "조": Decimal(10) ** 12,
+    "억": Decimal(10) ** 8,
+    "천만": Decimal(10) ** 7,
+    "백만": Decimal(10) ** 6,
+    "만": Decimal(10) ** 4,
+    "천": Decimal(1000),
 }
 _SUFFIX_DIMENSIONS = {
-    "%p": "percent", "%": "percent", "bps": "bp", "bp": "bp", "개월": "months", "년": "years",
+    "%p": "percent",
+    "%": "percent",
+    "bps": "bp",
+    "bp": "bp",
+    "개월": "months",
+    "년": "years",
 }
 # Thousands separators must group three digits (`1,234.5`, never `1,2` or `1,,000`).
 _NUMBER = r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
@@ -111,7 +120,10 @@ def _read_money(text: str) -> Optional[Quantity]:
         return None  # only the last part may lack a unit (`5억 3,000만원`, not `5 3억원`)
     with localcontext(_CONTEXT):
         value = sum(
-            (_decimal(part.group(1)) * _MONEY_UNITS.get(part.group(2) or "", Decimal(1)) for part in parts),
+            (
+                _decimal(part.group(1)) * _MONEY_UNITS.get(part.group(2) or "", Decimal(1))
+                for part in parts
+            ),
             Decimal(0),
         )
         last = parts[-1]
@@ -124,7 +136,9 @@ def _read_suffixed(text: str) -> Optional[Quantity]:
     if match is None:
         return None
     suffix = (match.group(2) or "").lower()
-    return Quantity(_decimal(match.group(1)), _SUFFIX_DIMENSIONS.get(suffix, "plain"), _step(match.group(1)))
+    return Quantity(
+        _decimal(match.group(1)), _SUFFIX_DIMENSIONS.get(suffix, "plain"), _step(match.group(1))
+    )
 
 
 def read_cell_number(text: str) -> Optional[Tuple[Decimal, Decimal]]:
@@ -179,7 +193,9 @@ def money_unit(unit_text: str) -> Optional[Decimal]:
 # Custom document property holding the checks as JSON, for `docx-audit`.
 CHECKS_PROPERTY = "ibrep.checks"
 
-_TOKEN_RE = re.compile(r"\s*(?:(?P<number>\d+(?:\.\d+)?)|(?P<name>[a-z][a-z0-9_]*)|(?P<op>[-+*/()=]))")
+_TOKEN_RE = re.compile(
+    r"\s*(?:(?P<number>\d+(?:\.\d+)?)|(?P<name>[a-z][a-z0-9_]*)|(?P<op>[-+*/()=]))"
+)
 _MAX_TOKENS = 200  # bounds parsing and evaluation depth
 _MAX_NESTING = 20
 
@@ -369,7 +385,9 @@ def evaluate_check(check: Check, values: Mapping[str, str]) -> Optional[str]:
             if check.tolerance is not None:
                 tolerance = read_quantity(check.tolerance)
                 if tolerance.dimension not in (left.dimension, "plain"):
-                    raise CheckError(f"the tolerance is {tolerance.dimension}, not {left.dimension}")
+                    raise CheckError(
+                        f"the tolerance is {tolerance.dimension}, not {left.dimension}"
+                    )
                 allowed = abs(tolerance.value)
             else:
                 allowed = left.step / 2
@@ -443,10 +461,16 @@ def checks_from_json(text: str) -> Tuple[List[Check], Dict[str, str]]:
     if not isinstance(data, dict) or not isinstance(data.get("values"), dict):
         raise ValueError("the stored checks are not a checks/values object")
     items = data.get("checks")
-    checks = parse_checks([
-        {key: value for key, value in item.items() if value is not None} if isinstance(item, dict) else item
-        for item in items
-    ] if isinstance(items, list) else items)
+    checks = parse_checks(
+        [
+            {key: value for key, value in item.items() if value is not None}
+            if isinstance(item, dict)
+            else item
+            for item in items
+        ]
+        if isinstance(items, list)
+        else items
+    )
     return checks, {str(key): str(value) for key, value in data["values"].items()}
 
 
@@ -506,7 +530,10 @@ def _check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> List[s
         return ["the schedule has no period rows"]
 
     def number(
-        row_index: int, row: Sequence[str], column: Optional[int], what: str,
+        row_index: int,
+        row: Sequence[str],
+        column: Optional[int],
+        what: str,
     ) -> Optional[Tuple[Decimal, Decimal]]:
         if column is None or column >= len(row):
             return None
@@ -566,7 +593,9 @@ def _check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> List[s
             if any(months is None for amount, months in repayments if amount):
                 problems.append("average_life needs the months of every repayment")
             else:
-                weighted = sum((amount * (months or 0) for amount, months in repayments), Decimal(0))
+                weighted = sum(
+                    (amount * (months or 0) for amount, months in repayments), Decimal(0)
+                )
                 years = weighted / repaid_total / 12
                 stated_life = spec.average_life
                 if abs(years - stated_life.value) > stated_life.step / 2:

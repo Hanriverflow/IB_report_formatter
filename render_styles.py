@@ -22,7 +22,8 @@ from docx.shared import Inches, Pt, RGBColor
 logger = logging.getLogger(__name__)
 
 _RASTER_FONT_DIAGNOSTICS: ContextVar[list[str] | None] = ContextVar(
-    "raster_font_diagnostics", default=None,
+    "raster_font_diagnostics",
+    default=None,
 )
 
 
@@ -32,9 +33,12 @@ def _installed_raster_font(family: str) -> str | None:
     from matplotlib import font_manager
 
     try:
-        return str(font_manager.findfont(
-            font_manager.FontProperties(family=[family]), fallback_to_default=False,
-        ))
+        return str(
+            font_manager.findfont(
+                font_manager.FontProperties(family=[family]),
+                fallback_to_default=False,
+            )
+        )
     except (ValueError, OSError) as exc:
         logger.debug("Raster font %s is unavailable: %s", family, exc)
         return None
@@ -56,8 +60,15 @@ class RasterFontPolicy:
     """Choose installed fonts for images; never alter a Word font declaration."""
 
     FALLBACKS = (
-        "Malgun Gothic", "Apple SD Gothic Neo", "AppleGothic", "NanumGothic",
-        "NanumBarunGothic", "Noto Sans CJK KR", "Noto Sans KR", "Source Han Sans KR", "UnDotum",
+        "Malgun Gothic",
+        "Apple SD Gothic Neo",
+        "AppleGothic",
+        "NanumGothic",
+        "NanumBarunGothic",
+        "Noto Sans CJK KR",
+        "Noto Sans KR",
+        "Source Han Sans KR",
+        "UnDotum",
     )
     _CJK_RE = re.compile(
         "[\u1100-\u11ff\u2e80-\ua4cf\ua960-\ua97f\uac00-\ud7ff"

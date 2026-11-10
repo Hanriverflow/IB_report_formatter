@@ -29,8 +29,15 @@ SOURCE = (
     "| Item | Value |\n|---|---|\n| Amount | {{amount}} |\n"
 )
 OLD_KEYS = [
-    "paragraphs", "tables", "headings", "images", "numbered_paragraphs", "issues",
-    "warnings", "pagination_marked_paragraphs", "visual_review",
+    "paragraphs",
+    "tables",
+    "headings",
+    "images",
+    "numbered_paragraphs",
+    "issues",
+    "warnings",
+    "pagination_marked_paragraphs",
+    "visual_review",
 ]
 
 
@@ -57,8 +64,12 @@ def reopen(doc: DocxDocument) -> DocxDocument:
 
 def generate(markdown: str = SOURCE, values: Optional[Dict[str, str]] = None) -> DocxDocument:
     """Render a tagged document strictly and reopen it."""
-    model = MarkdownParser(profile="plain").parse(front(VALUES if values is None else values) + markdown)
-    return reopen(IBDocumentRenderer(options=RenderOptions(profile="plain", strict=True)).render(model))
+    model = MarkdownParser(profile="plain").parse(
+        front(VALUES if values is None else values) + markdown
+    )
+    return reopen(
+        IBDocumentRenderer(options=RenderOptions(profile="plain", strict=True)).render(model)
+    )
 
 
 def audit(doc: DocxDocument) -> Tuple[DocumentAudit, Optional[TermAudit]]:
@@ -110,7 +121,10 @@ def test_unedited_document_is_consistent_and_lists_indicative_terms() -> None:
     assert terms == TermAudit(mismatched={}, changed={}, missing=[], indicative=["rate"])
     assert result.issues == [] and term_warnings(result) == []
     assert audit_to_dict(result, terms)["terms"] == {
-        "mismatched": {}, "changed": {}, "missing": [], "indicative": ["rate"],
+        "mismatched": {},
+        "changed": {},
+        "missing": [],
+        "indicative": ["rate"],
     }
 
 
@@ -171,7 +185,10 @@ def test_every_control_removed_still_reports_the_snapshot() -> None:
         sdt.getparent().remove(sdt)
     result, terms = audit(doc)
     assert terms == TermAudit(
-        mismatched={}, changed={}, missing=["amount", "blank", "rate", "tenor"], indicative=[],
+        mismatched={},
+        changed={},
+        missing=["amount", "blank", "rate", "tenor"],
+        indicative=[],
     )
     assert len(term_warnings(result)) == 4
 
@@ -228,25 +245,35 @@ def test_tabs_and_breaks_are_part_of_the_current_value() -> None:
     [value_run] = xp(tenor, "./w:sdtContent/w:r")
     for node in xp(value_run, "./w:t"):
         value_run.remove(node)
-    value_run.extend([
-        element("w:t", "3"), element("w:tab"), element("w:t", "년"), element("w:br"),
-        element("w:t", "만기"),
-    ])
+    value_run.extend(
+        [
+            element("w:t", "3"),
+            element("w:tab"),
+            element("w:t", "년"),
+            element("w:br"),
+            element("w:t", "만기"),
+        ]
+    )
     _, terms = audit(doc)
     assert terms is not None
     assert terms.changed == {"tenor": {"generated": "3년", "current": "3\t년\n만기"}}
 
 
-@pytest.mark.parametrize("tag, attributes, visible", [
-    ("w:noBreakHyphen", {}, "\u2011"),
-    ("w:sym", {"font": "Wingdings", "char": "F0E0"}, "\uf0e0"),
-    ("w:ptab", {"relativeTo": "margin", "alignment": "left", "leader": "none"}, "\t"),
-    ("w:cr", {}, "\n"),
-    ("w:drawing", {}, "\ufffc"),
-    ("w:footnoteReference", {"id": "7"}, "\ufffc"),
-])
+@pytest.mark.parametrize(
+    "tag, attributes, visible",
+    [
+        ("w:noBreakHyphen", {}, "\u2011"),
+        ("w:sym", {"font": "Wingdings", "char": "F0E0"}, "\uf0e0"),
+        ("w:ptab", {"relativeTo": "margin", "alignment": "left", "leader": "none"}, "\t"),
+        ("w:cr", {}, "\n"),
+        ("w:drawing", {}, "\ufffc"),
+        ("w:footnoteReference", {"id": "7"}, "\ufffc"),
+    ],
+)
 def test_visible_run_content_other_than_text_is_an_edit(
-    tag: str, attributes: Dict[str, str], visible: str,
+    tag: str,
+    attributes: Dict[str, str],
+    visible: str,
 ) -> None:
     doc = generate("{{amount}} {{amount}}", {"amount": "500"})
     [value_run] = xp(controls(doc, "amount")[0], "./w:sdtContent/w:r")
@@ -292,12 +319,15 @@ def test_empty_values_compare_as_text() -> None:
 
 @pytest.mark.parametrize("flag, expected", [(None, ""), ("0", "Click or tap here to enter text.")])
 def test_word_placeholder_text_of_a_cleared_control_is_an_empty_value(
-    flag: Optional[str], expected: str,
+    flag: Optional[str],
+    expected: str,
 ) -> None:
     doc = generate()
     [tenor] = controls(doc, "tenor")
     properties = tenor.find(qn("w:sdtPr"))
-    placeholder = element("w:showingPlcHdr") if flag is None else element("w:showingPlcHdr", val=flag)
+    placeholder = (
+        element("w:showingPlcHdr") if flag is None else element("w:showingPlcHdr", val=flag)
+    )
     properties.find(qn("w:id")).addnext(placeholder)
     type_value(tenor, "Click or tap here to enter text.")
     _, terms = audit(doc)
@@ -336,7 +366,11 @@ def test_snapshot_value_comes_from_the_value_element_only() -> None:
     part = doc.part.package.part_related_by(RT.CUSTOM_PROPERTIES)
     root = etree.fromstring(part.blob)
     part._blob = etree.tostring(
-        root, pretty_print=True, xml_declaration=True, encoding="UTF-8", standalone=True,
+        root,
+        pretty_print=True,
+        xml_declaration=True,
+        encoding="UTF-8",
+        standalone=True,
     )
     assert b"\n  <property" in part._blob
     _, untouched = audit(doc)
@@ -360,9 +394,15 @@ def test_other_content_controls_are_ignored() -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_documents_without_terms_keep_the_previous_json(tmp_path: Path, caplog, monkeypatch) -> None:
-    model = MarkdownParser(profile="plain").parse("# Title\n\nBody {{literal}}.\n\n| A |\n|---|\n| 1 |")
-    doc = reopen(IBDocumentRenderer(options=RenderOptions(profile="plain", strict=True)).render(model))
+def test_documents_without_terms_keep_the_previous_json(
+    tmp_path: Path, caplog, monkeypatch
+) -> None:
+    model = MarkdownParser(profile="plain").parse(
+        "# Title\n\nBody {{literal}}.\n\n| A |\n|---|\n| 1 |"
+    )
+    doc = reopen(
+        IBDocumentRenderer(options=RenderOptions(profile="plain", strict=True)).render(model)
+    )
     result = inspect_document(doc)
     assert inspect_terms(doc) is None
     assert audit_to_dict(result, None) == asdict(result)
@@ -391,6 +431,8 @@ def run_cli(path: Path, caplog, monkeypatch, expected_code: int) -> Dict:
     with caplog.at_level(logging.INFO), pytest.raises(SystemExit) as exit_info:
         docx_audit.main()
     assert exit_info.value.code == expected_code
-    [report] = [record.getMessage() for record in caplog.records if record.getMessage().startswith("{")]
+    [report] = [
+        record.getMessage() for record in caplog.records if record.getMessage().startswith("{")
+    ]
     caplog.clear()
     return json.loads(report)

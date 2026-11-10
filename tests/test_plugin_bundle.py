@@ -10,7 +10,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("build_plugin_bundle", ROOT / "scripts/build_plugin_bundle.py")
+SPEC = importlib.util.spec_from_file_location(
+    "build_plugin_bundle", ROOT / "scripts/build_plugin_bundle.py"
+)
 assert SPEC is not None and SPEC.loader is not None
 builder = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(builder)
@@ -28,8 +30,16 @@ def plugin_checkout(tmp_path):
 
 
 def test_plugin_archive_layout_hashes_and_no_private_inputs(plugin_checkout, tmp_path):
-    for name in (".env", "private/real.md", "skills/setup/secret.md", "dist/program.exe",
-                 ".git/config", ".venv/private.py", "output/real.docx", "docs/internal.md"):
+    for name in (
+        ".env",
+        "private/real.md",
+        "skills/setup/secret.md",
+        "dist/program.exe",
+        ".git/config",
+        ".venv/private.py",
+        "output/real.docx",
+        "docs/internal.md",
+    ):
         path = plugin_checkout / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("PRIVATE_MUST_NOT_SHIP", encoding="utf-8")
@@ -37,13 +47,17 @@ def test_plugin_archive_layout_hashes_and_no_private_inputs(plugin_checkout, tmp
     assert archive.read_bytes() == archive.with_suffix(".plugin").read_bytes()
     plugin_version, engine_version, paths = builder.public_sources(plugin_checkout)
     assert archive.name == f"ib-report-formatter-plugin-{plugin_version}.zip"
-    assert archive.with_suffix(".plugin").name == f"ib-report-formatter-plugin-{plugin_version}.plugin"
+    assert (
+        archive.with_suffix(".plugin").name == f"ib-report-formatter-plugin-{plugin_version}.plugin"
+    )
     with zipfile.ZipFile(archive) as bundle:
         assert set(bundle.namelist()) == set(paths) | {"bundle-manifest.json"}
         assert "plugin.json" in bundle.namelist()
         assert "skills/setup/SKILL.md" in bundle.namelist()
-        assert not any(name.startswith((".git/", ".venv/", "private/", ".agents/skills/"))
-                       for name in bundle.namelist())
+        assert not any(
+            name.startswith((".git/", ".venv/", "private/", ".agents/skills/"))
+            for name in bundle.namelist()
+        )
         manifest = json.loads(bundle.read("bundle-manifest.json"))
         assert manifest["plugin_version"] == plugin_version == "0.1.0"
         assert manifest["engine_version"] == engine_version == "2.0.0"
@@ -56,14 +70,19 @@ def test_plugin_archive_layout_hashes_and_no_private_inputs(plugin_checkout, tmp
     for suffix in (".zip", ".plugin"):
         artifact = archive.with_suffix(suffix)
         assert artifact.with_suffix(suffix + ".sha256").read_text().split() == [
-            hashlib.sha256(artifact.read_bytes()).hexdigest(), artifact.name,
+            hashlib.sha256(artifact.read_bytes()).hexdigest(),
+            artifact.name,
         ]
 
 
 def test_manifests_use_same_identity_and_local_root(plugin_checkout):
-    manifests = [json.loads((plugin_checkout / path).read_text(encoding="utf-8"))
-                 for path in builder.MANIFESTS]
-    assert {(item["name"], item["version"]) for item in manifests} == {("ib-report-formatter", "0.1.0")}
+    manifests = [
+        json.loads((plugin_checkout / path).read_text(encoding="utf-8"))
+        for path in builder.MANIFESTS
+    ]
+    assert {(item["name"], item["version"]) for item in manifests} == {
+        ("ib-report-formatter", "0.1.0")
+    }
     onboarding = manifests[0]["extensions"]["com.openai"]["onboardingSkill"]
     assert onboarding == "./skills/setup/SKILL.md"
     assert (plugin_checkout / onboarding).is_file()
@@ -92,7 +111,10 @@ def test_mismatched_plugin_versions_fail(plugin_checkout, tmp_path):
 
 def test_module_traversal_rejected(plugin_checkout, tmp_path):
     path = plugin_checkout / "pyproject.toml"
-    path.write_text(path.read_text(encoding="utf-8").replace('"chart_renderer.py"', '"../secret.py"'), encoding="utf-8")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace('"chart_renderer.py"', '"../secret.py"'),
+        encoding="utf-8",
+    )
     with pytest.raises(ValueError, match="top-level Python modules"):
         builder.build_bundle(plugin_checkout, tmp_path / "release")
 

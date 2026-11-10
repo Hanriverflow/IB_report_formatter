@@ -83,10 +83,17 @@ class TermAudit:
 # breaks there: `w:softHyphen` reads as nothing and U+00AD is dropped from both
 # current and generated values, because Word may convert one into the other.
 _VISIBLE_RUN_CONTENT: Dict[str, str] = {
-    qn("w:tab"): "\t", qn("w:ptab"): "\t", qn("w:br"): "\n", qn("w:cr"): "\n",
-    qn("w:noBreakHyphen"): "\u2011", qn("w:softHyphen"): "",
-    qn("w:drawing"): "\ufffc", qn("w:pict"): "\ufffc", qn("w:object"): "\ufffc",
-    qn("w:footnoteReference"): "\ufffc", qn("w:endnoteReference"): "\ufffc",
+    qn("w:tab"): "\t",
+    qn("w:ptab"): "\t",
+    qn("w:br"): "\n",
+    qn("w:cr"): "\n",
+    qn("w:noBreakHyphen"): "\u2011",
+    qn("w:softHyphen"): "",
+    qn("w:drawing"): "\ufffc",
+    qn("w:pict"): "\ufffc",
+    qn("w:object"): "\ufffc",
+    qn("w:footnoteReference"): "\ufffc",
+    qn("w:endnoteReference"): "\ufffc",
 }
 _TEXT_TAG = qn("w:t")
 _SYMBOL_TAG = qn("w:sym")
@@ -110,11 +117,15 @@ class _StyleLookup:
 
     def __init__(self, doc: DocxDocument) -> None:
         self.styles = {style.style_id: style for style in doc.styles}
-        self.default = next((
-            style for style in self.styles.values()
-            if style.type == WD_STYLE_TYPE.PARAGRAPH
-            and style.element.get(qn("w:default")) in {"1", "true", "on"}
-        ), None)
+        self.default = next(
+            (
+                style
+                for style in self.styles.values()
+                if style.type == WD_STYLE_TYPE.PARAGRAPH
+                and style.element.get(qn("w:default")) in {"1", "true", "on"}
+            ),
+            None,
+        )
         self.defaults: Dict[str, bool] = {}
         for _, tag in _PAGINATION_FLAGS:
             nodes = doc.styles.element.xpath("./w:docDefaults/w:pPrDefault/w:pPr/w:" + tag)
@@ -146,11 +157,16 @@ class _StyleLookup:
 
 
 def _effective_pagination_flag(
-    paragraph: Paragraph, attribute: str, xml_tag: str, styles: _StyleLookup,
+    paragraph: Paragraph,
+    attribute: str,
+    xml_tag: str,
+    styles: _StyleLookup,
 ) -> bool:
     """Resolve local > paragraph style ancestry > document default controls."""
     value = getattr(paragraph.paragraph_format, attribute)
-    return bool(value) if value is not None else styles.inherited_flag(paragraph, attribute, xml_tag)
+    return (
+        bool(value) if value is not None else styles.inherited_flag(paragraph, attribute, xml_tag)
+    )
 
 
 def inspect_document(doc: DocxDocument) -> DocumentAudit:
@@ -168,7 +184,9 @@ def inspect_document(doc: DocxDocument) -> DocumentAudit:
     result = DocumentAudit(
         paragraphs=len(doc.paragraphs),
         tables=len(doc.tables),
-        headings=sum(style is not None and style.name.startswith("Heading ") for style in paragraph_styles),
+        headings=sum(
+            style is not None and style.name.startswith("Heading ") for style in paragraph_styles
+        ),
         images=len(doc.inline_shapes),
         numbered_paragraphs=len(doc.element.xpath(".//w:pPr/w:numPr")),
         issues=inspect_document_issues(doc),
@@ -190,7 +208,9 @@ def inspect_document(doc: DocxDocument) -> DocumentAudit:
     # examples. Real rendering failures are recorded by the renderer itself.
     for text in doc.element.xpath(".//w:t/text()"):
         if "[Render Error:" in text or text.startswith(("[Image:", "[Diagram:")):
-            result.warnings.append("Possible rendering placeholder (may be literal user text): " + text)
+            result.warnings.append(
+                "Possible rendering placeholder (may be literal user text): " + text
+            )
     terms = inspect_terms(doc)
     if terms is not None:
         result.warnings.extend(_term_warnings(terms))
@@ -254,7 +274,7 @@ def _current_term_values(doc: DocxDocument) -> Dict[str, List[str]]:
         # Word refills a cleared control with placeholder text and flags it.
         if content is not None and not _shows_placeholder(control):
             text = _current_text(content, control)
-        values.setdefault(name[len(TERM_TAG_PREFIX):], []).append(text)
+        values.setdefault(name[len(TERM_TAG_PREFIX) :], []).append(text)
     return values
 
 
@@ -332,7 +352,7 @@ def _generated_term_values(doc: DocxDocument) -> Dict[str, str]:
         # property's own whitespace is only XML indentation.
         value = next((child for child in prop if isinstance(child.tag, str)), None)
         text = (value.text or "") if value is not None else ""
-        values[name[len(TERM_PROPERTY_PREFIX):]] = _visible(text)
+        values[name[len(TERM_PROPERTY_PREFIX) :]] = _visible(text)
     return values
 
 
@@ -411,13 +431,17 @@ def _numbering_issues(doc: DocxDocument) -> List[str]:
     except KeyError:
         numbering = None
     if numbering is not None:
-        abstracts = {node.get(qn("w:abstractNumId")) for node in numbering.findall(qn("w:abstractNum"))}
+        abstracts = {
+            node.get(qn("w:abstractNumId")) for node in numbering.findall(qn("w:abstractNum"))
+        }
         definitions = {node.get(qn("w:numId")): node for node in numbering.findall(qn("w:num"))}
         for num_id, node in definitions.items():
             abstract = node.find(qn("w:abstractNumId"))
             abstract_id = abstract.get(qn("w:val")) if abstract is not None else None
             if abstract_id is None or abstract_id not in abstracts:
-                issues.append(f"Numbering numId {num_id} has no abstract definition ({abstract_id})")
+                issues.append(
+                    f"Numbering numId {num_id} has no abstract definition ({abstract_id})"
+                )
     for part in doc.part.package.parts:
         root = getattr(part, "element", None)
         if root is None:

@@ -31,7 +31,8 @@ def test_parsing_with_requested_profile_preserves_source_and_columns():
     assert model.parsed_profile == "plain"
     assert "Source material" in "\n".join(p.text for p in document.paragraphs)
     assert [[c.text for c in row.cells] for row in document.tables[0].rows] == [
-        ["Code", "Notes"], ["001234", "Keep"]
+        ["Code", "Notes"],
+        ["001234", "Keep"],
     ]
 
 

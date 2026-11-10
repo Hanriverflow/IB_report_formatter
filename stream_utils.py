@@ -152,10 +152,6 @@ def _looks_like_text(data: bytes) -> bool:
             return False
 
     # Count control characters (excluding whitespace)
-    control_count = sum(
-        1
-        for ch in text
-        if ord(ch) < 32 and ch not in ("\n", "\r", "\t")
-    )
+    control_count = sum(1 for ch in text if ord(ch) < 32 and ch not in ("\n", "\r", "\t"))
     # If more than 5% are control chars, probably binary
     return control_count / max(len(text), 1) < 0.05

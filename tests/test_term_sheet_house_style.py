@@ -35,18 +35,29 @@ def _logo(path: Path) -> Path:
 def _house(folder: Path, style: dict) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / "house.yaml"
-    data = {"prepared_by": "라마바은행 자본시장부", "disclaimer": "가상 조건 검토용입니다.\n두 번째 줄입니다.", "style": style}
+    data = {
+        "prepared_by": "라마바은행 자본시장부",
+        "disclaimer": "가상 조건 검토용입니다.\n두 번째 줄입니다.",
+        "style": style,
+    }
     path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
     return path
 
 
 def _markdown(house: Path, body: str = BODY, **fields) -> str:
-    data = {"profile": "term-sheet", "title": "가나다머티리얼즈㈜ 구조화금융", "house": str(house), **fields}
+    data = {
+        "profile": "term-sheet",
+        "title": "가나다머티리얼즈㈜ 구조화금융",
+        "house": str(house),
+        **fields,
+    }
     return "---\n" + yaml.safe_dump(data, allow_unicode=True) + "---\n" + body
 
 
 def _render(markdown: str, strict: bool = True):
-    doc = IBDocumentRenderer(options=RenderOptions(strict=strict)).render(MarkdownParser().parse(markdown))
+    doc = IBDocumentRenderer(options=RenderOptions(strict=strict)).render(
+        MarkdownParser().parse(markdown)
+    )
     payload = BytesIO()
     doc.save(payload)
     return Document(payload)
@@ -57,12 +68,14 @@ def _attr(element, path: str, name: str = "w:val") -> List[str]:
 
 
 def _heading_index(doc) -> int:
-    return next(index for index, paragraph in enumerate(doc.paragraphs) if paragraph.text == "1. 개요")
+    return next(
+        index for index, paragraph in enumerate(doc.paragraphs) if paragraph.text == "1. 개요"
+    )
 
 
 def test_default_style_keeps_the_standard_layout(tmp_path: Path) -> None:
     doc = _render(_markdown(_house(tmp_path, {})))
-    before = doc.paragraphs[:_heading_index(doc)]
+    before = doc.paragraphs[: _heading_index(doc)]
     assert not any(paragraph._p.xpath('.//w:br[@w:type="page"]') for paragraph in before)
     assert not doc.element.body.xpath(".//w:drawing")
     header = doc.sections[0].header.paragraphs[0]
@@ -76,15 +89,24 @@ def test_default_style_keeps_the_standard_layout(tmp_path: Path) -> None:
 def test_cover_page_logo_and_boxed_disclaimer(tmp_path: Path) -> None:
     folder = tmp_path / "house"
     _logo(folder / "assets" / "logo.png")
-    doc = _render(_markdown(_house(folder, {"cover": "page", "logo": "assets/logo.png", "disclaimer": "box"})))
-    opening = doc.paragraphs[:_heading_index(doc)]
+    doc = _render(
+        _markdown(_house(folder, {"cover": "page", "logo": "assets/logo.png", "disclaimer": "box"}))
+    )
+    opening = doc.paragraphs[: _heading_index(doc)]
     assert opening[0].paragraph_format.space_before == pytest.approx(Mm(60), abs=635)
     assert any(paragraph._p.xpath(".//w:drawing") for paragraph in opening)
-    boxed = [paragraph for paragraph in opening if paragraph.text in ("가상 조건 검토용입니다.", "두 번째 줄입니다.")]
+    boxed = [
+        paragraph
+        for paragraph in opening
+        if paragraph.text in ("가상 조건 검토용입니다.", "두 번째 줄입니다.")
+    ]
     assert len(boxed) == 2
     for paragraph in boxed:
         assert [node.tag.split("}")[1] for node in paragraph._p.xpath("./w:pPr/w:pBdr/*")] == [
-            "top", "left", "bottom", "right",
+            "top",
+            "left",
+            "bottom",
+            "right",
         ]
     assert opening[-1]._p.xpath('.//w:br[@w:type="page"]')
 
@@ -96,14 +118,20 @@ def test_a_landscape_table_right_after_the_cover_turns_the_page_once(tmp_path: P
     # The landscape section break already starts a new page; the cover's page
     # break before it is redundant (Word ignores it, other viewers may not).
     assert not body.xpath('.//w:br[@w:type="page"]')
-    assert [section.page_width > section.page_height for section in doc.sections] == [False, True, False]
+    assert [section.page_width > section.page_height for section in doc.sections] == [
+        False,
+        True,
+        False,
+    ]
     cover_end = body.xpath("./w:p[w:pPr/w:sectPr]")[0]
     assert "".join(cover_end.getprevious().xpath(".//w:t/text()")) == "두 번째 줄입니다."
 
 
-def test_a_heading_between_the_cover_and_a_landscape_table_keeps_the_page_break(tmp_path: Path) -> None:
+def test_a_heading_between_the_cover_and_a_landscape_table_keeps_the_page_break(
+    tmp_path: Path,
+) -> None:
     doc = _render(_markdown(_house(tmp_path, {"cover": "page"}), tables=[{"landscape": True}]))
-    opening = doc.paragraphs[:_heading_index(doc)]
+    opening = doc.paragraphs[: _heading_index(doc)]
     assert opening[-1]._p.xpath('.//w:br[@w:type="page"]')
     assert len(doc.sections) == 3
 
@@ -122,8 +150,11 @@ def test_a_paragraph_with_two_page_breaks_before_a_landscape_table_is_kept() -> 
 
 def test_header_and_footer_style(tmp_path: Path) -> None:
     style = {
-        "label_color": "#C00000", "header_rule": True, "footer_rule": True,
-        "page_number": "- {page} -", "page_number_align": "center",
+        "label_color": "#C00000",
+        "header_rule": True,
+        "footer_rule": True,
+        "page_number": "- {page} -",
+        "page_number_align": "center",
     }
     doc = _render(_markdown(_house(tmp_path, style)))
     section = doc.sections[0]
@@ -134,7 +165,9 @@ def test_header_and_footer_style(tmp_path: Path) -> None:
     assert _attr(footer._p, "./w:pPr/w:pBdr/w:top") == ["single"]
     assert _attr(footer._p, "./w:pPr/w:tabs/w:tab") == ["center"]
     width = (section.page_width - section.left_margin - section.right_margin) // 2
-    assert int(_attr(footer._p, "./w:pPr/w:tabs/w:tab", "w:pos")[0]) == pytest.approx(width / 635, abs=1)
+    assert int(_attr(footer._p, "./w:pPr/w:tabs/w:tab", "w:pos")[0]) == pytest.approx(
+        width / 635, abs=1
+    )
     assert [text.strip() for text in footer._p.xpath(".//w:instrText/text()")] == ["PAGE"]
     assert "".join(footer._p.xpath(".//w:t/text()")) == "-  -"  # "- ", PAGE, " -"
 
@@ -143,7 +176,9 @@ def test_dark_table_header_and_open_sides(tmp_path: Path) -> None:
     doc = _render(_markdown(_house(tmp_path, {"table_header": "dark", "table_sides": "open"})))
     table = doc.tables[0]._tbl
     header_cells = table.xpath("./w:tr[1]/w:tc")
-    assert {fill for tc in header_cells for fill in _attr(tc, "./w:tcPr/w:shd", "w:fill")} == {NAVY_HEX}
+    assert {fill for tc in header_cells for fill in _attr(tc, "./w:tcPr/w:shd", "w:fill")} == {
+        NAVY_HEX
+    }
     assert set(_attr(table, "./w:tr[1]//w:r/w:rPr/w:color")) == {"FFFFFF"}
     assert _attr(table, "./w:tblPr/w:tblBorders/w:left") == ["nil"]
     assert _attr(table, "./w:tblPr/w:tblBorders/w:right") == ["nil"]
@@ -153,17 +188,29 @@ def test_dark_table_header_and_open_sides(tmp_path: Path) -> None:
 def test_frontmatter_style_overrides_the_house_key_by_key(tmp_path: Path) -> None:
     house = _house(tmp_path, {"cover": "page", "table_header": "dark"})
     doc = _render(_markdown(house, style={"cover": "inline"}))
-    before = doc.paragraphs[:_heading_index(doc)]
+    before = doc.paragraphs[: _heading_index(doc)]
     assert not any(paragraph._p.xpath('.//w:br[@w:type="page"]') for paragraph in before)
     assert set(_attr(doc.tables[0]._tbl, "./w:tr[1]/w:tc/w:tcPr/w:shd", "w:fill")) == {NAVY_HEX}
 
 
-@pytest.mark.parametrize("style", [
-    {"cover": "full"}, {"unknown": 1}, {"header_rule": "yes"}, {"label_color": "red"},
-    {"page_number": "{page"}, {"page_number": "Page"}, {"page_number": "{page} of {total}"},
-    {"page_number": "{page}\n{pages}"}, {"page_number": "{page}\r/ {pages}"},
-    {"page_number": "{page}\u2028"}, {"logo_width_mm": 0}, {"logo": "  "}, {"logo": 7},
-])
+@pytest.mark.parametrize(
+    "style",
+    [
+        {"cover": "full"},
+        {"unknown": 1},
+        {"header_rule": "yes"},
+        {"label_color": "red"},
+        {"page_number": "{page"},
+        {"page_number": "Page"},
+        {"page_number": "{page} of {total}"},
+        {"page_number": "{page}\n{pages}"},
+        {"page_number": "{page}\r/ {pages}"},
+        {"page_number": "{page}\u2028"},
+        {"logo_width_mm": 0},
+        {"logo": "  "},
+        {"logo": 7},
+    ],
+)
 def test_invalid_style_settings_are_rejected(tmp_path: Path, style: dict) -> None:
     with pytest.raises(ValueError, match="style"):
         _render(_markdown(_house(tmp_path, style)))
@@ -189,7 +236,9 @@ def test_an_empty_frontmatter_logo_removes_the_house_logo(tmp_path: Path) -> Non
 
 
 def test_an_empty_label_color_keeps_the_default_grey(tmp_path: Path) -> None:
-    doc = _render(_markdown(_house(tmp_path, {"label_color": "#C00000"}), style={"label_color": ""}))
+    doc = _render(
+        _markdown(_house(tmp_path, {"label_color": "#C00000"}), style={"label_color": ""})
+    )
     header = doc.sections[0].header.paragraphs[0]
     assert header.text
     assert set(_attr(header._p, ".//w:r/w:rPr/w:color")) == {GREY_HEX}
@@ -207,7 +256,9 @@ def test_a_frontmatter_logo_is_relative_to_the_markdown_file(tmp_path: Path) -> 
     house = _house(tmp_path / "house", {})
     source = tmp_path / "doc" / "sheet.md"
     source.write_text(_markdown(house, style={"logo": "logo.png"}), encoding="utf-8")
-    doc = IBDocumentRenderer(options=RenderOptions(strict=True)).render(parse_markdown_file(str(source)))
+    doc = IBDocumentRenderer(options=RenderOptions(strict=True)).render(
+        parse_markdown_file(str(source))
+    )
     assert doc.element.body.xpath(".//w:drawing")
     with pytest.raises(ValueError, match="absolute"):
         _render(_markdown(house, style={"logo": "logo.png"}))

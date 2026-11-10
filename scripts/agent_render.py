@@ -52,12 +52,18 @@ def render_document(
         strict-render failures produce no DOCX.
     """
     result: dict[str, Any] = {
-        "ok": False, "status": "failed", "stage": "setup", "diagnostics": [],
+        "ok": False,
+        "status": "failed",
+        "stage": "setup",
+        "diagnostics": [],
         "input": {"path": str(source), "sha256": None},
         "output": {"directory": str(output_dir), "path": None, "sha256": None},
-        "profile": profile, "audit": None, "visual_review": "not_performed",
+        "profile": profile,
+        "audit": None,
+        "visual_review": "not_performed",
         "expected_terms": {
-            "status": "not_requested", "checked": 0,
+            "status": "not_requested",
+            "checked": 0,
             "scope": "Exact comparison with parsed terms only; not source truth or prose completeness.",
         },
     }
@@ -85,8 +91,7 @@ def render_document(
             result["profile"] = model.parsed_profile
             if model.warnings:
                 result["diagnostics"].extend(
-                    {"code": "input_validation", "message": message}
-                    for message in model.warnings
+                    {"code": "input_validation", "message": message} for message in model.warnings
                 )
                 raise ValueError("Strict input validation failed")
             if expected_path is not None:
@@ -102,21 +107,32 @@ def render_document(
                     not isinstance(key, str) or not isinstance(value, str)
                     for key, value in expected.items()
                 ):
-                    raise ValueError("Expected terms must be a JSON object of string keys and values")
+                    raise ValueError(
+                        "Expected terms must be a JSON object of string keys and values"
+                    )
                 actual = model.metadata.extra.get("terms", {})
                 mismatches = [key for key, value in expected.items() if actual.get(key) != value]
-                comparison.update({
-                    "checked": len(expected),
-                    "status": "mismatch" if mismatches else ("matched" if expected else "empty"),
-                    "mismatched_keys": mismatches,
-                })
+                comparison.update(
+                    {
+                        "checked": len(expected),
+                        "status": "mismatch"
+                        if mismatches
+                        else ("matched" if expected else "empty"),
+                        "mismatched_keys": mismatches,
+                    }
+                )
                 if mismatches:
                     raise ValueError("Expected terms absent or different: " + ", ".join(mismatches))
             result["stage"] = "render"
-            saved = Path(registry.convert(
-                model, output_format="docx", output_path=destination / "document.docx",
-                strict=True, profile=profile,
-            )).resolve()
+            saved = Path(
+                registry.convert(
+                    model,
+                    output_format="docx",
+                    output_path=destination / "document.docx",
+                    strict=True,
+                    profile=profile,
+                )
+            ).resolve()
             result["output"].update({"path": str(saved), "sha256": _sha256(saved)})
             result["stage"] = "audit"
             from docx import Document
@@ -168,14 +184,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         arguments = parser.parse_args(argv)
     except ValueError as exc:
         result = {
-            "ok": False, "status": "failed", "stage": "arguments",
+            "ok": False,
+            "status": "failed",
+            "stage": "arguments",
             "diagnostics": [{"code": "invalid_arguments", "message": str(exc)}],
-            "audit": None, "visual_review": "not_performed",
+            "audit": None,
+            "visual_review": "not_performed",
         }
         print(json.dumps(result, ensure_ascii=True))
         return 2
     result = render_document(
-        arguments.source, arguments.output_dir, arguments.profile, arguments.expected_terms,
+        arguments.source,
+        arguments.output_dir,
+        arguments.profile,
+        arguments.expected_terms,
     )
     # ASCII-escaped JSON is lossless, even when a Windows caller captures a legacy code page.
     print(json.dumps(result, ensure_ascii=True))

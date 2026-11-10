@@ -13,7 +13,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("build_codex_bundle", ROOT / "scripts/build_codex_bundle.py")
+SPEC = importlib.util.spec_from_file_location(
+    "build_codex_bundle", ROOT / "scripts/build_codex_bundle.py"
+)
 assert SPEC is not None and SPEC.loader is not None
 builder = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(builder)
@@ -32,9 +34,15 @@ def public_checkout(tmp_path):
 
 def test_bundle_has_exact_allowlist_and_verifiable_hashes(public_checkout, tmp_path):
     secret_paths = [
-        ".env", "draft.md", "private/real-deal.md", "docs/internal-draft.md",
-        "samples/harness/client-secret.yaml", ".agents/skills/ib-document/private.md",
-        "dist/old.exe", ".venv/secret.txt", "output/private.docx",
+        ".env",
+        "draft.md",
+        "private/real-deal.md",
+        "docs/internal-draft.md",
+        "samples/harness/client-secret.yaml",
+        ".agents/skills/ib-document/private.md",
+        "dist/old.exe",
+        ".venv/secret.txt",
+        "output/private.docx",
     ]
     for relative in secret_paths:
         target = public_checkout / relative
@@ -46,14 +54,20 @@ def test_bundle_has_exact_allowlist_and_verifiable_hashes(public_checkout, tmp_p
     prefix = f"ib-report-formatter-codex-source-{version}/"
     with zipfile.ZipFile(archive) as bundle:
         assert {
-            prefix + name for name in (
-                "docs/distribution-build.md", "docs/distribution/시작하기.html",
-                "scripts/build_portable.py", "tools/__init__.py", "tools/portable_launcher.py",
+            prefix + name
+            for name in (
+                "docs/distribution-build.md",
+                "docs/distribution/시작하기.html",
+                "scripts/build_portable.py",
+                "tools/__init__.py",
+                "tools/portable_launcher.py",
                 "samples/distribution/minimal-term-sheet.md",
                 "samples/distribution/minimal-house.yaml",
             )
         }.issubset(bundle.namelist())
-        assert not any(name.endswith((".exe", ".dll", ".pyd", ".docx")) for name in bundle.namelist())
+        assert not any(
+            name.endswith((".exe", ".dll", ".pyd", ".docx")) for name in bundle.namelist()
+        )
         assert set(bundle.namelist()) == {
             prefix + name for name in [*paths, "시작하기.html", "bundle-manifest.json"]
         }
@@ -64,11 +78,14 @@ def test_bundle_has_exact_allowlist_and_verifiable_hashes(public_checkout, tmp_p
             assert len(data) == item["bytes"]
             assert hashlib.sha256(data).hexdigest() == item["sha256"]
             assert b"DO_NOT_DISTRIBUTE" not in data
-        assert bundle.read(prefix + "시작하기.html") == bundle.read(prefix + "docs/codex-start.html")
+        assert bundle.read(prefix + "시작하기.html") == bundle.read(
+            prefix + "docs/codex-start.html"
+        )
         assert manifest["source"]["base_commit"] is None
         assert manifest["source"]["dirty"] is None
     assert archive.with_suffix(".zip.sha256").read_text().split() == [
-        hashlib.sha256(archive.read_bytes()).hexdigest(), archive.name,
+        hashlib.sha256(archive.read_bytes()).hexdigest(),
+        archive.name,
     ]
 
 
@@ -89,7 +106,10 @@ def test_missing_required_file_fails_before_creating_release(public_checkout, tm
 
 def test_module_path_escape_is_rejected(public_checkout, tmp_path):
     config = public_checkout / "pyproject.toml"
-    config.write_text(config.read_text(encoding="utf-8").replace('"chart_renderer.py"', '"../private.py"'), encoding="utf-8")
+    config.write_text(
+        config.read_text(encoding="utf-8").replace('"chart_renderer.py"', '"../private.py"'),
+        encoding="utf-8",
+    )
     with pytest.raises(ValueError, match="top-level Python modules"):
         builder.build_bundle(public_checkout, tmp_path / "release")
 
@@ -120,10 +140,20 @@ def test_extracted_source_renders_without_original_checkout(public_checkout, tmp
     # -I also suppresses cwd and PYTHONPATH. This entry point explicitly adds
     # its own extracted source root, so imports cannot fall back to checkout.
     result = subprocess.run(
-        [sys.executable, "-I", str(project / "scripts/agent_render.py"),
-         str(project / "samples/profiles/plain.md"), "--output-dir", str(tmp_path / "run")],
-        cwd=tmp_path, env=environment, capture_output=True, text=True,
-        encoding="utf-8", errors="replace",
+        [
+            sys.executable,
+            "-I",
+            str(project / "scripts/agent_render.py"),
+            str(project / "samples/profiles/plain.md"),
+            "--output-dir",
+            str(tmp_path / "run"),
+        ],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode == 0, result.stdout + result.stderr
     evidence = json.loads(result.stdout)

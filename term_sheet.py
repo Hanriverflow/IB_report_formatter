@@ -61,36 +61,89 @@ _CONFIRMATION_GAP = Pt(6)  # air between a preceding note and the confirmation b
 _BOLD_ALLOWANCE = 1.1  # bold header glyphs are wider than the em estimate
 # Successor elements used to insert children in ECMA-376 schema order.
 _TCPR_AFTER_SHD = (
-    "w:noWrap", "w:tcMar", "w:textDirection", "w:tcFitText", "w:vAlign", "w:hideMark",
-    "w:headers", "w:cellIns", "w:cellDel", "w:cellMerge", "w:tcPrChange",
+    "w:noWrap",
+    "w:tcMar",
+    "w:textDirection",
+    "w:tcFitText",
+    "w:vAlign",
+    "w:hideMark",
+    "w:headers",
+    "w:cellIns",
+    "w:cellDel",
+    "w:cellMerge",
+    "w:tcPrChange",
 )
 _TBLPR_AFTER_IND = (
-    "w:tblBorders", "w:shd", "w:tblLayout", "w:tblCellMar", "w:tblLook",
-    "w:tblCaption", "w:tblDescription", "w:tblPrChange",
+    "w:tblBorders",
+    "w:shd",
+    "w:tblLayout",
+    "w:tblCellMar",
+    "w:tblLook",
+    "w:tblCaption",
+    "w:tblDescription",
+    "w:tblPrChange",
 )
 _TBLPR_AFTER_MARGINS = ("w:tblLook", "w:tblCaption", "w:tblDescription", "w:tblPrChange")
 _TRPR_AFTER_CANT_SPLIT = (
-    "w:trHeight", "w:tblHeader", "w:tblCellSpacing", "w:jc", "w:hidden", "w:ins", "w:del",
+    "w:trHeight",
+    "w:tblHeader",
+    "w:tblCellSpacing",
+    "w:jc",
+    "w:hidden",
+    "w:ins",
+    "w:del",
     "w:trPrChange",
 )
 _PPR_AFTER_KINSOKU = (
-    "w:wordWrap", "w:overflowPunct", "w:topLinePunct", "w:autoSpaceDE", "w:autoSpaceDN",
-    "w:bidi", "w:adjustRightInd", "w:snapToGrid", "w:spacing", "w:ind",
-    "w:contextualSpacing", "w:mirrorIndents", "w:suppressOverlap", "w:jc",
-    "w:textDirection", "w:textAlignment", "w:textboxTightWrap", "w:outlineLvl", "w:divId",
-    "w:cnfStyle", "w:rPr", "w:sectPr", "w:pPrChange",
+    "w:wordWrap",
+    "w:overflowPunct",
+    "w:topLinePunct",
+    "w:autoSpaceDE",
+    "w:autoSpaceDN",
+    "w:bidi",
+    "w:adjustRightInd",
+    "w:snapToGrid",
+    "w:spacing",
+    "w:ind",
+    "w:contextualSpacing",
+    "w:mirrorIndents",
+    "w:suppressOverlap",
+    "w:jc",
+    "w:textDirection",
+    "w:textAlignment",
+    "w:textboxTightWrap",
+    "w:outlineLvl",
+    "w:divId",
+    "w:cnfStyle",
+    "w:rPr",
+    "w:sectPr",
+    "w:pPrChange",
 )
 _PPR_AFTER_PBDR = ("w:shd", "w:tabs", "w:suppressAutoHyphens", "w:kinsoku", *_PPR_AFTER_KINSOKU)
 _RPR_AFTER_SZ_CS = (
-    "w:highlight", "w:u", "w:effect", "w:bdr", "w:shd", "w:fitText", "w:vertAlign", "w:rtl",
-    "w:cs", "w:em", "w:lang", "w:eastAsianLayout", "w:specVanish", "w:oMath",
+    "w:highlight",
+    "w:u",
+    "w:effect",
+    "w:bdr",
+    "w:shd",
+    "w:fitText",
+    "w:vertAlign",
+    "w:rtl",
+    "w:cs",
+    "w:em",
+    "w:lang",
+    "w:eastAsianLayout",
+    "w:specVanish",
+    "w:oMath",
 )
 _HEADING_RULE_SIZE = "8"  # 1pt accent rule under Heading 2
 _CHECKBOX = "□"
 _CHECKBOX_LAYOUT_MM = 4.5  # hanging indent of confirmation check items
 _COVER_TITLE_SPACE = Mm(60)  # sets the cover title block about a third down the page
 _COVER_DISCLAIMER_SPACE = Mm(30)
-_HOUSE_KEYS = frozenset({"prepared_by", "disclaimer", "confidential_label", "confirmation", "style"})
+_HOUSE_KEYS = frozenset(
+    {"prepared_by", "disclaimer", "confidential_label", "confirmation", "style"}
+)
 _CONFIRMATION_KEYS = frozenset({"intro", "items", "signature"})
 _STYLE_CHOICES = {
     "cover": ("inline", "page"),
@@ -175,7 +228,11 @@ def validate_style(value: Any, base_dir: Optional[Path] = None) -> Dict[str, Any
     """
     if not isinstance(value, dict):
         raise ValueError("style must be a mapping")
-    known = set(_STYLE_CHOICES) | set(_STYLE_FLAGS) | {"logo", "logo_width_mm", "label_color", "page_number"}
+    known = (
+        set(_STYLE_CHOICES)
+        | set(_STYLE_FLAGS)
+        | {"logo", "logo_width_mm", "label_color", "page_number"}
+    )
     unknown = set(value) - known
     if unknown:
         raise ValueError("Unknown style settings: " + ", ".join(sorted(map(str, unknown))))
@@ -183,7 +240,10 @@ def validate_style(value: Any, base_dir: Optional[Path] = None) -> Dict[str, Any
     # A YAML null is not the default: it would reach the renderer as None.
     nulls = sorted(key for key, item in settings.items() if item is None)
     if nulls:
-        raise ValueError(", ".join(f"style.{key}" for key in nulls) + " must not be null; omit it for the default")
+        raise ValueError(
+            ", ".join(f"style.{key}" for key in nulls)
+            + " must not be null; omit it for the default"
+        )
     for key, choices in _STYLE_CHOICES.items():
         if key in settings and settings[key] not in choices:
             raise ValueError(f"style.{key} must be one of: " + ", ".join(choices))
@@ -191,10 +251,14 @@ def validate_style(value: Any, base_dir: Optional[Path] = None) -> Dict[str, Any
         if key in settings and not isinstance(settings[key], bool):
             raise ValueError(f"style.{key} must be true or false")
     width = settings.get("logo_width_mm")
-    if width is not None and (isinstance(width, bool) or not isinstance(width, (int, float)) or not 5 <= width <= 150):
+    if width is not None and (
+        isinstance(width, bool) or not isinstance(width, (int, float)) or not 5 <= width <= 150
+    ):
         raise ValueError("style.logo_width_mm must be a number from 5 to 150")
     color = settings.get("label_color")
-    if color is not None and (not isinstance(color, str) or (color and not _HEX_COLOR_RE.fullmatch(color))):
+    if color is not None and (
+        not isinstance(color, str) or (color and not _HEX_COLOR_RE.fullmatch(color))
+    ):
         raise ValueError("style.label_color must be #RRGGBB, or empty for the default grey")
     page = settings.get("page_number")
     if page is not None and (
@@ -209,7 +273,12 @@ def validate_style(value: Any, base_dir: Optional[Path] = None) -> Dict[str, Any
         # "" is an explicit "no logo", so frontmatter can remove a house logo.
         if not isinstance(logo, str) or (logo and not logo.strip()):
             raise ValueError("style.logo must be an image path, a data: URI, or empty for no logo")
-        if logo and not logo.lower().startswith("data:") and base_dir is not None and not Path(logo).is_absolute():
+        if (
+            logo
+            and not logo.lower().startswith("data:")
+            and base_dir is not None
+            and not Path(logo).is_absolute()
+        ):
             settings["logo"] = str((base_dir / logo).resolve())
     return settings
 
@@ -324,7 +393,8 @@ def resolve_term_sheet_texts(
         disclaimer=values["disclaimer"],
         confidential_label=values.get("confidential_label", "Strictly Confidential"),
         confirmation=_confirmation_text(values["confirmation"])
-        if "confirmation" in values else None,
+        if "confirmation" in values
+        else None,
         style=TermSheetStyle(**style),
     )
 
@@ -418,7 +488,10 @@ def apply_marker_layout(paragraph: Any, text: str) -> Optional[Pt]:
 def _is_plain(run: TextRun) -> bool:
     """Semantic runs (equations, footnotes, term values, code, images) are never trimmed or split."""
     return (
-        not run.is_latex and run.footnote_id is None and run.term_key is None and not run.code
+        not run.is_latex
+        and run.footnote_id is None
+        and run.term_key is None
+        and not run.code
         and run.image is None
     )
 
@@ -497,10 +570,14 @@ def header_token_width(text: str, font_size: int) -> int:
     if not tokens:
         return 0
     widest = max(_em_width(token) for token in tokens)
-    return math.ceil(widest * int(font_size) * _BOLD_ALLOWANCE) + 2 * int(Twips(CELL_MARGIN_HORIZONTAL))
+    return math.ceil(widest * int(font_size) * _BOLD_ALLOWANCE) + 2 * int(
+        Twips(CELL_MARGIN_HORIZONTAL)
+    )
 
 
-def natural_cell_width(texts: Sequence[str], font_size: int, bold: bool = False, markers: bool = False) -> int:
+def natural_cell_width(
+    texts: Sequence[str], font_size: int, bold: bool = False, markers: bool = False
+) -> int:
     """Column width in EMU that keeps every line of a cell on one line.
 
     Uses the row estimator's em widths, the bold allowance for header text,
@@ -626,7 +703,9 @@ def apply_table_frame(word_table: Any, width: int, open_sides: bool = False) -> 
     table_width = tbl_pr.find(qn("w:tblW"))
     if table_width is None:
         table_width = OxmlElement("w:tblW")
-        tbl_pr.insert_element_before(table_width, "w:jc", "w:tblCellSpacing", "w:tblInd", *_TBLPR_AFTER_IND)
+        tbl_pr.insert_element_before(
+            table_width, "w:jc", "w:tblCellSpacing", "w:tblInd", *_TBLPR_AFTER_IND
+        )
     table_width.set(qn("w:w"), str(Emu(width).twips))
     table_width.set(qn("w:type"), "dxa")
     tbl_pr.insert_element_before(_measure("w:tblInd", CELL_MARGIN_HORIZONTAL), *_TBLPR_AFTER_IND)
@@ -645,8 +724,10 @@ def apply_table_frame(word_table: Any, width: int, open_sides: bool = False) -> 
     tbl_pr.insert_element_before(borders, *_TBLPR_AFTER_IND[1:])
     margins = OxmlElement("w:tblCellMar")
     for edge, value in (
-        ("top", CELL_MARGIN_VERTICAL), ("left", CELL_MARGIN_HORIZONTAL),
-        ("bottom", CELL_MARGIN_VERTICAL), ("right", CELL_MARGIN_HORIZONTAL),
+        ("top", CELL_MARGIN_VERTICAL),
+        ("left", CELL_MARGIN_HORIZONTAL),
+        ("bottom", CELL_MARGIN_VERTICAL),
+        ("right", CELL_MARGIN_HORIZONTAL),
     ):
         margins.append(_measure(f"w:{edge}", value))
     tbl_pr.insert_element_before(margins, *_TBLPR_AFTER_MARGINS)
@@ -685,7 +766,9 @@ def add_table_heading(
         width: Printable width of the current section in EMU (right tab stop).
     """
     details = ", ".join(
-        part for part in (f"단위 : {unit}" if unit else "", f"기준일 : {as_of}" if as_of else "") if part
+        part
+        for part in (f"단위 : {unit}" if unit else "", f"기준일 : {as_of}" if as_of else "")
+        if part
     )
     if not caption and not details:
         return
@@ -701,8 +784,10 @@ def add_table_heading(
         else:
             paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         render_runs(
-            paragraph, TextParser.parse_runs(f"({details})"),
-            default_color=_rgb(STYLE.TS_MUTED_HEX), font_size=STYLE.TS_NOTE_SIZE,
+            paragraph,
+            TextParser.parse_runs(f"({details})"),
+            default_color=_rgb(STYLE.TS_MUTED_HEX),
+            font_size=STYLE.TS_NOTE_SIZE,
         )
 
 
@@ -711,8 +796,10 @@ def add_table_note(doc: Any, note: str, render_runs: RenderRuns) -> None:
     paragraph = doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
     paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     render_runs(
-        paragraph, TextParser.parse_runs(note),
-        default_color=_rgb(STYLE.TS_MUTED_HEX), font_size=STYLE.TS_NOTE_SIZE,
+        paragraph,
+        TextParser.parse_runs(note),
+        default_color=_rgb(STYLE.TS_MUTED_HEX),
+        font_size=STYLE.TS_NOTE_SIZE,
     )
 
 
@@ -720,8 +807,10 @@ def add_table_source(doc: Any, source: str, render_runs: RenderRuns) -> None:
     """Muted `출처 : …` line below the table (and its note)."""
     paragraph = doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
     render_runs(
-        paragraph, TextParser.parse_runs("출처 : " + source),
-        default_color=_rgb(STYLE.TS_MUTED_HEX), font_size=STYLE.TS_NOTE_SIZE,
+        paragraph,
+        TextParser.parse_runs("출처 : " + source),
+        default_color=_rgb(STYLE.TS_MUTED_HEX),
+        font_size=STYLE.TS_NOTE_SIZE,
     )
 
 
@@ -815,7 +904,12 @@ def setup_term_sheet_styles(doc: Any) -> None:
     heading2.font.color.rgb = STYLE.NAVY
     rule = OxmlElement("w:pBdr")
     bottom = OxmlElement("w:bottom")
-    for name, value in (("val", "single"), ("sz", _HEADING_RULE_SIZE), ("space", "1"), ("color", STYLE.NAVY_HEX)):
+    for name, value in (
+        ("val", "single"),
+        ("sz", _HEADING_RULE_SIZE),
+        ("space", "1"),
+        ("color", STYLE.NAVY_HEX),
+    ):
         bottom.set(qn(f"w:{name}"), value)
     rule.append(bottom)
     style_paragraph = heading2.element.get_or_add_pPr()
@@ -855,7 +949,12 @@ def _paragraph_rules(paragraph: Any, edges: Sequence[str]) -> None:
     rules = OxmlElement("w:pBdr")
     for edge in edges:
         border = OxmlElement(f"w:{edge}")
-        for name, value in (("val", "single"), ("sz", _BORDER_SIZE), ("space", "4"), ("color", STYLE.TS_BORDER_HEX)):
+        for name, value in (
+            ("val", "single"),
+            ("sz", _BORDER_SIZE),
+            ("space", "4"),
+            ("color", STYLE.TS_BORDER_HEX),
+        ):
             border.set(qn(f"w:{name}"), value)
         rules.append(border)
     paragraph._p.get_or_add_pPr().insert_element_before(rules, *_PPR_AFTER_PBDR)
@@ -892,22 +991,30 @@ def render_term_sheet_opening(
     title.paragraph_format.space_before = _COVER_TITLE_SPACE if cover else Pt(0)
     title.paragraph_format.space_after = Pt(2)
     render_runs(
-        title, _bold(_display_runs(metadata, "title", metadata.title)),
-        default_color=STYLE.NAVY, font_name=STYLE.HEADING_FONT, font_size=STYLE.TS_TITLE_SIZE,
+        title,
+        _bold(_display_runs(metadata, "title", metadata.title)),
+        default_color=STYLE.NAVY,
+        font_name=STYLE.HEADING_FONT,
+        font_size=STYLE.TS_TITLE_SIZE,
     )
     render_runs(
-        _opening_paragraph(doc, Pt(8)), _bold(_display_runs(metadata, "subtitle", metadata.subtitle)),
-        default_color=STYLE.NAVY, font_name=STYLE.HEADING_FONT, font_size=STYLE.TS_SUBTITLE_SIZE,
+        _opening_paragraph(doc, Pt(8)),
+        _bold(_display_runs(metadata, "subtitle", metadata.subtitle)),
+        default_color=STYLE.NAVY,
+        font_name=STYLE.HEADING_FONT,
+        font_size=STYLE.TS_SUBTITLE_SIZE,
     )
     date = metadata.extra.get("date")
     date_text = str(date).strip() if date is not None else ""
     if metadata.display_runs.get("date") or date_text:
         render_runs(
-            _opening_paragraph(doc, Pt(0)), _display_runs(metadata, "date", date_text),
+            _opening_paragraph(doc, Pt(0)),
+            _display_runs(metadata, "date", date_text),
             font_size=STYLE.TS_META_SIZE,
         )
     render_runs(
-        _opening_paragraph(doc, Pt(8)), TextParser.parse_runs(texts.prepared_by.strip()),
+        _opening_paragraph(doc, Pt(8)),
+        TextParser.parse_runs(texts.prepared_by.strip()),
         font_size=STYLE.TS_META_SIZE,
     )
     if style.logo:
@@ -917,11 +1024,16 @@ def render_term_sheet_opening(
     for index, line in enumerate(lines):
         paragraph = doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
         paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        paragraph.paragraph_format.space_before = _COVER_DISCLAIMER_SPACE if cover and index == 0 else Pt(0)
+        paragraph.paragraph_format.space_before = (
+            _COVER_DISCLAIMER_SPACE if cover and index == 0 else Pt(0)
+        )
         paragraph.paragraph_format.space_after = Pt(6) if index == len(lines) - 1 else Pt(0)
         _paragraph_rules(paragraph, edges)
         render_runs(
-            paragraph, line, default_color=_rgb(STYLE.TS_MUTED_HEX), font_size=STYLE.TS_DISCLAIMER_SIZE
+            paragraph,
+            line,
+            default_color=_rgb(STYLE.TS_MUTED_HEX),
+            font_size=STYLE.TS_DISCLAIMER_SIZE,
         )
     if cover:
         doc.add_page_break()
@@ -955,8 +1067,11 @@ def render_term_sheet_heading(doc: Any, heading: Heading, render_runs: RenderRun
     paragraph = doc.add_heading(level=level)
     runs = heading.runs or TextParser.parse_runs(heading.text)
     render_runs(
-        paragraph, _bold(runs), default_color=STYLE.NAVY if level < 4 else STYLE.DARK_GRAY,
-        font_name=STYLE.HEADING_FONT, font_size=sizes[level],
+        paragraph,
+        _bold(runs),
+        default_color=STYLE.NAVY if level < 4 else STYLE.DARK_GRAY,
+        font_name=STYLE.HEADING_FONT,
+        font_size=sizes[level],
     )
 
 
@@ -979,7 +1094,9 @@ def render_term_sheet_paragraph(doc: Any, paragraph: Paragraph, render_runs: Ren
 
 def confirmation_has_text(confirmation: ConfirmationText) -> bool:
     """True when any confirmation field has visible text to render."""
-    return any(text.strip() for text in (confirmation.intro, *confirmation.items, confirmation.signature))
+    return any(
+        text.strip() for text in (confirmation.intro, *confirmation.items, confirmation.signature)
+    )
 
 
 def printable_width(section: Any) -> int:
@@ -1077,7 +1194,9 @@ def render_confirmation(doc: Any, confirmation: ConfirmationText, render_runs: R
         writer = _CellWriter(cell)
         if kind == "body":
             for line in split_run_lines(TextParser.parse_runs(intro)) if intro else []:
-                render_runs(writer.paragraph(), line, default_color=muted, font_size=STYLE.TS_NOTE_SIZE)
+                render_runs(
+                    writer.paragraph(), line, default_color=muted, font_size=STYLE.TS_NOTE_SIZE
+                )
             for item in items:
                 layout: Optional[MarkerLayout] = None
                 for line_index, line in enumerate(split_run_lines(TextParser.parse_runs(item))):
@@ -1087,7 +1206,9 @@ def render_confirmation(doc: Any, confirmation: ConfirmationText, render_runs: R
                         if layout is not None:
                             paragraph.paragraph_format.first_line_indent = Mm(-layout.hanging_mm)
                     if layout is not None:
-                        paragraph.paragraph_format.left_indent = Mm(layout.start_mm + layout.hanging_mm)
+                        paragraph.paragraph_format.left_indent = Mm(
+                            layout.start_mm + layout.hanging_mm
+                        )
                     render_runs(paragraph, line, font_size=STYLE.TS_META_SIZE)
             for paragraph in cell.paragraphs:
                 paragraph.paragraph_format.keep_with_next = True
@@ -1178,7 +1299,12 @@ def setup_term_sheet_header_footer(
         header = _reset_story(section.header)
         header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         if label.strip():
-            render_runs(header, [TextRun(text=label, italic=True)], default_color=label_color, font_size=size)
+            render_runs(
+                header,
+                [TextRun(text=label, italic=True)],
+                default_color=label_color,
+                font_size=size,
+            )
         if style.header_rule:
             _accent_rule(header, "bottom")
         footer = _reset_story(section.footer)
@@ -1186,7 +1312,9 @@ def setup_term_sheet_header_footer(
             footer.style.paragraph_format.tab_stops.clear_all()
         if width > 0:  # a section without printable width is reported by the structural audit
             if style.page_number_align == "center":
-                footer.paragraph_format.tab_stops.add_tab_stop(Emu(width // 2), WD_TAB_ALIGNMENT.CENTER)
+                footer.paragraph_format.tab_stops.add_tab_stop(
+                    Emu(width // 2), WD_TAB_ALIGNMENT.CENTER
+                )
             else:
                 footer.paragraph_format.tab_stops.add_tab_stop(Emu(width), WD_TAB_ALIGNMENT.RIGHT)
         if style.footer_rule:

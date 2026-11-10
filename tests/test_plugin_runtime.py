@@ -25,7 +25,9 @@ def plugin(tmp_path, monkeypatch):
 
 
 def snapshot(root):
-    return {str(path.relative_to(root)): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+    return {
+        str(path.relative_to(root)): path.read_bytes() for path in root.rglob("*") if path.is_file()
+    }
 
 
 def fake_success(monkeypatch, render_code=0):
@@ -54,14 +56,28 @@ def test_setup_syncs_locked_dependencies_outside_plugin(plugin, tmp_path, monkey
     assert result["ok"] and result["status"] == "ready"
     command, options = calls[0]
     assert command == [
-        "/tools with spaces/uv", "sync", "--locked", "--no-dev", "--extra", "full",
-        "--no-install-project", "--project", str(plugin), "--python", launcher.sys.executable,
+        "/tools with spaces/uv",
+        "sync",
+        "--locked",
+        "--no-dev",
+        "--extra",
+        "full",
+        "--no-install-project",
+        "--project",
+        str(plugin),
+        "--python",
+        launcher.sys.executable,
     ]
     assert options["cwd"] == cache
     assert options.get("shell", False) is False
     env = options["env"]
-    for name in ("UV_PROJECT_ENVIRONMENT", "UV_CACHE_DIR", "UV_PYTHON_INSTALL_DIR",
-                 "PYTHONPYCACHEPREFIX", "MPLCONFIGDIR"):
+    for name in (
+        "UV_PROJECT_ENVIRONMENT",
+        "UV_CACHE_DIR",
+        "UV_PYTHON_INSTALL_DIR",
+        "PYTHONPYCACHEPREFIX",
+        "MPLCONFIGDIR",
+    ):
         assert Path(env[name]).is_relative_to(cache)
         assert not Path(env[name]).is_relative_to(plugin)
     assert env["PYTHONDONTWRITEBYTECODE"] == "1"
@@ -75,15 +91,32 @@ def test_render_preserves_caller_cwd_and_exact_arguments(plugin, tmp_path, monke
     caller.mkdir()
     monkeypatch.chdir(caller)
     calls = fake_success(monkeypatch, render_code=7)
-    result = launcher.main([
-        "render", "입력 자료.md", "--output-dir", "새 결과", "--profile", "term-sheet",
-        "--expected-terms", "조건 정보.json", "--cache-dir", str(tmp_path / "cache"),
-    ])
+    result = launcher.main(
+        [
+            "render",
+            "입력 자료.md",
+            "--output-dir",
+            "새 결과",
+            "--profile",
+            "term-sheet",
+            "--expected-terms",
+            "조건 정보.json",
+            "--cache-dir",
+            str(tmp_path / "cache"),
+        ]
+    )
     assert result == 7
     command, options = calls[1]
     assert command[1:] == [
-        "-B", str(plugin / "scripts/agent_render.py"), "입력 자료.md", "--output-dir", "새 결과",
-        "--profile", "term-sheet", "--expected-terms", "조건 정보.json",
+        "-B",
+        str(plugin / "scripts/agent_render.py"),
+        "입력 자료.md",
+        "--output-dir",
+        "새 결과",
+        "--profile",
+        "term-sheet",
+        "--expected-terms",
+        "조건 정보.json",
     ]
     assert "cwd" not in options
     assert Path.cwd() == caller
@@ -118,9 +151,13 @@ def test_missing_uv_is_actionable_without_install_attempt(plugin, tmp_path, monk
     assert calls == []
 
 
-def test_install_failure_leaves_no_ready_stamp_and_releases_lock(plugin, tmp_path, monkeypatch, capsys):
+def test_install_failure_leaves_no_ready_stamp_and_releases_lock(
+    plugin, tmp_path, monkeypatch, capsys
+):
     cache = tmp_path / "cache"
-    monkeypatch.setattr(launcher.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=8))
+    monkeypatch.setattr(
+        launcher.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=8)
+    )
     assert launcher.main(["setup", "--cache-dir", str(cache)]) == 1
     assert "uv exit 8" in json.loads(capsys.readouterr().out)["diagnostics"][0]["message"]
     assert not list(cache.rglob("*ready*"))
@@ -166,21 +203,35 @@ def test_invalid_arguments_are_structured(capsys):
 
 
 @pytest.mark.parametrize("output", [".", "new output"])
-def test_output_inside_plugin_is_rejected_before_sync(plugin, tmp_path, monkeypatch, capsys, output):
+def test_output_inside_plugin_is_rejected_before_sync(
+    plugin, tmp_path, monkeypatch, capsys, output
+):
     monkeypatch.chdir(plugin)
     before = snapshot(plugin)
     calls = fake_success(monkeypatch)
-    result = launcher.main([
-        "render", "draft.md", "--output-dir", output, "--cache-dir", str(tmp_path / "cache"),
-    ])
+    result = launcher.main(
+        [
+            "render",
+            "draft.md",
+            "--output-dir",
+            output,
+            "--cache-dir",
+            str(tmp_path / "cache"),
+        ]
+    )
     assert result == 1
-    assert "Output directory must be outside" in json.loads(capsys.readouterr().out)["diagnostics"][0]["message"]
+    assert (
+        "Output directory must be outside"
+        in json.loads(capsys.readouterr().out)["diagnostics"][0]["message"]
+    )
     assert snapshot(plugin) == before
     assert calls == []
 
 
 def test_success_without_python_is_not_reported_ready(plugin, tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(launcher.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0))
+    monkeypatch.setattr(
+        launcher.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0)
+    )
     assert launcher.main(["setup", "--cache-dir", str(tmp_path / "cache")]) == 1
     assert "did not create" in json.loads(capsys.readouterr().out)["diagnostics"][0]["message"]
 

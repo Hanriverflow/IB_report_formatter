@@ -16,14 +16,17 @@ def test_conversion_preserves_yaml_and_korean_spaced_paths(tmp_path):
     source_dir = tmp_path / "한글 입력 폴더"
     source_dir.mkdir()
     (source_dir / "house.yaml").write_text(
-        (Path(__file__).resolve().parents[1] / "samples/profiles/term-sheet-house.yaml").read_text(encoding="utf-8"),
+        (Path(__file__).resolve().parents[1] / "samples/profiles/term-sheet-house.yaml").read_text(
+            encoding="utf-8"
+        ),
         encoding="utf-8",
     )
     source = source_dir / "첫 텀시트.md"
     source.write_text(
         '---\nprofile: term-sheet\nhouse: house.yaml\ntitle: "{{borrower}} 조건표"\n'
-        'terms:\n  borrower: 가상기업\n---\n# 주요 조건\n\n'
-        '| 항목 | 내용 |\n|---|---|\n| 차주 | {{borrower}} |\n', encoding="utf-8"
+        "terms:\n  borrower: 가상기업\n---\n# 주요 조건\n\n"
+        "| 항목 | 내용 |\n|---|---|\n| 차주 | {{borrower}} |\n",
+        encoding="utf-8",
     )
     result = portable_launcher.convert_document(str(source), str(tmp_path / "한글 출력 폴더"))
     assert result.is_file()
@@ -53,9 +56,14 @@ def test_strict_failure_does_not_save_partial_docx(tmp_path):
     assert not list(tmp_path.rglob("*.docx"))
 
 
-@pytest.mark.parametrize("source, output, message", [
-    ("", ".", "선택"), ("a.md", "", "폴더"), ("a.docx", ".", "Markdown"),
-])
+@pytest.mark.parametrize(
+    "source, output, message",
+    [
+        ("", ".", "선택"),
+        ("a.md", "", "폴더"),
+        ("a.docx", ".", "Markdown"),
+    ],
+)
 def test_actionable_input_errors(source, output, message):
     with pytest.raises(ValueError, match=message):
         portable_launcher.convert_document(source, output)
@@ -65,9 +73,11 @@ def test_engine_saved_path_is_returned_without_reconstruction(tmp_path, monkeypa
     source = tmp_path / "source.md"
     source.write_text("---\nprofile: plain\n---\n본문", encoding="utf-8")
     actual = tmp_path / "lock fallback.docx"
+
     def save_fallback(doc, requested):
         doc.save(actual)
         return actual
+
     monkeypatch.setattr("md_to_word.safe_save", save_fallback)
     assert portable_launcher.convert_document(str(source), str(tmp_path)) == actual
 
@@ -81,8 +91,14 @@ def test_frozen_root_follows_executable_not_cwd(tmp_path, monkeypatch):
 def test_package_allowlist_only_includes_public_guide_license_and_samples():
     inputs = package_inputs()
     assert len(inputs) == 13
-    assert {destination.parts[0] for _, destination in inputs} == {"시작하기.html", "라이선스", "예제"}
-    assert all(".." not in destination.parts and not destination.is_absolute() for _, destination in inputs)
+    assert {destination.parts[0] for _, destination in inputs} == {
+        "시작하기.html",
+        "라이선스",
+        "예제",
+    }
+    assert all(
+        ".." not in destination.parts and not destination.is_absolute() for _, destination in inputs
+    )
     assert not any(source.suffix == ".docx" for source, _ in inputs)
     assert (Path("예제/빠른시작/minimal-house.yaml")) in {dest for _, dest in inputs}
 
@@ -90,9 +106,7 @@ def test_package_allowlist_only_includes_public_guide_license_and_samples():
 def test_portable_archive_filename_and_matching_root(tmp_path, monkeypatch):
     source_root = tmp_path / "source"
     source_root.mkdir()
-    (source_root / "pyproject.toml").write_text(
-        '[project]\nversion = "9.8.7"\n', encoding="utf-8"
-    )
+    (source_root / "pyproject.toml").write_text('[project]\nversion = "9.8.7"\n', encoding="utf-8")
     license_file = source_root / "LICENSE"
     license_file.write_text("test license", encoding="utf-8")
     app_dir = tmp_path / "frozen-app"
@@ -102,7 +116,8 @@ def test_portable_archive_filename_and_matching_root(tmp_path, monkeypatch):
     monkeypatch.setattr(build_portable, "ROOT", source_root)
     monkeypatch.setattr(build_portable.sys, "platform", "win32")
     monkeypatch.setattr(
-        build_portable, "package_inputs",
+        build_portable,
+        "package_inputs",
         lambda: [(license_file, Path("라이선스/LICENSE.txt"))],
     )
     monkeypatch.setattr(build_portable, "collect_notices", lambda destination: {})
@@ -132,12 +147,28 @@ def _runtime_notice_fixture(tmp_path, monkeypatch):
     for name in ("python.exe", "python312.dll", "DLLs/libffi-8.dll"):
         (source / "install" / name).write_bytes(b"verified-runtime")
         (base / name).write_bytes(b"verified-runtime")
-    (source / "PYTHON.json").write_text(json.dumps({
-        "python_version": build_portable.platform.python_version(),
-        "target_triple": "x86_64-pc-windows-msvc",
-    }), encoding="utf-8")
-    for name in ("cpython", "expat", "libffi", "liblzma", "openssl-3", "zlib", "bzip2", "mpdecimal"):
-        (source / "licenses" / f"LICENSE.{name}.txt").write_text("upstream notice", encoding="utf-8")
+    (source / "PYTHON.json").write_text(
+        json.dumps(
+            {
+                "python_version": build_portable.platform.python_version(),
+                "target_triple": "x86_64-pc-windows-msvc",
+            }
+        ),
+        encoding="utf-8",
+    )
+    for name in (
+        "cpython",
+        "expat",
+        "libffi",
+        "liblzma",
+        "openssl-3",
+        "zlib",
+        "bzip2",
+        "mpdecimal",
+    ):
+        (source / "licenses" / f"LICENSE.{name}.txt").write_text(
+            "upstream notice", encoding="utf-8"
+        )
     monkeypatch.setattr(build_portable.sys, "base_prefix", str(base))
     return source, base
 
@@ -170,6 +201,8 @@ def test_runtime_notices_reject_missing_license(tmp_path, monkeypatch):
 
 def test_runtime_notices_reject_wrong_platform(tmp_path, monkeypatch):
     source, base = _runtime_notice_fixture(tmp_path, monkeypatch)
-    (source / "PYTHON.json").write_text(json.dumps({"python_version": "0.0", "target_triple": "wrong"}))
+    (source / "PYTHON.json").write_text(
+        json.dumps({"python_version": "0.0", "target_triple": "wrong"})
+    )
     with pytest.raises(RuntimeError, match="platform/version mismatch"):
         build_portable.collect_runtime_notices(tmp_path / "notices", source)

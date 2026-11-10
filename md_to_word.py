@@ -418,13 +418,23 @@ Examples:
         "--profile", choices=list(PROFILES), help="Document type (overrides frontmatter)"
     )
     parser.add_argument("--theme", help="default, mono, or a YAML theme file")
-    parser.add_argument("--preset", choices=list(PRESETS), help="Named section bundle (overrides frontmatter)")
+    parser.add_argument(
+        "--preset", choices=list(PRESETS), help="Named section bundle (overrides frontmatter)"
+    )
     parser.add_argument("--list-presets", action="store_true", help="List section presets")
     chart_group = parser.add_mutually_exclusive_group()
-    chart_group.add_argument("--charts", action="store_true", default=None,
-                             help="Render chart fences as images (default: code panels)")
-    chart_group.add_argument("--no-charts", action="store_false", dest="charts",
-                             help="Render chart fences as code panels, overriding frontmatter")
+    chart_group.add_argument(
+        "--charts",
+        action="store_true",
+        default=None,
+        help="Render chart fences as images (default: code panels)",
+    )
+    chart_group.add_argument(
+        "--no-charts",
+        action="store_false",
+        dest="charts",
+        help="Render chart fences as code panels, overriding frontmatter",
+    )
     parser.add_argument("--list-profiles", action="store_true", help="List document profiles")
     parser.add_argument(
         "--house",

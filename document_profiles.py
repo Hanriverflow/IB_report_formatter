@@ -113,12 +113,20 @@ class RenderOptions:
     term_tags: Optional[bool] = None
 
 
-PRESETS: Mapping[str, RenderOptions] = MappingProxyType({
-    "ib-report": RenderOptions(),
-    "termsheet": RenderOptions(include_cover=False, include_toc=False, include_disclaimer=False),
-    "legal-memo": RenderOptions(include_cover=False, include_toc=True, include_disclaimer=False),
-    "lecture-note": RenderOptions(include_cover=True, include_toc=True, include_disclaimer=False),
-})
+PRESETS: Mapping[str, RenderOptions] = MappingProxyType(
+    {
+        "ib-report": RenderOptions(),
+        "termsheet": RenderOptions(
+            include_cover=False, include_toc=False, include_disclaimer=False
+        ),
+        "legal-memo": RenderOptions(
+            include_cover=False, include_toc=True, include_disclaimer=False
+        ),
+        "lecture-note": RenderOptions(
+            include_cover=True, include_toc=True, include_disclaimer=False
+        ),
+    }
+)
 
 
 def get_preset(name: Optional[str]) -> RenderOptions:
@@ -160,7 +168,15 @@ def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> Resol
     layout = metadata.extra.get("layout", {})
     if not isinstance(layout, dict):
         raise ValueError("layout must be a YAML mapping")
-    allowed = {"cover", "toc", "disclaimer", "confidential", "separator_mode", "strict", "term_tags"}
+    allowed = {
+        "cover",
+        "toc",
+        "disclaimer",
+        "confidential",
+        "separator_mode",
+        "strict",
+        "term_tags",
+    }
     unknown = set(layout) - allowed
     if unknown:
         raise ValueError("Unknown layout settings: {}".format(", ".join(sorted(unknown))))
@@ -194,7 +210,9 @@ def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> Resol
     house = options.house if options.house is not None else metadata.extra.get("house")
     if house is not None and (not isinstance(house, str) or not house.strip()):
         raise ValueError("house must be a YAML file path")
-    term_tags = options.term_tags if options.term_tags is not None else layout.get("term_tags", True)
+    term_tags = (
+        options.term_tags if options.term_tags is not None else layout.get("term_tags", True)
+    )
     if not isinstance(term_tags, bool):
         raise ValueError("layout.term_tags must be true or false")
     return ResolvedOptions(
@@ -304,11 +322,16 @@ def load_style(profile: DocumentProfile, theme: Optional[str] = None) -> IBStyle
         "primary_color",
         "margin_mm",
     }
-    attributes = {field.name for field in fields(IBStyle)
-                  if not field.name.startswith("STYLE_") and field.name != "NATIVE_NUMBERING"}
+    attributes = {
+        field.name
+        for field in fields(IBStyle)
+        if not field.name.startswith("STYLE_") and field.name != "NATIVE_NUMBERING"
+    }
     if set(data) - (aliases | attributes):
         raise ValueError(
-            "Unknown theme settings: {}".format(", ".join(sorted(map(str, set(data) - (aliases | attributes)))))
+            "Unknown theme settings: {}".format(
+                ", ".join(sorted(map(str, set(data) - (aliases | attributes))))
+            )
         )
     values: Dict[str, Any] = {}
     for key, attribute in [
@@ -351,8 +374,11 @@ def load_style(profile: DocumentProfile, theme: Optional[str] = None) -> IBStyle
         raise ValueError("Conflicting theme aliases: " + ", ".join(sorted(conflicts)))
     values.update(explicit)
     # Keep RGB/OOXML representations aligned unless both are explicitly supplied.
-    for rgb, hex_key in (("NAVY", "NAVY_HEX"), ("LIGHT_GRAY", "LIGHT_GRAY_HEX"),
-                         ("ACCENT_BLUE", "ACCENT_BLUE_HEX")):
+    for rgb, hex_key in (
+        ("NAVY", "NAVY_HEX"),
+        ("LIGHT_GRAY", "LIGHT_GRAY_HEX"),
+        ("ACCENT_BLUE", "ACCENT_BLUE_HEX"),
+    ):
         if rgb in values and hex_key not in values:
             values[hex_key] = str(values[rgb])
         elif hex_key in values and rgb not in values:
@@ -528,7 +554,9 @@ def apply_table_specs(model: DocumentModel) -> None:
         if "header_rows" in spec:
             count = spec["header_rows"]
             if type(count) is not int or not 1 <= count < len(table.rows):
-                raise ValueError("Table header_rows must be an integer from 1 to the row count minus 1")
+                raise ValueError(
+                    "Table header_rows must be an integer from 1 to the row count minus 1"
+                )
             table.header_rows = count
             for row_index, row in enumerate(table.rows):
                 row.is_header = row_index < count
@@ -543,7 +571,9 @@ def apply_table_specs(model: DocumentModel) -> None:
         if "label_columns" in spec:
             count = spec["label_columns"]
             if type(count) is not int or not 0 <= count < table.col_count:
-                raise ValueError("Table label_columns must be an integer from 0 to column count minus 1")
+                raise ValueError(
+                    "Table label_columns must be an integer from 0 to column count minus 1"
+                )
             table.label_columns = count
         if "type" in spec:
             if spec["type"] not in kinds:
@@ -569,17 +599,21 @@ def apply_table_specs(model: DocumentModel) -> None:
                 cell.is_base_case = False
                 cell.risk_level = None
         if table.table_type == TableType.RISK_MATRIX:
-            column_labels = header_labels([
+            column_labels = header_labels(
                 [
-                    cell.content if (shown := term_cell_text(cell)) is None else shown
-                    for cell in header_row.cells
+                    [
+                        cell.content if (shown := term_cell_text(cell)) is None else shown
+                        for cell in header_row.cells
+                    ]
+                    for header_row in table.rows[: table.header_rows]
                 ]
-                for header_row in table.rows[:table.header_rows]
-            ])
-            for body_row in table.rows[table.header_rows:]:
+            )
+            for body_row in table.rows[table.header_rows :]:
                 for column_index, cell in enumerate(body_row.cells):
                     header = (
-                        column_labels[column_index].lower() if column_index < len(column_labels) else ""
+                        column_labels[column_index].lower()
+                        if column_index < len(column_labels)
+                        else ""
                     )
                     if any(
                         key in header
@@ -610,7 +644,15 @@ def apply_table_specs(model: DocumentModel) -> None:
             table.rows[table.header_rows - 1 + row].cells[column - 1].is_base_case = True
 
 
-_SCHEDULE_KEYS = {"repayment", "balance", "months", "principal", "total", "average_life", "tolerance"}
+_SCHEDULE_KEYS = {
+    "repayment",
+    "balance",
+    "months",
+    "principal",
+    "total",
+    "average_life",
+    "tolerance",
+}
 
 
 def _schedule_spec(raw: Any, col_count: int) -> Dict[str, Any]:
@@ -651,7 +693,9 @@ def _schedule_spec(raw: Any, col_count: int) -> Dict[str, Any]:
         raise ValueError("Table schedule total must be true (a last totals row) or false")
     for key in ("principal", "average_life", "tolerance"):
         value = raw.get(key)
-        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float, str))):
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, (int, float, str))
+        ):
             raise ValueError(f"Table schedule {key} must be a number or text")
     if "average_life" in raw and columns["months"] is None:
         raise ValueError("Table schedule average_life needs the months column")
@@ -692,7 +736,9 @@ def _resolved_schedule(table: Table, terms: Mapping[str, Any]) -> ScheduleSpec:
     raw = table.schedule or {}
     principal = principal_step = None
     if raw.get("principal") is not None:
-        principal, principal_step = _table_amount(_stated(raw["principal"], terms), table, "principal")
+        principal, principal_step = _table_amount(
+            _stated(raw["principal"], terms), table, "principal"
+        )
     average_life = None
     if raw.get("average_life") is not None:
         stated_life = _stated(raw["average_life"], terms)
@@ -705,9 +751,14 @@ def _resolved_schedule(table: Table, terms: Mapping[str, Any]) -> ScheduleSpec:
     if raw.get("tolerance") is not None:
         tolerance = abs(_table_amount(_stated(raw["tolerance"], terms), table, "tolerance")[0])
     return ScheduleSpec(
-        repayment=raw["repayment"], balance=raw["balance"], months=raw.get("months"),
-        principal=principal, principal_step=principal_step, total=raw["total"],
-        average_life=average_life, tolerance=tolerance,
+        repayment=raw["repayment"],
+        balance=raw["balance"],
+        months=raw.get("months"),
+        principal=principal,
+        principal_step=principal_step,
+        total=raw["total"],
+        average_life=average_life,
+        tolerance=tolerance,
     )
 
 
@@ -736,7 +787,7 @@ def check_schedules(model: DocumentModel) -> None:
             continue
         rows = [
             ["".join(run.text for run in cell.runs) for cell in row.cells]
-            for row in table.rows[table.header_rows:]
+            for row in table.rows[table.header_rows :]
         ]
         model.warnings.extend(
             f"Table {index} schedule: {problem}" for problem in check_schedule(rows, spec)

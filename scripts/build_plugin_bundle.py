@@ -22,20 +22,39 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 PUBLIC_FILES = (
     "docs/start-here.md",
-    "plugin.json", ".codex-plugin/plugin.json", ".claude-plugin/plugin.json",
-    ".agents/plugins/marketplace.json", ".claude-plugin/marketplace.json",
-    "skills/ib-document/SKILL.md", "skills/ib-document/references/term-sheet.md",
-    "skills/setup/SKILL.md", "docs/plugin-guide.md", "docs/codex-start.html",
-    "pyproject.toml", "uv.lock", ".python-version", "LICENSE", "README.md", "README.ko.md",
-    "scripts/agent_render.py", "scripts/plugin_runtime.py", "scripts/build_plugin_bundle.py",
+    "plugin.json",
+    ".codex-plugin/plugin.json",
+    ".claude-plugin/plugin.json",
+    ".agents/plugins/marketplace.json",
+    ".claude-plugin/marketplace.json",
+    "skills/ib-document/SKILL.md",
+    "skills/ib-document/references/term-sheet.md",
+    "skills/setup/SKILL.md",
+    "docs/plugin-guide.md",
+    "docs/codex-start.html",
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
+    "LICENSE",
+    "README.md",
+    "README.ko.md",
+    "scripts/agent_render.py",
+    "scripts/plugin_runtime.py",
+    "scripts/build_plugin_bundle.py",
     "scripts/word_visual_qa.ps1",
-    "samples/profiles/business-report.md", "samples/profiles/company-theme.yaml",
-    "samples/profiles/ib-memo.md", "samples/profiles/ib-report.md",
-    "samples/profiles/meeting-minutes.md", "samples/profiles/office-letter.md",
-    "samples/profiles/plain.md", "samples/profiles/term-sheet-house.yaml",
+    "samples/profiles/business-report.md",
+    "samples/profiles/company-theme.yaml",
+    "samples/profiles/ib-memo.md",
+    "samples/profiles/ib-report.md",
+    "samples/profiles/meeting-minutes.md",
+    "samples/profiles/office-letter.md",
+    "samples/profiles/plain.md",
+    "samples/profiles/term-sheet-house.yaml",
     "samples/profiles/term-sheet.md",
-    "samples/harness/brief.md", "samples/harness/request.txt",
-    "samples/harness/house.yaml", "samples/harness/expected-terms.json",
+    "samples/harness/brief.md",
+    "samples/harness/request.txt",
+    "samples/harness/house.yaml",
+    "samples/harness/expected-terms.json",
 )
 MANIFESTS = ("plugin.json", ".codex-plugin/plugin.json", ".claude-plugin/plugin.json")
 
@@ -52,8 +71,9 @@ def public_sources(source_root: Path) -> tuple[str, str, list[str]]:
     root = source_root.resolve()
     config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     modules = config["tool"]["hatch"]["build"]["targets"]["wheel"]["only-include"]
-    if not modules or any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\.py", name)
-                          for name in modules):
+    if not modules or any(
+        not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\.py", name) for name in modules
+    ):
         raise ValueError("Wheel allowlist must contain only top-level Python modules")
     paths = sorted(set(PUBLIC_FILES).union(modules))
     for relative in paths:
@@ -77,8 +97,12 @@ def public_sources(source_root: Path) -> tuple[str, str, list[str]]:
 def _provenance(root: Path, paths: list[str]) -> dict:
     def git(*args: str) -> str:
         return subprocess.run(
-            ["git", "-c", "core.quotepath=false", *args], cwd=root, check=True,
-            capture_output=True, text=True, encoding="utf-8",
+            ["git", "-c", "core.quotepath=false", *args],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
         ).stdout.strip()
 
     try:
@@ -86,7 +110,9 @@ def _provenance(root: Path, paths: list[str]) -> dict:
             "base_commit": git("rev-parse", "HEAD"),
             "dirty": bool(git("status", "--porcelain", "--untracked-files=normal")),
             "modified_files": git("diff", "--name-only", "HEAD", "--", *paths).splitlines(),
-            "new_files": git("ls-files", "--others", "--exclude-standard", "--", *paths).splitlines(),
+            "new_files": git(
+                "ls-files", "--others", "--exclude-standard", "--", *paths
+            ).splitlines(),
         }
     except (OSError, subprocess.CalledProcessError):
         return {"base_commit": None, "dirty": None, "modified_files": None, "new_files": None}
@@ -106,8 +132,10 @@ def build_bundle(source_root: Path, output_dir: Path) -> Path:
     version, engine_version, paths = public_sources(root)
     payloads = {name: (root / name).read_bytes() for name in paths}
     manifest = {
-        "format_version": 1, "distribution": "document-plugin",
-        "plugin_version": version, "engine_version": engine_version,
+        "format_version": 1,
+        "distribution": "document-plugin",
+        "plugin_version": version,
+        "engine_version": engine_version,
         "created_at_utc": datetime.now(UTC).isoformat(),
         "source": _provenance(root, paths),
         "provenance_note": (
@@ -127,7 +155,9 @@ def build_bundle(source_root: Path, output_dir: Path) -> Path:
     with zipfile.ZipFile(archive, "x", compression=zipfile.ZIP_DEFLATED) as bundle:
         for name, data in sorted(payloads.items()):
             bundle.writestr(name, data)
-        bundle.writestr("bundle-manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
+        bundle.writestr(
+            "bundle-manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
+        )
     data = archive.read_bytes()
     plugin = archive.with_suffix(".plugin")
     with plugin.open("xb") as stream:

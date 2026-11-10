@@ -272,8 +272,20 @@ class FrontmatterParser:
         # Store extra fields
         known_keys = {"title", "subtitle", "company", "ticker", "sector", "analyst", "profile"}
         structured = {
-            "layout", "tables", "sender", "recipients", "cc", "attachments", "attendees", "letter",
-            "charts", "preset", "house", "terms", "confirmation", "checks",
+            "layout",
+            "tables",
+            "sender",
+            "recipients",
+            "cc",
+            "attachments",
+            "attendees",
+            "letter",
+            "charts",
+            "preset",
+            "house",
+            "terms",
+            "confirmation",
+            "checks",
         }
         if metadata.profile == "term-sheet":
             structured.update({"prepared_by", "disclaimer", "confidential_label", "style"})
@@ -411,7 +423,9 @@ def rebase_link_target(target: str, source_dir: Path, output_dir: Path) -> str:
     try:
         return _rebase_link_target(target, source_dir, output_dir.resolve())
     except (OSError, ValueError) as error:  # NUL bytes, invalid UTF-8 escapes, bad hosts
-        logger.warning("Link target kept as written; it is not a usable local path (%s): %s", error, target)
+        logger.warning(
+            "Link target kept as written; it is not a usable local path (%s): %s", error, target
+        )
         return target
 
 
@@ -431,7 +445,8 @@ def _rebase_link_target(target: str, source_dir: Path, output_dir: Path) -> str:
         except ValueError:
             logger.warning(
                 "Link points to a local path outside the output folder; recipients "
-                "may not be able to open it: %s", location,
+                "may not be able to open it: %s",
+                location,
             )
             return target
         query = "?" + parts.query if parts.query else ""
@@ -585,7 +600,8 @@ class TextParser:
         while prefix in text:
             prefix += "X"
         destinations = [
-            match.span(2) for match in cls._INLINE_REFERENCE_RE.finditer(text)
+            match.span(2)
+            for match in cls._INLINE_REFERENCE_RE.finditer(text)
             if match.group(2) and not cls._escaped(text, match.start())
         ]
         pieces: List[str] = []
@@ -597,7 +613,7 @@ class TextParser:
                 continue
             token = f"{prefix}{len(images)}"
             images[token] = (match.group(0), match.group(1), match.group(2) or match.group(3))
-            pieces.extend((text[last:match.start()], token))
+            pieces.extend((text[last : match.start()], token))
             last = match.end()
         pieces.append(text[last:])
         return "".join(pieces), images
@@ -612,7 +628,10 @@ class TextParser:
 
     @classmethod
     def _split_image_runs(
-        cls, runs: List[TextRun], images: Dict[str, Tuple[str, str, str]], code_spans: Dict[str, str],
+        cls,
+        runs: List[TextRun],
+        images: Dict[str, Tuple[str, str, str]],
+        code_spans: Dict[str, str],
     ) -> List[TextRun]:
         """Turn image tokens into image runs that keep the surrounding formatting.
 
@@ -645,7 +664,7 @@ class TextParser:
             offset = 0
             for match in tokens.finditer(run.text):
                 if match.start() > offset:
-                    result.append(replace(run, text=run.text[offset:match.start()]))
+                    result.append(replace(run, text=run.text[offset : match.start()]))
                 _, alt, destination = images[match.group(0)]
                 image = Image(alt_text=cls.cleanup_text(restore(alt)), path=restore(destination))
                 result.append(replace(run, text="", image=image))
@@ -718,7 +737,7 @@ class TextParser:
             offset = 0
             for match in tokens.finditer(run.text):
                 if match.start() > offset:
-                    result.append(replace(run, text=run.text[offset:match.start()]))
+                    result.append(replace(run, text=run.text[offset : match.start()]))
                 content = cls._code_span_content(literals[match.group(0)])
                 result.append(replace(run, text=content, code=True))
                 offset = match.end()
@@ -730,7 +749,7 @@ class TextParser:
     def _code_span_content(literal: str) -> str:
         """Return a code span's text without its backtick fence (CommonMark rules)."""
         fence = len(literal) - len(literal.lstrip("`"))
-        content = literal[fence:len(literal) - fence].replace("\n", " ")
+        content = literal[fence : len(literal) - fence].replace("\n", " ")
         if len(content) >= 2 and content[0] == " " and content[-1] == " " and content.strip():
             content = content[1:-1]
         return content
@@ -805,6 +824,7 @@ class TextParser:
         r"!\[((?:\\.|[^\]\\\n])*)\]\(\s*(?:<([^<>\n]+)>|((?:[^\s()<>]|\([^\s()<>]*\))+))"
         r"(?:\s+(?:\"[^\"\n]*\"|'[^'\n]*'))?\s*\)"
     )
+
     @classmethod
     def link_target(cls, destination: str) -> str:
         """Return a Word relationship target for a Markdown link destination.
@@ -821,7 +841,9 @@ class TextParser:
         Returns:
             The hyperlink target.
         """
-        target = destination[1:-1] if destination[:1] == "<" and destination[-1:] == ">" else destination
+        target = (
+            destination[1:-1] if destination[:1] == "<" and destination[-1:] == ">" else destination
+        )
         if _DRIVE_PATH_RE.match(target) or target[:1] in ("/", "\\"):
             return file_uri(target)
         if _URI_SCHEME_RE.match(target):
@@ -837,7 +859,9 @@ class TextParser:
         for match in cls._INLINE_REFERENCE_RE.finditer(text):
             runs.extend(cls._parse_plain_formatting(text[offset : match.start()]))
             if match.group(3):
-                runs.append(TextRun(text=match.group(3), superscript=True, footnote_id=int(match.group(3))))
+                runs.append(
+                    TextRun(text=match.group(3), superscript=True, footnote_id=int(match.group(3)))
+                )
             else:
                 labels = cls._parse_plain_formatting(match.group(1))
                 for run in labels:
@@ -949,7 +973,7 @@ class TextParser:
         pieces: List[str] = []
         offset = 0
         for match in cls._CODE_SPAN_RE.finditer(text):
-            part = cls._HTML_BREAK_RE.sub("\n", text[offset:match.start()])
+            part = cls._HTML_BREAK_RE.sub("\n", text[offset : match.start()])
             pieces.append(cls._ESCAPED_HTML_BREAK_RE.sub(r"\1", part))
             pieces.append(match.group(0))
             offset = match.end()
@@ -974,7 +998,11 @@ class TextParser:
 
     @classmethod
     def tokenize_terms(
-        cls, text: str, resolver: TermResolver, tokens: TokenMap, latex: bool = True,
+        cls,
+        text: str,
+        resolver: TermResolver,
+        tokens: TokenMap,
+        latex: bool = True,
     ) -> str:
         """Replace substitutable `{{key}}` references with private-use tokens.
 
@@ -1008,12 +1036,20 @@ class TextParser:
         for match in cls._COLOR_SPAN_RE.finditer(protected):
             if cls._extract_color_from_style(match.group(2)) is None:
                 continue
-            pieces.append(cls._tokenize_segment(
-                protected[last:match.start()], code_spans, resolver, tokens, latex,
-            ))
-            pieces.append(protected[match.start():match.start(3)])
-            pieces.append(cls._tokenize_segment(match.group(3), code_spans, resolver, tokens, latex))
-            pieces.append(protected[match.end(3):match.end()])
+            pieces.append(
+                cls._tokenize_segment(
+                    protected[last : match.start()],
+                    code_spans,
+                    resolver,
+                    tokens,
+                    latex,
+                )
+            )
+            pieces.append(protected[match.start() : match.start(3)])
+            pieces.append(
+                cls._tokenize_segment(match.group(3), code_spans, resolver, tokens, latex)
+            )
+            pieces.append(protected[match.end(3) : match.end()])
             last = match.end()
         pieces.append(cls._tokenize_segment(protected[last:], code_spans, resolver, tokens, latex))
         result = "".join(pieces)
@@ -1054,15 +1090,21 @@ class TextParser:
 
     @classmethod
     def _tokenize_segment(
-        cls, text: str, code_spans: Dict[str, str], resolver: TermResolver,
-        tokens: TokenMap, latex: bool,
+        cls,
+        text: str,
+        code_spans: Dict[str, str],
+        resolver: TermResolver,
+        tokens: TokenMap,
+        latex: bool,
     ) -> str:
         """Tokenize one colour segment, keeping inline math verbatim."""
         pieces: List[str] = []
         last = 0
         if latex:
             for match in cls._INLINE_LATEX_RE.finditer(text):
-                pieces.append(cls._tokenize_inline(text[last:match.start()], code_spans, resolver, tokens))
+                pieces.append(
+                    cls._tokenize_inline(text[last : match.start()], code_spans, resolver, tokens)
+                )
                 pieces.append(match.group(0))
                 last = match.end()
         pieces.append(cls._tokenize_inline(text[last:], code_spans, resolver, tokens))
@@ -1070,23 +1112,37 @@ class TextParser:
 
     @classmethod
     def _tokenize_inline(
-        cls, text: str, code_spans: Dict[str, str], resolver: TermResolver, tokens: TokenMap,
+        cls,
+        text: str,
+        code_spans: Dict[str, str],
+        resolver: TermResolver,
+        tokens: TokenMap,
     ) -> str:
         """Tokenize text and link labels, keeping escapes and destinations verbatim."""
         protected, escapes = cls._protect_escapes(text)
         pieces: List[str] = []
         offset = 0
         for match in cls._INLINE_REFERENCE_RE.finditer(protected):
-            pieces.append(cls._tokenize_references(
-                protected[offset:match.start()], code_spans, escapes, resolver, tokens,
-            ))
+            pieces.append(
+                cls._tokenize_references(
+                    protected[offset : match.start()],
+                    code_spans,
+                    escapes,
+                    resolver,
+                    tokens,
+                )
+            )
             if match.group(3):
                 pieces.append(match.group(0))
             else:
-                label = cls._tokenize_references(match.group(1), code_spans, escapes, resolver, tokens)
+                label = cls._tokenize_references(
+                    match.group(1), code_spans, escapes, resolver, tokens
+                )
                 pieces.append(f"[{label}]({match.group(2)})")
             offset = match.end()
-        pieces.append(cls._tokenize_references(protected[offset:], code_spans, escapes, resolver, tokens))
+        pieces.append(
+            cls._tokenize_references(protected[offset:], code_spans, escapes, resolver, tokens)
+        )
         result = "".join(pieces)
         for token, literal in escapes.items():
             result = result.replace(token, "\\" + literal)
@@ -1094,8 +1150,11 @@ class TextParser:
 
     @staticmethod
     def _tokenize_references(
-        text: str, code_spans: Dict[str, str], escapes: Dict[str, str],
-        resolver: TermResolver, tokens: TokenMap,
+        text: str,
+        code_spans: Dict[str, str],
+        escapes: Dict[str, str],
+        resolver: TermResolver,
+        tokens: TokenMap,
     ) -> str:
         """Replace references in literal-free text; escapes inside a key are resolved."""
 
@@ -1194,10 +1253,14 @@ class FenceScanner:
         end = start + 1
         while end < len(lines):
             close = cls.CLOSE_RE.match(lines[end])
-            if close and close.group(1)[0] == delimiter[0] and len(close.group(1)) >= len(delimiter):
-                return language, lines[start + 1:end], end + 1
+            if (
+                close
+                and close.group(1)[0] == delimiter[0]
+                and len(close.group(1)) >= len(delimiter)
+            ):
+                return language, lines[start + 1 : end], end + 1
             end += 1
-        return language, lines[start + 1:end], end
+        return language, lines[start + 1 : end], end
 
     @classmethod
     def protected_indices(cls, lines: List[str]) -> Set[int]:
@@ -1358,7 +1421,9 @@ class TableParser:
 
     @staticmethod
     def parse(
-        lines: List[str], financial_rules: bool = True, terms: Optional[TermResolver] = None,
+        lines: List[str],
+        financial_rules: bool = True,
+        terms: Optional[TermResolver] = None,
     ) -> Table:
         """
         Parse markdown table lines into a Table object.
@@ -1414,14 +1479,19 @@ class TableParser:
 
         # Header semantics follow the values the reader sees across every header
         # row, merged labels included; cells keep raw content.
-        header_cells = header_labels([
+        header_cells = header_labels(
             [
-                "".join(run.text for run in source.runs) if isinstance(source, TableCell)
-                else source if terms is None else _substitute_text(source, terms)
-                for source in header_row
+                [
+                    "".join(run.text for run in source.runs)
+                    if isinstance(source, TableCell)
+                    else source
+                    if terms is None
+                    else _substitute_text(source, terms)
+                    for source in header_row
+                ]
+                for header_row in rows[: table.header_rows]
             ]
-            for header_row in rows[:table.header_rows]
-        ])
+        )
 
         # Detect table type
         header_text = " ".join(header_cells).lower()
@@ -1455,7 +1525,11 @@ class TableParser:
                 if isinstance(cell_source, TableCell):
                     cell = replace(cell_source, is_header=is_header)
                     TableParser._detect_flags(
-                        cell, "".join(run.text for run in cell.runs), j, table.table_type, header_cells,
+                        cell,
+                        "".join(run.text for run in cell.runs),
+                        j,
+                        table.table_type,
+                        header_cells,
                     )
                 else:
                     cell = TableParser._parse_cell(
@@ -1574,7 +1648,11 @@ class TableParser:
 
     @staticmethod
     def _detect_flags(
-        cell: TableCell, detected_text: str, col_idx: int, table_type: TableType, header_cells: List[str],
+        cell: TableCell,
+        detected_text: str,
+        col_idx: int,
+        table_type: TableType,
+        header_cells: List[str],
     ) -> None:
         """Set a cell's numeric, negative and risk flags from its text.
 
@@ -1604,7 +1682,9 @@ class TableParser:
                 text_lower = detected_text.lower()
                 if "high" in text_lower or "높" in detected_text:
                     cell.risk_level = "high"
-                elif any(kw in text_lower for kw in ("medium", "moderate")) or "중" in detected_text:
+                elif (
+                    any(kw in text_lower for kw in ("medium", "moderate")) or "중" in detected_text
+                ):
                     cell.risk_level = "medium"
                 elif "low" in text_lower or "낮" in detected_text:
                     cell.risk_level = "low"
@@ -1723,7 +1803,12 @@ def _html_image(source: str, alt: str) -> Optional[Image]:
         header, _, payload = source.partition(",")
         if not header.lower().endswith(";base64") or not payload.strip():
             return None
-        return Image(alt_text=alt, path="", base64_data=payload.strip(), mime_type=header[5:-7] or "image/png")
+        return Image(
+            alt_text=alt,
+            path="",
+            base64_data=payload.strip(),
+            mime_type=header[5:-7] or "image/png",
+        )
     if not source or any(character in source for character in "<>\n"):
         return None
     return Image(alt_text=alt, path=source)
@@ -1738,12 +1823,34 @@ class _HtmlTableReader(HTMLParser):
     """
 
     _STYLE_TAGS = {
-        "b": "bold", "strong": "bold", "i": "italic", "em": "italic",
-        "code": "code", "tt": "code", "kbd": "code", "sup": "superscript", "sub": "subscript",
+        "b": "bold",
+        "strong": "bold",
+        "i": "italic",
+        "em": "italic",
+        "code": "code",
+        "tt": "code",
+        "kbd": "code",
+        "sup": "superscript",
+        "sub": "subscript",
     }
-    _BLOCK_TAGS = frozenset({
-        "p", "div", "li", "ul", "ol", "tr", "blockquote", "pre", "h1", "h2", "h3", "h4", "h5", "h6",
-    })
+    _BLOCK_TAGS = frozenset(
+        {
+            "p",
+            "div",
+            "li",
+            "ul",
+            "ol",
+            "tr",
+            "blockquote",
+            "pre",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+        }
+    )
     _MAX_SPAN = 63  # Word's column limit bounds any sensible span
 
     def __init__(self, terms: Optional[TermResolver] = None) -> None:
@@ -1819,7 +1926,9 @@ class _HtmlTableReader(HTMLParser):
         if self._depth == 1 and tag in ("td", "th"):
             if not self.rows:
                 self.rows.append([])
-            self._cell = _HtmlCell(self._span(attributes.get("colspan")), self._span(attributes.get("rowspan")))
+            self._cell = _HtmlCell(
+                self._span(attributes.get("colspan")), self._span(attributes.get("rowspan"))
+            )
             self._styles, self._links, self._colors = {}, [], []
             self._line_break = self._separator = False
             self.rows[-1].append(self._cell)
@@ -1880,7 +1989,9 @@ class _HtmlTableReader(HTMLParser):
                 self.stray.append(data.strip())
             return
         text = re.sub(r"[ \t\r\n\f]+", " ", data)
-        if not text.strip() and (self._line_break or self._separator or not self._line_has_content()):
+        if not text.strip() and (
+            self._line_break or self._separator or not self._line_has_content()
+        ):
             return  # layout whitespace between blocks
         self._add(self._formatted(text))
 
@@ -1903,7 +2014,9 @@ class _HtmlTableReader(HTMLParser):
         for run in runs:
             previous = merged[-1] if merged else None
             if (
-                previous is not None and previous.image is None and run.image is None
+                previous is not None
+                and previous.image is None
+                and run.image is None
                 and "\n" not in (previous.text, run.text)
                 and replace(previous, text="") == replace(run, text="")
             ):
@@ -1929,8 +2042,10 @@ class _HtmlTableReader(HTMLParser):
             text = run.text
             if not fixed(run):
                 previous = cleaned[-1] if cleaned else None
-                if previous is None or previous.text == "\n" or (
-                    previous.image is None and previous.text.endswith(" ")
+                if (
+                    previous is None
+                    or previous.text == "\n"
+                    or (previous.image is None and previous.text.endswith(" "))
                 ):
                     text = text.lstrip(" ")
             if text or run.image is not None or run.term_key is not None:
@@ -1939,7 +2054,9 @@ class _HtmlTableReader(HTMLParser):
             following = cleaned[index + 1] if index + 1 < len(cleaned) else None
             if (following is None or following.text == "\n") and not fixed(run):
                 cleaned[index] = replace(run, text=run.text.rstrip(" "))
-        cleaned = [run for run in cleaned if run.text or run.image is not None or run.term_key is not None]
+        cleaned = [
+            run for run in cleaned if run.text or run.image is not None or run.term_key is not None
+        ]
         while cleaned and cleaned[0].text == "\n":
             cleaned.pop(0)
         while cleaned and cleaned[-1].text == "\n":
@@ -1980,7 +2097,9 @@ class HtmlTableParser:
         """
         depth = 0
         for index in range(start, len(lines)):
-            depth += len(cls._OPEN_RE.findall(lines[index])) - len(cls._CLOSE_RE.findall(lines[index]))
+            depth += len(cls._OPEN_RE.findall(lines[index])) - len(
+                cls._CLOSE_RE.findall(lines[index])
+            )
             if depth <= 0:
                 return index + 1
         return None
@@ -1993,7 +2112,9 @@ class HtmlTableParser:
 
     @classmethod
     def parse(
-        cls, html: str, terms: Optional[TermResolver] = None,
+        cls,
+        html: str,
+        terms: Optional[TermResolver] = None,
     ) -> Tuple[List[List[Union[str, TableCell]]], int, List[str]]:
         """Convert a complete table block into rows of cells.
 
@@ -2009,7 +2130,9 @@ class HtmlTableParser:
         reader = _HtmlTableReader(terms)
         reader.feed(html)
         reader.close()
-        warnings = [f"Text outside the HTML table cells was dropped: {text}" for text in reader.stray]
+        warnings = [
+            f"Text outside the HTML table cells was dropped: {text}" for text in reader.stray
+        ]
         if reader.extra_tables:
             warnings.append(
                 f"{reader.extra_tables} further HTML table(s) on the closing line were dropped; "
@@ -2035,7 +2158,11 @@ class HtmlTableParser:
         if not anchors:
             return [], 0, warnings
         col_count = max(covered for _, covered in anchors) + 1
-        kept = [row for row in range(len(rows)) if any((row, column) in anchors for column in range(col_count))]
+        kept = [
+            row
+            for row in range(len(rows))
+            if any((row, column) in anchors for column in range(col_count))
+        ]
 
         header_end = kept[0] + 1
         grown = True
@@ -2320,7 +2447,8 @@ class MarkdownParser:
     _SETEXT_H1_RE = re.compile(r"^=+\s*$")
     _LINK_DEFINITION_RE = re.compile(
         r"^[ \t]*\[(?!\^)([^\]\n]+)\]:[ \t]*(?:<([^>\n]+)>|(\S+))"
-        r"(?:[ \t]+(?:\"[^\"\n]*\"|'[^'\n]*'))?[ \t]*$", re.MULTILINE
+        r"(?:[ \t]+(?:\"[^\"\n]*\"|'[^'\n]*'))?[ \t]*$",
+        re.MULTILINE,
     )
     _REFERENCE_LINK_RE = re.compile(r"(?<!!)(?<!\\)\[(?!\^)([^\]\n]+)\](?:\[([^\]\n]*)\])?(?!\()")
     _REFERENCE_LABEL_SPACE_RE = re.compile(r"\s+")
@@ -2372,7 +2500,8 @@ class MarkdownParser:
         # An empty mapping enables checking: every reference is then undefined.
         self._terms = (
             TermResolver(validate_terms(metadata.extra["terms"]), corpus=content)
-            if "terms" in metadata.extra else None
+            if "terms" in metadata.extra
+            else None
         )
 
         # Detect whether YAML frontmatter was present
@@ -2391,9 +2520,7 @@ class MarkdownParser:
             lambda match: "CODE" + "\n" * match.group(0).count("\n"),
             "\n".join(prose_lines),
         ).split("\n")
-        footnotes = (
-            FootnoteParser.extract_references(prose_lines) if self._financial_rules else {}
-        )
+        footnotes = FootnoteParser.extract_references(prose_lines) if self._financial_rules else {}
         input_warnings: List[str] = []
         explicit_references: Set[int] = set()
         content_lines: List[str] = []
@@ -2413,7 +2540,8 @@ class MarkdownParser:
                 footnotes[number] = match.group(2)
             else:
                 explicit_references.update(
-                    run.footnote_id for run in TextParser.parse_runs(scan_lines[index])
+                    run.footnote_id
+                    for run in TextParser.parse_runs(scan_lines[index])
                     if run.footnote_id is not None
                 )
                 content_lines.append(raw_line)
@@ -2452,7 +2580,11 @@ class MarkdownParser:
                 ),
                 None,
             )
-            if written_title in {"", "Document", "IB Report"} and first_heading and first_heading.text:
+            if (
+                written_title in {"", "Document", "IB Report"}
+                and first_heading
+                and first_heading.text
+            ):
                 metadata.title = first_heading.text
                 if first_heading.runs:
                     metadata.display_runs["title"] = [replace(run) for run in first_heading.runs]
@@ -2483,7 +2615,10 @@ class MarkdownParser:
     # ── Term substitution ───────────────────────────────────────────────────
 
     def _term_runs(
-        self, text: str, parse: Callable[[str], List[TextRun]], latex: bool = True,
+        self,
+        text: str,
+        parse: Callable[[str], List[TextRun]],
+        latex: bool = True,
     ) -> Tuple[str, List[TextRun], bool]:
         """Parse one field's runs with this document's terms (see `_parse_term_runs`)."""
         return _parse_term_runs(text, parse, self._terms, latex=latex)
@@ -2515,7 +2650,8 @@ class MarkdownParser:
             heading.text = restore_terms(tokenized, tokens)
             # HeadingRenderer drops bold markers because it bolds every run.
             heading.runs = split_term_runs(
-                TextParser.parse_runs(tokenized.replace("**", "").strip()), tokens,
+                TextParser.parse_runs(tokenized.replace("**", "").strip()),
+                tokens,
             )
         return element
 
@@ -2549,10 +2685,13 @@ class MarkdownParser:
                 continue
             for name in ("caption", "unit", "source", "as_of", "note"):
                 tokens: TokenMap = {}
-                tokenized = TextParser.tokenize_terms(getattr(element.content, name), self._terms, tokens)
+                tokenized = TextParser.tokenize_terms(
+                    getattr(element.content, name), self._terms, tokens
+                )
                 if tokens:
                     setattr(
-                        element.content, name,
+                        element.content,
+                        name,
                         restore_terms(tokenized, tokens, TextParser.escape_literal),
                     )
 
@@ -2617,12 +2756,14 @@ class MarkdownParser:
         while index < len(lines):
             block = FenceScanner.scan(lines, index)
             if block:
-                pieces.append(protect("\n".join(lines[index:block[2]])))
+                pieces.append(protect("\n".join(lines[index : block[2]])))
                 index = block[2]
             else:
                 pieces.append(lines[index])
                 index += 1
-        source = TextParser._CODE_SPAN_RE.sub(lambda match: protect(match.group(0)), "\n".join(pieces))
+        source = TextParser._CODE_SPAN_RE.sub(
+            lambda match: protect(match.group(0)), "\n".join(pieces)
+        )
         source = TextParser._ESCAPE_RE.sub(lambda match: protect(match.group(0)), source)
         source = TextParser._INLINE_REFERENCE_RE.sub(lambda match: protect(match.group(0)), source)
         definitions: Dict[str, str] = {}
@@ -2823,13 +2964,20 @@ class MarkdownParser:
                     self._parse_warnings.extend(html_warnings)
                     if cells:
                         table = TableParser.from_cells(
-                            cells, [], financial_rules=self._financial_rules, terms=self._terms,
+                            cells,
+                            [],
+                            financial_rules=self._financial_rules,
+                            terms=self._terms,
                             header_rows=header_rows,
                         )
                         table.spans = True
-                        elements.append(Element(element_type=ElementType.TABLE, content=table, raw_text=source))
+                        elements.append(
+                            Element(element_type=ElementType.TABLE, content=table, raw_text=source)
+                        )
                     else:
-                        self._parse_warnings.append(f"HTML table at line {i + 1} has no cells; it was dropped")
+                        self._parse_warnings.append(
+                            f"HTML table at line {i + 1} has no cells; it was dropped"
+                        )
                     i = end
                     continue
                 self._parse_warnings.append(f"Unclosed HTML table at line {i + 1} was kept as text")
@@ -2841,7 +2989,9 @@ class MarkdownParser:
                     table_lines.append(lines[i].strip())
                     i += 1
                 table = TableParser.parse(
-                    table_lines, financial_rules=self._financial_rules, terms=self._terms,
+                    table_lines,
+                    financial_rules=self._financial_rules,
+                    terms=self._terms,
                 )
                 elements.append(
                     Element(
@@ -2855,11 +3005,15 @@ class MarkdownParser:
             # ── Headings (must be checked before numbered list) ─────────────
             if i + 1 < len(lines) and self._SETEXT_H1_RE.fullmatch(lines[i + 1].strip()):
                 if not self._starts_new_block(line):
-                    elements.append(self._substitute_heading(Element(
-                        element_type=ElementType.HEADING_1,
-                        content=Heading(level=1, text=line),
-                        raw_text=raw_line + "\n" + lines[i + 1],
-                    )))
+                    elements.append(
+                        self._substitute_heading(
+                            Element(
+                                element_type=ElementType.HEADING_1,
+                                content=Heading(level=1, text=line),
+                                raw_text=raw_line + "\n" + lines[i + 1],
+                            )
+                        )
+                    )
                     i += 2
                     continue
             element = self._try_parse_heading(line)
@@ -2880,7 +3034,10 @@ class MarkdownParser:
                         if self._terms is not None:
                             # Callouts render their body without inline math.
                             source = TextParser.tokenize_terms(
-                                source, self._terms, quote_tokens, latex=False,
+                                source,
+                                self._terms,
+                                quote_tokens,
+                                latex=False,
                             )
                         bq_lines.append(TextParser.cleanup_text(source))
                         i += 1
@@ -2965,7 +3122,9 @@ class MarkdownParser:
             elif self._HTML_IMAGE_LINE_RE.match(line):
                 file_image = HtmlTableParser.image(line)
             if file_image is not None:
-                elements.append(Element(element_type=ElementType.IMAGE, content=file_image, raw_text=line))
+                elements.append(
+                    Element(element_type=ElementType.IMAGE, content=file_image, raw_text=line)
+                )
                 i += 1
                 continue
 
@@ -3002,7 +3161,11 @@ class MarkdownParser:
 
             if i > start_idx and self._starts_new_block(line):
                 break
-            if i > start_idx and i + 1 < len(lines) and self._SETEXT_H1_RE.fullmatch(lines[i + 1].strip()):
+            if (
+                i > start_idx
+                and i + 1 < len(lines)
+                and self._SETEXT_H1_RE.fullmatch(lines[i + 1].strip())
+            ):
                 break
 
             normalized, hard_break = self._normalize_paragraph_line(raw_line)
@@ -3329,7 +3492,9 @@ class MarkdownParser:
                                 setattr(metadata, field_name, value)
                         else:
                             if line_index + 1 < len(source_lines):
-                                following, _ = self._normalize_paragraph_line(source_lines[line_index + 1])
+                                following, _ = self._normalize_paragraph_line(
+                                    source_lines[line_index + 1]
+                                )
                                 if not self._BOLD_KV_PATTERN.match(following):
                                     # Unknown labels remain ordinary prose, including soft wraps.
                                     break
@@ -3433,7 +3598,9 @@ def _decode_bytes(raw_bytes: bytes, label: str = "<stream>") -> str:
         pass
     except Exception as exc:
         logger.debug("Encoding detector failed: %s", exc)
-    raise UnicodeDecodeError("multiple", raw_bytes, 0, min(1, len(raw_bytes)), f"Failed to decode {label}")
+    raise UnicodeDecodeError(
+        "multiple", raw_bytes, 0, min(1, len(raw_bytes)), f"Failed to decode {label}"
+    )
 
 
 def parse_markdown_file(
@@ -3494,7 +3661,8 @@ def parse_markdown_file(
         if logo and not logo.lower().startswith("data:") and not Path(logo).is_absolute():
             # A frontmatter logo is relative to the Markdown file, like `house`.
             model.metadata.extra["style"] = {
-                **style, "logo": str((Path(str(source)).resolve().parent / logo).resolve()),
+                **style,
+                "logo": str((Path(str(source)).resolve().parent / logo).resolve()),
             }
 
     if not is_stream(source):
@@ -3503,8 +3671,11 @@ def parse_markdown_file(
             if isinstance(element.content, Image):
                 image = element.content
                 if (
-                    image.path and not image.base64_data
-                    and not re.match(r"^(?:[a-zA-Z][a-zA-Z0-9+.-]*://|data:)", image.path, re.IGNORECASE)
+                    image.path
+                    and not image.base64_data
+                    and not re.match(
+                        r"^(?:[a-zA-Z][a-zA-Z0-9+.-]*://|data:)", image.path, re.IGNORECASE
+                    )
                 ):
                     image_path = Path(image.path)
                     if not image_path.is_absolute():

@@ -67,7 +67,7 @@ def test_expected_terms_mismatch_never_renders(tmp_path, expected):
     assert (output / "result.json").exists()
 
 
-@pytest.mark.parametrize("payload", ['{"amount":300}', '[]', '{"x":"a","x":"b"}'])
+@pytest.mark.parametrize("payload", ['{"amount":300}', "[]", '{"x":"a","x":"b"}'])
 def test_expected_terms_rejects_invalid_maps(tmp_path, payload):
     source = make_source(tmp_path)
     terms = tmp_path / "terms.json"
@@ -80,7 +80,9 @@ def test_expected_terms_rejects_invalid_maps(tmp_path, payload):
 def test_empty_comparison_does_not_claim_terms_verified(tmp_path):
     terms = tmp_path / "terms.json"
     terms.write_text("{}", encoding="utf-8")
-    result = render_document(str(make_source(tmp_path)), str(tmp_path / "out"), expected_terms=str(terms))
+    result = render_document(
+        str(make_source(tmp_path)), str(tmp_path / "out"), expected_terms=str(terms)
+    )
     assert result["ok"]
     assert result["expected_terms"]["status"] == "empty"
     assert result["expected_terms"]["checked"] == 0
@@ -94,7 +96,9 @@ def test_raw_term_spacing_is_compared_exactly(tmp_path):
     assert result["ok"] and result["expected_terms"]["status"] == "matched"
 
 
-@pytest.mark.parametrize("source_text", [SOURCE + "\n{{unknown}}\n", SOURCE + "\n![missing](missing.png)\n"])
+@pytest.mark.parametrize(
+    "source_text", [SOURCE + "\n{{unknown}}\n", SOURCE + "\n![missing](missing.png)\n"]
+)
 def test_strict_failures_leave_no_docx(tmp_path, source_text):
     source = make_source(tmp_path, source_text)
     output = tmp_path / "out"
@@ -122,9 +126,12 @@ def test_existing_directory_and_source_containment_are_safe(tmp_path):
 def test_concurrent_reservation_allows_only_one_job(tmp_path):
     source = make_source(tmp_path)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(
-            lambda _: render_document(str(source), str(tmp_path / "shared")), range(2),
-        ))
+        results = list(
+            pool.map(
+                lambda _: render_document(str(source), str(tmp_path / "shared")),
+                range(2),
+            )
+        )
     assert sum(result["ok"] for result in results) == 1
     assert next(result for result in results if not result["ok"])["stage"] == "setup"
 
@@ -148,9 +155,11 @@ def test_sample_house_resolves_from_original_source_directory(tmp_path):
 def test_relative_image_resolves_from_original_source_directory(tmp_path):
     source_dir = tmp_path / "원본 자료"
     source_dir.mkdir()
-    (source_dir / "그림.png").write_bytes(base64.b64decode(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0xsAAAAASUVORK5CYII="
-    ))
+    (source_dir / "그림.png").write_bytes(
+        base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0xsAAAAASUVORK5CYII="
+        )
+    )
     source = make_source(source_dir, SOURCE + "\n![그림](그림.png)\n")
     result = render_document(str(source), str(tmp_path / "out"))
     assert result["ok"], result
@@ -186,7 +195,9 @@ def test_cli_unicode_and_structured_argument_errors(tmp_path):
     command = [sys.executable, str(ROOT / "scripts/agent_render.py")]
     success = subprocess.run(
         command + [str(source), "--output-dir", str(tmp_path / "out")],
-        cwd=tmp_path, capture_output=True, check=False,
+        cwd=tmp_path,
+        capture_output=True,
+        check=False,
     )
     assert success.returncode == 0, success.stderr.decode("utf-8", errors="replace")
     assert json.loads(success.stdout)["input"]["path"] == str(source.resolve())

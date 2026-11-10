@@ -30,14 +30,18 @@ def _render_document(text):
 
 def _convert(source, output, entry_point):
     if entry_point == "cli":
-        return Path(IBReportConverter(
-            str(source), str(output), RenderOptions(profile="plain", strict=True)
-        ).convert())
+        return Path(
+            IBReportConverter(
+                str(source), str(output), RenderOptions(profile="plain", strict=True)
+            ).convert()
+        )
     registry = converters.get_default_registry()
     model = registry.convert(source, profile="plain")
-    return Path(registry.convert(
-        model, output_format="docx", output_path=output, profile="plain", strict=True
-    ))
+    return Path(
+        registry.convert(
+            model, output_format="docx", output_path=output, profile="plain", strict=True
+        )
+    )
 
 
 @pytest.mark.parametrize("entry_point", ["cli", "registry"])
@@ -163,13 +167,16 @@ def test_locked_fallback_failure_removes_reserved_path(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("separate_output", [False, True])
-@pytest.mark.parametrize("names", [
-    ("가상 보고.md", "가상_보고.md"),
-    pytest.param(
-        ("가상 보고A.md", "가상_보고a.md"),
-        marks=pytest.mark.skipif(os.name != "nt", reason="Windows case-insensitive paths"),
-    ),
-])
+@pytest.mark.parametrize(
+    "names",
+    [
+        ("가상 보고.md", "가상_보고.md"),
+        pytest.param(
+            ("가상 보고A.md", "가상_보고a.md"),
+            marks=pytest.mark.skipif(os.name != "nt", reason="Windows case-insensitive paths"),
+        ),
+    ],
+)
 def test_batch_preflight_rejects_collisions_and_converts_other_inputs(
     tmp_path, caplog, separate_output, names
 ):
@@ -183,10 +190,16 @@ def test_batch_preflight_rejects_collisions_and_converts_other_inputs(
     for index, source in enumerate(sources + [healthy]):
         source.write_text(f"Report {index}", encoding="utf-8")
     planned[0].write_bytes(b"Existing report")
-    args = build_parser().parse_args([
-        str(input_dir), *([str(output_dir)] if separate_output else []),
-        "--batch", "--profile", "plain", "--strict",
-    ])
+    args = build_parser().parse_args(
+        [
+            str(input_dir),
+            *([str(output_dir)] if separate_output else []),
+            "--batch",
+            "--profile",
+            "plain",
+            "--strict",
+        ]
+    )
     caplog.set_level(logging.INFO)
 
     assert run_batch_conversion(input_dir, args) == 1
@@ -196,9 +209,10 @@ def test_batch_preflight_rejects_collisions_and_converts_other_inputs(
     assert "Report 2" in [p.text for p in Document(healthy_output).paragraphs]
     assert set(output_dir.glob("*.docx")) == {planned[0], healthy_output}
     errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
-    assert any("collision" in message.lower() and all(
-        str(source) in message for source in sources
-    ) for message in errors)
+    assert any(
+        "collision" in message.lower() and all(str(source) in message for source in sources)
+        for message in errors
+    )
     assert "1 succeeded, 2 failed" in caplog.text
 
 
@@ -209,9 +223,16 @@ def test_batch_isolates_invalid_and_strict_failures(tmp_path, invalid_markdown):
     sources = [input_dir / name for name in ("1 정상.md", "2 오류.md", "3 정상.md")]
     for source, text in zip(sources, ["First report", invalid_markdown, "Last report"]):
         source.write_text(text, encoding="utf-8")
-    args = build_parser().parse_args([
-        str(input_dir), str(output_dir), "--batch", "--profile", "plain", "--strict",
-    ])
+    args = build_parser().parse_args(
+        [
+            str(input_dir),
+            str(output_dir),
+            "--batch",
+            "--profile",
+            "plain",
+            "--strict",
+        ]
+    )
 
     assert run_batch_conversion(input_dir, args) == 1
 
@@ -222,7 +243,9 @@ def test_batch_isolates_invalid_and_strict_failures(tmp_path, invalid_markdown):
     assert len(list(output_dir.iterdir())) == 2
 
 
-@pytest.mark.parametrize("relative_input", [str(Path("reports") / "q4" / "report.md"), "./report.md"])
+@pytest.mark.parametrize(
+    "relative_input", [str(Path("reports") / "q4" / "report.md"), "./report.md"]
+)
 def test_cli_missing_qualified_input_does_not_convert_parent_basename(
     tmp_path, monkeypatch, caplog, relative_input
 ):
@@ -234,7 +257,9 @@ def test_cli_missing_qualified_input_does_not_convert_parent_basename(
     monkeypatch.chdir(cwd)
     monkeypatch.setattr(md_to_word, "PARENT_DIR", parent_dir)
     monkeypatch.setattr(md_to_word, "configure_logging", lambda verbose: None)
-    monkeypatch.setattr(sys, "argv", ["md-to-word", relative_input, "--profile", "plain", "--strict"])
+    monkeypatch.setattr(
+        sys, "argv", ["md-to-word", relative_input, "--profile", "plain", "--strict"]
+    )
 
     with pytest.raises(SystemExit) as result:
         md_to_word.main()
@@ -260,7 +285,9 @@ def test_cli_bare_filename_keeps_parent_fallback(tmp_path, monkeypatch):
         md_to_word.main()
 
     assert result.value.code == 0
-    assert "Intended document" in [p.text for p in Document(generate_output_path(source)).paragraphs]
+    assert "Intended document" in [
+        p.text for p in Document(generate_output_path(source)).paragraphs
+    ]
 
 
 def test_concurrent_first_registry_calls_wait_for_builtin_registration(tmp_path, monkeypatch):
@@ -283,8 +310,11 @@ def test_concurrent_first_registry_calls_wait_for_builtin_registration(tmp_path,
         registry = converters.get_default_registry()
         model = registry.convert(source, profile="plain")
         output = registry.convert(
-            model, output_format="docx", output_path=tmp_path / f"report-{index}.docx",
-            profile="plain", strict=True,
+            model,
+            output_format="docx",
+            output_path=tmp_path / f"report-{index}.docx",
+            profile="plain",
+            strict=True,
         )
         assert "Threaded report" in [p.text for p in Document(output).paragraphs]
         return registry
@@ -306,7 +336,8 @@ def test_concurrent_first_registry_calls_wait_for_builtin_registration(tmp_path,
     assert len(registrations) == 1
     assert all(registry is registries[0] for registry in registries)
     assert [converter.name for converter in registries[0].converters] == [
-        "markdown-input", "docx-output",
+        "markdown-input",
+        "docx-output",
     ]
 
 
@@ -321,7 +352,8 @@ def test_ci_workflow_config_and_python312_gate():
     job = workflow["jobs"]["quality"]
     assert job["strategy"]["fail-fast"] is False
     assert job["strategy"]["matrix"] == {
-        "os": ["ubuntu-latest", "windows-latest"], "python-version": ["3.12", "3.13"],
+        "os": ["ubuntu-latest", "windows-latest"],
+        "python-version": ["3.12", "3.13"],
     }
     assert job["runs-on"] == "${{ matrix.os }}"
     steps = job["steps"]
@@ -331,11 +363,16 @@ def test_ci_workflow_config_and_python312_gate():
     fonts = next(step for step in steps if step.get("name") == "Install Korean fonts")
     assert fonts["if"] == "runner.os == 'Linux'"
     assert fonts["run"] == "sudo apt-get update && sudo apt-get install -y fonts-nanum"
-    assert steps.index(fonts) < next(i for i, step in enumerate(steps) if step.get("name") == "Test")
+    assert steps.index(fonts) < next(
+        i for i, step in enumerate(steps) if step.get("name") == "Test"
+    )
     commands = [step["run"] for step in steps if "run" in step and step is not fonts]
     assert commands[:5] == [
-        "uv sync --locked --extra dev", "uv run ruff check .", "uv run mypy .",
-        "uv run pytest tests/ -q", "uv build",
+        "uv sync --locked --extra dev",
+        "uv run ruff check .",
+        "uv run mypy .",
+        "uv run pytest tests/ -q",
+        "uv build",
     ]
     gate = next(step for step in steps if step.get("id") == "python312")
     assert gate["name"] == "Verify Python 3.12 syntax"
@@ -344,15 +381,21 @@ def test_ci_workflow_config_and_python312_gate():
     exec(compile(gate["run"], "ci-python312", "exec"), {})
 
 
-@pytest.mark.parametrize("source, supported", [
-    pytest.param("type Alias[T] = list[T]\n", True, id="python312-type-alias"),
-    pytest.param("type Alias[T = int] = list[T]\n", False, id="python313-type-default"),
-])
+@pytest.mark.parametrize(
+    "source, supported",
+    [
+        pytest.param("type Alias[T] = list[T]\n", True, id="python312-type-alias"),
+        pytest.param("type Alias[T = int] = list[T]\n", False, id="python313-type-default"),
+    ],
+)
 def test_ci_syntax_gate_enforces_python312(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str, supported: bool
 ) -> None:
-    gate = next(step for step in _ci_workflow()["jobs"]["quality"]["steps"]
-                if step.get("name", "").startswith("Verify Python "))
+    gate = next(
+        step
+        for step in _ci_workflow()["jobs"]["quality"]["steps"]
+        if step.get("name", "").startswith("Verify Python ")
+    )
     (tmp_path / "engine.py").write_text(source, encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     if supported:
@@ -364,8 +407,11 @@ def test_ci_syntax_gate_enforces_python312(
 
 @pytest.mark.parametrize("contents", ["valid", "missing", "report", "extra_module"])
 def test_ci_wheel_gate_checks_exact_engine_payload(tmp_path, monkeypatch, contents):
-    gate = next(step for step in _ci_workflow()["jobs"]["quality"]["steps"]
-                if step.get("id") == "wheel_contents")
+    gate = next(
+        step
+        for step in _ci_workflow()["jobs"]["quality"]["steps"]
+        if step.get("id") == "wheel_contents"
+    )
     assert gate["shell"] == "uv run python {0}"
     (tmp_path / "pyproject.toml").write_text(
         '[tool.hatch.build.targets.wheel]\nonly-include = ["engine.py"]\n', encoding="utf-8"

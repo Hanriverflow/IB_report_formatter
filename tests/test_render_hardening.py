@@ -37,17 +37,22 @@ arrows:
 def render(markdown: str, profile: str = "plain", strict: bool = True) -> DocxDocument:
     """Parse and render with matching explicit profile settings."""
     model = MarkdownParser(profile=profile).parse(markdown)
-    return IBDocumentRenderer(options=RenderOptions(
-        profile=profile, strict=strict,
-        include_cover=False, include_toc=False, include_disclaimer=False,
-    )).render(model)
+    return IBDocumentRenderer(
+        options=RenderOptions(
+            profile=profile,
+            strict=strict,
+            include_cover=False,
+            include_toc=False,
+            include_disclaimer=False,
+        )
+    ).render(model)
 
 
 def test_numeric_cell_preserves_native_footnote(tmp_path: Path) -> None:
     """A footnote number must never become part of a financial amount."""
     doc = render(
-        "| Metric | 2026 |\n|---|---:|\n| Revenue | 1234[^1] |\n\n"
-        "[^1]: Audited amount.", profile="ib-report",
+        "| Metric | 2026 |\n|---|---:|\n| Revenue | 1234[^1] |\n\n[^1]: Audited amount.",
+        profile="ib-report",
     )
     output = tmp_path / "numeric-footnote.docx"
     doc.save(output)
@@ -66,13 +71,18 @@ def test_numeric_runs_keep_hyperlinks_spacing_and_explicit_value_scale(tmp_path:
         "---\ntables:\n  - type: financial\n    columns: [text, money, percent, bps, multiple]\n---\n"
         "| Metric | Amount | Rate | Spread | Multiple |\n|---|---|---|---|---|\n"
         "| Revenue | 1234 [source](https://example.com)[^1] | **12.50**[^1] | 100.00[^1] | 2.50[^1] |\n\n"
-        "[^1]: Audited amount.", profile="ib-report",
+        "[^1]: Audited amount.",
+        profile="ib-report",
     )
     output = tmp_path / "semantic-numbers.docx"
     doc.save(output)
     cells = Document(output).tables[0].rows[1].cells
     assert ["".join(cell._tc.xpath(".//w:t/text()")) for cell in cells] == [
-        "Revenue", "1,234 source", "12.50%", "100.00 bps", "2.50x",
+        "Revenue",
+        "1,234 source",
+        "12.50%",
+        "100.00 bps",
+        "2.50x",
     ]
     assert len(cells[1]._tc.xpath(".//w:hyperlink")) == 1
     assert len(cells[1]._tc.xpath(".//w:footnoteReference")) == 1
@@ -87,15 +97,20 @@ def test_plain_numeric_cell_with_footnote_keeps_original_presentation() -> None:
     assert len(cell._tc.xpath(".//w:footnoteReference")) == 1
 
 
-@pytest.mark.parametrize("markdown, expression", [
-    (r"$$ \notacommand{x} $$", r"\notacommand{x}"),
-    (r"Before $\badcmd$ after.", r"\badcmd"),
-    (r"## Heading $\badcmd$", r"\badcmd"),
-    (r"- Item $\badcmd$", r"\badcmd"),
-    ("| Value |\n|---|\n| $\\badcmd$ |", r"\badcmd"),
-])
+@pytest.mark.parametrize(
+    "markdown, expression",
+    [
+        (r"$$ \notacommand{x} $$", r"\notacommand{x}"),
+        (r"Before $\badcmd$ after.", r"\badcmd"),
+        (r"## Heading $\badcmd$", r"\badcmd"),
+        (r"- Item $\badcmd$", r"\badcmd"),
+        ("| Value |\n|---|\n| $\\badcmd$ |", r"\badcmd"),
+    ],
+)
 def test_equation_failure_is_recorded_and_strict_rejects(
-    markdown: str, expression: str, tmp_path: Path,
+    markdown: str,
+    expression: str,
+    tmp_path: Path,
 ) -> None:
     """Invalid math stays visible in non-strict output and rejects strict output."""
     model = MarkdownParser(profile="plain").parse(markdown)
@@ -113,7 +128,9 @@ def test_equation_failure_is_recorded_and_strict_rejects(
 
 @pytest.mark.parametrize("markdown", [r"$$ \badcmd $$", DIAGRAM])
 def test_failed_image_render_releases_figures_and_temp_files(
-    markdown: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    markdown: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A failed save must not leak a pyplot figure or even a partial PNG."""
     import tempfile
@@ -136,7 +153,9 @@ def test_failed_image_render_releases_figures_and_temp_files(
 @pytest.mark.parametrize("markdown", [r"$$ \notacommand{x} $$", r"Before $\badcmd$ after."])
 @pytest.mark.parametrize("existing_output", [False, True])
 def test_strict_equation_failure_never_saves_output(
-    markdown: str, existing_output: bool, tmp_path: Path,
+    markdown: str,
+    existing_output: bool,
+    tmp_path: Path,
 ) -> None:
     """The real converter must reject before creating or overwriting a destination."""
     source, output = tmp_path / "invalid.md", tmp_path / "result.docx"
@@ -144,7 +163,9 @@ def test_strict_equation_failure_never_saves_output(
     if existing_output:
         output.write_bytes(b"existing output must survive")
     with pytest.raises(RuntimeError, match="LaTeX"):
-        IBReportConverter(str(source), str(output), RenderOptions(profile="plain", strict=True)).convert()
+        IBReportConverter(
+            str(source), str(output), RenderOptions(profile="plain", strict=True)
+        ).convert()
     if existing_output:
         assert output.read_bytes() == b"existing output must survive"
     else:
@@ -153,7 +174,9 @@ def test_strict_equation_failure_never_saves_output(
 
 @pytest.mark.parametrize("markdown", [r"$$ x^2 $$", r"Before $x^2$ after."])
 def test_equation_insertion_failure_is_visible_and_rejects_strict(
-    markdown: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    markdown: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Insertion failures use the same diagnostic path and still remove the image."""
     import tempfile
@@ -209,7 +232,8 @@ def representative_audit_document() -> DocxDocument:
 
 
 def test_audit_preserves_results_without_per_paragraph_style_lookups(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Full audit observations stay stable while style resolution is indexed once."""
     doc = representative_audit_document()
@@ -218,13 +242,18 @@ def test_audit_preserves_results_without_per_paragraph_style_lookups(
     reopened = Document(output)
     # Snapshot captured with the original audit before optimizing style lookup.
     expected = {
-        "paragraphs": 6, "tables": 1, "headings": 1, "images": 0,
-        "numbered_paragraphs": 3, "issues": [],
+        "paragraphs": 6,
+        "tables": 1,
+        "headings": 1,
+        "images": 0,
+        "numbered_paragraphs": 3,
+        "issues": [],
         "warnings": [
             "Normal style has pagination constraints: these can show nonprinting square "
             "marks and create large page gaps. Keep such controls on necessary headings only."
         ],
-        "pagination_marked_paragraphs": 10, "visual_review": "not_performed",
+        "pagination_marked_paragraphs": 10,
+        "visual_review": "not_performed",
     }
     original = Styles.get_by_id
     calls = []
@@ -250,9 +279,13 @@ def test_render_skips_audit_observation_pass(monkeypatch: pytest.MonkeyPatch) ->
     assert len(doc.tables) == 1
 
 
-@pytest.mark.parametrize("literal", ["[Image: example]", "[Render Error: example]", "[Diagram: example]"])
+@pytest.mark.parametrize(
+    "literal", ["[Image: example]", "[Render Error: example]", "[Diagram: example]"]
+)
 def test_placeholder_literals_are_audit_warnings_not_render_errors(
-    literal: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    literal: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """User code containing diagnostic-like text must pass strict rendering and CLI audit."""
@@ -295,20 +328,26 @@ def test_audit_rejects_dangling_numbering_references(location: str, tmp_path: Pa
     assert any("99999" in issue for issue in inspect_document(Document(output)).issues)
 
 
-@pytest.mark.parametrize("damage", ["missing-abstract", "missing-abstract-reference", "missing-part"])
+@pytest.mark.parametrize(
+    "damage", ["missing-abstract", "missing-abstract-reference", "missing-part"]
+)
 def test_audit_rejects_broken_numbering_definitions(damage: str, tmp_path: Path) -> None:
     """A numId is usable only when its numbering part and abstract definition exist."""
     doc = render("1. First")
     num_id = doc.paragraphs[0]._p.pPr.numPr.numId.val
     numbering = doc.part.numbering_part.element
-    num = next(node for node in numbering.findall(qn("w:num")) if node.get(qn("w:numId")) == str(num_id))
+    num = next(
+        node for node in numbering.findall(qn("w:num")) if node.get(qn("w:numId")) == str(num_id)
+    )
     abstract_ref = num.find(qn("w:abstractNumId"))
     if damage == "missing-abstract":
         abstract_ref.set(qn("w:val"), "99999")
     elif damage == "missing-abstract-reference":
         num.remove(abstract_ref)
     else:
-        relation = next(key for key, value in doc.part.rels.items() if value.reltype == RT.NUMBERING)
+        relation = next(
+            key for key, value in doc.part.rels.items() if value.reltype == RT.NUMBERING
+        )
         doc.part.drop_rel(relation)
     output = tmp_path / "broken-numbering.docx"
     doc.save(output)
@@ -324,13 +363,19 @@ def test_audit_accepts_zero_numbering_and_valid_nested_lists(tmp_path: Path) -> 
     assert inspect_document(Document(output)).issues == []
 
 
-@pytest.mark.parametrize("markdown, child_level, start", [
-    ("- A\n    1. First\n- B\n    1. Second", 1, 1),
-    ("1. A\n    3. First\n2. B\n    3. Second", 1, 3),
-    ("- A\n    - Child A\n        7. First\n- B\n    - Child B\n        7. Second", 2, 7),
-])
+@pytest.mark.parametrize(
+    "markdown, child_level, start",
+    [
+        ("- A\n    1. First\n- B\n    1. Second", 1, 1),
+        ("1. A\n    3. First\n2. B\n    3. Second", 1, 3),
+        ("- A\n    - Child A\n        7. First\n- B\n    - Child B\n        7. Second", 2, 7),
+    ],
+)
 def test_nested_numbering_restarts_in_each_parent_scope(
-    markdown: str, child_level: int, start: int, tmp_path: Path,
+    markdown: str,
+    child_level: int,
+    start: int,
+    tmp_path: Path,
 ) -> None:
     """Separate parent items own distinct nested instances at the correct level."""
     doc = render(markdown)
@@ -343,7 +388,9 @@ def test_nested_numbering_restarts_in_each_parent_scope(
     numbering = reopened.part.numbering_part.element
     for paragraph, num_id in zip(children, ids):
         assert paragraph._p.pPr.numPr.ilvl.val == child_level
-        instance = next(n for n in numbering.findall(qn("w:num")) if n.get(qn("w:numId")) == str(num_id))
+        instance = next(
+            n for n in numbering.findall(qn("w:num")) if n.get(qn("w:numId")) == str(num_id)
+        )
         override = instance.find(qn("w:lvlOverride"))
         assert override is not None
         assert override.get(qn("w:ilvl")) == str(child_level)
@@ -358,19 +405,29 @@ def test_ordered_list_scope_preserves_sibling_and_top_level_continuity() -> None
     assert ids["A"] == ids["B"]
     assert ids["First"] == ids["Next"]
     assert ids["First"] != ids["Second"]
-    instance = next(n for n in doc.part.numbering_part.element.findall(qn("w:num")) if n.get(qn("w:numId")) == str(ids["A"]))
+    instance = next(
+        n
+        for n in doc.part.numbering_part.element.findall(qn("w:num"))
+        if n.get(qn("w:numId")) == str(ids["A"])
+    )
     override = instance.find(qn("w:lvlOverride"))
     assert override.get(qn("w:ilvl")) == "0"
     assert override.find(qn("w:startOverride")).get(qn("w:val")) == "3"
 
 
-@pytest.mark.parametrize("markdown", [
-    DIAGRAM, r"$$ x^2 + y^2 = z^2 $$", r"$$ \text{가용자본} + \alpha $$",
-    "---\ncharts: true\n---\n```chart\ntype: bar\nlabels: [상반기, 하반기]\n"
-    "series: [{name: 매출, values: [100, -30]}]\n```",
-])
+@pytest.mark.parametrize(
+    "markdown",
+    [
+        DIAGRAM,
+        r"$$ x^2 + y^2 = z^2 $$",
+        r"$$ \text{가용자본} + \alpha $$",
+        "---\ncharts: true\n---\n```chart\ntype: bar\nlabels: [상반기, 하반기]\n"
+        "series: [{name: 매출, values: [100, -30]}]\n```",
+    ],
+)
 def test_rendered_diagrams_and_equations_do_not_mutate_matplotlib(
-    markdown: str, monkeypatch: pytest.MonkeyPatch,
+    markdown: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Rendering must preserve the caller's backend, fonts and other rcParams."""
     import matplotlib

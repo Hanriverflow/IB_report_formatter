@@ -27,14 +27,20 @@ TERM_SHEET = {
 
 
 def markdown(body: str, profile: str = "term-sheet", tables=None) -> str:
-    data = dict(TERM_SHEET) if profile == "term-sheet" else {"profile": profile, "title": "가상 검토 문서"}
+    data = (
+        dict(TERM_SHEET)
+        if profile == "term-sheet"
+        else {"profile": profile, "title": "가상 검토 문서"}
+    )
     if tables is not None:
         data["tables"] = tables
     return "---\n" + yaml.safe_dump(data, allow_unicode=True) + "---\n" + body
 
 
 def render(content: str, strict: bool = True):
-    doc = IBDocumentRenderer(options=RenderOptions(strict=strict)).render(MarkdownParser().parse(content))
+    doc = IBDocumentRenderer(options=RenderOptions(strict=strict)).render(
+        MarkdownParser().parse(content)
+    )
     buffer = BytesIO()
     doc.save(buffer)
     return Document(buffer)
@@ -81,7 +87,9 @@ def test_a_cell_from_a_second_label_column_into_content_is_content() -> None:
     assert attr(overview.xpath("./w:p")[0], "./w:pPr/w:jc") in ([], ["left"])
     # A second-tier label that stays in its column keeps the label layout.
     bank = cells(table.xpath("./w:tr")[2])[1]
-    assert attr(bank, "./w:tcPr/w:shd", "w:fill") and attr(bank.xpath("./w:p")[0], "./w:pPr/w:jc") == ["center"]
+    assert attr(bank, "./w:tcPr/w:shd", "w:fill") and attr(
+        bank.xpath("./w:p")[0], "./w:pPr/w:jc"
+    ) == ["center"]
     # A label that starts in the first column stays a label however far it spans.
     total = cells(table.xpath("./w:tr")[4])[0]
     assert text(total) == "합 계" and attr(total, "./w:tcPr/w:shd", "w:fill")
@@ -107,12 +115,19 @@ def test_header_rows_are_drawn_merged_and_repeated(profile: str) -> None:
     table = body_table(doc, "상환액")
     word_rows = table.xpath("./w:tr")
     assert len(word_rows) == 4
-    assert [bool(row.xpath("./w:trPr/w:tblHeader")) for row in word_rows] == [True, True, False, False]
+    assert [bool(row.xpath("./w:trPr/w:tblHeader")) for row in word_rows] == [
+        True,
+        True,
+        False,
+        False,
+    ]
     first, second = word_rows[0], word_rows[1]
     assert attr(cells(first)[0], "./w:tcPr/w:vMerge") == ["restart"]
     assert attr(cells(second)[0], "./w:tcPr/w:vMerge") in ([None], ["continue"])
     assert attr(cells(first)[2], "./w:tcPr/w:gridSpan") == ["2"]
-    header_fills = {tuple(attr(tc, "./w:tcPr/w:shd", "w:fill")) for row in (first, second) for tc in cells(row)}
+    header_fills = {
+        tuple(attr(tc, "./w:tcPr/w:shd", "w:fill")) for row in (first, second) for tc in cells(row)
+    }
     assert len(header_fills) == 1 and header_fills != {()}
     assert "^^" not in text(table) and "<<" not in text(table)
 
@@ -125,7 +140,12 @@ def test_header_rows_shift_the_body_for_base_case_and_zebra() -> None:
     spec = [{"type": "sensitivity", "header_rows": 2, "base_case": {"row": 1, "column": 2}}]
     model = MarkdownParser().parse(markdown(body, "business-report", tables=spec))
     table = model.elements[-1].content
-    assert table.header_rows == 2 and [row.is_header for row in table.rows] == [True, True, False, False]
+    assert table.header_rows == 2 and [row.is_header for row in table.rows] == [
+        True,
+        True,
+        False,
+        False,
+    ]
     assert table.rows[2].cells[1].is_base_case
     word = body_table(render(markdown(body, "business-report", tables=spec)), "할인율")
     # The first body row has the base-case fill; zebra shading counts body rows only.
@@ -135,19 +155,25 @@ def test_header_rows_shift_the_body_for_base_case_and_zebra() -> None:
 @pytest.mark.parametrize("value", [0, "2", 4, True])
 def test_header_rows_must_leave_a_body_row(value) -> None:
     with pytest.raises(ValueError, match="header_rows"):
-        MarkdownParser().parse(markdown(SCHEDULE, "business-report", tables=[{"header_rows": value}]))
+        MarkdownParser().parse(
+            markdown(SCHEDULE, "business-report", tables=[{"header_rows": value}])
+        )
 
 
 def test_html_header_rows_stay_separate_rows() -> None:
     source = (
-        "<table>\n<tr><th rowspan=\"2\">회 차</th><th>기 간</th><th colspan=\"2\">대출</th></tr>\n"
+        '<table>\n<tr><th rowspan="2">회 차</th><th>기 간</th><th colspan="2">대출</th></tr>\n'
         "<tr><td>(개월)</td><td>상환액</td><td>잔액</td></tr>\n"
         "<tr><td>1</td><td>3</td><td>-</td><td>300</td></tr>\n</table>\n"
     )
     table = MarkdownParser(profile="plain").parse(source).elements[0].content
     assert table.header_rows == 2 and [row.is_header for row in table.rows] == [True, True, False]
     word = body_table(render(markdown(source, "plain")), "상환액")
-    assert [bool(row.xpath("./w:trPr/w:tblHeader")) for row in word.xpath("./w:tr")] == [True, True, False]
+    assert [bool(row.xpath("./w:trPr/w:tblHeader")) for row in word.xpath("./w:tr")] == [
+        True,
+        True,
+        False,
+    ]
     assert attr(cells(word.xpath("./w:tr")[0])[2], "./w:tcPr/w:gridSpan") == ["2"]
 
 
@@ -163,7 +189,8 @@ def _schedule(rows: int = 21) -> str:
     ]
     return (
         "| 회 차 | 일 자 | 기 간<br>(개 월) | 상환액 | 잔액 |\n|---|---|---|---|---|\n"
-        + "\n".join(lines) + "\n| 합 계 | << | - | 500 | - |\n"
+        + "\n".join(lines)
+        + "\n| 합 계 | << | - | 500 | - |\n"
     )
 
 
@@ -213,7 +240,12 @@ def test_zebra_shading_starts_on_the_first_body_row_after_header_rows() -> None:
     style = load_style(get_profile("ib-report"), None)
     assert style.TABLE_ZEBRA
     body = "| 구분 | 금액 | << |\n|---|---|---|\n| ^^ | 1차 | 2차 |\n| 가 | 10 | 11 |\n| 나 | 12 | 13 |\n"
-    table = body_table(render(markdown(body, "ib-report", tables=[{"header_rows": 2, "spans": True}]), strict=False), "1차")
+    table = body_table(
+        render(
+            markdown(body, "ib-report", tables=[{"header_rows": 2, "spans": True}]), strict=False
+        ),
+        "1차",
+    )
     first, second = table.xpath("./w:tr")[2:4]
     assert attr(cells(first)[2], "./w:tcPr/w:shd", "w:fill") == [style.LIGHT_GRAY_HEX]
     assert attr(cells(second)[2], "./w:tcPr/w:shd", "w:fill") != [style.LIGHT_GRAY_HEX]
@@ -223,7 +255,7 @@ def test_type_detection_reads_every_header_row_and_merged_labels() -> None:
     from document_model import TableType
 
     html = (
-        "<table><tr><th rowspan=\"2\">Risk</th><th>Assessment</th></tr><tr><th>Probability</th></tr>"
+        '<table><tr><th rowspan="2">Risk</th><th>Assessment</th></tr><tr><th>Probability</th></tr>'
         "<tr><td>Delay</td><td>High</td></tr></table>\n"
     )
     table = MarkdownParser(profile="ib-report").parse(html).elements[-1].content

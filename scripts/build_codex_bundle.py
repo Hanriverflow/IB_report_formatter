@@ -26,16 +26,29 @@ logger = logging.getLogger(__name__)
 PUBLIC_FILES = (
     "docs/start-here.md",
     "docs/verification-plugin-20261008.md",
-    "pyproject.toml", "uv.lock", ".python-version", ".gitignore", "LICENSE",
-    "AGENTS.md", "README.md", "README.ko.md", "CHANGELOG.md",
-    "plugin.json", ".codex-plugin/plugin.json", ".claude-plugin/plugin.json",
-    ".agents/plugins/marketplace.json", ".claude-plugin/marketplace.json",
-    "skills/ib-document/SKILL.md", "skills/ib-document/references/term-sheet.md",
-    "skills/setup/SKILL.md", "docs/plugin-guide.md",
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
+    ".gitignore",
+    "LICENSE",
+    "AGENTS.md",
+    "README.md",
+    "README.ko.md",
+    "CHANGELOG.md",
+    "plugin.json",
+    ".codex-plugin/plugin.json",
+    ".claude-plugin/plugin.json",
+    ".agents/plugins/marketplace.json",
+    ".claude-plugin/marketplace.json",
+    "skills/ib-document/SKILL.md",
+    "skills/ib-document/references/term-sheet.md",
+    "skills/setup/SKILL.md",
+    "docs/plugin-guide.md",
     ".agents/skills/ib-document/SKILL.md",
     ".agents/skills/ib-document/references/term-sheet.md",
     "docs/codex-start.html",
-    "docs/distribution-build.md", "docs/distribution/시작하기.html",
+    "docs/distribution-build.md",
+    "docs/distribution/시작하기.html",
     "docs/converted-input-cleanup-plan-20260929.md",
     "docs/format-preprocessing-guide.md",
     "docs/implementation-plan-20260914.md",
@@ -50,18 +63,29 @@ PUBLIC_FILES = (
     "docs/verification-feature-port-20260929.md",
     "docs/verification-term-sheet-20260929.md",
     "docs/verification-title-block-20260929.md",
-    "scripts/agent_render.py", "scripts/build_codex_bundle.py",
-    "scripts/build_plugin_bundle.py", "scripts/plugin_runtime.py",
-    "scripts/build_portable.py", "tools/__init__.py", "tools/portable_launcher.py",
+    "scripts/agent_render.py",
+    "scripts/build_codex_bundle.py",
+    "scripts/build_plugin_bundle.py",
+    "scripts/plugin_runtime.py",
+    "scripts/build_portable.py",
+    "tools/__init__.py",
+    "tools/portable_launcher.py",
     "scripts/word_visual_qa.ps1",
-    "samples/profiles/business-report.md", "samples/profiles/company-theme.yaml",
-    "samples/profiles/ib-memo.md", "samples/profiles/ib-report.md",
-    "samples/profiles/meeting-minutes.md", "samples/profiles/office-letter.md",
-    "samples/profiles/plain.md", "samples/profiles/term-sheet-house.yaml",
+    "samples/profiles/business-report.md",
+    "samples/profiles/company-theme.yaml",
+    "samples/profiles/ib-memo.md",
+    "samples/profiles/ib-report.md",
+    "samples/profiles/meeting-minutes.md",
+    "samples/profiles/office-letter.md",
+    "samples/profiles/plain.md",
+    "samples/profiles/term-sheet-house.yaml",
     "samples/profiles/term-sheet.md",
-    "samples/harness/brief.md", "samples/harness/request.txt",
-    "samples/harness/house.yaml", "samples/harness/expected-terms.json",
-    "samples/distribution/minimal-term-sheet.md", "samples/distribution/minimal-house.yaml",
+    "samples/harness/brief.md",
+    "samples/harness/request.txt",
+    "samples/harness/house.yaml",
+    "samples/harness/expected-terms.json",
+    "samples/distribution/minimal-term-sheet.md",
+    "samples/distribution/minimal-house.yaml",
 )
 
 
@@ -79,8 +103,9 @@ def source_files(source_root: Path) -> tuple[str, list[str]]:
     if not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z._-]*", version):
         raise ValueError("Project version is not safe for a bundle filename")
     modules = config["tool"]["hatch"]["build"]["targets"]["wheel"]["only-include"]
-    if not modules or any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\.py", name)
-                          for name in modules):
+    if not modules or any(
+        not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\.py", name) for name in modules
+    ):
         raise ValueError("Wheel allowlist must contain only top-level Python modules")
     paths = sorted(set(PUBLIC_FILES).union(modules))
     root = source_root.resolve()
@@ -100,26 +125,52 @@ def git_provenance(source_root: Path, paths: list[str]) -> dict:
     """Read base commit and worktree state without exposing private filenames."""
     try:
         commit = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=source_root, check=True,
-            capture_output=True, text=True,
+            ["git", "rev-parse", "HEAD"],
+            cwd=source_root,
+            check=True,
+            capture_output=True,
+            text=True,
         ).stdout.strip()
         status = subprocess.run(
             ["git", "status", "--porcelain", "--untracked-files=normal"],
-            cwd=source_root, check=True, capture_output=True, text=True,
+            cwd=source_root,
+            check=True,
+            capture_output=True,
+            text=True,
         ).stdout
         modified = subprocess.run(
             ["git", "-c", "core.quotepath=false", "diff", "--name-only", "HEAD", "--", *paths],
-            cwd=source_root, check=True, capture_output=True, text=True, encoding="utf-8",
+            cwd=source_root,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
         ).stdout.splitlines()
         new = subprocess.run(
-            ["git", "-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard",
-             "--", *paths], cwd=source_root, check=True, capture_output=True, text=True,
+            [
+                "git",
+                "-c",
+                "core.quotepath=false",
+                "ls-files",
+                "--others",
+                "--exclude-standard",
+                "--",
+                *paths,
+            ],
+            cwd=source_root,
+            check=True,
+            capture_output=True,
+            text=True,
             encoding="utf-8",
         ).stdout.splitlines()
     except (OSError, subprocess.CalledProcessError):
         return {"base_commit": None, "dirty": None, "modified_files": None, "new_files": None}
-    return {"base_commit": commit, "dirty": bool(status.strip()),
-            "modified_files": modified, "new_files": new}
+    return {
+        "base_commit": commit,
+        "dirty": bool(status.strip()),
+        "modified_files": modified,
+        "new_files": new,
+    }
 
 
 def build_bundle(source_root: Path, output_dir: Path) -> Path:
@@ -155,8 +206,7 @@ def build_bundle(source_root: Path, output_dir: Path) -> Path:
     }
     root_name = f"ib-report-formatter-codex-source-{version}"
     release = output_dir.resolve() / (
-        "codex-source-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        + "-" + uuid.uuid4().hex[:8]
+        "codex-source-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
     )
     release.mkdir(parents=True, exist_ok=False)
     archive = release / f"{root_name}.zip"
@@ -168,9 +218,7 @@ def build_bundle(source_root: Path, output_dir: Path) -> Path:
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
         )
     checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
-    archive.with_suffix(".zip.sha256").write_text(
-        f"{checksum}  {archive.name}\n", encoding="utf-8"
-    )
+    archive.with_suffix(".zip.sha256").write_text(f"{checksum}  {archive.name}\n", encoding="utf-8")
     return archive
 
 

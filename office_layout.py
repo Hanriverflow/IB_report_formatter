@@ -23,7 +23,9 @@ from ooxml_order import insert_ordered
 from render_styles import STYLE
 
 
-def add_text(doc, text: str, bold: bool = False, keep_next: bool = False, style_name: Optional[str] = None):
+def add_text(
+    doc, text: str, bold: bool = False, keep_next: bool = False, style_name: Optional[str] = None
+):
     """Add a consistently styled office paragraph."""
     paragraph = doc.add_paragraph(style=style_name or STYLE.STYLE_IB_BODY)
     paragraph.paragraph_format.keep_with_next = keep_next
@@ -96,15 +98,18 @@ def letter_appendix_index(model: DocumentModel) -> Optional[int]:
     if heading is None:
         return None
     matches = [
-        index for index, element in enumerate(model.elements)
+        index
+        for index, element in enumerate(model.elements)
         if element.element_type == ElementType.HEADING_1
-        and isinstance(element.content, Heading) and element.content.text == heading
+        and isinstance(element.content, Heading)
+        and element.content.text == heading
     ]
     if len(matches) != 1 or heading == model.metadata.title:
         raise ValueError("letter.appendix_heading must match one distinct body H1")
     if not any(
-        element.element_type not in {ElementType.HEADING_1, ElementType.HEADING_2, ElementType.HEADING_3}
-        for element in model.elements[:matches[0]]
+        element.element_type
+        not in {ElementType.HEADING_1, ElementType.HEADING_2, ElementType.HEADING_3}
+        for element in model.elements[: matches[0]]
     ):
         raise ValueError("letter.appendix_heading must follow the letter body")
     return matches[0]
@@ -134,8 +139,15 @@ def render_office_opening(doc, metadata: DocumentMetadata) -> bool:
         for label, key in [("수신", "recipients"), ("참조", "cc")]:
             values = string_list(extra, key)
             if values:
-                add_text(doc, "{}\t{}".format(label, ", ".join(values)), keep_next=True, style_name="Office Metadata")
-        add_text(doc, "제목\t" + metadata.title, bold=True, keep_next=True, style_name="Office Subject")
+                add_text(
+                    doc,
+                    "{}\t{}".format(label, ", ".join(values)),
+                    keep_next=True,
+                    style_name="Office Metadata",
+                )
+        add_text(
+            doc, "제목\t" + metadata.title, bold=True, keep_next=True, style_name="Office Subject"
+        )
         return True
     title = add_text(doc, metadata.title, bold=True, keep_next=True)
     title.style = doc.styles["Title"]
@@ -173,7 +185,9 @@ def render_office_closing(doc, metadata: DocumentMetadata) -> None:
         numbering = NativeNumbering(doc)
         for index, item in enumerate(attachments, 1):
             ending = "  끝." if index == len(attachments) else ""
-            paragraph = add_text(doc, item.rstrip().rstrip(".") + "." + ending, style_name="Office Attachment")
+            paragraph = add_text(
+                doc, item.rstrip().rstrip(".") + "." + ending, style_name="Office Attachment"
+            )
             numbering.apply(paragraph, 0)
             paragraph.paragraph_format.left_indent = Pt(30)
             paragraph.paragraph_format.first_line_indent = Pt(-14)
@@ -182,15 +196,26 @@ def render_office_closing(doc, metadata: DocumentMetadata) -> None:
     else:
         # Attach the closing marker to the last actual body paragraph when possible.
         last = doc.paragraphs[-1] if doc.paragraphs else None
-        if last is not None and last._p.getnext() is not None and last._p.getnext().tag == qn("w:sectPr"):
+        if (
+            last is not None
+            and last._p.getnext() is not None
+            and last._p.getnext().tag == qn("w:sectPr")
+        ):
             if not last.text.rstrip().endswith("끝."):
                 last.add_run("  끝.")
         else:
             add_text(doc, "끝.")
     sender = metadata.extra["sender"]
-    paragraph = add_text(doc, sender.get("signatory") or sender["organization"], bold=True, style_name="Office Signatory")
+    paragraph = add_text(
+        doc,
+        sender.get("signatory") or sender["organization"],
+        bold=True,
+        style_name="Office Signatory",
+    )
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    issued = " ".join(str(metadata.extra[k]) for k in ("document_no", "date") if metadata.extra.get(k))
+    issued = " ".join(
+        str(metadata.extra[k]) for k in ("document_no", "date") if metadata.extra.get(k)
+    )
     if issued:
         add_text(doc, "시행\t" + issued, style_name="Office Contact")
     contact = " · ".join(sender[k] for k in ("department", "contact") if sender.get(k))
