@@ -221,7 +221,9 @@ def test_batch_isolates_invalid_and_strict_failures(tmp_path, invalid_markdown):
     input_dir, output_dir = tmp_path / "보고 입력", tmp_path / "보고 출력"
     input_dir.mkdir()
     sources = [input_dir / name for name in ("1 정상.md", "2 오류.md", "3 정상.md")]
-    for source, text in zip(sources, ["First report", invalid_markdown, "Last report"]):
+    for source, text in zip(
+        sources, ["First report", invalid_markdown, "Last report"], strict=True
+    ):
         source.write_text(text, encoding="utf-8")
     args = build_parser().parse_args(
         [
@@ -367,9 +369,10 @@ def test_ci_workflow_config_and_python312_gate():
         i for i, step in enumerate(steps) if step.get("name") == "Test"
     )
     commands = [step["run"] for step in steps if "run" in step and step is not fonts]
-    assert commands[:5] == [
+    assert commands[:6] == [
         "uv sync --locked --extra dev",
         "uv run ruff check .",
+        "uv run ruff format --check .",
         "uv run mypy .",
         "uv run pytest tests/ -q",
         "uv build",

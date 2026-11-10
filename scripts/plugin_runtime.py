@@ -13,9 +13,10 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Never, Optional, Sequence
+from typing import Never
 
 CACHE_ENV = "IB_REPORT_FORMATTER_CACHE_DIR"
 LOCK_TIMEOUT_SECONDS = 120.0
@@ -26,7 +27,7 @@ def plugin_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def cache_directory(override: Optional[str] = None) -> Path:
+def cache_directory(override: str | None = None) -> Path:
     """Resolve the explicitly selected or platform-default external user cache."""
     selected = override or os.environ.get(CACHE_ENV)
     if selected:
@@ -191,7 +192,7 @@ class _JsonArgumentParser(argparse.ArgumentParser):
         raise ValueError(message)
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Parse setup/render arguments and return actionable JSON on runtime failure."""
     parser = _JsonArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)

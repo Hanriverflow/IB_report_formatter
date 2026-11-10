@@ -14,7 +14,7 @@ import importlib
 import logging
 import os
 import tempfile
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING
 
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches
@@ -45,7 +45,7 @@ def _matplotlib_available() -> bool:
 class DiagramRenderer:
     """Renders Diagram objects as matplotlib images in Word documents."""
 
-    def __init__(self, doc: "DocxDocument", theme_colors: Optional[Dict[str, str]] = None):
+    def __init__(self, doc: "DocxDocument", theme_colors: dict[str, str] | None = None):
         self.doc = doc
         self.colors = theme_colors or {}
         self._navy = self.colors.get("navy", _NAVY)
@@ -77,7 +77,7 @@ class DiagramRenderer:
             self._placeholder(diagram.title)
             return False
 
-    def _render_image(self, diagram: "Diagram") -> Optional[str]:
+    def _render_image(self, diagram: "Diagram") -> str | None:
         """Render the diagram to a temporary PNG."""
         fig = None
         temp_path = None
@@ -334,7 +334,7 @@ class DiagramRenderer:
             t = hh / abs(dy)
         return cx + dx * t, cy + dy * t
 
-    def _insert(self, file_path: str, title: str, notes: List[str]):
+    def _insert(self, file_path: str, title: str, notes: list[str]):
         """Insert diagram image centered with caption and notes."""
         p = self.doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER

@@ -10,7 +10,7 @@ Changelog (quality hardening):
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 
 class ElementType(Enum):
@@ -63,11 +63,11 @@ class TextRun:
     italic: bool = False
     superscript: bool = False
     subscript: bool = False
-    color_hex: Optional[str] = None
+    color_hex: str | None = None
     is_latex: bool = False  # NEW (v3): marks this run as inline LaTeX
-    hyperlink: Optional[str] = None
-    footnote_id: Optional[int] = None
-    term_key: Optional[str] = None  # set when the text is a substituted {{term}} value
+    hyperlink: str | None = None
+    footnote_id: int | None = None
+    term_key: str | None = None  # set when the text is a substituted {{term}} value
     code: bool = False  # inline code span content (rendered monospace, without backticks)
     image: Optional["Image"] = None  # inline image (e.g. in a table cell); the text is empty
 
@@ -110,7 +110,7 @@ class DiagramBox:
 
     id: str
     label: str
-    pos: List[float] = field(default_factory=lambda: [0, 0])
+    pos: list[float] = field(default_factory=lambda: [0, 0])
     style: str = "default"
 
 
@@ -119,7 +119,7 @@ class ChartSeries:
     """One named sequence of chart values, in the supplied units."""
 
     name: str
-    values: List[float]
+    values: list[float]
 
 
 @dataclass
@@ -127,14 +127,14 @@ class ChartSpec:
     """Validated chart data; waterfall values are deltas from zero."""
 
     chart_type: str
-    title: Optional[str]
-    labels: List[str]
-    series: List[ChartSeries]
-    y_label: Optional[str] = None
-    source: Optional[str] = None
-    total_label: Optional[str] = None
-    unit: Optional[str] = None
-    number_format: Optional[str] = None
+    title: str | None
+    labels: list[str]
+    series: list[ChartSeries]
+    y_label: str | None = None
+    source: str | None = None
+    total_label: str | None = None
+    unit: str | None = None
+    number_format: str | None = None
 
 
 @dataclass
@@ -146,8 +146,8 @@ class Chart:
     """
 
     code: str
-    spec: Optional[ChartSpec] = None
-    error: Optional[str] = None
+    spec: ChartSpec | None = None
+    error: str | None = None
     label: str = "Chart"
 
 
@@ -167,9 +167,9 @@ class Diagram:
 
     diagram_type: str = "flow"
     title: str = ""
-    boxes: List[DiagramBox] = field(default_factory=list)
-    arrows: List[DiagramArrow] = field(default_factory=list)
-    notes: List[str] = field(default_factory=list)
+    boxes: list[DiagramBox] = field(default_factory=list)
+    arrows: list[DiagramArrow] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -177,14 +177,14 @@ class TableCell:
     """A cell in a table"""
 
     content: str
-    runs: List[TextRun] = field(default_factory=list)
+    runs: list[TextRun] = field(default_factory=list)
     alignment: str = "left"  # left, center, right
     is_header: bool = False
     is_numeric: bool = False
     is_negative: bool = False
     is_base_case: bool = False
-    risk_level: Optional[str] = None  # high, medium, low
-    merge: Optional[str] = None  # resolved span marker: "up" (^^) or "left" (<<)
+    risk_level: str | None = None  # high, medium, low
+    merge: str | None = None  # resolved span marker: "up" (^^) or "left" (<<)
     literal: bool = False  # runs are final (built from HTML): the text is never a span marker
 
 
@@ -192,7 +192,7 @@ class TableCell:
 class TableRow:
     """A row in a table"""
 
-    cells: List[TableCell] = field(default_factory=list)
+    cells: list[TableCell] = field(default_factory=list)
     is_header: bool = False
 
 
@@ -200,22 +200,22 @@ class TableRow:
 class Table:
     """A parsed table"""
 
-    rows: List[TableRow] = field(default_factory=list)
+    rows: list[TableRow] = field(default_factory=list)
     table_type: TableType = TableType.GENERIC
     col_count: int = 0
-    alignments: List[str] = field(default_factory=list)
-    column_types: List[str] = field(default_factory=list)
+    alignments: list[str] = field(default_factory=list)
+    column_types: list[str] = field(default_factory=list)
     caption: str = ""
     unit: str = ""
     source: str = ""
     as_of: str = ""
     landscape: bool = False
-    warnings: List[str] = field(default_factory=list)
-    spans: Optional[bool] = None  # table spec `spans`; None inherits the profile default
-    label_columns: Optional[int] = None  # shaded leading label columns (term-sheet layout)
+    warnings: list[str] = field(default_factory=list)
+    spans: bool | None = None  # table spec `spans`; None inherits the profile default
+    label_columns: int | None = None  # shaded leading label columns (term-sheet layout)
     note: str = ""  # table spec `note`: short right-aligned text below the table
     header_rows: int = 1  # leading rows drawn and repeated as the header (spec `header_rows`)
-    schedule: Optional[Dict[str, Any]] = None  # validated table spec `schedule` (repayment checks)
+    schedule: dict[str, Any] | None = None  # validated table spec `schedule` (repayment checks)
 
 
 @dataclass
@@ -225,7 +225,7 @@ class Heading:
     level: int
     text: str
     is_numbered: bool = False
-    runs: List[TextRun] = field(default_factory=list)  # set only when terms are substituted
+    runs: list[TextRun] = field(default_factory=list)  # set only when terms are substituted
 
 
 @dataclass
@@ -233,7 +233,7 @@ class Paragraph:
     """A paragraph element"""
 
     text: str
-    runs: List[TextRun] = field(default_factory=list)
+    runs: list[TextRun] = field(default_factory=list)
     has_inline_latex: bool = False  # NEW (v3)
 
 
@@ -242,7 +242,7 @@ class ListItem:
     """A list item"""
 
     text: str
-    runs: List[TextRun] = field(default_factory=list)
+    runs: list[TextRun] = field(default_factory=list)
     indent_level: int = 0
 
 
@@ -250,14 +250,14 @@ class ListItem:
 class BulletList:
     """A bullet list"""
 
-    items: List[ListItem] = field(default_factory=list)
+    items: list[ListItem] = field(default_factory=list)
 
 
 @dataclass
 class NumberedList:
     """A numbered list"""
 
-    items: List[ListItem] = field(default_factory=list)
+    items: list[ListItem] = field(default_factory=list)
 
 
 @dataclass
@@ -266,7 +266,7 @@ class Blockquote:
 
     text: str
     title: str = "KEY INSIGHT"
-    runs: List[TextRun] = field(default_factory=list)  # set only when terms are substituted
+    runs: list[TextRun] = field(default_factory=list)  # set only when terms are substituted
 
 
 @dataclass
@@ -275,7 +275,7 @@ class Image:
 
     alt_text: str
     path: str
-    base64_data: Optional[str] = None  # NEW (v3): Base64-encoded image data
+    base64_data: str | None = None  # NEW (v3): Base64-encoded image data
     mime_type: str = "image/png"  # NEW (v3): MIME type for Base64
 
 
@@ -287,7 +287,7 @@ ElementContent = Union[
     Paragraph,
     Table,
     ListItem,
-    Tuple[str, ListItem],  # numbered list: (number, ListItem)
+    tuple[str, ListItem],  # numbered list: (number, ListItem)
     Blockquote,
     Image,
     CodeBlock,
@@ -313,8 +313,8 @@ class Element:
 class Section:
     """A document section"""
 
-    heading: Optional[Heading] = None
-    elements: List[Element] = field(default_factory=list)
+    heading: Heading | None = None
+    elements: list[Element] = field(default_factory=list)
 
 
 @dataclass
@@ -335,10 +335,10 @@ class DocumentMetadata:
     ticker: str = ""
     sector: str = "SECTOR"
     analyst: str = "DCM Team 1"
-    extra: Dict[str, Any] = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=dict)
     profile: str = "ib-report"
     # Parsed runs for title/subtitle/date when terms are substituted; empty otherwise.
-    display_runs: Dict[str, List[TextRun]] = field(default_factory=dict)
+    display_runs: dict[str, list[TextRun]] = field(default_factory=dict)
 
 
 @dataclass
@@ -346,15 +346,15 @@ class DocumentModel:
     """The complete parsed document"""
 
     metadata: DocumentMetadata = field(default_factory=DocumentMetadata)
-    sections: List[Section] = field(default_factory=list)
-    elements: List[Element] = field(default_factory=list)
-    footnotes: Dict[int, str] = field(default_factory=dict)
-    warnings: List[str] = field(default_factory=list)
+    sections: list[Section] = field(default_factory=list)
+    elements: list[Element] = field(default_factory=list)
+    footnotes: dict[int, str] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
     # None means a hand-built model; parsed models retain their parsing policy.
-    parsed_profile: Optional[str] = None
+    parsed_profile: str | None = None
     # Folder of the source file; None for text or stream input. Relative link
     # targets refer to it until a save rebases them on the output folder.
-    source_dir: Optional[Path] = None
+    source_dir: Path | None = None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

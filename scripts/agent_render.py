@@ -9,9 +9,10 @@ import argparse
 import hashlib
 import json
 import sys
+from collections.abc import Sequence
 from contextlib import redirect_stdout
 from pathlib import Path
-from typing import Any, Never, Optional, Sequence
+from typing import Any, Never
 
 # This source-checkout tool must also work when invoked from another directory.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -34,8 +35,8 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 def render_document(
     source: str,
     output_dir: str,
-    profile: Optional[str] = None,
-    expected_terms: Optional[str] = None,
+    profile: str | None = None,
+    expected_terms: str | None = None,
 ) -> dict[str, Any]:
     """Render one source in an exclusively reserved output directory.
 
@@ -67,7 +68,7 @@ def render_document(
             "scope": "Exact comparison with parsed terms only; not source truth or prose completeness.",
         },
     }
-    owned_directory: Optional[Path] = None
+    owned_directory: Path | None = None
     try:
         source_path = Path(source).resolve()
         destination = Path(output_dir).resolve()
@@ -166,7 +167,7 @@ class _JsonArgumentParser(argparse.ArgumentParser):
         raise ValueError(message)
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Print one JSON result and return zero only for a successful strict render.
 
     Args:

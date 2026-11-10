@@ -30,7 +30,7 @@ import logging
 import threading
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, BinaryIO, List, Optional, Union, cast
+from typing import Any, BinaryIO, cast
 
 from md_parser import DocumentModel
 from stream_utils import detect_format, ensure_seekable, is_stream
@@ -50,12 +50,12 @@ class BaseConverter(ABC):
     priority: int = 100  # Lower = tried first
 
     @abstractmethod
-    def accepts(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> bool:
+    def accepts(self, source: str | Path | BinaryIO | DocumentModel, **kwargs: Any) -> bool:
         """Return True if this converter can handle the given source."""
         ...
 
     @abstractmethod
-    def convert(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> Any:
+    def convert(self, source: str | Path | BinaryIO | DocumentModel, **kwargs: Any) -> Any:
         """Execute the conversion."""
         ...
 
@@ -67,11 +67,11 @@ class InputConverter(BaseConverter):
     For streams, uses extension hint or signature-based format detection.
     """
 
-    supported_extensions: List[str] = []
+    supported_extensions: list[str] = []
     # Format name for stream detection (e.g. "docx", "md")
     supported_format: str = ""
 
-    def accepts(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> bool:
+    def accepts(self, source: str | Path | BinaryIO | DocumentModel, **kwargs: Any) -> bool:
         if isinstance(source, DocumentModel):
             return False
 
@@ -93,7 +93,7 @@ class OutputConverter(BaseConverter):
 
     output_format: str = ""
 
-    def accepts(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> bool:
+    def accepts(self, source: str | Path | BinaryIO | DocumentModel, **kwargs: Any) -> bool:
         if not isinstance(source, DocumentModel):
             return False
         fmt = kwargs.get("output_format", "")
@@ -109,7 +109,7 @@ class ConverterRegistry:
     """Registry of available converters with priority-based lookup."""
 
     def __init__(self) -> None:
-        self._converters: List[BaseConverter] = []
+        self._converters: list[BaseConverter] = []
 
     def register(self, converter: BaseConverter) -> None:
         """Register a converter. Lower priority values are tried first."""
@@ -117,15 +117,15 @@ class ConverterRegistry:
         self._converters.sort(key=lambda c: c.priority)
 
     def find_converter(
-        self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any
-    ) -> Optional[BaseConverter]:
+        self, source: str | Path | BinaryIO | DocumentModel, **kwargs: Any
+    ) -> BaseConverter | None:
         """Find the first converter that accepts the source."""
         for converter in self._converters:
             if converter.accepts(source, **kwargs):
                 return converter
         return None
 
-    def convert(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> Any:
+    def convert(self, source: str | Path | BinaryIO | DocumentModel, **kwargs: Any) -> Any:
         """Find a matching converter and execute conversion.
 
         For Markdown BinaryIO streams, pass extension_hint="md" (or ".md") to
@@ -141,7 +141,7 @@ class ConverterRegistry:
         return converter.convert(source, **kwargs)
 
     @property
-    def converters(self) -> List[BaseConverter]:
+    def converters(self) -> list[BaseConverter]:
         """List all registered converters (sorted by priority)."""
         return list(self._converters)
 
@@ -160,7 +160,7 @@ class MarkdownInputConverter(InputConverter):
     supported_format = "md"
 
     def convert(
-        self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any
+        self, source: str | Path | BinaryIO | DocumentModel, **kwargs: Any
     ) -> DocumentModel:
         from md_parser import parse_markdown_file
 
@@ -177,7 +177,7 @@ class DocxOutputConverter(OutputConverter):
     priority = 100
     output_format = "docx"
 
-    def convert(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> Any:
+    def convert(self, source: str | Path | BinaryIO | DocumentModel, **kwargs: Any) -> Any:
         from ib_renderer import IBDocumentRenderer, rebase_local_links
 
         assert isinstance(source, DocumentModel)
@@ -223,7 +223,7 @@ class DocxOutputConverter(OutputConverter):
 # DEFAULT REGISTRY
 # ═══════════════════════════════════════════════════════════════════════════════
 
-_default_registry: Optional[ConverterRegistry] = None
+_default_registry: ConverterRegistry | None = None
 _default_registry_lock = threading.Lock()
 
 

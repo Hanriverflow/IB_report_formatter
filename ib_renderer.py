@@ -63,22 +63,14 @@ import os
 import platform
 import re
 import time
+from collections.abc import Callable, Mapping, Set
 from copy import deepcopy
 from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from io import BytesIO
 from pathlib import Path
 from typing import (
-    AbstractSet,
     Any,
-    Callable,
-    Dict,
-    List,
-    Mapping,
-    Optional,
-    Set,
-    Tuple,
-    Union,
     cast,
 )
 from urllib.parse import unquote
@@ -216,7 +208,7 @@ class GeneratorSignatureWriter:
     _GENERATOR_NAME = "ib_report_formatter"
     _GENERATOR_PROFILE = "ib_generated"
     _PYPROJECT_VERSION_RE = re.compile(r'^version\s*=\s*"([^"]+)"\s*$')
-    _resolved_version: Optional[str] = None
+    _resolved_version: str | None = None
 
     @classmethod
     def apply(cls, doc: DocxDocument, profile: str = "ib_generated") -> None:
@@ -287,7 +279,7 @@ class GeneratorSignatureWriter:
             custom_props.append(cls._build_property(name, value, cls._next_pid(used_pids)))
 
     @classmethod
-    def _signature_properties(cls, profile: str = "ib_generated") -> Dict[str, str]:
+    def _signature_properties(cls, profile: str = "ib_generated") -> dict[str, str]:
         """Return the ordered generator signature payload."""
         return {
             "generator": cls._GENERATOR_NAME,
@@ -331,7 +323,7 @@ class GeneratorSignatureWriter:
         return parse_xml(property_xml.encode("utf-8"))
 
     @staticmethod
-    def _used_property_ids(custom_props) -> List[int]:
+    def _used_property_ids(custom_props) -> list[int]:
         """Collect all valid pid values already present in the custom-properties root."""
         used_pids = []
         for prop in list(custom_props):
@@ -343,7 +335,7 @@ class GeneratorSignatureWriter:
         return used_pids
 
     @staticmethod
-    def _next_pid(used_pids: List[int]) -> int:
+    def _next_pid(used_pids: list[int]) -> int:
         """Return the next unused custom-property PID (starts at 2 per OPC convention)."""
         candidate = 2
         while candidate in used_pids:
@@ -366,7 +358,7 @@ class FontStyler:
     """Handles font styling including East Asian fonts"""
 
     @staticmethod
-    def set_east_asian_font(element, font_name: Optional[str] = None):
+    def set_east_asian_font(element, font_name: str | None = None):
         """Set East Asian font (for Korean text) on a style or run element"""
         resolved_font = font_name or FontPolicy.resolve_korean_font()
         elm = element._element
@@ -386,12 +378,12 @@ class FontStyler:
     @staticmethod
     def apply_run_style(
         run,
-        font_name: Optional[str] = None,
-        font_size: Optional[Pt] = None,
-        bold: Optional[bool] = None,
-        italic: Optional[bool] = None,
-        color: Optional[RGBColor] = None,
-        superscript: Optional[bool] = None,
+        font_name: str | None = None,
+        font_size: Pt | None = None,
+        bold: bool | None = None,
+        italic: bool | None = None,
+        color: RGBColor | None = None,
+        superscript: bool | None = None,
     ):
         """Apply styling to a run"""
         if font_name:
@@ -413,7 +405,7 @@ class FontPolicy:
     """Declare Word fonts for the reader's machine, independently of raster fonts."""
 
     @classmethod
-    def resolve_korean_font(cls, system_name: Optional[str] = None) -> str:
+    def resolve_korean_font(cls, system_name: str | None = None) -> str:
         """Return the preferred Korean font for the current platform."""
         system = system_name or platform.system() or "Unknown"
         if system == "Darwin":
@@ -836,10 +828,10 @@ class TextRenderer:
     @staticmethod
     def render_runs(
         paragraph,
-        runs: List[TextRun],
-        default_color: Optional[RGBColor] = None,
-        font_name: Optional[str] = None,
-        font_size: Optional[Pt] = None,
+        runs: list[TextRun],
+        default_color: RGBColor | None = None,
+        font_name: str | None = None,
+        font_size: Pt | None = None,
     ):
         """Render text runs to a paragraph.
 
@@ -971,8 +963,8 @@ class TextRenderer:
     def render_text_with_bold(
         paragraph,
         text: str,
-        font_name: Optional[str] = None,
-        font_size: Optional[Pt] = None,
+        font_name: str | None = None,
+        font_size: Pt | None = None,
     ):
         """Parse and render text with **bold** markers (legacy, delegates to render_text_with_formatting)."""
         TextRenderer.render_text_with_formatting(
@@ -983,9 +975,9 @@ class TextRenderer:
     def render_text_with_formatting(
         paragraph,
         text: str,
-        font_name: Optional[str] = None,
-        font_size: Optional[Pt] = None,
-        default_color: Optional[RGBColor] = None,
+        font_name: str | None = None,
+        font_size: Pt | None = None,
+        default_color: RGBColor | None = None,
     ):
         """Parse and render text with **bold**, *italic*, ^superscript^, and ~subscript~ markers.
 
@@ -1075,7 +1067,7 @@ class TextRenderer:
         font_size: Pt,
         bold: bool,
         italic: bool,
-        color: Optional[RGBColor] = None,
+        color: RGBColor | None = None,
     ):
         """Render text, detecting ^superscript^ and ~subscript~ markers."""
         if not text:
@@ -1111,7 +1103,7 @@ class TextRenderer:
             FontStyler.set_east_asian_font(run)
 
     @staticmethod
-    def _rgb_from_hex(color_hex: Optional[str]) -> Optional[RGBColor]:
+    def _rgb_from_hex(color_hex: str | None) -> RGBColor | None:
         """Convert #RRGGBB strings to python-docx RGBColor."""
         if not color_hex:
             return None
@@ -1421,7 +1413,7 @@ class TOCRenderer:
     def __init__(self, doc: DocxDocument):
         self.doc = doc
 
-    def render(self, model: Optional[DocumentModel] = None):
+    def render(self, model: DocumentModel | None = None):
         """Insert an auto-updating TOC plus an immediate preview outline."""
         heading = self.doc.add_paragraph(STYLE.TOC_TITLE, style="TOC Heading")
         self._apply_toc_heading_style(heading)
@@ -1660,7 +1652,7 @@ class TableRenderer:
         self,
         doc: DocxDocument,
         term_sheet: bool = False,
-        house_style: Optional[TermSheetStyle] = None,
+        house_style: TermSheetStyle | None = None,
     ):
         self.doc = doc
         # Profile-only layout; merge emission itself is shared by every profile.
@@ -1754,7 +1746,7 @@ class TableRenderer:
         self.doc.add_paragraph()
         self._end_landscape(previous_geometry)
 
-    def _begin_landscape(self, table: Table) -> Optional[Tuple[Any, int, int]]:
+    def _begin_landscape(self, table: Table) -> tuple[Any, int, int] | None:
         """Open a landscape section for a landscape table; return the prior geometry.
 
         The new section already starts on a new page, so a lone page break
@@ -1791,7 +1783,7 @@ class TableRenderer:
         ):
             body.remove(last)
 
-    def _end_landscape(self, previous_geometry: Optional[Tuple[Any, int, int]]) -> None:
+    def _end_landscape(self, previous_geometry: tuple[Any, int, int] | None) -> None:
         """Restore the page geometry that preceded a landscape table."""
         if previous_geometry:
             section = self.doc.add_section(WD_SECTION_START.NEW_PAGE)
@@ -1899,8 +1891,8 @@ class TableRenderer:
         add_table_spacer(self.doc)
 
     def _term_sheet_grid_widths(
-        self, table: Table, available: int, column_kinds: List[str]
-    ) -> List[int]:
+        self, table: Table, available: int, column_kinds: list[str]
+    ) -> list[int]:
         """Widths (EMU) for a term-sheet grid table, filling the section width.
 
         When the columns' content fits side by side on single lines, each column
@@ -1932,9 +1924,7 @@ class TableRenderer:
         )
         return [int(Inches(width)) for width in widths]
 
-    def _term_sheet_natural_widths(
-        self, table: Table, column_kinds: List[str]
-    ) -> Optional[List[int]]:
+    def _term_sheet_natural_widths(self, table: Table, column_kinds: list[str]) -> list[int] | None:
         """Per-column widths (EMU) that keep every cell line on one line.
 
         Header lines are measured bold in the header size and body lines as
@@ -1952,7 +1942,7 @@ class TableRenderer:
             width text measurement cannot know.
         """
         natural = [0] * table.col_count
-        spanning: List[Tuple[int, int, int]] = []
+        spanning: list[tuple[int, int, int]] = []
         for row_index, row in enumerate(table.rows):
             header = row_index < table.header_rows
             for index in range(min(len(row.cells), table.col_count)):
@@ -2026,8 +2016,8 @@ class TableRenderer:
         row_index: int,
         column_index: int,
         table: Table,
-        column_kinds: List[str],
-    ) -> Tuple[List[str], Pt]:
+        column_kinds: list[str],
+    ) -> tuple[list[str], Pt]:
         """Fill and style one owner cell exactly once, one paragraph per line.
 
         Header: header fill, bold accent, centred. Key-value label: label fill,
@@ -2039,8 +2029,8 @@ class TableRenderer:
             The cell's line texts and base text size, for row-split estimation.
         """
         column_role = table.column_types[column_index] if table.column_types else None
-        fill: Optional[str] = None
-        color: Optional[RGBColor] = None
+        fill: str | None = None
+        color: RGBColor | None = None
         alignment = WD_ALIGN_PARAGRAPH.CENTER
         if role == "header":
             runs = [
@@ -2071,7 +2061,7 @@ class TableRenderer:
         if fill:
             set_cell_fill(word_cell._tc, fill)
         word_cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-        texts: List[str] = []
+        texts: list[str] = []
         for index, line in enumerate(split_run_lines(runs)):
             paragraph = word_cell.paragraphs[0] if index == 0 else word_cell.add_paragraph()
             configure_cell_paragraph(paragraph)
@@ -2103,7 +2093,7 @@ class TableRenderer:
         set_cell_fill(cell._tc, hex_color)
 
     @staticmethod
-    def _set_column_widths(word_table, widths: List[int]) -> None:
+    def _set_column_widths(word_table, widths: list[int]) -> None:
         """Set exact grid and cell widths (EMU) on a table that is not merged yet."""
         word_table.autofit = False
         word_table.alignment = WD_TABLE_ALIGNMENT.LEFT
@@ -2112,7 +2102,7 @@ class TableRenderer:
             for cell in word_table.columns[index].cells:
                 cell.width = Emu(width)
 
-    def _merge_cells(self, word_table, table: Table) -> List[Tuple[int, int, int, int]]:
+    def _merge_cells(self, word_table, table: Table) -> list[tuple[int, int, int, int]]:
         """Merge validated span rectangles of an empty table whose widths are set.
 
         python-docx concatenates the paragraphs of merged cells that have content
@@ -2141,7 +2131,7 @@ class TableRenderer:
             errors.append(message)
 
     @staticmethod
-    def _span_rectangles(table: Table) -> Tuple[List[Tuple[int, int, int, int]], List[str]]:
+    def _span_rectangles(table: Table) -> tuple[list[tuple[int, int, int, int]], list[str]]:
         """Group span directives into rectangles, rejecting malformed groups.
 
         Parsed tables are already validated by `TableSpanResolver`; this guard keeps
@@ -2157,9 +2147,9 @@ class TableRenderer:
             Valid rectangles and one diagnostic per rejected group, whose cells
             are then rendered unmerged with their own content.
         """
-        roots: Dict[Tuple[int, int], Tuple[int, int]] = {}
-        groups: Dict[Tuple[int, int], List[Tuple[int, int]]] = {}
-        outside: Set[Tuple[int, int]] = set()
+        roots: dict[tuple[int, int], tuple[int, int]] = {}
+        groups: dict[tuple[int, int], list[tuple[int, int]]] = {}
+        outside: set[tuple[int, int]] = set()
         for row_index, row in enumerate(table.rows):
             for column_index, cell in enumerate(row.cells[: table.col_count]):
                 position = root = (row_index, column_index)
@@ -2175,8 +2165,8 @@ class TableRenderer:
                         outside.add(position)
                 roots[position] = root
                 groups.setdefault(root, []).append(position)
-        rectangles: List[Tuple[int, int, int, int]] = []
-        problems: List[str] = []
+        rectangles: list[tuple[int, int, int, int]] = []
+        problems: list[str] = []
         for (top, left), members in groups.items():
             if all(table.rows[row].cells[column].merge is None for row, column in members):
                 continue
@@ -2199,7 +2189,7 @@ class TableRenderer:
         return rectangles, problems
 
     @staticmethod
-    def _covered_cells(rectangles: List[Tuple[int, int, int, int]]) -> Set[Tuple[int, int]]:
+    def _covered_cells(rectangles: list[tuple[int, int, int, int]]) -> set[tuple[int, int]]:
         """Return grid positions represented by another cell's merged owner."""
         return {
             (row, column)
@@ -2210,7 +2200,7 @@ class TableRenderer:
         }
 
     @staticmethod
-    def _mirror_vertical_fills(word_table, rectangles: List[Tuple[int, int, int, int]]) -> None:
+    def _mirror_vertical_fills(word_table, rectangles: list[tuple[int, int, int, int]]) -> None:
         """Repeat each vertical owner's fill on its continuation `w:tc` elements.
 
         Continuation cells keep their own properties in OOXML, so the owner's fill
@@ -2235,7 +2225,7 @@ class TableRenderer:
             col_idx + 1 < len(cells) and cells[col_idx + 1].merge == "left"
         )
 
-    def _apply_column_widths(self, word_table, table: Table, column_kinds: List[str]) -> None:
+    def _apply_column_widths(self, word_table, table: Table, column_kinds: list[str]) -> None:
         """Apply content-aware column widths for more readable report tables."""
         widths = self._estimate_column_widths(
             table,
@@ -2258,9 +2248,9 @@ class TableRenderer:
         self,
         table: Table,
         available_width_inches: float,
-        column_kinds: Optional[List[str]] = None,
-        required_widths: Optional[List[float]] = None,
-    ) -> List[float]:
+        column_kinds: list[str] | None = None,
+        required_widths: list[float] | None = None,
+    ) -> list[float]:
         """Estimate table column widths from content density and column semantics.
 
         Args:
@@ -2286,7 +2276,7 @@ class TableRenderer:
             min_widths = self._required_minimums(
                 min_widths, required_widths, available_width_inches
             )
-            max_widths = [max(high, low) for high, low in zip(max_widths, min_widths)]
+            max_widths = [max(high, low) for high, low in zip(max_widths, min_widths, strict=False)]
         preferred = [column_info["score"] for column_info in column_infos]
         widths = self._fit_widths_to_available_space(
             preferred,
@@ -2299,8 +2289,8 @@ class TableRenderer:
 
     @classmethod
     def _required_minimums(
-        cls, minimums: List[float], required: List[float], available_width_inches: float
-    ) -> List[float]:
+        cls, minimums: list[float], required: list[float], available_width_inches: float
+    ) -> list[float]:
         """Raise column minimums to required widths when the section can hold them.
 
         First the heuristic minimums are raised; if that overflows, the required
@@ -2308,7 +2298,7 @@ class TableRenderer:
         minimum); if even that overflows, the heuristic minimums are returned
         unchanged, so the table still fits without an error.
         """
-        raised = [max(low, need) for low, need in zip(minimums, required)]
+        raised = [max(low, need) for low, need in zip(minimums, required, strict=False)]
         if sum(raised) <= available_width_inches:
             return raised
         relaxed = [max(cls._MIN_COLUMN_WIDTH_INCHES, need) for need in required]
@@ -2316,7 +2306,7 @@ class TableRenderer:
             return relaxed
         return minimums
 
-    def _build_column_info(self, table: Table, col_idx: int, column_kind: str) -> Dict[str, Any]:
+    def _build_column_info(self, table: Table, col_idx: int, column_kind: str) -> dict[str, Any]:
         """Summarize the content profile of a single column."""
         texts = []
 
@@ -2341,7 +2331,7 @@ class TableRenderer:
             "score": score,
         }
 
-    def _infer_column_kinds(self, table: Table) -> List[str]:
+    def _infer_column_kinds(self, table: Table) -> list[str]:
         if table.column_types:
             return [
                 "text" if role in {"text", "code", "date"} else "numeric"
@@ -2384,7 +2374,7 @@ class TableRenderer:
         return bool(cls._NUMERIC_LIKE_RE.match(normalized))
 
     @classmethod
-    def _representative_length(cls, texts: List[str]) -> int:
+    def _representative_length(cls, texts: list[str]) -> int:
         """Return a robust content length that ignores a few extreme outliers."""
         if not texts:
             return 0
@@ -2394,7 +2384,7 @@ class TableRenderer:
         return lengths[percentile_index]
 
     @classmethod
-    def _longest_token_length(cls, texts: List[str]) -> int:
+    def _longest_token_length(cls, texts: list[str]) -> int:
         """Return the length of the longest unbroken token in the sample."""
         longest = 0
         for text in texts:
@@ -2437,11 +2427,11 @@ class TableRenderer:
     @classmethod
     def _fit_widths_to_available_space(
         cls,
-        preferred: List[float],
-        min_widths: List[float],
-        max_widths: List[float],
+        preferred: list[float],
+        min_widths: list[float],
+        max_widths: list[float],
         available_width_inches: float,
-    ) -> List[float]:
+    ) -> list[float]:
         """Fit preferred widths into the available width with min/max guards."""
         col_count = len(preferred)
         if col_count == 0:
@@ -2467,12 +2457,12 @@ class TableRenderer:
     @classmethod
     def _rebalance_widths(
         cls,
-        widths: List[float],
-        min_widths: List[float],
-        max_widths: List[float],
-        preferred: List[float],
+        widths: list[float],
+        min_widths: list[float],
+        max_widths: list[float],
+        preferred: list[float],
         available_width_inches: float,
-    ) -> List[float]:
+    ) -> list[float]:
         """Rebalance widths after clamping so the table uses the full line width."""
         for _ in range(8):
             total_width = sum(widths)
@@ -2543,7 +2533,7 @@ class TableRenderer:
         word_table,
         row: TableRow,
         col_count: int,
-        covered: AbstractSet[Tuple[int, int]] = frozenset(),
+        covered: Set[tuple[int, int]] = frozenset(),
         row_index: int = 0,
     ):
         """Render one header row with Navy background, skipping merged-away cells."""
@@ -2594,10 +2584,10 @@ class TableRenderer:
         row_idx: int,
         col_count: int,
         table_type: TableType,
-        column_kinds: List[str],
-        column_types: Optional[List[str]] = None,
-        alignments: Optional[List[str]] = None,
-        covered: AbstractSet[Tuple[int, int]] = frozenset(),
+        column_kinds: list[str],
+        column_types: list[str] | None = None,
+        alignments: list[str] | None = None,
+        covered: Set[tuple[int, int]] = frozenset(),
         header_rows: int = 1,
     ):
         """Render a data row with type-specific styling, skipping merged-away cells.
@@ -2656,7 +2646,7 @@ class TableRenderer:
 
     @staticmethod
     def _cell_alignment(
-        c_idx: int, column_kinds: List[str], alignments: Optional[List[str]]
+        c_idx: int, column_kinds: list[str], alignments: list[str] | None
     ) -> WD_ALIGN_PARAGRAPH:
         """Numeric columns align right; Markdown alignment markers take precedence."""
         if alignments and c_idx < len(alignments) and alignments[c_idx] in {"center", "right"}:
@@ -2670,8 +2660,8 @@ class TableRenderer:
         return WD_ALIGN_PARAGRAPH.LEFT
 
     def _display_content(
-        self, cell_data: TableCell, role: Optional[str], table_type: TableType
-    ) -> Tuple[str, List[TextRun]]:
+        self, cell_data: TableCell, role: str | None, table_type: TableType
+    ) -> tuple[str, list[TextRun]]:
         """Return display text and runs, formatting amounts only for numeric roles."""
         format_numbers = role not in {None, "text", "code", "date"} or (
             not role and table_type == TableType.FINANCIAL and cell_data.is_numeric
@@ -2699,7 +2689,7 @@ class TableRenderer:
         return display_content, display_runs
 
     @classmethod
-    def _format_numeric_text(cls, text: str, role: Optional[str]) -> str:
+    def _format_numeric_text(cls, text: str, role: str | None) -> str:
         """Format a numeric text run without changing its semantic metadata.
 
         Args:
@@ -3055,7 +3045,7 @@ class ImageRenderer:
         self.doc = doc
 
     @staticmethod
-    def local_path(path: str, base_dir: Optional[Path] = None) -> Optional[Path]:
+    def local_path(path: str, base_dir: Path | None = None) -> Path | None:
         """Return the existing local file an image destination names.
 
         Markdown destinations are URLs, so converters write `a%20b.png`; the
@@ -3085,9 +3075,7 @@ class ImageRenderer:
         return None
 
     @classmethod
-    def image_source(
-        cls, image: Image, base_dir: Optional[Path] = None
-    ) -> Optional[Union[str, BytesIO]]:
+    def image_source(cls, image: Image, base_dir: Path | None = None) -> str | BytesIO | None:
         """Return what python-docx inserts for an image: decoded bytes or a file path.
 
         Args:
@@ -3214,7 +3202,7 @@ class ImageRenderer:
             self._render_placeholder(image.alt_text)
         return inserted
 
-    def _insert_image(self, file_path: Union[str, BytesIO], alt_text: str):
+    def _insert_image(self, file_path: str | BytesIO, alt_text: str):
         """
         Insert image file into document with proper sizing.
 
@@ -3334,12 +3322,12 @@ class FootnoteRenderer:
             text_run = p.add_run(text)
             FontStyler.apply_run_style(text_run, font_size=STYLE.SMALL_SIZE)
 
-    def _collect_reference_runs(self, footnotes: dict) -> List[Tuple[object, int]]:
+    def _collect_reference_runs(self, footnotes: dict) -> list[tuple[object, int]]:
         """Find superscript numeric runs that correspond to known footnotes.
 
         A term value is text the author wrote in `terms:`, never a footnote marker.
         """
-        references: List[Tuple[object, int]] = []
+        references: list[tuple[object, int]] = []
         for paragraph in self._iter_document_paragraphs():
             for run in paragraph.runs:
                 if is_term_run(run._r):
@@ -3414,7 +3402,7 @@ class NativeFootnotesPart(XmlPart):
             document_part.relate_to(footnotes_part, RT.FOOTNOTES)
             return footnotes_part
 
-    def set_footnotes(self, footnotes: Dict[int, str]) -> None:
+    def set_footnotes(self, footnotes: dict[int, str]) -> None:
         """Replace dynamic footnotes with the provided note mapping."""
         for footnote in list(self._element):
             if not str(footnote.tag).endswith("footnote"):
@@ -3541,7 +3529,7 @@ class DisclaimerRenderer:
         )
 
     @staticmethod
-    def _split_content_lines(content: str) -> List[str]:
+    def _split_content_lines(content: str) -> list[str]:
         """Split disclaimer content into non-empty logical paragraphs."""
         lines = [line.strip() for line in content.split("\n")]
         return [line for line in lines if line]
@@ -3552,9 +3540,7 @@ class DisclaimerRenderer:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def rebase_local_links(
-    document: DocxDocument, source_dir: Optional[Path], output_path: Path
-) -> None:
+def rebase_local_links(document: DocxDocument, source_dir: Path | None, output_path: Path) -> None:
     """Point local hyperlinks of a rendered document at its output folder.
 
     Relative links written against the Markdown folder then open from wherever
@@ -3635,16 +3621,16 @@ class IBDocumentRenderer:
     def __init__(
         self,
         separator_mode: str = "auto",
-        options: Optional[RenderOptions] = None,
-        profile: Optional[str] = None,
+        options: RenderOptions | None = None,
+        profile: str | None = None,
     ):
         self.options = options or RenderOptions(
             profile=profile, separator_mode=separator_mode if separator_mode != "auto" else None
         )
         self.separator_mode = separator_mode
-        self.errors: List[str] = []
+        self.errors: list[str] = []
         self.charts = False
-        self.term_sheet_texts: Optional[TermSheetTexts] = None
+        self.term_sheet_texts: TermSheetTexts | None = None
         self._term_sheet = False
         self._reset_document()
 
@@ -3977,7 +3963,7 @@ class IBDocumentRenderer:
             self.list_renderer.render_bullet(cast(ListItem, element.content))
 
         elif etype == ElementType.NUMBERED_LIST:
-            content = cast(Tuple[str, ListItem], element.content)
+            content = cast(tuple[str, ListItem], element.content)
             number, item = content
             self.list_renderer.render_numbered(number, item)
 
@@ -4313,13 +4299,13 @@ class LaTeXRenderer:
     """
 
     # Flag to track if matplotlib is available
-    _matplotlib_available: Optional[bool] = None
+    _matplotlib_available: bool | None = None
     _NON_ASCII_RE = re.compile(r"[^\x00-\x7F]")
     _TEXT_COMMAND_RE = re.compile(r"\\(?:text|mathrm|operatorname)\{([^{}]*)\}")
     _FRAC_RE = re.compile(r"\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}")
     _MULTISPACE_RE = re.compile(r"\s+")
     _UNRESOLVED_COMMAND_RE = re.compile(r"\\[A-Za-z]+")
-    _LATEX_SYMBOL_REPLACEMENTS: Tuple[Tuple[str, str], ...] = (
+    _LATEX_SYMBOL_REPLACEMENTS: tuple[tuple[str, str], ...] = (
         (r"\Leftrightarrow", "⇔"),
         (r"\Leftarrow", "⇐"),
         (r"\Rightarrow", "⇒"),
@@ -4402,7 +4388,7 @@ class LaTeXRenderer:
         expression: str,
         fontsize: int = 14,
         dpi: int = 150,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Render a LaTeX expression to a PNG image file.
 
@@ -4462,7 +4448,7 @@ class LaTeXRenderer:
         expression: str,
         fontsize: int,
         dpi: int,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Render mathtext-compatible LaTeX to a PNG image."""
         fig = None
         temp_path = None
@@ -4524,7 +4510,7 @@ class LaTeXRenderer:
         display_text: str,
         fontsize: int,
         dpi: int,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Render a readable unicode fallback image for non-ASCII equations."""
         fig = None
         temp_path = None

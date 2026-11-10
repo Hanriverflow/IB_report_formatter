@@ -5,7 +5,6 @@ import json
 import logging
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, List
 
 import pytest
 
@@ -34,7 +33,7 @@ SPECIAL = (
 )
 
 
-def front(values: Dict[str, str], extra: str = "") -> str:
+def front(values: dict[str, str], extra: str = "") -> str:
     """Build frontmatter whose values are exact YAML strings (JSON is valid YAML)."""
     lines = "".join(
         f"  {key}: {json.dumps(value, ensure_ascii=False)}\n" for key, value in values.items()
@@ -52,12 +51,12 @@ def first(model: DocumentModel, element_type: ElementType):
     return next(e.content for e in model.elements if e.element_type == element_type)
 
 
-def texts(runs: List[TextRun]) -> List[str]:
+def texts(runs: list[TextRun]) -> list[str]:
     """Visible text of each run."""
     return [run.text for run in runs]
 
 
-def keyed(runs: List[TextRun]) -> List[tuple]:
+def keyed(runs: list[TextRun]) -> list[tuple]:
     """Text and term key of each run."""
     return [(run.text, run.term_key) for run in runs]
 

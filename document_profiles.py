@@ -11,11 +11,12 @@ Changelog (term-sheet foundation):
 
 import math
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields, replace
 from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any
 
 import yaml
 from docx.shared import Inches, Pt, RGBColor
@@ -99,18 +100,18 @@ def validate_term_sheet_metadata(metadata: DocumentMetadata, check_length: bool 
 class RenderOptions:
     """Explicit caller overrides; None inherits frontmatter/profile defaults."""
 
-    include_cover: Optional[bool] = None
-    include_toc: Optional[bool] = None
-    include_disclaimer: Optional[bool] = None
-    separator_mode: Optional[str] = None
-    profile: Optional[str] = None
-    theme: Optional[str] = None
-    strict: Optional[bool] = None
-    confidential: Optional[bool] = None
-    charts: Optional[bool] = None
-    preset: Optional[str] = None
-    house: Optional[str] = None
-    term_tags: Optional[bool] = None
+    include_cover: bool | None = None
+    include_toc: bool | None = None
+    include_disclaimer: bool | None = None
+    separator_mode: str | None = None
+    profile: str | None = None
+    theme: str | None = None
+    strict: bool | None = None
+    confidential: bool | None = None
+    charts: bool | None = None
+    preset: str | None = None
+    house: str | None = None
+    term_tags: bool | None = None
 
 
 PRESETS: Mapping[str, RenderOptions] = MappingProxyType(
@@ -129,7 +130,7 @@ PRESETS: Mapping[str, RenderOptions] = MappingProxyType(
 )
 
 
-def get_preset(name: Optional[str]) -> RenderOptions:
+def get_preset(name: str | None) -> RenderOptions:
     """Resolve an immutable section bundle, with None supplying no overrides.
 
     Args:
@@ -155,10 +156,10 @@ class ResolvedOptions:
     disclaimer: bool
     confidential: bool
     separator_mode: str
-    theme: Optional[str]
+    theme: str | None
     strict: bool
     charts: bool
-    house: Optional[str] = None
+    house: str | None = None
     term_tags: bool = True
 
 
@@ -184,7 +185,7 @@ def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> Resol
     caller_preset = get_preset(options.preset)
     yaml_preset = get_preset(metadata.extra.get("preset"))
 
-    def flag(key: str, override: Optional[bool], default: bool) -> bool:
+    def flag(key: str, override: bool | None, default: bool) -> bool:
         attribute = "include_" + key
         caller_value = getattr(caller_preset, attribute, None)
         yaml_value = getattr(yaml_preset, attribute, None)
@@ -230,7 +231,7 @@ def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> Resol
     )
 
 
-def load_style(profile: DocumentProfile, theme: Optional[str] = None) -> IBStyle:
+def load_style(profile: DocumentProfile, theme: str | None = None) -> IBStyle:
     """Build an isolated style from a profile and a validated presentation theme.
 
     Args:
@@ -333,7 +334,7 @@ def load_style(profile: DocumentProfile, theme: Optional[str] = None) -> IBStyle
                 ", ".join(sorted(map(str, set(data) - (aliases | attributes))))
             )
         )
-    values: Dict[str, Any] = {}
+    values: dict[str, Any] = {}
     for key, attribute in [
         ("body_font", "BODY_FONT"),
         ("heading_font", "HEADING_FONT"),
@@ -441,7 +442,7 @@ class _ThemeSchema:
         return value
 
 
-def string_list(extra: Dict[str, Any], key: str) -> List[str]:
+def string_list(extra: dict[str, Any], key: str) -> list[str]:
     """Read a scalar or string list without stringifying mappings silently."""
     value = extra.get(key, [])
     if isinstance(value, str):
@@ -475,7 +476,7 @@ def validate_office_metadata(metadata: DocumentMetadata) -> None:
             raise ValueError("letter.appendix_label requires appendix_heading")
 
 
-def header_labels(rows: Sequence[Sequence[str]]) -> List[str]:
+def header_labels(rows: Sequence[Sequence[str]]) -> list[str]:
     """Each column's header text across all header rows, following span markers.
 
     A `<<` cell takes the label of its owner to the left and a `^^` cell the one
@@ -489,9 +490,9 @@ def header_labels(rows: Sequence[Sequence[str]]) -> List[str]:
         One label per column of the widest row.
     """
     width = max((len(row) for row in rows), default=0)
-    labels: List[str] = []
+    labels: list[str] = []
     for column in range(width):
-        parts: List[str] = []
+        parts: list[str] = []
         for row_index in range(len(rows)):
             row, position = row_index, column
             text = ""
@@ -655,7 +656,7 @@ _SCHEDULE_KEYS = {
 }
 
 
-def _schedule_spec(raw: Any, col_count: int) -> Dict[str, Any]:
+def _schedule_spec(raw: Any, col_count: int) -> dict[str, Any]:
     """Validate a table's `schedule` spec; figures are resolved after term substitution.
 
     Args:
@@ -676,7 +677,7 @@ def _schedule_spec(raw: Any, col_count: int) -> Dict[str, Any]:
             "Table schedule needs one-based `repayment` and `balance` columns and may have "
             "`months`, `principal`, `total`, `average_life` and `tolerance`"
         )
-    columns: Dict[str, Optional[int]] = {}
+    columns: dict[str, int | None] = {}
     for key in ("repayment", "balance", "months"):
         value = raw.get(key)
         if value is None and key == "months":
@@ -719,7 +720,7 @@ def _stated(value: Any, terms: Mapping[str, Any]) -> Quantity:
     return read_quantity(text)
 
 
-def _table_amount(quantity: Quantity, table: Table, what: str) -> Tuple[Decimal, Decimal]:
+def _table_amount(quantity: Quantity, table: Table, what: str) -> tuple[Decimal, Decimal]:
     """An amount and its display step in table units; money is converted with the table `unit`."""
     if quantity.dimension == "plain":
         return quantity.value, quantity.step

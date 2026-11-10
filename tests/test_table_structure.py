@@ -7,7 +7,6 @@ test parses Markdown with the real parser and renders through
 """
 
 from io import BytesIO
-from typing import List
 
 import pytest
 import yaml
@@ -54,7 +53,7 @@ def cells(row) -> list:
     return row.xpath("./w:tc")
 
 
-def attr(element, path: str, name: str = "w:val") -> List[str]:
+def attr(element, path: str, name: str = "w:val") -> list[str]:
     return [node.get(qn(name)) for node in element.xpath(path)]
 
 
@@ -62,7 +61,7 @@ def text(element) -> str:
     return "".join(element.xpath(".//w:t/text()"))
 
 
-def grid_mm(table) -> List[float]:
+def grid_mm(table) -> list[float]:
     return [int(width) / 1440 * 25.4 for width in attr(table, "./w:tblGrid/w:gridCol", "w:w")]
 
 

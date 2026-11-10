@@ -4,7 +4,6 @@ import json
 import re
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import pytest
 from docx import Document
@@ -25,12 +24,12 @@ VALUES = {"amount": "500억원", "tenor": "3년"}
 NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 
 
-def xp(element, path: str) -> List:
+def xp(element, path: str) -> list:
     """XPath with explicit namespaces; python-docx has no class for `w:sdt`."""
     return etree.XPath(path, namespaces=NS)(element)
 
 
-def front(values: Dict[str, str], extra: str = "") -> str:
+def front(values: dict[str, str], extra: str = "") -> str:
     """Frontmatter with exact YAML string values (JSON is valid YAML)."""
     lines = "".join(
         f"  {key}: {json.dumps(value, ensure_ascii=False)}\n" for key, value in values.items()
@@ -41,7 +40,7 @@ def front(values: Dict[str, str], extra: str = "") -> str:
 def render(
     markdown: str,
     profile: str = "plain",
-    renderer: Optional[IBDocumentRenderer] = None,
+    renderer: IBDocumentRenderer | None = None,
     **options,
 ) -> DocxDocument:
     """Parse and render strictly through the production path, then reopen the file."""
@@ -64,7 +63,7 @@ def reopen(doc: DocxDocument) -> DocxDocument:
     return Document(payload)
 
 
-def controls(doc: DocxDocument) -> List:
+def controls(doc: DocxDocument) -> list:
     """Run-level structured document tags in the body, in document order."""
     return xp(doc.element.body, ".//w:sdt")
 
@@ -74,7 +73,7 @@ def local(element) -> str:
     return etree.QName(element).localname
 
 
-def describe(sdt) -> Tuple[str, str, int, str]:
+def describe(sdt) -> tuple[str, str, int, str]:
     """Alias, tag, id and text of one control."""
     properties = sdt.find(qn("w:sdtPr"))
     return (
@@ -90,14 +89,14 @@ def xml_text(element) -> str:
     return "".join(xp(element, ".//w:t/text()"))
 
 
-def custom_properties(doc: DocxDocument) -> Dict[str, Tuple[int, str]]:
+def custom_properties(doc: DocxDocument) -> dict[str, tuple[int, str]]:
     """Custom document properties as name -> (pid, text)."""
     part = doc.part.package.part_related_by(RT.CUSTOM_PROPERTIES)
     root = etree.fromstring(part.blob)
     return {prop.get("name"): (int(prop.get("pid")), "".join(prop.itertext())) for prop in root}
 
 
-def term_properties(doc: DocxDocument) -> Dict[str, str]:
+def term_properties(doc: DocxDocument) -> dict[str, str]:
     """Only the term snapshot properties."""
     return {
         name[len("ibrep.term.") :]: value
@@ -343,7 +342,7 @@ def test_documents_without_tagged_values_have_no_snapshot_or_controls() -> None:
 )
 def test_term_tags_precedence_between_yaml_and_api(
     layout: str,
-    option: Optional[bool],
+    option: bool | None,
     tagged: bool,
 ) -> None:
     doc = render(front(VALUES, extra=layout) + "Deal {{amount}} closes.", term_tags=option)
@@ -355,7 +354,7 @@ def test_term_tags_precedence_between_yaml_and_api(
 
 
 @pytest.mark.parametrize("flags, tagged", [([], True), (["--no-term-tags"], False)])
-def test_cli_no_term_tags_flag(tmp_path: Path, flags: List[str], tagged: bool) -> None:
+def test_cli_no_term_tags_flag(tmp_path: Path, flags: list[str], tagged: bool) -> None:
     source, output = tmp_path / "terms.md", tmp_path / "terms.docx"
     source.write_text(front(VALUES) + "Deal {{amount}} closes.", encoding="utf-8")
     args = build_parser().parse_args(

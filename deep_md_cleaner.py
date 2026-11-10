@@ -12,9 +12,9 @@ import json
 import logging
 import re
 from collections import OrderedDict
+from collections import OrderedDict as OrderedDictType
 from dataclasses import dataclass
-from typing import Match, Optional, Tuple
-from typing import OrderedDict as OrderedDictType
+from re import Match
 
 logger = logging.getLogger(__name__)
 
@@ -91,14 +91,14 @@ class DeepResearchCleaner:
         re.DOTALL,
     )
 
-    def __init__(self, config: Optional[CleanerConfig] = None):
+    def __init__(self, config: CleanerConfig | None = None):
         self.config = config or CleanerConfig()
 
     def detect(self, text: str) -> bool:
         """Detect whether DeepResearch marker blocks are present."""
         return bool(self._MARKER_BLOCK_RE.search(text))
 
-    def clean(self, text: str) -> Tuple[str, CleanerReport]:
+    def clean(self, text: str) -> tuple[str, CleanerReport]:
         """Clean marker blocks according to config and return report."""
         report = CleanerReport(
             activation_mode=self.config.activation_mode,
@@ -229,8 +229,8 @@ class DeepResearchCleaner:
 
 def clean_deepresearch_markdown(
     text: str,
-    config: Optional[CleanerConfig] = None,
-) -> Tuple[str, CleanerReport]:
+    config: CleanerConfig | None = None,
+) -> tuple[str, CleanerReport]:
     """Clean text with DeepResearchCleaner and return output/report."""
     cleaner = DeepResearchCleaner(config=config)
     return cleaner.clean(text)

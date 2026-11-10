@@ -5,7 +5,6 @@ import logging
 from dataclasses import asdict
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import pytest
 from docx import Document
@@ -41,12 +40,12 @@ OLD_KEYS = [
 ]
 
 
-def xp(element, path: str) -> List:
+def xp(element, path: str) -> list:
     """XPath with explicit namespaces; python-docx has no class for `w:sdt`."""
     return etree.XPath(path, namespaces=NS)(element)
 
 
-def front(values: Dict[str, str]) -> str:
+def front(values: dict[str, str]) -> str:
     """Frontmatter with exact YAML string values (JSON is valid YAML)."""
     lines = "".join(
         f"  {key}: {json.dumps(value, ensure_ascii=False)}\n" for key, value in values.items()
@@ -62,7 +61,7 @@ def reopen(doc: DocxDocument) -> DocxDocument:
     return Document(payload)
 
 
-def generate(markdown: str = SOURCE, values: Optional[Dict[str, str]] = None) -> DocxDocument:
+def generate(markdown: str = SOURCE, values: dict[str, str] | None = None) -> DocxDocument:
     """Render a tagged document strictly and reopen it."""
     model = MarkdownParser(profile="plain").parse(
         front(VALUES if values is None else values) + markdown
@@ -72,13 +71,13 @@ def generate(markdown: str = SOURCE, values: Optional[Dict[str, str]] = None) ->
     )
 
 
-def audit(doc: DocxDocument) -> Tuple[DocumentAudit, Optional[TermAudit]]:
+def audit(doc: DocxDocument) -> tuple[DocumentAudit, TermAudit | None]:
     """Audit a saved copy of an edited document."""
     saved = reopen(doc)
     return inspect_document(saved), inspect_terms(saved)
 
 
-def controls(doc: DocxDocument, key: str) -> List:
+def controls(doc: DocxDocument, key: str) -> list:
     """Term controls of one key in document order."""
     return xp(doc.element.body, f".//w:sdt[w:sdtPr/w:tag/@w:val='ibrep:term:{key}']")
 
@@ -89,7 +88,7 @@ def type_value(control, text: str) -> None:
     node.text = text
 
 
-def element(tag: str, text: Optional[str] = None, **attributes: str):
+def element(tag: str, text: str | None = None, **attributes: str):
     """Build a WordprocessingML element."""
     node = OxmlElement(tag)
     for name, value in attributes.items():
@@ -106,7 +105,7 @@ def run(text: str, text_tag: str = "w:t"):
     return node
 
 
-def term_warnings(result: DocumentAudit) -> List[str]:
+def term_warnings(result: DocumentAudit) -> list[str]:
     """Warnings added by the term checks."""
     return [warning for warning in result.warnings if warning.startswith("Term ")]
 
@@ -272,7 +271,7 @@ def test_tabs_and_breaks_are_part_of_the_current_value() -> None:
 )
 def test_visible_run_content_other_than_text_is_an_edit(
     tag: str,
-    attributes: Dict[str, str],
+    attributes: dict[str, str],
     visible: str,
 ) -> None:
     doc = generate("{{amount}} {{amount}}", {"amount": "500"})
@@ -319,7 +318,7 @@ def test_empty_values_compare_as_text() -> None:
 
 @pytest.mark.parametrize("flag, expected", [(None, ""), ("0", "Click or tap here to enter text.")])
 def test_word_placeholder_text_of_a_cleared_control_is_an_empty_value(
-    flag: Optional[str],
+    flag: str | None,
     expected: str,
 ) -> None:
     doc = generate()
@@ -425,7 +424,7 @@ def test_cli_adds_terms_without_changing_the_exit_code(tmp_path: Path, caplog, m
     assert any("inconsistent" in warning for warning in payload["warnings"])
 
 
-def run_cli(path: Path, caplog, monkeypatch, expected_code: int) -> Dict:
+def run_cli(path: Path, caplog, monkeypatch, expected_code: int) -> dict:
     """Run `docx-audit` and return its JSON report."""
     monkeypatch.setattr("sys.argv", ["docx-audit", str(path)])
     with caplog.at_level(logging.INFO), pytest.raises(SystemExit) as exit_info:

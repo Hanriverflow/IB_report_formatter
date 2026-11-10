@@ -55,3 +55,4 @@ IB_CPSTB_reader/
 # Real deal documents and institution boilerplate stay outside the public repository
 tmp/
 private/
+temp/

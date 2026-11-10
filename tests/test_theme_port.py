@@ -146,7 +146,7 @@ def test_themes_remain_isolated_across_threads(tmp_path):
         paths.append(path)
     with ThreadPoolExecutor(max_workers=2) as pool:
         docs = list(pool.map(themed_document, paths * 2))
-    for doc, color in zip(docs, ("123456", "654321") * 2):
+    for doc, color in zip(docs, ("123456", "654321") * 2, strict=True):
         heading = next(p for p in doc.paragraphs if p.text == "Heading")
         assert str(heading.runs[0].font.color.rgb) == color
         assert f'w:fill="{color}"' in doc.tables[0]._tbl.xml

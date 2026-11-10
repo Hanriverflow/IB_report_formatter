@@ -35,7 +35,7 @@ import logging
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Match, Optional, Tuple
+from re import Match
 
 from cli_utils import setup_logging as configure_logging
 from converted_md_cleaner import clean_converted_term_sheet
@@ -65,8 +65,8 @@ class LaTeXProtector:
     INLINE_PLACEHOLDER = "__LATEX_INLINE_{idx}__"
 
     def __init__(self):
-        self._block_store: List[str] = []
-        self._inline_store: List[str] = []
+        self._block_store: list[str] = []
+        self._inline_store: list[str] = []
 
     def protect(self, text: str) -> str:
         """Replace all LaTeX with placeholders"""
@@ -127,7 +127,7 @@ class BoldProtector:
     PLACEHOLDER = "__BOLD_{idx}__"
 
     def __init__(self):
-        self._store: List[str] = []
+        self._store: list[str] = []
 
     def protect(self, text: str) -> str:
         def replacer(m):
@@ -174,14 +174,14 @@ class MetadataExtractor:
     _GENERIC_LABEL_BOUNDARY_RE = re.compile(r"[가-힣A-Za-z][가-힣A-Za-z0-9\s]{0,20}:\s*")
 
     @classmethod
-    def extract(cls, text: str) -> Tuple[Dict[str, str], str]:
+    def extract(cls, text: str) -> tuple[dict[str, str], str]:
         """
         Extract metadata from the start of text.
 
         Returns:
             Tuple of (metadata_dict, remaining_text)
         """
-        metadata: Dict[str, str] = {}
+        metadata: dict[str, str] = {}
         remaining = text
 
         # Extract title
@@ -222,7 +222,7 @@ class MetadataExtractor:
         return metadata, remaining.strip()
 
     @classmethod
-    def to_frontmatter(cls, metadata: Dict[str, str]) -> str:
+    def to_frontmatter(cls, metadata: dict[str, str]) -> str:
         """Convert metadata dict to YAML frontmatter"""
         if not metadata:
             return ""
@@ -445,7 +445,7 @@ class ColonLabelDetector:
     _BOLD_SPAN_RE = re.compile(r"\*\*[^*]+?\*\*")
 
     @staticmethod
-    def _is_inside_spans(idx: int, spans: List[Tuple[int, int]]) -> bool:
+    def _is_inside_spans(idx: int, spans: list[tuple[int, int]]) -> bool:
         """Return True if index is inside one of the given [start, end) spans."""
         for start, end in spans:
             if start <= idx < end:
@@ -470,7 +470,7 @@ class ColonLabelDetector:
             bold_spans = [(m.start(), m.end()) for m in cls._BOLD_SPAN_RE.finditer(result)]
             pattern = rf"({re.escape(label)}):\s*"
 
-            def replacer(match: Match[str], spans: List[Tuple[int, int]] = bold_spans) -> str:
+            def replacer(match: Match[str], spans: list[tuple[int, int]] = bold_spans) -> str:
                 if cls._is_inside_spans(match.start(), spans):
                     return match.group(0)
                 return f"{match.group(1)}: "
@@ -525,7 +525,7 @@ class ColonLabelDetector:
 
 def format_markdown(
     text: str,
-    cleaner_config: Optional[CleanerConfig] = None,
+    cleaner_config: CleanerConfig | None = None,
     cleaner_report: bool = False,
 ) -> str:
     """
@@ -660,7 +660,7 @@ def _cleanup(text: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def format_file(input_path: str, output_path: Optional[str] = None) -> str:
+def format_file(input_path: str, output_path: str | None = None) -> str:
     """
     Format a markdown file.
 
@@ -698,7 +698,7 @@ def _uses_deepresearch_options(
 
 def format_file_with_options(
     input_path: str,
-    output_path: Optional[str] = None,
+    output_path: str | None = None,
     cleaner_mode: str = "off",
     cite_mode: str = "footnote",
     drop_unknown_markers: bool = False,

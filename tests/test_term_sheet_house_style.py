@@ -3,7 +3,6 @@
 from dataclasses import fields
 from io import BytesIO
 from pathlib import Path
-from typing import List
 
 import pytest
 import yaml
@@ -63,7 +62,7 @@ def _render(markdown: str, strict: bool = True):
     return Document(payload)
 
 
-def _attr(element, path: str, name: str = "w:val") -> List[str]:
+def _attr(element, path: str, name: str = "w:val") -> list[str]:
     return [node.get(qn(name)) for node in element.xpath(path)]
 
 

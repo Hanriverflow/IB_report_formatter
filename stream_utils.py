@@ -16,7 +16,7 @@ Usage:
 import io
 import logging
 import pathlib
-from typing import BinaryIO, Optional, Union
+from typing import BinaryIO, Union
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ _EXT_TO_FORMAT = {
 def detect_format(
     source: BinaryIO,
     *,
-    hint: Optional[str] = None,
+    hint: str | None = None,
 ) -> str:
     """Detect the format of a binary stream.
 
@@ -108,7 +108,7 @@ def ensure_seekable(stream: BinaryIO) -> BinaryIO:
 
 def normalize_source(
     source: Union[str, "pathlib.Path", BinaryIO],
-) -> Union[str, BinaryIO]:
+) -> str | BinaryIO:
     """Normalize source to either a file path string or a BinaryIO stream.
 
     - str / Path → str (file path)

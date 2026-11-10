@@ -11,11 +11,11 @@ Changelog (term-sheet foundation):
 
 import logging
 import re
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Iterator
 
 from docx.shared import Inches, Pt, RGBColor
 

@@ -120,10 +120,14 @@ Regression coverage is in `tests/test_md_parser.py` (soft wrap merge, hard-break
 - Python floor raised to 3.12 by owner decision D1 on 2026-09-29
 
 ### Type Hints
+Use built-in generics and `X | None`; import abstract types from `collections.abc`. `ruff check` enforces this (pyupgrade rules).
 ```python
-from typing import List, Dict, Optional, Tuple, Union
+from collections.abc import Mapping
 
-def parse(lines: List[str]) -> Tuple[DocumentMetadata, List[str]]:
+def parse(lines: list[str]) -> tuple[DocumentMetadata, list[str]]:
+    ...
+
+def find(options: Mapping[str, str], key: str) -> str | None:
     ...
 
 def render(self, model: DocumentModel) -> Document:
@@ -159,7 +163,7 @@ class IBStyle:
 class TableCell:
     """A cell in a table"""
     content: str
-    runs: List[TextRun] = field(default_factory=list)
+    runs: list[TextRun] = field(default_factory=list)
     is_numeric: bool = False
 ```
 
@@ -183,7 +187,7 @@ class TextParser:
     _ESCAPE_RE = re.compile(r'\\([~.*"\'()\[\]{}|_-])')
 
     @classmethod
-    def parse_runs(cls, text: str) -> List[TextRun]:
+    def parse_runs(cls, text: str) -> list[TextRun]:
         parts = cls._BOLD_SPLIT_RE.split(text)
         ...
 ```
@@ -278,8 +282,8 @@ import sys
 import time
 import logging
 from pathlib import Path
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Tuple, Union
 from enum import Enum, auto
 
 # 2. Third-party
@@ -351,6 +355,8 @@ SENTENCE_END_RE = re.compile(
 2. **Regex without compile** - Compile patterns as class attributes
 3. **Missing type hints** - All public functions should have type hints
 4. **Print vs logging** - Use logging module for all output
+5. **`zip()` without `strict=`** - Pass `strict=True` only where the surrounding code guarantees equal lengths; otherwise write `strict=False` explicitly
+6. **Unformatted code** - Run `uv run ruff format .`; CI rejects unformatted files
 
 ---
 

@@ -29,10 +29,11 @@ import base64
 import math
 import re
 import unicodedata
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any
 
 import yaml
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
@@ -162,7 +163,7 @@ class ConfirmationText:
     """Validated confirmation wording without mutable item collections."""
 
     intro: str = ""
-    items: Tuple[str, ...] = ()
+    items: tuple[str, ...] = ()
     signature: str = ""
 
 
@@ -207,11 +208,11 @@ class TermSheetTexts:
     prepared_by: str
     disclaimer: str
     confidential_label: str = "Strictly Confidential"
-    confirmation: Optional[ConfirmationText] = None
+    confirmation: ConfirmationText | None = None
     style: TermSheetStyle = TermSheetStyle()
 
 
-def validate_style(value: Any, base_dir: Optional[Path] = None) -> Dict[str, Any]:
+def validate_style(value: Any, base_dir: Path | None = None) -> dict[str, Any]:
     """Validate a `style:` mapping and resolve a relative logo path.
 
     Args:
@@ -308,7 +309,7 @@ def _confirmation_text(value: Any) -> ConfirmationText:
     )
 
 
-def _validate_house_fields(data: Dict[str, Any]) -> None:
+def _validate_house_fields(data: dict[str, Any]) -> None:
     """Reject unsupported keys and malformed values without requiring all fields."""
     unknown = set(data) - _HOUSE_KEYS
     if unknown:
@@ -322,7 +323,7 @@ def _validate_house_fields(data: Dict[str, Any]) -> None:
         validate_style(data["style"])
 
 
-def load_house(path: Union[str, Path]) -> Dict[str, Any]:
+def load_house(path: str | Path) -> dict[str, Any]:
     """Load and validate the fields supplied by a house YAML file.
 
     Args:
@@ -349,7 +350,7 @@ def load_house(path: Union[str, Path]) -> Dict[str, Any]:
 
 
 def resolve_term_sheet_texts(
-    metadata: DocumentMetadata, house_path: Optional[str] = None
+    metadata: DocumentMetadata, house_path: str | None = None
 ) -> TermSheetTexts:
     """Resolve boilerplate before rendering, preserving explicit empty values.
 
@@ -365,7 +366,7 @@ def resolve_term_sheet_texts(
         ValueError: A path is relative, a field is malformed, or required text is absent.
         OSError: The effective house file cannot be read.
     """
-    house: Dict[str, Any] = {}
+    house: dict[str, Any] = {}
     if house_path is not None:
         if not isinstance(house_path, str) or not house_path.strip():
             raise ValueError("house must be a YAML file path")
@@ -449,7 +450,7 @@ _CIRCLED_LAYOUT = MarkerLayout(0.0, 4.5)
 _CIRCLED_NUMBERS = frozenset(chr(code) for code in range(0x2460, 0x2474))  # ①–⑳
 
 
-def marker_layout(text: str) -> Optional[MarkerLayout]:
+def marker_layout(text: str) -> MarkerLayout | None:
     """Return the layout for a line's leading marker; the text is never changed.
 
     A hyphen counts only when followed by whitespace, so negative amounts and a
@@ -466,7 +467,7 @@ def marker_layout(text: str) -> Optional[MarkerLayout]:
     return _MARKER_LAYOUTS.get(marker)
 
 
-def apply_marker_layout(paragraph: Any, text: str) -> Optional[Pt]:
+def apply_marker_layout(paragraph: Any, text: str) -> Pt | None:
     """Give a paragraph its marker hanging indent.
 
     Args:
@@ -496,7 +497,7 @@ def _is_plain(run: TextRun) -> bool:
     )
 
 
-def _strip_edge(line: List[TextRun], leading: bool) -> List[TextRun]:
+def _strip_edge(line: list[TextRun], leading: bool) -> list[TextRun]:
     """Drop spaces and tabs beside a line break, as HTML does around `<br>`."""
     runs = list(line)
     index = 0 if leading else -1
@@ -509,7 +510,7 @@ def _strip_edge(line: List[TextRun], leading: bool) -> List[TextRun]:
     return runs
 
 
-def split_run_lines(runs: Sequence[TextRun]) -> List[List[TextRun]]:
+def split_run_lines(runs: Sequence[TextRun]) -> list[list[TextRun]]:
     """Split runs at line breaks into one run list per Word paragraph.
 
     Formatting, link targets, footnote references and term keys stay on every
@@ -522,7 +523,7 @@ def split_run_lines(runs: Sequence[TextRun]) -> List[List[TextRun]]:
     Returns:
         At least one, possibly empty, run list.
     """
-    lines: List[List[TextRun]] = [[]]
+    lines: list[list[TextRun]] = [[]]
     for run in runs:
         if not _is_plain(run) or "\n" not in run.text:
             lines[-1].append(run)
@@ -532,7 +533,7 @@ def split_run_lines(runs: Sequence[TextRun]) -> List[List[TextRun]]:
                 lines.append([])
             if piece:
                 lines[-1].append(replace(run, text=piece))
-    trimmed: List[List[TextRun]] = []
+    trimmed: list[list[TextRun]] = []
     for index, line in enumerate(lines):
         if index > 0:
             line = _strip_edge(line, leading=True)
@@ -644,7 +645,7 @@ def _rgb(hex_color: str) -> RGBColor:
     return RGBColor.from_string(hex_color)
 
 
-def label_widths(label_columns: int) -> List[int]:
+def label_widths(label_columns: int) -> list[int]:
     """Fixed label column widths in EMU: the label, plus the second label tier."""
     widths = [int(STYLE.TS_LABEL_WIDTH)]
     if label_columns == 2:
@@ -652,7 +653,7 @@ def label_widths(label_columns: int) -> List[int]:
     return widths
 
 
-def key_value_widths(label_columns: int, available: int) -> Optional[List[int]]:
+def key_value_widths(label_columns: int, available: int) -> list[int] | None:
     """Fixed label grid for key-value tables, so their first vertical line is common.
 
     The labels keep their fixed widths whenever the content column keeps a
@@ -834,7 +835,7 @@ def add_table_spacer(doc: Any) -> None:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _default_properties(doc: Any) -> Tuple[Any, Any]:
+def _default_properties(doc: Any) -> tuple[Any, Any]:
     """Return `docDefaults` paragraph and run properties, creating them if absent."""
     root = doc.styles.element
     defaults = root.find(qn("w:docDefaults"))
@@ -924,13 +925,13 @@ def setup_term_sheet_styles(doc: Any) -> None:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _display_runs(metadata: DocumentMetadata, key: str, text: str) -> List[TextRun]:
+def _display_runs(metadata: DocumentMetadata, key: str, text: str) -> list[TextRun]:
     """Parse-time runs (term substitution) when present, else the parsed text."""
     runs = metadata.display_runs.get(key)
     return list(runs) if runs else TextParser.parse_runs(text)
 
 
-def _bold(runs: Sequence[TextRun]) -> List[TextRun]:
+def _bold(runs: Sequence[TextRun]) -> list[TextRun]:
     return [replace(run, bold=True) for run in runs]
 
 
@@ -1046,7 +1047,7 @@ def _add_logo(doc: Any, style: TermSheetStyle) -> None:
     """Centre the house logo; a logo that cannot be loaded is a render diagnostic."""
     paragraph = _opening_paragraph(doc, Pt(8))
     try:
-        source: Union[str, BytesIO] = style.logo
+        source: str | BytesIO = style.logo
         if style.logo.lower().startswith("data:"):
             header, _, payload = style.logo.partition(",")
             if not header.lower().endswith(";base64"):
@@ -1147,7 +1148,7 @@ class _CellWriter:
         return paragraph
 
 
-def _item_layout(text: str) -> Optional[MarkerLayout]:
+def _item_layout(text: str) -> MarkerLayout | None:
     if text.lstrip().startswith(_CHECKBOX):
         return MarkerLayout(0.0, _CHECKBOX_LAYOUT_MM)
     return marker_layout(text)
@@ -1198,7 +1199,7 @@ def render_confirmation(doc: Any, confirmation: ConfirmationText, render_runs: R
                     writer.paragraph(), line, default_color=muted, font_size=STYLE.TS_NOTE_SIZE
                 )
             for item in items:
-                layout: Optional[MarkerLayout] = None
+                layout: MarkerLayout | None = None
                 for line_index, line in enumerate(split_run_lines(TextParser.parse_runs(item))):
                     paragraph = writer.paragraph()
                     if line_index == 0:
@@ -1266,7 +1267,7 @@ def _add_field(paragraph: Any, instruction: str, color: RGBColor, size: Length) 
 def setup_term_sheet_header_footer(
     doc: Any,
     metadata: DocumentMetadata,
-    texts: Optional[TermSheetTexts],
+    texts: TermSheetTexts | None,
     confidential: bool,
     render_runs: RenderRuns,
 ) -> None:

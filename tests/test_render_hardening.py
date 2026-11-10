@@ -386,7 +386,7 @@ def test_nested_numbering_restarts_in_each_parent_scope(
     ids = [p._p.pPr.numPr.numId.val for p in children]
     assert len(set(ids)) == 2
     numbering = reopened.part.numbering_part.element
-    for paragraph, num_id in zip(children, ids):
+    for paragraph, num_id in zip(children, ids, strict=True):
         assert paragraph._p.pPr.numPr.ilvl.val == child_level
         instance = next(
             n for n in numbering.findall(qn("w:num")) if n.get(qn("w:numId")) == str(num_id)

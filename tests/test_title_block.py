@@ -5,7 +5,6 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from io import BytesIO
 from pathlib import Path
-from typing import List
 
 import pytest
 from docx import Document
@@ -159,7 +158,7 @@ def test_frontmatter_cover_selection(setting: str, toc: bool) -> None:
     ],
 )
 def test_cli_cover_off_title_block(
-    tmp_path: Path, monkeypatch, flags: List[str], toc: bool
+    tmp_path: Path, monkeypatch, flags: list[str], toc: bool
 ) -> None:
     source, target = tmp_path / "report.md", tmp_path / "report.docx"
     source.write_text(YAML_TITLE + BODY, encoding="utf-8")
@@ -187,7 +186,7 @@ def test_cli_cover_off_title_block(
 def test_cli_title_block_precedes_toc_on_first_page(
     tmp_path: Path,
     monkeypatch,
-    flags: List[str],
+    flags: list[str],
     source: str,
 ) -> None:
     """Keep title metadata before the TOC and the existing break before body text."""

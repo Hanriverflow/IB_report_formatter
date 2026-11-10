@@ -2,7 +2,6 @@
 
 import base64
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 import pytest
 from docx import Document
@@ -19,8 +18,8 @@ def _render(
     markdown: str,
     profile: str = "plain",
     strict: bool = True,
-    cover: Optional[bool] = None,
-) -> Tuple[DocumentModel, DocxDocument]:
+    cover: bool | None = None,
+) -> tuple[DocumentModel, DocxDocument]:
     """Parse and render with matching profiles and explicit strictness."""
     model = MarkdownParser(profile=profile).parse(markdown)
     doc = IBDocumentRenderer(
@@ -35,7 +34,7 @@ def _render(
     return model, doc
 
 
-def _texts(doc: DocxDocument) -> List[str]:
+def _texts(doc: DocxDocument) -> list[str]:
     """Include hyperlink text and text inside tables in source order."""
     return [
         "".join(
@@ -344,7 +343,7 @@ def test_d1_hand_built_model_does_not_hide_matching_heading(cover: bool) -> None
 @pytest.mark.parametrize("strict", [True, False])
 def test_d2_consecutive_header_metadata_has_separate_cover_cells(
     tmp_path: Path,
-    labels: Tuple[str, str],
+    labels: tuple[str, str],
     cover: bool,
     strict: bool,
 ) -> None:
@@ -377,7 +376,7 @@ def test_d2_consecutive_header_metadata_has_separate_cover_cells(
 @pytest.mark.parametrize("labels", [("Date", "Analyst", "Risk"), ("작성일", "작성자", "위험")])
 @pytest.mark.parametrize("cover", [True, False])
 def test_d2_unknown_labels_survive_among_consecutive_metadata(
-    labels: Tuple[str, str, str],
+    labels: tuple[str, str, str],
     unknown_index: int,
     cover: bool,
 ) -> None:

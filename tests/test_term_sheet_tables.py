@@ -7,7 +7,6 @@ All names and figures are fictional.
 
 import hashlib
 from io import BytesIO
-from typing import List
 
 import pytest
 import yaml
@@ -100,15 +99,15 @@ def text(element) -> str:
     return "".join(element.xpath(".//w:t/text()"))
 
 
-def attr(element, path: str, name: str = "w:val") -> List[str]:
+def attr(element, path: str, name: str = "w:val") -> list[str]:
     return [node.get(qn(name)) for node in element.xpath(path)]
 
 
-def fill(tc) -> List[str]:
+def fill(tc) -> list[str]:
     return attr(tc, "./w:tcPr/w:shd", "w:fill")
 
 
-def run_values(paragraph, path: str, name: str = "w:val") -> List[str]:
+def run_values(paragraph, path: str, name: str = "w:val") -> list[str]:
     return [node.get(qn(name)) for node in paragraph.xpath(".//w:r/w:rPr/" + path)]
 
 
@@ -319,7 +318,7 @@ def test_key_value_tables_share_the_fixed_label_grid() -> None:
     assert grids[1][1] == twips(30)
     assert sum(grids[0]) == pytest.approx(total, abs=1)
     assert sum(grids[1]) == pytest.approx(total, abs=1)
-    for table, grid in zip(tables(saved), grids):
+    for table, grid in zip(tables(saved), grids, strict=False):
         assert attr(table, "./w:tblPr/w:tblLayout", "w:type") == ["fixed"]
         assert attr(table, "./w:tblPr/w:tblW", "w:type") == ["dxa"]
         assert int(attr(table, "./w:tblPr/w:tblW", "w:w")[0]) == pytest.approx(sum(grid), abs=1)

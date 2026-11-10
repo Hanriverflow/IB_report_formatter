@@ -30,7 +30,6 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Set
 
 from cli_utils import (
     generate_output_path as build_output_path,
@@ -182,7 +181,7 @@ def resolve_input_path(input_file: str) -> Path:
     return resolve_project_input_path(input_file, parent_dir=PARENT_DIR, script_path=Path(__file__))
 
 
-def generate_output_path(input_path: Path, output_path: Optional[str] = None) -> Path:
+def generate_output_path(input_path: Path, output_path: str | None = None) -> Path:
     """Generate the Word output path."""
     return build_output_path(
         input_path,
@@ -222,8 +221,8 @@ class IBReportConverter:
     def __init__(
         self,
         md_file_path: str,
-        output_path: Optional[str] = None,
-        render_options: Optional[RenderOptions] = None,
+        output_path: str | None = None,
+        render_options: RenderOptions | None = None,
     ):
         """
         Initialize the converter.
@@ -318,12 +317,12 @@ class IBReportConverter:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def list_md_files() -> List[Path]:
+def list_md_files() -> list[Path]:
     """List all markdown files in the parent directory."""
     return list_files(PARENT_DIR, "*.md", ".md", "MD")
 
 
-def interactive_select(md_files: List[Path]) -> Optional[Path]:
+def interactive_select(md_files: list[Path]) -> Path | None:
     """Prompt user to select a markdown file by number."""
     return prompt_for_selection(md_files, "Enter file number to convert (or 'q' to quit): ")
 
@@ -626,12 +625,12 @@ def run_batch_conversion(input_dir: Path, args: argparse.Namespace) -> int:
     planned_outputs = {
         source: output_dir / generate_output_path(source).name for source in input_files
     }
-    output_sources: Dict[str, List[Path]] = {}
+    output_sources: dict[str, list[Path]] = {}
     for source, destination in planned_outputs.items():
         key = os.path.normcase(str(destination.resolve()))
         output_sources.setdefault(key, []).append(source)
 
-    colliding_inputs: Set[Path] = set()
+    colliding_inputs: set[Path] = set()
     for sources in output_sources.values():
         if len(sources) > 1:
             colliding_inputs.update(sources)

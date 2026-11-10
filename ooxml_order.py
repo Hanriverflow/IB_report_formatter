@@ -9,12 +9,10 @@ Changelog (schema order):
     - NEW: shared tblPr/tcPr/pPr/rPr sequences and an ordered insert.
 """
 
-from typing import Dict, Optional, Tuple
-
 from lxml import etree
 
 # Child sequences of CT_TblPr, CT_TcPr, CT_PPr and CT_RPr (ECMA-376 Part 1, §17).
-SEQUENCES: Dict[str, Tuple[str, ...]] = {
+SEQUENCES: dict[str, tuple[str, ...]] = {
     "tblPr": (
         "tblStyle",
         "tblpPr",
@@ -138,7 +136,7 @@ SEQUENCES: Dict[str, Tuple[str, ...]] = {
 }
 
 
-def _local_name(element: etree._Element) -> Optional[str]:
+def _local_name(element: etree._Element) -> str | None:
     """Return an element's local name, or None for comments and processing instructions."""
     return etree.QName(element).localname if isinstance(element.tag, str) else None
 

@@ -9,8 +9,6 @@ Changelog (hardening):
     - Reuse memo title/metadata typography for cover-free IB reports, adding subtitles.
 """
 
-from typing import Dict, Optional, Tuple
-
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
@@ -24,7 +22,7 @@ from render_styles import STYLE
 
 
 def add_text(
-    doc, text: str, bold: bool = False, keep_next: bool = False, style_name: Optional[str] = None
+    doc, text: str, bold: bool = False, keep_next: bool = False, style_name: str | None = None
 ):
     """Add a consistently styled office paragraph."""
     paragraph = doc.add_paragraph(style=style_name or STYLE.STYLE_IB_BODY)
@@ -90,7 +88,7 @@ def setup_korean_spacing(doc) -> None:
         insert_ordered(properties, element)
 
 
-def letter_appendix_index(model: DocumentModel) -> Optional[int]:
+def letter_appendix_index(model: DocumentModel) -> int | None:
     """Resolve a unique explicit H1 boundary before composing any output."""
     if model.metadata.profile != "office-letter":
         return None
@@ -228,7 +226,7 @@ class NativeNumbering:
 
     def __init__(self, doc) -> None:
         self.doc = doc
-        self.ids: Dict[Tuple[int, str], int] = {}
+        self.ids: dict[tuple[int, str], int] = {}
 
     def reset(self) -> None:
         """Start a fresh list after a non-list block."""

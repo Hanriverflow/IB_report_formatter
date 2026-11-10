@@ -10,7 +10,7 @@ Changelog (feature port):
 import math
 import re
 from io import BytesIO
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import yaml
 
@@ -42,7 +42,7 @@ class _ChartSchema:
     FORMATS = {"number", "percent", "bps", "multiple"}
 
 
-def _optional_string(data: Dict[str, Any], key: str) -> Optional[str]:
+def _optional_string(data: dict[str, Any], key: str) -> str | None:
     value = data.get(key)
     if value is not None and not isinstance(value, str):
         raise ChartSpecError(f"{key} must be a string or null")
@@ -75,7 +75,7 @@ def parse_chart_spec(text: str) -> ChartSpec:
         raise ChartSpecError(f"Chart{name} {exc}") from exc
 
 
-def _validate_spec(data: Dict[str, Any]) -> ChartSpec:
+def _validate_spec(data: dict[str, Any]) -> ChartSpec:
     unknown = set(data) - _ChartSchema.FIELDS
     if unknown:
         raise ChartSpecError("unknown field(s): " + ", ".join(sorted(map(str, unknown))))
@@ -140,7 +140,7 @@ def _validate_spec(data: Dict[str, Any]) -> ChartSpec:
     return ChartSpec(chart_type=kind, labels=labels, series=series, **strings)
 
 
-def waterfall_positions(values: List[float]) -> Tuple[List[float], List[float], float]:
+def waterfall_positions(values: list[float]) -> tuple[list[float], list[float], float]:
     """Compute PR #5's cumulative deltas and final total from an implicit zero.
 
     Args:
@@ -161,7 +161,7 @@ def waterfall_positions(values: List[float]) -> Tuple[List[float], List[float], 
     return bottoms, tops, cumulative
 
 
-def format_value(value: float, number_format: Optional[str] = None) -> str:
+def format_value(value: float, number_format: str | None = None) -> str:
     """Format a value for display; percent/bps/multiple never change its scale.
 
     Args:
@@ -238,7 +238,7 @@ def render_chart_png(
                 offset = (index - (len(spec.series) - 1) / 2.0) * width
                 xs = [x + offset for x in positions]
                 ax.bar(xs, series.values, width=width, color=palette[index % 3], label=series.name)
-                for x, value in zip(xs, series.values):
+                for x, value in zip(xs, series.values, strict=False):
                     annotate(x, value, value)
         elif spec.chart_type == "line":
             for index, series in enumerate(spec.series):
@@ -254,7 +254,7 @@ def render_chart_png(
         elif spec.chart_type == "waterfall":
             values = spec.series[0].values
             bottoms, tops, total = waterfall_positions(values)
-            heights = [top - bottom for bottom, top in zip(bottoms, tops)]
+            heights = [top - bottom for bottom, top in zip(bottoms, tops, strict=True)]
             colors = [navy if value >= 0 else f"#{STYLE.CHART_NEGATIVE_COLOR}" for value in values]
             ax.bar(positions, heights, bottom=bottoms, width=0.65, color=colors)
             cumulative = 0.0
