@@ -327,7 +327,7 @@ class TestImageRendererMimeTypes:
         )
 
         renderer = IBDocumentRenderer()
-        doc = renderer.render(model)
+        doc = renderer.render(model, asset_roots=(tmp_path,))
 
         assert len(doc.inline_shapes) >= 1
         inline_shape = doc.inline_shapes[0]

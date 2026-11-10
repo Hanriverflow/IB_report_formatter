@@ -160,6 +160,7 @@ from document_profiles import (
     header_labels,
     validate_term_sheet_metadata,
 )
+from input_safety import resolve_asset_roots
 from numeric_checks import evaluate_checks, parse_checks
 from term_variables import (
     TERM_REFERENCE_RE,
@@ -2449,6 +2450,7 @@ class MarkdownParser:
         preserve_trailing_double_space_break: bool = False,
         profile: str | None = None,
         base_dir: Path | None = None,
+        asset_roots: Sequence[str | Path] = (),
     ):
         """
         Initialize parser behavior flags.
@@ -2457,12 +2459,16 @@ class MarkdownParser:
             preserve_trailing_double_space_break:
                 When True, treat markdown trailing 2+ spaces as hard line breaks.
                 Default False to avoid accidental Shift+Enter artifacts from noisy input.
+            profile: Explicit profile override.
+            base_dir: Base for relative destinations; does not itself grant asset access.
+            asset_roots: Operator-supplied folders carried to rendering. Text has no default.
         """
         self.preserve_trailing_double_space_break = preserve_trailing_double_space_break
         self.profile = profile
         # Folder of the source file: relative link paths are resolved against it
         # when the document is saved (see `rebase_local_links`).
         self.base_dir = base_dir
+        self.asset_roots = resolve_asset_roots(asset_roots)
         self._financial_rules = True
         self._term_sheet = False
         self._parse_warnings: list[str] = []
@@ -2561,6 +2567,7 @@ class MarkdownParser:
             warnings=input_warnings,
             parsed_profile=metadata.profile,
             source_dir=self.base_dir,
+            asset_roots=self.asset_roots,
         )
         if not self._financial_rules:
             first_heading = next(
@@ -3594,7 +3601,12 @@ def _decode_bytes(raw_bytes: bytes, label: str = "<stream>") -> str:
     )
 
 
-def parse_markdown_file(source: "str | BinaryIO", profile: str | None = None) -> DocumentModel:
+def parse_markdown_file(
+    source: "str | BinaryIO",
+    profile: str | None = None,
+    *,
+    asset_roots: Sequence[str | Path] = (),
+) -> DocumentModel:
     """
     Parse a markdown file or stream into a DocumentModel.
 
@@ -3604,6 +3616,7 @@ def parse_markdown_file(source: "str | BinaryIO", profile: str | None = None) ->
 
     Args:
         source: Path to the markdown file, or a readable binary stream.
+        asset_roots: Operator-supplied folders added to the source-file folder.
 
     Returns:
         A DocumentModel containing all parsed content
@@ -3627,7 +3640,8 @@ def parse_markdown_file(source: "str | BinaryIO", profile: str | None = None) ->
     frontmatter_present = remaining_lines is not lines
 
     base_dir = None if is_stream(source) else Path(str(source)).resolve().parent
-    parser = MarkdownParser(profile=profile, base_dir=base_dir)
+    roots = (*((base_dir,) if base_dir is not None else ()), *asset_roots)
+    parser = MarkdownParser(profile=profile, base_dir=base_dir, asset_roots=roots)
     model = parser.parse(content)
     if get_profile(model.metadata.profile).is_ib:
         _infer_metadata_from_elements(model, allow_company_inference=not frontmatter_present)

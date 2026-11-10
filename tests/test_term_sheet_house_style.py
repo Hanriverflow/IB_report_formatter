@@ -53,8 +53,8 @@ def _markdown(house: Path, body: str = BODY, **fields) -> str:
     return "---\n" + yaml.safe_dump(data, allow_unicode=True) + "---\n" + body
 
 
-def _render(markdown: str, strict: bool = True):
-    doc = IBDocumentRenderer(options=RenderOptions(strict=strict)).render(
+def _render(markdown: str, strict: bool = True, asset_roots: tuple[Path, ...] = ()):
+    doc = IBDocumentRenderer(options=RenderOptions(strict=strict, asset_roots=asset_roots)).render(
         MarkdownParser().parse(markdown)
     )
     payload = BytesIO()
@@ -89,7 +89,10 @@ def test_cover_page_logo_and_boxed_disclaimer(tmp_path: Path) -> None:
     folder = tmp_path / "house"
     _logo(folder / "assets" / "logo.png")
     doc = _render(
-        _markdown(_house(folder, {"cover": "page", "logo": "assets/logo.png", "disclaimer": "box"}))
+        _markdown(
+            _house(folder, {"cover": "page", "logo": "assets/logo.png", "disclaimer": "box"})
+        ),
+        asset_roots=(folder,),
     )
     opening = doc.paragraphs[: _heading_index(doc)]
     assert opening[0].paragraph_format.space_before == pytest.approx(Mm(60), abs=635)
@@ -230,7 +233,7 @@ def test_an_empty_frontmatter_logo_removes_the_house_logo(tmp_path: Path) -> Non
     folder = tmp_path / "house"
     _logo(folder / "logo.png")
     house = _house(folder, {"logo": "logo.png"})
-    assert _render(_markdown(house)).element.body.xpath(".//w:drawing")
+    assert _render(_markdown(house), asset_roots=(folder,)).element.body.xpath(".//w:drawing")
     assert not _render(_markdown(house, style={"logo": ""})).element.body.xpath(".//w:drawing")
 
 
@@ -246,8 +249,10 @@ def test_an_empty_label_color_keeps_the_default_grey(tmp_path: Path) -> None:
 def test_a_missing_logo_is_a_render_diagnostic(tmp_path: Path) -> None:
     source = _markdown(_house(tmp_path, {"logo": "missing.png"}))
     with pytest.raises(ValueError, match="House logo could not be rendered"):
-        _render(source)
-    assert not _render(source, strict=False).element.body.xpath(".//w:drawing")
+        _render(source, asset_roots=(tmp_path,))
+    assert not _render(source, strict=False, asset_roots=(tmp_path,)).element.body.xpath(
+        ".//w:drawing"
+    )
 
 
 def test_a_frontmatter_logo_is_relative_to_the_markdown_file(tmp_path: Path) -> None:

@@ -273,7 +273,11 @@ class IBReportConverter:
         # ── Stage 1: Parse ──────────────────────────────────────────────────
         logger.info("Parsing: %s", self.md_file_path.name)
         try:
-            model = parse_markdown_file(str(self.md_file_path), profile=self.render_options.profile)
+            model = parse_markdown_file(
+                str(self.md_file_path),
+                profile=self.render_options.profile,
+                asset_roots=self.render_options.asset_roots,
+            )
         except UnicodeDecodeError as e:
             raise RuntimeError(
                 f"Failed to decode file (encoding issue): {e}\nTry saving the file as UTF-8."
@@ -440,6 +444,13 @@ Examples:
         help="Term-sheet institution boilerplate YAML (overrides frontmatter `house`)",
     )
     parser.add_argument(
+        "--asset-root",
+        action="append",
+        default=[],
+        metavar="FOLDER",
+        help="Allow images and logos within an additional folder (repeatable)",
+    )
+    parser.add_argument(
         "--no-term-tags",
         action="store_false",
         dest="term_tags",
@@ -519,6 +530,7 @@ def run_conversion(input_path: Path, args) -> int:
         preset=getattr(args, "preset", None),
         house=str(Path(args.house).resolve()) if getattr(args, "house", None) else None,
         term_tags=getattr(args, "term_tags", None),
+        asset_roots=tuple(getattr(args, "asset_root", ())),
     )
 
     # Auto-format / cleaner if requested
