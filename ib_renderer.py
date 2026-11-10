@@ -57,7 +57,6 @@ Changelog (v2):
     - Blockquote multi-line content preserved
 """
 
-import base64
 import logging
 import os
 import platform
@@ -101,8 +100,14 @@ from document_profiles import (
     validate_term_sheet_metadata,
 )
 from input_safety import (
+    DEFAULT_LIMITS,
     AssetOutsideRootError,
+    InputLimitError,
+    InputLimits,
+    RejectionCode,
     StrictValidationError,
+    check_image_source,
+    decode_image,
     local_asset_path,
     resolve_asset_roots,
 )
@@ -904,6 +909,7 @@ class TextRenderer:
                 image,
                 getattr(paragraph.part, "_ib_source_dir", None),
                 getattr(paragraph.part, "_ib_asset_roots", ()),
+                limits=getattr(paragraph.part, "_ib_limits", DEFAULT_LIMITS),
             )
             if source is None:
                 raise FileNotFoundError(image.path)
@@ -914,6 +920,8 @@ class TextRenderer:
                 shape.width = limit
             ImageRenderer._apply_alt_text(shape, image.alt_text)
             return
+        except InputLimitError:
+            raise
         except AssetOutsideRootError as err:
             message = str(err)
             logger.warning("%s", message)
@@ -3078,7 +3086,12 @@ class ImageRenderer:
 
     @classmethod
     def image_source(
-        cls, image: Image, base_dir: Path | None = None, asset_roots: Sequence[str | Path] = ()
+        cls,
+        image: Image,
+        base_dir: Path | None = None,
+        asset_roots: Sequence[str | Path] = (),
+        *,
+        limits: InputLimits = DEFAULT_LIMITS,
     ) -> str | BytesIO | None:
         """Return what python-docx inserts for an image: decoded bytes or a file path.
 
@@ -3086,6 +3099,7 @@ class ImageRenderer:
             image: Parsed image; Base64 data or a `data:` URI wins over a path.
             base_dir: Folder for a relative path (see `local_path`).
             asset_roots: Operator-supplied allowed folders.
+            limits: Immutable caller limits for bytes and header pixel dimensions.
 
         Returns:
             A stream or path, or None when the file does not exist.
@@ -3096,10 +3110,12 @@ class ImageRenderer:
             if header.endswith(";base64"):
                 data = payload
         if data is not None:
-            return BytesIO(base64.b64decode(data))
+            return decode_image(data, limits)
         if cls._URI_RE.match(image.path) and not Path(image.path).is_absolute():
             return None
         location = cls.local_path(image.path, base_dir, asset_roots)
+        if location is not None:
+            check_image_source(str(location), limits)
         return str(location) if location is not None else None
 
     @classmethod
@@ -3161,7 +3177,9 @@ class ImageRenderer:
             # ── Case 1: Base64 embedded image ──────────────────────────────────
             if image.base64_data:
                 # Decode Base64 to bytes
-                img_bytes = base64.b64decode(image.base64_data)
+                img_bytes = decode_image(
+                    image.base64_data, getattr(self.doc.part, "_ib_limits", DEFAULT_LIMITS)
+                ).getvalue()
 
                 # Determine file extension from MIME type
                 ext = self._mime_to_extension(image.mime_type)
@@ -3183,6 +3201,7 @@ class ImageRenderer:
                     image,
                     getattr(self.doc.part, "_ib_source_dir", None),
                     getattr(self.doc.part, "_ib_asset_roots", ()),
+                    limits=getattr(self.doc.part, "_ib_limits", DEFAULT_LIMITS),
                 )
                 if source is None:
                     logger.warning(
@@ -3194,6 +3213,8 @@ class ImageRenderer:
                     inserted = True
                     logger.debug("Inserted file image: %s", image.path[:80])
 
+        except InputLimitError:
+            raise
         except AssetOutsideRootError as e:
             message = str(e)
             logger.warning("%s", message)
@@ -3674,18 +3695,25 @@ class IBDocumentRenderer:
         self.chart_renderer = ChartRenderer(self.doc)
 
     def render(
-        self, model: DocumentModel, *, asset_roots: Sequence[str | Path] = ()
+        self,
+        model: DocumentModel,
+        *,
+        asset_roots: Sequence[str | Path] = (),
+        limits: InputLimits | None = None,
     ) -> DocxDocument:
         """Render through one composition path, using request-local settings.
 
         Args:
             model: Parsed or hand-built document with its carried allowed folders.
             asset_roots: Operator folders added to model and RenderOptions folders.
+            limits: Explicit policy overriding options and the parsed model's policy.
 
         Returns:
             The rendered document; strict rejections occur before callers can save it.
         """
         self.term_sheet_texts = None
+        limits = limits or self.options.limits or model.limits
+        self._check_model_limits(model, limits)
         model = deepcopy(model)
         roots = resolve_asset_roots((*model.asset_roots, *self.options.asset_roots, *asset_roots))
         resolved = resolve_options(model.metadata, self.options)
@@ -3746,6 +3774,7 @@ class IBDocumentRenderer:
         # Inline images (table cells, text) resolve relative paths against the source.
         cast(Any, self.doc.part)._ib_source_dir = model.source_dir
         cast(Any, self.doc.part)._ib_asset_roots = roots
+        cast(Any, self.doc.part)._ib_limits = limits
         # Only an operator-selected house can exempt its own logo. A frontmatter
         # override remains document content even when it names the identical path.
         style = model.metadata.extra.get("style", {})
@@ -3816,6 +3845,8 @@ class IBDocumentRenderer:
                     self.list_renderer.numbering.reset()
                 try:
                     self._render_element(element)
+                except InputLimitError:
+                    raise
                 except Exception as exc:
                     message = f"Element {idx} ({element.element_type.name}): {exc}"
                     self.errors.append(message)
@@ -3888,6 +3919,25 @@ class IBDocumentRenderer:
             if resolved.strict and self.errors:
                 raise StrictValidationError("Document validation failed: ", self.errors)
         return self.doc
+
+    @staticmethod
+    def _check_model_limits(model: DocumentModel, limits: InputLimits) -> None:
+        """Preflight tables and lists even when the caller bypassed parsing.
+
+        Args:
+            model: Parsed or hand-built document.
+            limits: Effective caller policy for this render.
+        """
+        for element in model.elements:
+            content = element.content
+            if isinstance(content, Table):
+                columns = max(
+                    content.col_count, max((len(row.cells) for row in content.rows), default=0)
+                )
+                limits.check(RejectionCode.LIMIT_TABLE_CELLS, len(content.rows) * columns)
+            item = content[1] if isinstance(content, tuple) else content
+            if isinstance(item, ListItem):
+                limits.check(RejectionCode.LIMIT_LIST_DEPTH, item.indent_level + 1)
 
     def apply_generator_signature(self, profile: str = "ib_generated") -> None:
         """Stamp the DOCX package with a generator signature."""

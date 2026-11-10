@@ -25,7 +25,6 @@ Changelog (A2 rendering):
       two-row confirmation box and per-section header/footer.
 """
 
-import base64
 import logging
 import math
 import re
@@ -45,7 +44,14 @@ from docx.oxml.table import CT_Tc
 from docx.shared import Emu, Length, Mm, Pt, RGBColor, Twips
 
 from document_model import DocumentMetadata, Heading, Paragraph, TextRun
-from input_safety import AssetOutsideRootError, local_asset_path
+from input_safety import (
+    DEFAULT_LIMITS,
+    AssetOutsideRootError,
+    InputLimitError,
+    check_image_source,
+    decode_image,
+    local_asset_path,
+)
 from md_parser import TextParser
 from render_styles import STYLE
 
@@ -1050,13 +1056,14 @@ def render_term_sheet_opening(
 def _add_logo(doc: Any, style: TermSheetStyle) -> None:
     """Centre the house logo; a logo that cannot be loaded is a render diagnostic."""
     paragraph = _opening_paragraph(doc, Pt(8))
+    limits = getattr(doc.part, "_ib_limits", DEFAULT_LIMITS)
     try:
         source: str | BytesIO = style.logo
         if style.logo.lower().startswith("data:"):
             header, _, payload = style.logo.partition(",")
             if not header.lower().endswith(";base64"):
                 raise ValueError("only base64 data: URIs are supported")
-            source = BytesIO(base64.b64decode(payload))
+            source = decode_image(payload, limits)
         elif not getattr(doc.part, "_ib_trusted_house_logo", False):
             location = local_asset_path(
                 style.logo, asset_roots=getattr(doc.part, "_ib_asset_roots", ())
@@ -1064,7 +1071,10 @@ def _add_logo(doc: Any, style: TermSheetStyle) -> None:
             # For an allowed missing/unreadable path, retain python-docx's existing
             # diagnostic text. Outside candidates have already raised above.
             source = str(location) if location is not None else style.logo
+        check_image_source(source, limits)
         paragraph.add_run().add_picture(source, width=Mm(style.logo_width_mm))
+    except InputLimitError:
+        raise
     except Exception as error:  # a missing or unreadable file must not break the opening
         paragraph._p.getparent().remove(paragraph._p)
         errors = getattr(doc.part, "_ib_render_errors", None)

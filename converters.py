@@ -32,6 +32,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, BinaryIO, cast
 
+from input_safety import DEFAULT_LIMITS
 from md_parser import DocumentModel
 from stream_utils import detect_format, ensure_seekable, is_stream
 
@@ -78,7 +79,9 @@ class InputConverter(BaseConverter):
         # Stream path: use hint or detect format
         if is_stream(source):
             hint = kwargs.get("extension_hint")
-            fmt = detect_format(cast(BinaryIO, source), hint=hint)
+            options = kwargs.get("render_options")
+            limits = kwargs.get("limits") or getattr(options, "limits", None) or DEFAULT_LIMITS
+            fmt = detect_format(cast(BinaryIO, source), hint=hint, limits=limits)
             return fmt == self.supported_format
 
         # File path
@@ -133,7 +136,9 @@ class ConverterRegistry:
         """
         # Ensure stream is seekable before converter lookup (accepts may peek)
         if is_stream(source):
-            source = ensure_seekable(cast(BinaryIO, source))
+            options = kwargs.get("render_options")
+            limits = kwargs.get("limits") or getattr(options, "limits", None) or DEFAULT_LIMITS
+            source = ensure_seekable(cast(BinaryIO, source), limits=limits)
 
         converter = self.find_converter(source, **kwargs)
         if converter is None:
@@ -168,13 +173,16 @@ class MarkdownInputConverter(InputConverter):
         options = kwargs.get("render_options")
         roots = kwargs.get("asset_roots", ())
         profile = kwargs.get("profile")
+        limits = kwargs.get("limits") or getattr(options, "limits", None) or DEFAULT_LIMITS
         if isinstance(options, RenderOptions):
             roots = (*options.asset_roots, *roots)
 
         # parse_markdown_file now accepts both str and BinaryIO
         if is_stream(source):
-            return parse_markdown_file(cast(BinaryIO, source), profile=profile, asset_roots=roots)
-        return parse_markdown_file(str(source), profile=profile, asset_roots=roots)
+            return parse_markdown_file(
+                cast(BinaryIO, source), profile=profile, asset_roots=roots, limits=limits
+            )
+        return parse_markdown_file(str(source), profile=profile, asset_roots=roots, limits=limits)
 
 
 class DocxOutputConverter(OutputConverter):
@@ -210,7 +218,9 @@ class DocxOutputConverter(OutputConverter):
         if not isinstance(options, RenderOptions):
             raise TypeError("render_options must be RenderOptions")
         renderer = IBDocumentRenderer(options=options)
-        doc = renderer.render(source, asset_roots=kwargs.get("asset_roots", ()))
+        doc = renderer.render(
+            source, asset_roots=kwargs.get("asset_roots", ()), limits=kwargs.get("limits")
+        )
         output_path = kwargs.get("output_path")
         if output_path:
             from cli_utils import safe_save

@@ -12,6 +12,8 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Optional, Union
 
+from input_safety import DEFAULT_LIMITS, InputLimits
+
 
 class ElementType(Enum):
     """Types of markdown elements"""
@@ -357,6 +359,7 @@ class DocumentModel:
     source_dir: Path | None = None
     # Trusted caller context, deliberately separate from frontmatter metadata.
     asset_roots: tuple[Path, ...] = ()
+    limits: InputLimits = DEFAULT_LIMITS
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

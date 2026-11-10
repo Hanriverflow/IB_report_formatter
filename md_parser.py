@@ -160,7 +160,14 @@ from document_profiles import (
     header_labels,
     validate_term_sheet_metadata,
 )
-from input_safety import resolve_asset_roots
+from input_safety import (
+    DEFAULT_LIMITS,
+    InputLimits,
+    RejectionCode,
+    read_input_file,
+    read_input_stream,
+    resolve_asset_roots,
+)
 from numeric_checks import evaluate_checks, parse_checks
 from term_variables import (
     TERM_REFERENCE_RE,
@@ -1416,6 +1423,7 @@ class TableParser:
         lines: list[str],
         financial_rules: bool = True,
         terms: TermResolver | None = None,
+        limits: InputLimits = DEFAULT_LIMITS,
     ) -> Table:
         """
         Parse markdown table lines into a Table object.
@@ -1424,6 +1432,7 @@ class TableParser:
             lines: Lines that make up the table (starting with |)
             financial_rules: Whether IB table semantics are inferred.
             terms: Active term resolver; cell runs receive values, content stays raw.
+            limits: Operator-only table-cell limit.
         """
         # Only the second line can be the structural delimiter row.
         data_lines = [
@@ -1436,6 +1445,7 @@ class TableParser:
             TableParser._parse_alignments(lines),
             financial_rules=financial_rules,
             terms=terms,
+            limits=limits,
         )
 
     @staticmethod
@@ -1445,6 +1455,7 @@ class TableParser:
         financial_rules: bool = True,
         terms: TermResolver | None = None,
         header_rows: int = 1,
+        limits: InputLimits = DEFAULT_LIMITS,
     ) -> Table:
         """
         Build a Table from cell sources; the leading `header_rows` rows are the header.
@@ -1456,10 +1467,12 @@ class TableParser:
             financial_rules: Whether IB table semantics are inferred.
             terms: Active term resolver; cell runs receive values, content stays raw.
             header_rows: Number of header rows (at least one).
+            limits: Operator-only table-cell limit.
         """
         table = Table()
         if not rows:
             return table
+        limits.check(RejectionCode.LIMIT_TABLE_CELLS, len(rows) * max(map(len, rows)))
         table.header_rows = max(1, min(header_rows, len(rows)))
 
         # Get column count from first row
@@ -1862,7 +1875,7 @@ class _HtmlTableReader(HTMLParser):
     @classmethod
     def _span(cls, value: str | None) -> int:
         try:
-            return max(1, min(int(str(value).strip()), cls._MAX_SPAN))
+            return max(1, int(str(value).strip()))
         except ValueError:
             return 1
 
@@ -2107,12 +2120,14 @@ class HtmlTableParser:
         cls,
         html: str,
         terms: TermResolver | None = None,
+        limits: InputLimits = DEFAULT_LIMITS,
     ) -> tuple[list[list[str | TableCell]], int, list[str]]:
         """Convert a complete table block into rows of cells.
 
         Args:
             html: The `<table>...</table>` source.
             terms: Active term resolver, or None when the document has no `terms:`.
+            limits: Operator-only expanded-grid limit, checked before allocating it.
 
         Returns:
             The rows (covered positions hold span markers), how many leading
@@ -2135,18 +2150,27 @@ class HtmlTableParser:
         anchors: dict[tuple[int, int], tuple[int, int]] = {}
         spans: dict[tuple[int, int], int] = {}
         rows = reader.rows
+        if any(
+            cell.colspan > reader._MAX_SPAN or cell.rowspan > reader._MAX_SPAN
+            for row in rows
+            for cell in row
+        ):
+            cls._check_unclamped_grid(rows, limits)
         for row_index, html_row in enumerate(rows):
             position = 0
             for cell in html_row:
                 while (row_index, position) in anchors:
                     position += 1
-                rowspan = min(cell.rowspan, len(rows) - row_index)
+                # Retain the existing Word span cap, after checking the written grid.
+                rowspan = min(cell.rowspan, reader._MAX_SPAN, len(rows) - row_index)
+                colspan = min(cell.colspan, reader._MAX_SPAN)
+                limits.check(RejectionCode.LIMIT_TABLE_CELLS, len(rows) * (position + colspan))
                 spans[(row_index, position)] = rowspan
                 runs[(row_index, position)] = reader.finish(cell.runs)
                 for down in range(rowspan):
-                    for right in range(cell.colspan):
+                    for right in range(colspan):
                         anchors[(row_index + down, position + right)] = (row_index, position)
-                position += cell.colspan
+                position += colspan
         if not anchors:
             return [], 0, warnings
         col_count = max(covered for _, covered in anchors) + 1
@@ -2174,6 +2198,23 @@ class HtmlTableParser:
 
         cells = [[source(row, column) for column in range(col_count)] for row in kept]
         return cells, sum(1 for row in kept if row < header_end), warnings
+
+    @staticmethod
+    def _check_unclamped_grid(rows: list[list[_HtmlCell]], limits: InputLimits) -> None:
+        """Count written spans before Word's existing span cap can reduce them."""
+        occupied: set[tuple[int, int]] = set()
+        for row_index, row in enumerate(rows):
+            column = 0
+            for cell in row:
+                while (row_index, column) in occupied:
+                    column += 1
+                limits.check(RejectionCode.LIMIT_TABLE_CELLS, len(rows) * (column + cell.colspan))
+                occupied.update(
+                    (row_index + down, column + right)
+                    for down in range(min(cell.rowspan, len(rows) - row_index))
+                    for right in range(cell.colspan)
+                )
+                column += cell.colspan
 
     @staticmethod
     def image(line: str) -> Image | None:
@@ -2451,6 +2492,7 @@ class MarkdownParser:
         profile: str | None = None,
         base_dir: Path | None = None,
         asset_roots: Sequence[str | Path] = (),
+        limits: InputLimits = DEFAULT_LIMITS,
     ):
         """
         Initialize parser behavior flags.
@@ -2462,6 +2504,7 @@ class MarkdownParser:
             profile: Explicit profile override.
             base_dir: Base for relative destinations; does not itself grant asset access.
             asset_roots: Operator-supplied folders carried to rendering. Text has no default.
+            limits: Immutable caller policy carried to rendering; text size uses UTF-8.
         """
         self.preserve_trailing_double_space_break = preserve_trailing_double_space_break
         self.profile = profile
@@ -2469,6 +2512,7 @@ class MarkdownParser:
         # when the document is saved (see `rebase_local_links`).
         self.base_dir = base_dir
         self.asset_roots = resolve_asset_roots(asset_roots)
+        self.limits = limits
         self._financial_rules = True
         self._term_sheet = False
         self._parse_warnings: list[str] = []
@@ -2485,6 +2529,11 @@ class MarkdownParser:
         Returns:
             A DocumentModel with all parsed elements
         """
+        self.limits.check(RejectionCode.LIMIT_INPUT_BYTES, len(content.encode("utf-8")))
+        return self._parse_content(content)
+
+    def _parse_content(self, content: str) -> DocumentModel:
+        """Parse text after the public text/file/stream boundary checked original bytes."""
         lines = content.replace("\r\n", "\n").replace("\r", "\n").split("\n")
 
         # Parse frontmatter
@@ -2568,6 +2617,7 @@ class MarkdownParser:
             parsed_profile=metadata.profile,
             source_dir=self.base_dir,
             asset_roots=self.asset_roots,
+            limits=self.limits,
         )
         if not self._financial_rules:
             first_heading = next(
@@ -2958,7 +3008,9 @@ class MarkdownParser:
                 end = HtmlTableParser.block_end(lines, i)
                 if end is not None:
                     source = "\n".join(lines[i:end])
-                    cells, header_rows, html_warnings = HtmlTableParser.parse(source, self._terms)
+                    cells, header_rows, html_warnings = HtmlTableParser.parse(
+                        source, self._terms, limits=self.limits
+                    )
                     self._parse_warnings.extend(html_warnings)
                     if cells:
                         table = TableParser.from_cells(
@@ -2967,6 +3019,7 @@ class MarkdownParser:
                             financial_rules=self._financial_rules,
                             terms=self._terms,
                             header_rows=header_rows,
+                            limits=self.limits,
                         )
                         table.spans = True
                         elements.append(
@@ -2990,6 +3043,7 @@ class MarkdownParser:
                     table_lines,
                     financial_rules=self._financial_rules,
                     terms=self._terms,
+                    limits=self.limits,
                 )
                 elements.append(
                     Element(
@@ -3236,9 +3290,9 @@ class MarkdownParser:
     def _get_indent_level(self, prefix: str) -> int:
         """Convert leading markdown indentation to a list nesting level."""
         expanded = prefix.replace("\t", "    ")
-        if not expanded:
-            return 0
-        return max(0, len(expanded) // (2 if self._financial_rules else 4))
+        level = max(0, len(expanded) // (2 if self._financial_rules else 4))
+        self.limits.check(RejectionCode.LIMIT_LIST_DEPTH, level + 1)
+        return level
 
     # ── Paragraph parsing (ENHANCED v3) ─────────────────────────────────────
 
@@ -3568,9 +3622,9 @@ class MarkdownParser:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _read_with_encoding(file_path: str) -> str:
+def _read_with_encoding(file_path: str, limits: InputLimits = DEFAULT_LIMITS) -> str:
     """Read a file without statistically misdetecting valid UTF-8 Korean text."""
-    return _decode_bytes(Path(file_path).read_bytes(), label=file_path)
+    return _decode_bytes(read_input_file(Path(file_path), limits), label=file_path)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3606,6 +3660,7 @@ def parse_markdown_file(
     profile: str | None = None,
     *,
     asset_roots: Sequence[str | Path] = (),
+    limits: InputLimits = DEFAULT_LIMITS,
 ) -> DocumentModel:
     """
     Parse a markdown file or stream into a DocumentModel.
@@ -3617,6 +3672,7 @@ def parse_markdown_file(
     Args:
         source: Path to the markdown file, or a readable binary stream.
         asset_roots: Operator-supplied folders added to the source-file folder.
+        limits: Immutable caller policy; the original bytes are checked before decoding.
 
     Returns:
         A DocumentModel containing all parsed content
@@ -3628,11 +3684,11 @@ def parse_markdown_file(
     from stream_utils import is_stream
 
     if is_stream(source):
-        raw_bytes = cast(BinaryIO, source).read()
+        raw_bytes = read_input_stream(cast(BinaryIO, source), limits)
         content = _decode_bytes(raw_bytes, label="<stream>")
         label = "<stream>"
     else:
-        content = _read_with_encoding(str(source))
+        content = _read_with_encoding(str(source), limits)
         label = str(source)
 
     lines = content.splitlines()
@@ -3641,8 +3697,8 @@ def parse_markdown_file(
 
     base_dir = None if is_stream(source) else Path(str(source)).resolve().parent
     roots = (*((base_dir,) if base_dir is not None else ()), *asset_roots)
-    parser = MarkdownParser(profile=profile, base_dir=base_dir, asset_roots=roots)
-    model = parser.parse(content)
+    parser = MarkdownParser(profile=profile, base_dir=base_dir, asset_roots=roots, limits=limits)
+    model = parser._parse_content(content)
     if get_profile(model.metadata.profile).is_ib:
         _infer_metadata_from_elements(model, allow_company_inference=not frontmatter_present)
     if not is_stream(source) and model.metadata.extra.get("theme") not in {None, "default", "mono"}:
