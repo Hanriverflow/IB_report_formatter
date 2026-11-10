@@ -3,6 +3,10 @@ MD Parser Module for IB Style Word Report Converter
 Handles parsing of Markdown files including frontmatter, elements, tables,
 LaTeX equations, Base64 images, and footnotes.
 
+Changelog (B-7 property regressions):
+    - Use documented rejections for malformed declared YAML and invalid footnote IDs.
+    - Diagnose XML-incompatible input before strict rendering reaches metadata.
+
 Changelog (term variables):
     - NEW: `terms:` frontmatter values substituted for `{{key}}` as value runs
       (paragraphs, lists, cells, headings, quotes, title/subtitle/date); code,
@@ -164,6 +168,7 @@ from input_safety import (
     DEFAULT_LIMITS,
     InputLimits,
     RejectionCode,
+    StrictValidationError,
     read_input_file,
     read_input_stream,
     resolve_asset_roots,
@@ -232,7 +237,7 @@ class FrontmatterParser:
             parsed_data = yaml.safe_load(yaml_content) or {}
         except yaml.YAMLError as exc:
             if declared:
-                raise ValueError(f"Invalid YAML frontmatter: {exc}") from exc
+                raise StrictValidationError("Invalid YAML frontmatter: ", [str(exc)]) from exc
             # Fallback to simple key: value parsing only for simple YAML-like blocks
             if not FrontmatterParser._is_simple_key_value_block(frontmatter_lines):
                 logger.debug(
@@ -2473,6 +2478,7 @@ class MarkdownParser:
         re.IGNORECASE,
     )
     _MULTISPACE_RE = re.compile(r"[ \t]{2,}")
+    _INVALID_XML_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")
     _OPEN_PAREN_SPACE_RE = re.compile(r"\(\s+")
     _CLOSE_PAREN_SPACE_RE = re.compile(r"\s+\)")
 
@@ -2568,6 +2574,11 @@ class MarkdownParser:
         ).split("\n")
         footnotes = FootnoteParser.extract_references(prose_lines) if self._financial_rules else {}
         input_warnings: list[str] = []
+        invalid_character = self._INVALID_XML_CHAR_RE.search(content)
+        if invalid_character is not None:
+            input_warnings.append(
+                f"XML-incompatible character U+{ord(invalid_character.group()):04X} in Markdown input"
+            )
         explicit_references: set[int] = set()
         content_lines: list[str] = []
         for index, raw_line in enumerate(remaining_lines):
@@ -2580,7 +2591,7 @@ class MarkdownParser:
             if match:
                 number = int(match.group(1))
                 if number <= 0:
-                    raise ValueError("Footnote IDs must be positive integers")
+                    raise StrictValidationError("", ["Footnote IDs must be positive integers"])
                 if number in footnotes:
                     input_warnings.append(f"Duplicate footnote definition: {number}")
                 footnotes[number] = match.group(2)
@@ -2674,8 +2685,7 @@ class MarkdownParser:
     def _substitute_heading(self, element: Element) -> Element:
         """Carry value runs for a heading that references terms.
 
-        The runs follow HeadingRenderer's parse of the heading text but resolve
-        escapes once: its second unescape pass would turn `\\{{` into a reference.
+        Resolve escapes once so escaped braces cannot become term references.
 
         Args:
             element: A parsed heading element.

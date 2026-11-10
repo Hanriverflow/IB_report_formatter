@@ -2,6 +2,12 @@
 IB Renderer Module for Word Report Generation
 Handles styling and rendering of document elements in IB Bank style.
 
+Changelog (B-7 property regressions):
+    - Heading bold-marker removal skips code spans and escaped characters, and
+      escapes are resolved once; other headings render as before.
+    - A whitespace-only code line keeps its own whitespace (an empty line keeps
+      the one-space spacer).
+
 Changelog (house style fixes):
     - A landscape table right after a bare page break (cover, TOC) turns the
       page once: the section break replaces the page break.
@@ -1520,6 +1526,10 @@ class TOCRenderer:
 class HeadingRenderer:
     """Renders headings"""
 
+    # A code span, a backslash escape, or a bold marker. Only the bold marker is
+    # dropped (every heading run is bold); the other two keep their characters.
+    _BOLD_MARKER_RE = re.compile(TextParser._CODE_SPAN_RE.pattern + r"|\\.|\*\*", re.DOTALL)
+
     # Level → (font_size, color, bold)
     @property
     def _STYLE_CONFIG(self):
@@ -1538,10 +1548,12 @@ class HeadingRenderer:
         if heading.runs:
             source_runs = heading.runs
         else:
-            # Clean markdown bold markers from heading text
-            clean_text = heading.text.replace("**", "").strip()
-            clean_text = TextRenderer._cleanup(clean_text)
-            source_runs = TextParser.parse_runs(clean_text)
+            # Drop bold markers outside code spans and escapes, then parse once:
+            # unescaping before the parse turned escaped punctuation into syntax.
+            clean_text = self._BOLD_MARKER_RE.sub(
+                lambda match: "" if match.group(0) == "**" else match.group(0), heading.text
+            )
+            source_runs = TextParser.parse_runs(clean_text.strip())
 
         # Clamp level to 1-4 (Word supports Heading 1-9, but we style 1-4)
         level = max(1, min(heading.level, 4))
@@ -4231,7 +4243,7 @@ class IBDocumentRenderer:
     def _render_code_block_line(self, paragraph, line: str) -> None:
         """Render one line of a code block with light semantic emphasis for tree diagrams."""
         if not line.strip():
-            spacer = paragraph.add_run(" ")
+            spacer = paragraph.add_run(line or " ")
             FontStyler.apply_run_style(
                 spacer,
                 font_name="Consolas",
