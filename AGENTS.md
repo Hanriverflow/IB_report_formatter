@@ -19,11 +19,15 @@ Production-quality follow-up: `docs/improvement-plan-20260915.md` and `docs/veri
 Next-step research roadmap (owner decisions D1–D5 and candidate work E1–E17; not active requirements until approved): `docs/improvement-roadmap-20260929.md`.
 Input-loss, save-safety and performance hardening: `docs/verification-20260929.md`.
 Term-sheet profile and term variables: design `docs/term-sheet-design-20260929.md`, plan `docs/term-sheet-plan-20260929.md` (§2 decisions override the design), verification `docs/verification-term-sheet-20260929.md`.
+Asset path restriction, input limits, Word schema gate, snapshot and property tests (roadmap E1–E3): verification `docs/verification-20261110.md`.
 
 ## Quick reference
 
 ```sh
 uv sync --extra dev
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy .
 uv run md-to-word input.md output.docx --strict
 uv run md-to-word input.md output.docx --profile plain
 uv run md-to-word samples/profiles/office-letter.md letter.docx --strict
@@ -51,7 +55,8 @@ Existing `md_to_word.py` and `ib-report` remain entry points. On Windows, use a 
 | `ib_renderer.py` | One composition path for all callers; reusable element renderers |
 | `office_layout.py` | Letter/report/minutes metadata and native Korean numbering |
 | `term_sheet.py` | House texts and term-sheet composition; must not import `ib_renderer` |
-| `ooxml_order.py` | Schema-ordered insertion for hand-built tblPr/tcPr/pPr/rPr children |
+| `ooxml_order.py` | Schema-ordered insertion for hand-built tblPr/tcPr/pPr/rPr and settings children |
+| `input_safety.py` | Allowed asset folders, input limits, the six rejection codes and the rejection exception types |
 | `term_variables.py` | Term variables, content-control tags and snapshots |
 | `numeric_checks.py` | `checks:` relations and table `schedule` arithmetic; reads displayed amounts, reports only |
 | `docx_audit.py` | Structural diagnostics, not reverse conversion or visual QA |
@@ -79,7 +84,25 @@ Existing `md_to_word.py` and `ib-report` remain entry points. On Windows, use a 
 - Inline HTML breaks must reach Word paragraphs, emphasis, headings, lists and cells without changing code/escaped literals or link URLs.
 - Word's nonprinting pagination squares are not list bullets. Do not globally add or remove keep-lines/keep-next; retain necessary heading controls. Audit warnings and visual-review status are distinct from structural issues.
 - Word QA requires a new/empty output directory. Record source/output hashes, actual/expected pages and Word version; `visualReview: pending` is not a visual pass. Inspect every page and record review against the manifest hash.
-- Built distributions explicitly include engine code only; never package private reports, QA artifacts or user files.
+- Built distributions explicitly include engine code only; never package private reports, QA artifacts or user files. A new engine module must be added to the wheel `only-include` list, the sdist `include` list and ruff's `known-first-party` in `pyproject.toml`.
+
+## Input safety
+
+Document content (body, frontmatter, and the house or theme files it names) is untrusted. Operator CLI/API arguments are trusted.
+
+- Images and logos load only from allowed folders: the source file's folder, plus folders the operator adds with `--asset-root` or `asset_roots`. Text, stream and hand-built-model input has no default folder. Nothing in a document can add a folder.
+- Resolve the final location (relative parts, symlinks, junctions) and decide inside/outside **before** checking that the file exists, so the result for an outside path never depends on whether it exists.
+- A house logo is restricted when the document names the house file and trusted when the operator does (`--house`, API). Hyperlinks, embedded Base64 images and `data:` URIs are not path-restricted.
+- Five limits stop the conversion in both modes and leave no output: input bytes, cells per table, list depth, image bytes, image pixels (`InputLimits`, `--max-*`). Judge size before reading or decoding. Nothing in a document can raise a limit, and there is no unlimited value.
+- There are exactly six rejection codes (`asset_outside_root` and five `limit_*`). A coded issue starts with `[code] ` and keeps that prefix inside joined messages. Do not add codes to existing warnings or change their wording.
+- Strict rejections raise `StrictValidationError` and limit failures raise `InputLimitError`; both are `ValueError` subclasses and must stay reachable through `__cause__` when wrapped. The renderer's per-element resilience must not turn either into a placeholder.
+- The plugin runner and the portable converter stay strict and take no option that adds folders or raises limits.
+
+## Verification gates
+
+- Hand-built XML children go through `ooxml_order.insert_ordered`. The CI job `word-schema` renders every sample and fails on any OOXML-Validator error that `scripts/word_schema_exceptions.json` does not cover; see `scripts/word_schema_validation.md`. An exception needs a reproduction from a document saved by Word itself, and the reproduction document stays out of the repository.
+- `tests/test_sample_snapshots.py` pins the parsed model and every XML part of every sample. A missing snapshot fails. Update only for an intended output change, with `uv run pytest tests/test_sample_snapshots.py --snapshot-update`, and review the diff; a snapshot change in a sample also needs the Word page check below.
+- `tests/test_markdown_properties.py` holds four Hypothesis properties (visible text, cell count, literal code and escapes, strict save-or-reject). Do not shrink the generated input or loosen a comparison to pass. Its strict `xfail` cases record known gaps that need an owner decision; fixing one means removing its mark.
 
 ## Converter registry
 
@@ -383,7 +406,7 @@ Claude settings are in `.claude/settings.local.json` for allowed permissions.
 
 ### Images
 - **Base64 embedded images**: Automatically decoded and inserted
-- **File path images**: Local files inserted if found; percent-encoded paths (`a%20b.png`) are tried decoded
+- **File path images**: Local files inside the allowed folders are inserted if found; percent-encoded paths (`a%20b.png`) are tried decoded
 - **Inline images**: In text and table cells, fitted to the cell width
 - **Fallback**: Placeholder text if image cannot be loaded (strict mode rejects it)
 

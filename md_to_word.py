@@ -2,7 +2,7 @@
 MD to IB Style Word Report Converter
 Main entry point for converting Markdown files to professional IB-style Word documents.
 
-Changelog (B-7 property regressions):
+Changelog (property-test regressions):
     - Reject empty input files with the documented StrictValidationError type.
 
 Usage:

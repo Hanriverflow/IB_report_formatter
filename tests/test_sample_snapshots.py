@@ -1,8 +1,8 @@
-"""B-6 snapshots of the shared strict corpus: complete models and all XML parts.
+"""Snapshots of the shared strict corpus: complete models and all XML parts.
 
 Normal runs NEVER create missing snapshots. Explicit update command (PowerShell):
 
-    uv run --no-sync pytest tests/test_sample_snapshots.py --snapshot-update -q -p no:cacheprovider --basetemp "$env:LOCALAPPDATA/Temp/ib-t8-update-$([guid]::NewGuid().ToString('N'))"
+    uv run --no-sync pytest tests/test_sample_snapshots.py --snapshot-update -q -p no:cacheprovider --basetemp "$env:LOCALAPPDATA/Temp/ib-snapshot-update-$([guid]::NewGuid().ToString('N'))"
 
 On Ubuntu use a fresh absolute OS temporary directory for --basetemp instead.
 Review every changed model/XML file after updating. No binary DOCX parts are

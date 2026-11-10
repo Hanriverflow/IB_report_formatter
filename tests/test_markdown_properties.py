@@ -1,4 +1,4 @@
-"""B-7 properties, with source-side oracles independent of the engine parser.
+"""Markdown properties, with source-side oracles independent of the engine parser.
 
 Generation scope: bounded documents contain paragraphs (including soft wraps,
 spaces/tabs and parentheses), ATX headings, ordered/unordered lists, rectangular
@@ -43,7 +43,7 @@ Explicit examples cover NUL, empty input, malformed YAML and known rejections.
 All strict examples exercise text->model->registry save, stream->registry save
 and the CLI converter class, under both requested profiles.
 
-Determinism: local default profile b7-properties, derandomize=True, deadline=None,
+Determinism: local default profile markdown-properties, derandomize=True, deadline=None,
 database=None, max_examples=24. TemporaryDirectory is created per example under
 the OS temp directory; no function-scoped pytest fixture is used with @given.
 """
@@ -70,9 +70,9 @@ from md_parser import MarkdownParser
 from md_to_word import IBReportConverter
 
 settings.register_profile(
-    "b7-properties", derandomize=True, deadline=None, database=None, max_examples=24
+    "markdown-properties", derandomize=True, deadline=None, database=None, max_examples=24
 )
-settings.load_profile("b7-properties")
+settings.load_profile("markdown-properties")
 
 LETTERS = string.ascii_letters + string.digits + "가상예시한글문서값항목"
 PROSE = LETTERS + " .,;:!?%/@=+()-"
@@ -451,7 +451,7 @@ def _assert_saved_output(saved: str, output: Path, route: str) -> None:
 @given(source=STRICT_SOURCE, small_limit=st.booleans())
 def test_strict_mode_dichotomy(profile: str, route: str, source: str, small_limit: bool) -> None:
     limits = InputLimits(max_input_bytes=32) if small_limit else InputLimits()
-    with TemporaryDirectory(prefix="ib-b7-") as temporary:
+    with TemporaryDirectory(prefix="ib-prop-") as temporary:
         _assert_strict_outcome(source, Path(temporary), profile, route, limits)
 
 
@@ -538,7 +538,7 @@ def test_fenced_trailing_whitespace_preserved(payload: str) -> None:
 @pytest.mark.parametrize("source", ("---\nprofile: [\n---", "[^0]: 가상", "# \x00", "# \ufffe"))
 def test_documented_rejection_regression(profile: str, route: str, source: str) -> None:
     """Malformed source must reject before saving, preserving a typed cause."""
-    with TemporaryDirectory(prefix="ib-b7-regression-") as temporary:
+    with TemporaryDirectory(prefix="ib-prop-regression-") as temporary:
         directory = Path(temporary)
         with pytest.raises(Exception) as caught:
             _strict_save(source, directory / "example.docx", profile, route, InputLimits())
@@ -551,7 +551,7 @@ def test_documented_rejection_regression(profile: str, route: str, source: str) 
 @pytest.mark.parametrize("profile", ("plain", "ib-report"))
 def test_empty_cli_documented_rejection_regression(profile: str) -> None:
     """The CLI's empty-file preflight must use a documented rejection type."""
-    with TemporaryDirectory(prefix="ib-b7-regression-") as temporary:
+    with TemporaryDirectory(prefix="ib-prop-regression-") as temporary:
         directory = Path(temporary)
         with pytest.raises(StrictValidationError, match="Input file is empty"):
             _strict_save("", directory / "example.docx", profile, "cli", InputLimits())

@@ -3,7 +3,7 @@ MD Parser Module for IB Style Word Report Converter
 Handles parsing of Markdown files including frontmatter, elements, tables,
 LaTeX equations, Base64 images, and footnotes.
 
-Changelog (B-7 property regressions):
+Changelog (property-test regressions):
     - Use documented rejections for malformed declared YAML and invalid footnote IDs.
     - Diagnose XML-incompatible input before strict rendering reaches metadata.
 

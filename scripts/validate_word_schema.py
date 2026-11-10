@@ -1,8 +1,8 @@
 """Report OOXML-Validator findings without changing generated engine output.
 
-Changelog (B-5 report-only stage):
+Changelog (Word schema validation):
     - Verify pinned archives, validate the shared corpus, and enforce evidenced
-      exceptions. CI alone decides whether this script's failure is blocking.
+      exceptions. The CI job that runs this script is a blocking gate.
 """
 
 import argparse

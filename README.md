@@ -32,6 +32,7 @@ Repository review on **2026-09-27**: the default branch is `main`, the README ca
 
 - **Current usage and implementation:** this README, [Korean usage](README.ko.md), [runnable profiles](samples/profiles), [CLI source](md_to_word.py), [profile definitions](document_profiles.py), and [tests](tests). The built-in direction is Markdown to DOCX; Word-to-Markdown remains retired.
 - **Latest integration and reported verification:** [2026-09-26 consolidation](docs/pr-consolidation-20260926.md), including promoted functionality and deliberately deferred old-PR features. It reports 311 tests passed at product-code commit `cadc0ae515d2f5757d5006e64bec1acaff56ccba`, package/install checks, and nine synthetic documents / 16 pages of Word evidence. These are that record's results, not tests rerun during this documentation review or human/business approval.
+- **2026-11 hardening (unreleased):** asset path restriction, input limits, rejection codes, the Word schema CI gate, and snapshot and property tests are described in [Allowed asset folders, input limits and rejections](#allowed-asset-folders-input-limits-and-rejections) and the Unreleased section of the [changelog](CHANGELOG.md). Their recorded scope, environment and unverified items are in the [2026-11 verification record](docs/verification-20261110.md).
 - **Design and earlier evidence:** [September implementation plan](docs/implementation-plan-20260914.md), [September 14 verification](docs/verification-20260914.md), [letter improvement plan](docs/improvement-plan-20260915.md), and [September 15 verification](docs/verification-20260915.md). Plans explain intended work; dated verification records describe only their recorded scope and environment.
 - **Preserved historical plans:** [stability plan](plan.md), [upgrade plan](plan_upgrade.md), [next steps](next_step.md), and [roadmap](roadmap.md). Their bidirectional features, old test counts, and checkmarks are not the current feature list or a release guarantee.
 - **Preserved upload checklist:** [git_checklist.md](git_checklist.md) is an older repository-upload guide, not evidence that release gates have passed. Use the release checklist below for a future release. Do not reinitialize this repository or blindly stage all local files.
@@ -49,6 +50,7 @@ Run from a clean, isolated checkout of the exact proposed release commit, using 
 uv sync --locked --extra dev
 uv run pytest tests/
 uv run ruff check .
+uv run ruff format --check .
 uv run mypy .
 uv run md-to-word --help
 uv run md-to-word --list-profiles
@@ -492,9 +494,17 @@ Audit `warnings` distinguish Normal-style pagination constraints from structural
 ```sh
 uv sync --extra dev
 uv run pytest tests/
-uv run mypy document_model.py document_profiles.py render_styles.py office_layout.py docx_audit.py md_parser.py ib_renderer.py md_to_word.py converters.py --follow-imports=silent
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy .
 uv build
 ```
+
+CI runs these on Ubuntu and Windows with Python 3.12 and 3.13. Three further checks guard the output:
+
+- **Word schema gate.** A separate CI job renders every sample in strict mode and checks the documents with a pinned OOXML-Validator build; any error outside `scripts/word_schema_exceptions.json` fails the job. [scripts/word_schema_validation.md](scripts/word_schema_validation.md) explains the local run and the exception rule. Passing it is a structural result, not a visual review.
+- **Snapshots.** `tests/test_sample_snapshots.py` compares the parsed model and every XML part of every sample with stored snapshots; a missing snapshot fails. After an intended output change, run `uv run pytest tests/test_sample_snapshots.py --snapshot-update`, review the diff, and check the changed samples in Word.
+- **Properties.** `tests/test_markdown_properties.py` generates Markdown with fixed examples and checks that visible text and table cells survive, that code and escapes stay literal, and that a strict conversion either saves a document or ends in a documented rejection without leaving a file. Its strict `xfail` cases list known gaps.
 
 Batch conversion: `uv run md-to-word samples/profiles --batch`. Optional clipboard cleanup: `--format`; optional DeepResearch cleanup: `--deepresearch-cleaner auto`. Preprocessors can change content, so review the cleaned input.
 

@@ -2,6 +2,45 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Beta)** and the plugin stays **0.1.0**; nothing here has been tagged or published. Verification: `docs/verification-20261110.md`.
+
+### Breaking: image and logo paths are limited to allowed folders
+- Images and logos that a document names by path load only from the Markdown file's folder (subfolders included) and from folders the operator adds. A path that resolves outside them (`../`, an absolute path, a UNC path, or a symlink or junction leading out) is reported as `[asset_outside_root]`: strict mode stops before saving, and non-strict mode keeps the image placeholder and a warning. Earlier versions loaded any readable local path, so a document that relied on that now needs one of the remedies below.
+- Remedies: add the folder with `--asset-root FOLDER` (repeatable) or the API argument `asset_roots`, or copy the files into the Markdown file's folder and use relative paths. Text input, stream input and hand-built models have no default folder; pass `asset_roots` when they use path images.
+- The location is resolved first and judged before the file is looked up, so an outside path gives the same result whether or not the file exists. A path written as absolute is allowed when it resolves inside an allowed folder.
+- A house-file logo is restricted when the document's frontmatter names the house file and trusted when the operator names it (`--house`, API). Nothing in a document, house file or theme file can add a folder. Hyperlinks, Base64 images and `data:` URIs are not path-restricted.
+- The plugin runner and the portable converter have no option to add folders: copy the images, the house file and its logo into the job folder. Their guidance files now say so.
+
+### Input limits
+- Five limits stop a conversion in both strict and non-strict mode and leave no output file: input size (`--max-input-bytes`, default 16 MiB), cells in one table (`--max-table-cells`, 50,000), list depth (`--max-list-depth`, 32), bytes of one image (`--max-image-bytes`, 20 MiB) and pixels of one image (`--max-image-pixels`, 50,000,000). The API takes the same values as an immutable `InputLimits`.
+- Size is judged before reading or decoding: a file by its size, a stream as soon as it passes the limit, Base64 from its encoded length, pixels from the image header. Values must be positive integers; there is no unlimited value, and a document cannot raise a limit.
+- In batch conversion a file over a limit fails and the other files continue.
+
+### Rejection codes and exception types
+- Exactly six codes: `asset_outside_root`, `limit_input_bytes`, `limit_table_cells`, `limit_list_depth`, `limit_image_bytes`, `limit_image_pixels`. A coded issue starts with `[code] ` and keeps the prefix inside joined messages. Existing warning sentences are unchanged.
+- Strict rejections raise `StrictValidationError` (`.codes`, `.issues`) and limit failures raise `InputLimitError` (`.code`, `.limit`, `.measured`). Both are `ValueError` subclasses, so existing `except ValueError` code keeps working, and both stay reachable as the cause of wrapping errors such as `Rendering failed: ...`.
+- Malformed declared YAML frontmatter, a footnote ID that is not positive and an empty input file raise `StrictValidationError`; their messages are unchanged.
+- The plugin runner's `result.json` adds one diagnostic per coded issue (`code` is the rejection code); its other `code` values and keys are unchanged. The portable converter window explains each code in Korean.
+- Control characters that XML cannot hold are reported as an input warning, so strict mode rejects them before rendering.
+
+### Fixes
+- `w:updateFields` is inserted at its schema position in `settings.xml` in every profile. Output changes only in element order.
+- Headings keep the characters of code spans and escaped punctuation (`` # `**kwargs` `` and `# \*literal\*` used to lose their asterisks). Other headings render as before.
+- A whitespace-only line in a fenced code block keeps its own whitespace.
+- `docx-audit` reads XML with entity resolution, DTD loading and network access off; a part that declares a DTD is reported as an issue and not expanded. Results for ordinary documents are unchanged.
+
+### Verification infrastructure
+- CI gate `word-schema`: every sample (12 Markdown samples, 13 documents with the charts-on variant) is rendered in strict mode and checked with OOXML-Validator v2.1.6, downloaded and verified against a pinned SHA-256. An error not covered by `scripts/word_schema_exceptions.json` (currently empty) fails the job. See `scripts/word_schema_validation.md`.
+- Snapshot tests pin the parsed model and every XML part of every sample; property tests (Hypothesis, fixed examples) check visible text, table cells, literal code and escapes, and that strict conversion either saves or rejects. Known gaps that need an owner decision are recorded as strict `xfail` cases in `tests/test_markdown_properties.py`.
+- CI also runs `ruff format --check`. `syrupy` and `hypothesis` are development-only dependencies.
+- New engine module `input_safety.py`.
+
+### Repository upkeep
+- Removed two sample files with real company names and the prototype script that read them; test names were replaced with fictional ones. Earlier commits are not rewritten.
+- Applied `ruff format` to the whole tree (the commit is listed in `.git-blame-ignore-revs`) and modernized type annotations. Sample output was compared before and after: all XML parts identical.
+
 ## [2.0.0-beta.1] - 2026-10-08
 
 First public distribution prerelease. The release tag identifies this delivery set; engine/package metadata remains **2.0.0 (Beta)** and the separately versioned plugin remains **0.1.0**.

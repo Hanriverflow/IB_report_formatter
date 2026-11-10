@@ -2,7 +2,7 @@
 IB Renderer Module for Word Report Generation
 Handles styling and rendering of document elements in IB Bank style.
 
-Changelog (B-7 property regressions):
+Changelog (property-test regressions):
     - Heading bold-marker removal skips code spans and escaped characters, and
       escapes are resolved once; other headings render as before.
     - A whitespace-only code line keeps its own whitespace (an empty line keeps
