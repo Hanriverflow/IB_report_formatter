@@ -338,3 +338,32 @@ def test_package_preflight_rejects_dtd_before_python_docx(
         payload = json.loads(caplog.records[-1].getMessage())
     assert payload["issues"] == [f"XML part cannot be read safely: /{part_name}"]
     assert MARKER not in json.dumps(payload, ensure_ascii=False)
+
+
+@pytest.mark.parametrize("name", ["document", ".document"])
+def test_extensionless_xml_main_part_is_checked(tmp_path, monkeypatch, name):
+    """python-docx gives a name without an extension, and a dotfile, the extension ""."""
+    parts = _package_parts()
+    root = etree.fromstring(parts.pop("word/document.xml"))
+    root.set("audit_probe", REFERENCE)
+    parts["word/" + name] = (
+        f'<!DOCTYPE probe [<!ENTITY probe "{MARKER}">]>'
+        + etree.tostring(root, encoding="unicode").replace(REFERENCE, "&probe;")
+    ).encode()
+    parts["_rels/.rels"] = parts["_rels/.rels"].replace(b"document.xml", name.encode())
+    parts[f"word/_rels/{name}.rels"] = parts.pop("word/_rels/document.xml.rels")
+    types = etree.fromstring(parts["[Content_Types].xml"])
+    main = next(node for node in types if node.get("PartName") == "/word/document.xml")
+    etree.SubElement(
+        types, f"{{{CT_NS}}}Default", Extension="", ContentType=main.get("ContentType")
+    )
+    types.remove(main)
+    parts["[Content_Types].xml"] = etree.tostring(types)
+    path = tmp_path / "example-extensionless.docx"
+    _write_parts(path, parts)
+    # Demonstrate that the installed python-docx parses the part and expands the entity.
+    assert Document(path).element.get("audit_probe") == MARKER
+    monkeypatch.setattr(docx_audit, "Document", lambda *a: pytest.fail("unsafe package opened"))
+    assert docx_audit.audit_file(str(path)).issues == [
+        f"XML part cannot be read safely: /word/{name}"
+    ]

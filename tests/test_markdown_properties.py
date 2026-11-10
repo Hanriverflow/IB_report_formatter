@@ -47,8 +47,8 @@ for every known metadata key. Separate per-key cases let YAML select the profile
 (including term-sheet and office-letter), so operator overrides cannot mask
 profile or profile-specific validation. Escaped XML-incompatible metadata
 characters, including surrogate escapes, are also in the strict source grammar.
-Invalid date/month/hour scalars and explicit failing int/float constructors are
-generated as raw YAML (safe_dump would quote them). Each renderer text key and
+Invalid date/month/hour scalars and explicitly tagged scalars the loader cannot
+construct (int, float, timestamp, bool) are generated as raw YAML (safe_dump would quote them). Each renderer text key and
 sender/letter child is also exercised under plain and ib-report with both cover
 settings, so profile selection cannot hide an unvalidated IB field. Hand-built
 models vary paragraph/heading/run/cell/list/footnote/metadata text, including NUL,
@@ -565,9 +565,18 @@ STRICT_SOURCE = st.one_of(
     BROKEN,
     _frontmatter(),
     ESCAPED_METADATA,
-    st.sampled_from(("2026-99-01", "2026-01-01T25:00:00Z", "!!int example", "!!float example")).map(
-        lambda scalar: f"---\nprofile: plain\ndate: {scalar}\n---\n가상 본문"
-    ),
+    st.sampled_from(
+        (
+            "2026-99-01",
+            "2026-01-01T25:00:00Z",
+            "!!int example",
+            "!!float example",
+            "!!timestamp example",
+            "!!bool example",
+            '!!int ""',
+            '!!float ""',
+        )
+    ).map(lambda scalar: f"---\nprofile: plain\ndate: {scalar}\n---\n가상 본문"),
     st.text(st.characters(exclude_categories=("Cs",)), max_size=100),
 )
 

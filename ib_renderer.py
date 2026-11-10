@@ -68,7 +68,8 @@ import os
 import platform
 import re
 import time
-from collections.abc import Callable, Mapping, Sequence, Set
+from collections.abc import Callable, Iterator, Mapping, Sequence, Set
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
@@ -104,12 +105,12 @@ from document_profiles import (
     load_style,
     resolve_options,
     validate_office_metadata,
-    validate_render_metadata,
     validate_term_sheet_metadata,
 )
 from input_safety import (
     DEFAULT_LIMITS,
     AssetOutsideRootError,
+    ConversionRejection,
     InputLimitError,
     InputLimits,
     RejectionCode,
@@ -3664,6 +3665,28 @@ class ChartRenderer:
             raise
 
 
+@contextmanager
+def _metadata_text(area: str) -> Iterator[None]:
+    """Reject metadata of the wrong type at the composer that needs it as text.
+
+    Nothing is checked ahead of use, so every value that renders today keeps
+    rendering. Only the TypeError or AttributeError a value of the wrong type
+    causes inside the named composer is reported, with that error as the cause.
+
+    Args:
+        area: The part of the document being composed, named in the message.
+
+    Yields:
+        Control to the composer.
+    """
+    try:
+        yield
+    except (TypeError, AttributeError) as error:
+        raise StrictValidationError(
+            "", (f"Metadata for the {area} has a value of the wrong type: {error}",)
+        ) from error
+
+
 class IBDocumentRenderer:
     """Main renderer that orchestrates all component renderers"""
 
@@ -3727,18 +3750,24 @@ class IBDocumentRenderer:
         Returns:
             The rendered document; strict rejections occur before callers can save it.
         """
+        self._composing = False
         try:
             return self._render_model(model, asset_roots=asset_roots, limits=limits)
-        except StrictValidationError:
+        except ConversionRejection:
             raise
         except ValueError as error:
             # Non-strict rendering keeps per-element resilience, so a character the
             # XML writer cannot hold only gets this far from text outside it
-            # (footnotes, outline headings). "XML compatible" is lxml's wording.
-            if "XML compatible" not in str(error):
+            # (footnotes, outline headings): lxml raises ValueError for control
+            # characters and UnicodeEncodeError, a ValueError, for lone surrogates.
+            # Operator arguments are all validated before composition starts, so
+            # an earlier error is never relabelled.
+            if not self._composing:
                 raise
-            with document_validation():
+            try:
                 validate_xml_strings(model)
+            except ValueError as invalid:
+                raise StrictValidationError("", (str(invalid),)) from error
             raise
 
     def _render_model(
@@ -3785,13 +3814,12 @@ class IBDocumentRenderer:
             self.term_sheet_texts = resolve_term_sheet_texts(
                 model.metadata, resolved.house, document_house=self.options.house is None
             )
-        with document_validation():
-            validate_render_metadata(model.metadata, cover=resolved.cover)
-        report_title_block = (
-            not resolved.cover
-            and resolved.profile.name == "ib-report"
-            and bool(model.metadata.title.strip())
-        )
+        with _metadata_text("title"):
+            report_title_block = (
+                not resolved.cover
+                and resolved.profile.name == "ib-report"
+                and bool(model.metadata.title.strip())
+            )
         term_sheet = resolved.profile.name == "term-sheet"
         # Without a cover, every other non-plain profile opens with its title too
         # (`render_office_opening`); it leads the page like the report title block.
@@ -3845,6 +3873,7 @@ class IBDocumentRenderer:
             self.options.theme is None, errors=(ValueError, OSError, yaml.YAMLError)
         ):
             style_values = load_style(resolved.profile, resolved.theme)
+        self._composing = True
         with (
             use_style(style_values),
             collect_raster_font_diagnostics() as font_warnings,
@@ -3866,21 +3895,26 @@ class IBDocumentRenderer:
                     section.page_width, section.page_height = Mm(210), Mm(297)
             if resolved.cover:
                 self.cover_renderer.include_disclaimer = resolved.disclaimer
-                self.cover_renderer.render(model.metadata)
-            title_inserted = (
-                render_office_opening(self.doc, model.metadata) if report_title_block else False
-            )
+                with _metadata_text("cover"):
+                    self.cover_renderer.render(model.metadata)
+            title_inserted = False
+            if report_title_block:
+                # The opening validates the attendee list itself for the report profiles.
+                with document_validation(), _metadata_text("title block"):
+                    title_inserted = render_office_opening(self.doc, model.metadata)
             if self._term_sheet:
                 # Resolved in preflight; the opening leads the first page, before any TOC.
-                title_inserted = render_term_sheet_opening(
-                    self.doc,
-                    model.metadata,
-                    cast(TermSheetTexts, self.term_sheet_texts),
-                    TextRenderer.render_runs,
-                )
+                with _metadata_text("term-sheet opening"):
+                    title_inserted = render_term_sheet_opening(
+                        self.doc,
+                        model.metadata,
+                        cast(TermSheetTexts, self.term_sheet_texts),
+                        TextRenderer.render_runs,
+                    )
             if opening_title:
                 # Title before the TOC, whose preview no longer lists the title H1.
-                title_inserted = render_office_opening(self.doc, model.metadata)
+                with document_validation(), _metadata_text("title block"):
+                    title_inserted = render_office_opening(self.doc, model.metadata)
             if resolved.toc:
                 self.toc_renderer.render(model)
             # The title H1 was already removed from the render copy for these paths.
@@ -3888,7 +3922,8 @@ class IBDocumentRenderer:
             office_closed = False
             for idx, element in enumerate(model.elements):
                 if idx == appendix_index:
-                    render_office_closing(self.doc, model.metadata)
+                    with _metadata_text("closing"):
+                        render_office_closing(self.doc, model.metadata)
                     office_closed = True
                     self.doc.add_page_break()
                     label = model.metadata.extra["letter"].get("appendix_label")
@@ -3920,33 +3955,36 @@ class IBDocumentRenderer:
                         color=STYLE.RED,
                     )
             if not office_closed:
-                render_office_closing(self.doc, model.metadata)
+                with _metadata_text("closing"):
+                    render_office_closing(self.doc, model.metadata)
             if model.footnotes:
                 self.footnote_renderer.render(
                     model.footnotes, allow_legacy_refs=resolved.profile.is_ib
                 )
             if resolved.disclaimer:
-                self.disclaimer_renderer.render(model.metadata.company)
+                with _metadata_text("disclaimer (company)"):
+                    self.disclaimer_renderer.render(model.metadata.company)
             sender = model.metadata.extra.get("sender", {})
             company = (
                 sender.get("organization", model.metadata.company)
                 if isinstance(sender, dict)
                 else model.metadata.company
             )
-            if self._term_sheet:
-                setup_term_sheet_header_footer(
-                    self.doc,
-                    model.metadata,
-                    self.term_sheet_texts,
-                    resolved.confidential,
-                    TextRenderer.render_runs,
-                )
-            else:
-                self.styler.setup_header_footer(
-                    company="" if resolved.profile.name == "office-letter" else company,
-                    confidential=resolved.confidential,
-                    show_page_numbers=True,
-                )
+            with _metadata_text("header (sender.organization or company)"):
+                if self._term_sheet:
+                    setup_term_sheet_header_footer(
+                        self.doc,
+                        model.metadata,
+                        self.term_sheet_texts,
+                        resolved.confidential,
+                        TextRenderer.render_runs,
+                    )
+                else:
+                    self.styler.setup_header_footer(
+                        company="" if resolved.profile.name == "office-letter" else company,
+                        confidential=resolved.confidential,
+                        show_page_numbers=True,
+                    )
             self.apply_generator_signature(
                 "ib_generated" if resolved.profile.name == "ib-report" else resolved.profile.name
             )

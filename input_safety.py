@@ -15,10 +15,11 @@ from dataclasses import dataclass, fields, is_dataclass
 from enum import StrEnum
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO
 from urllib.parse import unquote
 
 from docx.image.image import _ImageHeaderFactory
+from yaml import safe_load
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +244,32 @@ def document_validation(
         if document:
             raise StrictValidationError("", (str(error),)) from error
         raise
+
+
+def load_yaml(text: str) -> Any:
+    """Load YAML with the safe loader; a value it cannot construct is a ValueError.
+
+    PyYAML's scalar constructors raise plain AttributeError, KeyError, IndexError
+    or TypeError for malformed tagged scalars (`!!timestamp x`, `!!bool x`,
+    `!!int ""`), and deep nesting ends in RecursionError. Callers already treat
+    yaml.YAMLError and ValueError as invalid YAML, so those are left as they are.
+
+    Args:
+        text: YAML written in a document or in a file a document or operator named.
+
+    Returns:
+        The constructed value, or None for empty YAML.
+
+    Raises:
+        yaml.YAMLError: Syntax or structure the loader rejects.
+        ValueError: A value the loader could not construct.
+    """
+    try:
+        return safe_load(text)
+    except (AttributeError, KeyError, IndexError, TypeError, OverflowError) as error:
+        raise ValueError(f"YAML value cannot be constructed: {error!r}") from error
+    except RecursionError as error:
+        raise ValueError("YAML is nested too deeply") from error
 
 
 class _XMLText:
