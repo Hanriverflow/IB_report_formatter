@@ -30,6 +30,9 @@ Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Bet
 ### Fixes
 - `w:updateFields` is inserted at its schema position in `settings.xml` in every profile. Output changes only in element order.
 - Logo paths written with percent-encoding are resolved and judged candidate by candidate, like body images. A relative logo path is made absolute without following links, so a Windows drive-relative path (`Z:logo.png`) keeps working.
+- A line that starts with `+ ` is a bullet item, like `- ` and `* `. Such a line also ends the paragraph before it.
+- `#####` and `######` headings are headings, rendered with the level 4 style; they used to be paragraphs that kept their hash marks.
+- A closed code fence keeps its text exactly: blank lines and spaces at its end are no longer dropped, and a blank line no longer carries a one-space run. Line heights in Word are unchanged.
 - Headings keep the characters of code spans and escaped punctuation (`` # `**kwargs` `` and `# \*literal\*` used to lose their asterisks). Other headings render as before.
 - A whitespace-only line in a fenced code block keeps its own whitespace.
 - `docx-audit` reads the package's content-type list first and checks every part it declares as XML, and every relationship part, with entity resolution, DTD loading and network access off, before opening the document. Part extensions are read by python-docx's own rule, so a part without an extension is covered. A package whose content-type list is missing or unreadable is reported and not opened. A package with a part that declares a DTD or entities is reported as an issue naming the part and is not opened or expanded. Results for ordinary documents are unchanged.

@@ -9,8 +9,8 @@ are permuted, and inline constructs occur in paragraphs, headings, list items
 and table cells. Code includes Markdown-looking text, tabs, spaces, blank lines,
 backticks, HTML breaks and footnote/term-looking text. Expected text is composed
 alongside the source, never obtained from parser/model text or engine helpers.
-ATX levels 1-6 and all three bullet markers remain in scope; unsupported output
-for levels 5/6 and '+' is retained as strict xfail parameter groups, not filtered.
+ATX levels 1-6 and all three bullet markers are in scope and checked; levels 5
+and 6 render with the level 4 style.
 Backslash escapes cover all ASCII punctuation in two groups: the characters the
 engine resolves (TextParser's escapable set: backslash $ ` ^ ~ . * " ' ( ) [ ] { }
 | _ -) are generated inside documents, tables and the escape property; the other
@@ -59,7 +59,7 @@ or aliases, every combination of nested settings, or arbitrary malformed model
 shapes. Dedicated regressions cover selected named-configuration and asset cases.
 Fenced-code generation partitions the original alphabet: nonempty lines and a
 non-whitespace final character have an active text/formatting property; empty
-lines and trailing whitespace retain generated strict xfail groups. Tree-value
+lines and trailing whitespace have their own active properties. Tree-value
 emphasis retains its separate minimal strict xfail. No payload is filtered out.
 
 Determinism: local default profile markdown-properties, derandomize=True, deadline=None,
