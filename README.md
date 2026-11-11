@@ -447,6 +447,8 @@ The plugin runner and portable converter always use strict mode and provide **no
 ## Supported Markdown and limitations
 
 - Headings, paragraphs, emphasis, pipe tables, lists, blockquotes/callouts, local/base64 images, code blocks and existing diagram/LaTeX rendering.
+- Bullet markers are `-`, `*` and `+`. Headings go from `#` to `######`; levels 5 and 6 use the level 4 style. A closed code fence keeps its text exactly, including blank lines at its end.
+- A backslash escapes any ASCII punctuation character (`\#`, `\%`, `\*`, `\<`). Code, link destinations and text between dollar signs (`$5\%$`) keep their backslashes.
 - Emphasis follows CommonMark's flanking rule: `2 * 3 * 4` and a note marker followed by a space (`* 주요 매출처`) stay literal.
 - HTML `<table>` blocks from document converters become Word tables: `colspan`/`rowspan` merge cells, block tags and `<br>` break lines, `<b>`/`<i>`/`<code>`/`<sup>`/`<sub>`, colour spans and `<a href>` format text, `<img>` becomes a cell image and nested tables are flattened into their cell. HTML text stays literal (it is never re-read as Markdown); `{{key}}` references are substituted. Rows that the first row's spans cover stay separate header rows (`header_rows`). Unclosed tables and text outside cells are reported; strict mode rejects them.
 - Images inside text and table cells (`![alt](path)`) are inserted inline and fitted to the cell. Percent-encoded image paths (`a%20b.png`) are found, and a standalone `<img>` line is an image.
@@ -504,7 +506,7 @@ CI runs these on Ubuntu and Windows with Python 3.12 and 3.13. Three further che
 
 - **Word schema gate.** A separate CI job renders every sample in strict mode and checks the documents with a pinned OOXML-Validator build; any error outside `scripts/word_schema_exceptions.json` fails the job. [scripts/word_schema_validation.md](scripts/word_schema_validation.md) explains the local run and the exception rule. Passing it is a structural result, not a visual review.
 - **Snapshots.** `tests/test_sample_snapshots.py` compares the parsed model and every XML part of every sample with stored snapshots; a missing snapshot fails. After an intended output change, run `uv run pytest tests/test_sample_snapshots.py --snapshot-update`, review the diff, and check the changed samples in Word.
-- **Properties.** `tests/test_markdown_properties.py` generates Markdown with fixed examples and checks that visible text and table cells survive, that code and escapes stay literal, and that a strict conversion either saves a document or ends in a documented rejection without leaving a file. Its strict `xfail` cases list known gaps.
+- **Properties.** `tests/test_markdown_properties.py` generates Markdown with fixed examples and checks that visible text and table cells survive, that code and escapes stay literal, and that a strict conversion either saves a document or ends in a documented rejection without leaving a file. Its one strict `xfail` records the intended tree-value emphasis inside code blocks.
 
 Batch conversion: `uv run md-to-word samples/profiles --batch`. Optional clipboard cleanup: `--format`; optional DeepResearch cleanup: `--deepresearch-cleaner auto`. Preprocessors can change content, so review the cleaned input.
 

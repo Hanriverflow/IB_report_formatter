@@ -107,7 +107,7 @@ Document content (body, frontmatter, and the house or theme files it names) is u
 
 - Hand-built XML children go through `ooxml_order.insert_ordered`. The CI job `word-schema` renders every sample and fails on any OOXML-Validator error that `scripts/word_schema_exceptions.json` does not cover; see `scripts/word_schema_validation.md`. The script runs the validator only from an archive whose hash it has just verified. An exception needs a reproduction from a document saved by Word itself, and the reproduction document stays out of the repository.
 - `tests/test_sample_snapshots.py` pins the parsed model and every XML part of every sample. A missing snapshot fails. Update only for an intended output change, with `uv run pytest tests/test_sample_snapshots.py --snapshot-update`, and review the diff; a snapshot change in a sample also needs the Word page check below.
-- `tests/test_markdown_properties.py` holds four Hypothesis properties (visible text, cell count, literal code and escapes, strict save-or-reject). Do not shrink the generated input or loosen a comparison to pass. Its strict `xfail` cases record known gaps that need an owner decision; fixing one means removing its mark.
+- `tests/test_markdown_properties.py` holds four Hypothesis properties (visible text, cell count, literal code and escapes, strict save-or-reject). Do not shrink the generated input or loosen a comparison to pass. Its one strict `xfail` records the intended tree-value emphasis inside code blocks; a new known gap that needs an owner decision is recorded the same way, and fixing one means removing its mark.
 
 ## Converter registry
 
@@ -131,6 +131,14 @@ Only `MarkdownInputConverter` and `DocxOutputConverter` are built in.
   - trim unnecessary spaces inside parentheses (e.g., `( PFV )` -> `(PFV)`)
 
 Regression coverage is in `tests/test_md_parser.py` (soft wrap merge, hard-break policy, opt-in legacy mode, spacing normalization).
+
+### Markdown reading rules (2026-11)
+
+- Bullet markers are `-`, `*` and `+`. `#` to `######` are headings; levels 5 and 6 are emitted as level 4, the deepest styled level.
+- A closed code fence is literal, including blank lines and spaces at its end. Do not add spacer text to a blank code line: the paragraph mark sets the line height.
+- A backslash escapes any ASCII punctuation character (`TextParser._ESCAPE_RE`). Inside code spans, link destinations and text between dollar signs only the earlier set applies (`_LEGACY_ESCAPE_RE`), so LaTeX commands such as `\%` and `\,` survive in every context. Keep both rules together when adding a path that resolves escapes.
+- The table row splitter resolves only an escaped pipe; the cell's inline parse resolves every other escape once.
+- Edge cases are pinned in `tests/test_markdown_proposals.py`.
 
 ## Dependencies
 

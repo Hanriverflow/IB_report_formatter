@@ -41,7 +41,7 @@ Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Bet
 
 ### Verification infrastructure
 - CI gate `word-schema`: every sample (12 Markdown samples, 13 documents with the charts-on variant) is rendered in strict mode and checked with OOXML-Validator v2.1.6, downloaded and verified against a pinned SHA-256. The validation script verifies the downloaded archive in the same run that executes it, so an unverified validator never runs. An error not covered by `scripts/word_schema_exceptions.json` (currently empty) fails the job, and an exception covers an error only when the error type and description also match its evidence. See `scripts/word_schema_validation.md`.
-- Snapshot tests pin the parsed model and every XML part of every sample; property tests (Hypothesis, fixed examples) check visible text, table cells, literal code and escapes, and that strict conversion either saves or rejects. Known gaps that need an owner decision are recorded as strict `xfail` cases in `tests/test_markdown_properties.py`.
+- Snapshot tests pin the parsed model and every XML part of every sample; property tests (Hypothesis, fixed examples) check visible text, table cells, literal code and escapes, and that strict conversion either saves or rejects. The gaps they found in Markdown reading are fixed (see Fixes); the one strict `xfail` left in `tests/test_markdown_properties.py` records the intended tree-value emphasis inside code blocks.
 - CI also runs `ruff format --check`. `syrupy` and `hypothesis` are development-only dependencies.
 - New engine module `input_safety.py`.
 
