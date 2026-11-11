@@ -481,7 +481,7 @@ CI는 위 명령과 함께 산출물을 지키는 검사 세 가지를 돌립니
 
 - **Word 스키마 게이트.** 별도 CI 작업이 모든 샘플을 strict 모드로 변환하고 버전과 해시를 고정한 OOXML-Validator로 검사합니다. `scripts/word_schema_exceptions.json`에 없는 오류가 하나라도 있으면 실패합니다. 로컬 실행 방법과 예외 규칙은 [scripts/word_schema_validation.md](scripts/word_schema_validation.md)에 있습니다. 통과는 구조 검사 결과이며 시각 검토가 아닙니다.
 - **스냅숏.** `tests/test_sample_snapshots.py`가 샘플마다 파싱한 모델과 DOCX 안의 모든 XML 파트를 저장된 스냅숏과 비교합니다. 스냅숏이 없으면 실패합니다. 출력을 의도적으로 바꿨다면 `uv run pytest tests/test_sample_snapshots.py --snapshot-update`로 갱신하고, 차이를 검토한 뒤 바뀐 샘플을 Word에서 확인하십시오.
-- **속성 테스트.** `tests/test_markdown_properties.py`가 고정된 예시로 Markdown을 생성해 보이는 글자와 표 칸이 보존되는지, 코드와 이스케이프가 글자 그대로 나오는지, strict 변환이 문서를 저장하거나 파일을 남기지 않고 문서화된 거부로 끝나는지 검사합니다. strict `xfail`로 남은 한 건은 코드 블록 안 트리 표기의 값 강조로, 의도한 서식입니다.
+- **속성 테스트.** `tests/test_markdown_properties.py`가 고정된 예시로 Markdown을 생성해 보이는 글자와 표 칸이 보존되는지, 코드와 이스케이프가 글자 그대로 나오는지, strict 변환이 문서를 저장하거나 파일을 남기지 않고 문서화된 거부로 끝나는지 검사합니다. strict `xfail`로 남은 한 건은 코드 블록 안 트리 표기의 값 강조로, 의도한 서식입니다. `tests/test_config_properties.py`는 같은 저장·거부 검사를 생성한 기관·테마 파일 내용과 별칭을 쓴 YAML에 시간 제한을 두고 적용합니다.
 
 Python 3.12 이상을 지원하며 CI는 Ubuntu와 Windows의 Python 3.12 및 3.13에서 검사합니다. 모델은 `document_model.py`로 분리했으며 기존 `md_parser` 모델 import는 유지합니다. CLI·API·레지스트리는 하나의 조립 경로를 사용합니다. API에서는 파싱 단계부터 원하는 프로파일을 전달하십시오. 파싱된 모델은 적용한 프로파일을 기록하며, 렌더링 시 다른 프로파일을 요청하면 strict 여부와 무관하게 `ValueError`를 발생시킵니다. 원하는 프로파일로 Markdown을 다시 파싱해야 합니다. 파싱 이력이 없는 직접 구성 모델은 렌더 프로파일을 선택할 수 있습니다.
 

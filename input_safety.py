@@ -19,7 +19,8 @@ from typing import Any, BinaryIO
 from urllib.parse import unquote
 
 from docx.image.image import _ImageHeaderFactory
-from yaml import safe_load
+from yaml import SafeLoader
+from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +247,91 @@ def document_validation(
         raise
 
 
+# Values and characters YAML may expand to through aliases, however short it is.
+_YAML_EXPANSION_FLOOR = 100_000
+# Merge keys one mapping may hold. YAML needs one (its value may list several
+# mappings); the loader removes each from the mapping in turn, so thousands in
+# one mapping take quadratic time with no alias involved.
+_YAML_MERGE_KEYS = 100
+_YAML_MERGE_TAG = "tag:yaml.org,2002:merge"
+
+
+def _yaml_children(node: Node) -> list[Node]:
+    if isinstance(node, MappingNode):
+        return [child for pair in node.value for child in pair]
+    return list(node.value)
+
+
+def _check_yaml_expansion(root: Node, allowance: int) -> None:
+    """Refuse parsed YAML that contains itself or expands past the allowance.
+
+    Size counts one for each node and each character of a scalar, and counts an
+    aliased node again wherever it is used, which is what a merge key copies and
+    what anything that prints or walks the loaded value pays for. Without
+    aliases a node and a character each take at least a character of YAML, so
+    YAML that uses none stays near its own length (about one and a half times
+    in the densest forms), well under an allowance of four times.
+
+    Each collection is opened once, however often it is aliased, so the check
+    itself takes time in proportion to the parsed YAML.
+
+    Args:
+        root: The composed document, before any value is constructed.
+        allowance: The largest size accepted.
+
+    Raises:
+        ValueError: The graph is recursive or larger than the allowance, or one
+            mapping holds more merge keys than `_YAML_MERGE_KEYS`.
+    """
+    sizes: dict[int, int] = {}
+    active: set[int] = set()
+    pending: list[tuple[Node, bool]] = [(root, False)]
+    while pending:
+        node, finished = pending.pop()
+        if not isinstance(node, (MappingNode, SequenceNode)):
+            continue
+        identity = id(node)
+        if finished:
+            active.discard(identity)
+            sizes[identity] = 1 + sum(
+                max(1, len(child.value)) if isinstance(child, ScalarNode) else sizes[id(child)]
+                for child in _yaml_children(node)
+            )
+            if sizes[identity] > allowance:
+                raise ValueError("YAML aliases expand to too much content")
+        elif identity in active:
+            raise ValueError("YAML structure refers to itself")
+        elif identity not in sizes:
+            if isinstance(node, MappingNode):
+                merges = sum(1 for key, _ in node.value if key.tag == _YAML_MERGE_TAG)
+                if merges > _YAML_MERGE_KEYS:
+                    raise ValueError("YAML mapping repeats the merge key too many times")
+            active.add(identity)
+            pending.append((node, True))
+            pending.extend((child, False) for child in _yaml_children(node))
+
+
+def _check_yaml_integers(data: object) -> None:
+    """Refuse an integer that loads but is too long for Python to write out again."""
+    seen: set[int] = set()
+    pending: list[object] = [data]
+    while pending:
+        item = pending.pop()
+        if isinstance(item, int):
+            try:
+                str(item)
+            except ValueError as error:
+                raise ValueError("YAML integer is too long to use") from error
+        elif isinstance(item, Mapping):
+            if id(item) not in seen:
+                seen.add(id(item))
+                pending.extend(item.keys())
+                pending.extend(item.values())
+        elif isinstance(item, (list, tuple, set, frozenset)) and id(item) not in seen:
+            seen.add(id(item))
+            pending.extend(item)
+
+
 def load_yaml(text: str) -> Any:
     """Load YAML with the safe loader; a value it cannot construct is a ValueError.
 
@@ -255,6 +341,13 @@ def load_yaml(text: str) -> Any:
     yaml.YAMLError and ValueError as invalid YAML, so those are left as they are.
     An integer too long for Python to convert back to text is reported the same way.
 
+    Aliases let a few hundred characters describe a structure that refers to
+    itself, that expands to billions of values, or that repeats one long text
+    or one large mapping thousands of times. The loader shares aliased values,
+    so most of these load at once and then stall whatever prints or walks them,
+    and a merge key copies its mapping while loading. They are refused on the
+    parsed YAML, before any value is constructed.
+
     Args:
         text: YAML written in a document or in a file a document or operator named.
 
@@ -263,28 +356,26 @@ def load_yaml(text: str) -> Any:
 
     Raises:
         yaml.YAMLError: Syntax or structure the loader rejects.
-        ValueError: A value the loader could not construct.
+        ValueError: A value the loader could not construct, a structure that is
+            recursive or expands too far through aliases, or a mapping that
+            repeats the merge key too many times.
     """
+    # The steps of yaml.safe_load, with the alias check between parsing and construction.
     try:
-        data = safe_load(text)
+        loader = SafeLoader(text)
+        try:
+            node = loader.get_single_node()
+            if node is None:
+                return None
+            _check_yaml_expansion(node, max(_YAML_EXPANSION_FLOOR, 4 * len(text)))
+            data = loader.construct_document(node)
+        finally:
+            loader.dispose()
     except (AttributeError, KeyError, IndexError, TypeError, OverflowError) as error:
         raise ValueError(f"YAML value cannot be constructed: {error!r}") from error
     except RecursionError as error:
         raise ValueError("YAML is nested too deeply") from error
-    # An integer beyond Python's conversion limit loads, but cannot be written out.
-    pending = [data]
-    while pending:
-        item = pending.pop()
-        if isinstance(item, int):
-            try:
-                str(item)
-            except ValueError as error:
-                raise ValueError("YAML integer is too long to use") from error
-        elif isinstance(item, Mapping):
-            pending.extend(item.keys())
-            pending.extend(item.values())
-        elif isinstance(item, (list, tuple, set)):
-            pending.extend(item)
+    _check_yaml_integers(data)
     return data
 
 
