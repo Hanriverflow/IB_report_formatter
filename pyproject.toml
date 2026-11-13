@@ -61,6 +61,7 @@ only-include = [
     "ooxml_order.py", "render_styles.py", "stream_utils.py", "term_sheet.py", "term_variables.py",
     "ib_render_fonts.py",
     "ib_render_document_style.py",
+    "ib_render_footnotes.py",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -74,6 +75,7 @@ include = [
     "/render_styles.py", "/stream_utils.py", "/term_sheet.py", "/term_variables.py",
     "/ib_render_fonts.py",
     "/ib_render_document_style.py",
+    "/ib_render_footnotes.py",
     "/pyproject.toml", "/uv.lock",
     "/README.md", "/README.ko.md", "/CHANGELOG.md", "/AGENTS.md", "/LICENSE",
     "/samples/profiles/**", "/samples/qa/**", "/scripts/word_visual_qa.ps1", "/docs/implementation-plan-20260914.md",
@@ -112,6 +114,7 @@ known-first-party = [
     "ib_renderer",
     "ib_render_fonts",
     "ib_render_document_style",
+    "ib_render_footnotes",
     "md_formatter",
     "md_parser",
     "document_model",

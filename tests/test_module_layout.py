@@ -54,6 +54,10 @@ SPLIT_LAYOUT: dict[str, tuple[str, tuple[str, ...]]] = {
         "ib_renderer",
         ("GeneratorSignatureWriter", "DocumentStyler", "TableStyler"),
     ),
+    "ib_render_footnotes": (
+        "ib_renderer",
+        ("FootnoteRenderer", "NativeFootnotesPart", "rebase_local_links"),
+    ),
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
