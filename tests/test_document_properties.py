@@ -10,6 +10,7 @@ through actual parsing, strict rendering and saving, then reads the saved packag
 import re
 import shutil
 import zipfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -349,3 +350,54 @@ def test_unknown_status_in_a_hand_built_model_is_rejected(strict):
     model.metadata.extra["status"] = "DRAFT"
     with pytest.raises(StrictValidationError, match="status must be draft or final"):
         IBDocumentRenderer(options=RenderOptions(strict=strict)).render(model)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CORE PROPERTIES (FILE > INFO)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _core(docx: Path):
+    from docx import Document
+
+    return Document(str(docx)).core_properties
+
+
+@pytest.mark.parametrize("profile", [*GENERAL_PROFILES, "office-letter"])
+def test_file_information_is_this_documents(tmp_path, profile):
+    source = _letter_source("") if profile == "office-letter" else _source(profile)
+    before = datetime.now(UTC).replace(tzinfo=None, microsecond=0)
+    output = _render(source, profile, tmp_path / "out.docx")
+    after = datetime.now(UTC).replace(tzinfo=None)
+
+    core = _core(output)
+    assert core.author == ""
+    assert core.comments == ""
+    assert core.last_modified_by == ""
+    expected = "2026년 하반기 운영자료 제출 요청" if profile == "office-letter" else "예시 문서"
+    assert core.title == expected
+    assert core.created == core.modified
+    assert before <= core.created.replace(tzinfo=None) <= after
+
+
+def test_term_sheet_file_information_keeps_title_and_subject(tmp_path):
+    output = _render_file(_term_sheet_copy(tmp_path, 'version: "v1"'), tmp_path / "out.docx")
+
+    core = _core(output)
+    assert core.title == "가나다머티리얼즈㈜ 운전자금대출 주요조건(안)"
+    assert core.subject == "Term Sheet"
+    assert core.author == "" and core.comments == ""
+
+
+@pytest.mark.parametrize(
+    ("profile", "source"),
+    [
+        ("plain", "본문만 있는 문서입니다.\n"),
+        ("ib-report", "---\nprofile: ib-report\n---\n본문만 있는 문서입니다.\n"),
+    ],
+)
+def test_placeholder_title_is_not_written_as_the_file_title(tmp_path, profile, source):
+    """A profile's stand-in title ("Document", "IB Report") is not the document's title."""
+    output = _render(source, profile, tmp_path / "out.docx")
+
+    assert _core(output).title == ""

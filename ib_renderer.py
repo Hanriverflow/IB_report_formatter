@@ -102,7 +102,11 @@ from ib_render_blocks import HeadingRenderer as HeadingRenderer
 from ib_render_blocks import ListRenderer as ListRenderer
 from ib_render_blocks import ParagraphRenderer as ParagraphRenderer
 from ib_render_blocks import TOCRenderer as TOCRenderer
-from ib_render_document_style import VERSION_PROPERTY, add_draft_watermark
+from ib_render_document_style import (
+    VERSION_PROPERTY,
+    add_draft_watermark,
+    write_core_properties,
+)
 from ib_render_document_style import DocumentStyler as DocumentStyler
 from ib_render_document_style import GeneratorSignatureWriter as GeneratorSignatureWriter
 from ib_render_document_style import TableStyler as TableStyler
@@ -912,6 +916,11 @@ class IBDocumentRenderer:
             if version:
                 # Headers and the term-sheet footer refer to it by DOCPROPERTY fields.
                 GeneratorSignatureWriter.upsert_properties(self.doc, {VERSION_PROPERTY: version})
+            # File > Info shows this document's title, not python-docx's template details.
+            placeholder = default_metadata(resolved.profile.name).title
+            with _metadata_text("title (file properties)"):
+                title = str(model.metadata.title)
+                write_core_properties(self.doc, "" if title == placeholder else title)
             ImageRenderer.fit_table_cell_images(self.doc)
             from docx_audit import inspect_document_issues
 
