@@ -90,6 +90,10 @@ SPLIT_LAYOUT: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
     "md_parse_tables": ("md_parser", ("TableParser", "TableSpanResolver")),
+    "md_parse_html_tables": (
+        "md_parser",
+        ("_HtmlCell", "_html_image", "_HtmlTableReader", "HtmlTableParser"),
+    ),
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
