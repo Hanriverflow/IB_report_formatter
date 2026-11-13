@@ -60,6 +60,10 @@ SPLIT_LAYOUT: dict[str, tuple[str, tuple[str, ...]]] = {
     ),
     "ib_render_media": ("ib_renderer", ("ImageRenderer", "ChartRenderer", "LaTeXRenderer")),
     "ib_render_text": ("ib_renderer", ("TextRenderer",)),
+    "ib_render_blocks": (
+        "ib_renderer",
+        ("TOCRenderer", "HeadingRenderer", "ParagraphRenderer", "ListRenderer", "CalloutRenderer"),
+    ),
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
