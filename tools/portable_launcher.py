@@ -15,9 +15,66 @@ if not getattr(sys, "frozen", False):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from document_profiles import PROFILES, RenderOptions
+from input_safety import ConversionRejection, InputLimitError, RejectionCode
 from md_to_word import IBReportConverter
 
 AUTO_PROFILE = "자동 (문서의 YAML 설정 사용)"
+
+REJECTION_GUIDANCE = {
+    RejectionCode.ASSET_OUTSIDE_ROOT: (
+        "이미지 또는 로고가 Markdown 파일의 폴더 밖에 있습니다. "
+        "문서에 필요한 이미지, 기관 파일과 로고를 Markdown 파일과 같은 폴더나 "
+        "그 하위 폴더로 복사하고 상대 경로로 지정하세요. "
+        "기관 파일 안의 로고 경로는 기관 파일의 위치를 기준으로 적으세요."
+    ),
+    RejectionCode.LIMIT_INPUT_BYTES: (
+        "Markdown 파일의 바이트 수가 입력 한도를 넘었습니다. "
+        "입력 내용을 줄이거나 여러 Markdown 파일로 나누세요."
+    ),
+    RejectionCode.LIMIT_TABLE_CELLS: (
+        "표 하나의 칸 수가 한도를 넘었습니다. 머리행을 포함한 행 수 × 열 수로 계산하며, "
+        "HTML 표는 병합을 펼친 칸 수를 셉니다. 표를 줄이거나 여러 표 또는 문서로 나누세요."
+    ),
+    RejectionCode.LIMIT_LIST_DEPTH: (
+        "목록의 중첩 단계 수가 한도를 넘었습니다. "
+        "들여쓰기 단계를 줄이거나 목록을 여러 부분으로 나누세요."
+    ),
+    RejectionCode.LIMIT_IMAGE_BYTES: (
+        "이미지 또는 로고 하나의 바이트 수가 한도를 넘었습니다. "
+        "Base64 이미지도 디코딩한 크기를 검사합니다. "
+        "이미지를 압축하거나 크기를 줄이거나 여러 이미지로 나누세요."
+    ),
+    RejectionCode.LIMIT_IMAGE_PIXELS: (
+        "이미지 또는 로고 하나의 픽셀 수(가로 × 세로)가 한도를 넘었습니다. "
+        "이미지의 해상도를 낮추거나 여러 이미지로 나누세요."
+    ),
+}
+
+
+def conversion_error_message(error: BaseException) -> str:
+    """Explain documented failures in Korean while retaining the engine details.
+
+    Args:
+        error: Conversion failure, possibly wrapping a documented rejection.
+
+    Returns:
+        Korean causes and remedies followed by the original error message.
+    """
+    explanations: list[str] = []
+    current: BaseException | None = error
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        if isinstance(current, ConversionRejection):
+            for code in current.codes:
+                guidance = REJECTION_GUIDANCE[RejectionCode(code)]
+                if isinstance(current, InputLimitError):
+                    guidance += f" 한도: {current.limit:,}, 측정값: {current.measured:,}."
+                explanation = f"[{code}] {guidance}"
+                if explanation not in explanations:
+                    explanations.append(explanation)
+        current = current.__cause__
+    return "\n\n".join([*explanations, str(error)])
 
 
 def application_root() -> Path:
@@ -97,7 +154,8 @@ def launch_gui(self_test: bool = False) -> None:
 
     def choose_source() -> None:
         selected = filedialog.askopenfilename(
-            title="Markdown 파일 선택", initialdir=str(root_path / "예제"),
+            title="Markdown 파일 선택",
+            initialdir=str(root_path / "예제"),
             filetypes=[("Markdown 문서", "*.md")],
         )
         if selected:
@@ -129,13 +187,17 @@ def launch_gui(self_test: bool = False) -> None:
         try:
             messages.put(("done", str(convert_document(*values))))
         except Exception as exc:
-            messages.put(("error", str(exc)))
+            messages.put(("error", conversion_error_message(exc)))
 
     def convert() -> None:
         nonlocal busy
         if busy:
             return
-        values = (source.get(), destination.get(), None if profile.get() == AUTO_PROFILE else profile.get())
+        values = (
+            source.get(),
+            destination.get(),
+            None if profile.get() == AUTO_PROFILE else profile.get(),
+        )
         busy = True
         convert_button.configure(state="disabled")
         status.set("변환 중입니다. 완료될 때까지 기다려 주세요.")
@@ -156,7 +218,11 @@ def launch_gui(self_test: bool = False) -> None:
             if kind in {"done", "error"}:
                 busy = False
                 convert_button.configure(state="normal")
-                status.set("변환 완료 — 아래 저장 경로를 확인하세요." if kind == "done" else "변환 실패 — 아래 원인을 확인하세요.")
+                status.set(
+                    "변환 완료 — 아래 저장 경로를 확인하세요."
+                    if kind == "done"
+                    else "변환 실패 — 아래 원인을 확인하세요."
+                )
                 if kind == "error":
                     messagebox.showerror("변환 실패", value, parent=window)
         window.after(100, poll)
@@ -168,23 +234,39 @@ def launch_gui(self_test: bool = False) -> None:
         logging.getLogger().removeHandler(log_handler)
         window.destroy()
 
-    ttk.Label(frame, text="Markdown 파일을 Word 문서로 변환", font=("맑은 고딕", 17, "bold")).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 18))
+    ttk.Label(frame, text="Markdown 파일을 Word 문서로 변환", font=("맑은 고딕", 17, "bold")).grid(
+        row=0, column=0, columnspan=3, sticky="w", pady=(0, 18)
+    )
     ttk.Label(frame, text="입력 파일").grid(row=1, column=0, sticky="w", padx=(0, 12))
     ttk.Entry(frame, textvariable=source).grid(row=1, column=1, sticky="ew", pady=6)
     ttk.Button(frame, text="파일 선택", command=choose_source).grid(row=1, column=2, padx=(8, 0))
     ttk.Label(frame, text="저장 폴더").grid(row=2, column=0, sticky="w")
     ttk.Entry(frame, textvariable=destination).grid(row=2, column=1, sticky="ew", pady=6)
-    ttk.Button(frame, text="폴더 선택", command=choose_destination).grid(row=2, column=2, padx=(8, 0))
+    ttk.Button(frame, text="폴더 선택", command=choose_destination).grid(
+        row=2, column=2, padx=(8, 0)
+    )
     ttk.Label(frame, text="문서 유형").grid(row=3, column=0, sticky="w")
-    ttk.Combobox(frame, textvariable=profile, values=[AUTO_PROFILE, *PROFILES], state="readonly").grid(row=3, column=1, sticky="ew", pady=6)
-    ttk.Label(frame, text="자동: YAML profile 사용 · 유형을 직접 고르면 YAML보다 우선합니다.\n엄격 모드: 누락·렌더링 오류가 있으면 저장하지 않습니다. 기존 결과는 새 이름으로 보존합니다.", wraplength=720).grid(row=4, column=0, columnspan=3, sticky="w", pady=10)
+    ttk.Combobox(
+        frame, textvariable=profile, values=[AUTO_PROFILE, *PROFILES], state="readonly"
+    ).grid(row=3, column=1, sticky="ew", pady=6)
+    ttk.Label(
+        frame,
+        text="자동: YAML profile 사용 · 유형을 직접 고르면 YAML보다 우선합니다.\n엄격 모드: 누락·렌더링 오류가 있으면 저장하지 않습니다. 기존 결과는 새 이름으로 보존합니다.",
+        wraplength=720,
+    ).grid(row=4, column=0, columnspan=3, sticky="w", pady=10)
     buttons = ttk.Frame(frame)
     buttons.grid(row=5, column=0, columnspan=3, sticky="w", pady=8)
     convert_button = ttk.Button(buttons, text="Word로 변환", command=convert)
     convert_button.pack(side="left", padx=(0, 8))
-    ttk.Button(buttons, text="시작하기 · 텀시트 작성법", command=show_guide).pack(side="left", padx=(0, 8))
-    ttk.Button(buttons, text="출력 폴더 열기", command=lambda: open_path(Path(destination.get()))).pack(side="left")
-    ttk.Label(frame, textvariable=status, wraplength=720).grid(row=6, column=0, columnspan=3, sticky="w", pady=8)
+    ttk.Button(buttons, text="시작하기 · 텀시트 작성법", command=show_guide).pack(
+        side="left", padx=(0, 8)
+    )
+    ttk.Button(
+        buttons, text="출력 폴더 열기", command=lambda: open_path(Path(destination.get()))
+    ).pack(side="left")
+    ttk.Label(frame, textvariable=status, wraplength=720).grid(
+        row=6, column=0, columnspan=3, sticky="w", pady=8
+    )
     log = ScrolledText(frame, height=12, wrap="word", state="disabled", font=("맑은 고딕", 10))
     log.grid(row=7, column=0, columnspan=3, sticky="nsew")
     window.protocol("WM_DELETE_WINDOW", close)
@@ -212,7 +294,9 @@ def main() -> int:
         except Exception as exc:
             result = {"ok": False, "error": str(exc)}
         if args.result_json:
-            args.result_json.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+            args.result_json.write_text(
+                json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
         return 0 if result["ok"] else 1
     if args.convert:
         if not args.output_dir or not args.result_json:
@@ -222,7 +306,9 @@ def main() -> int:
             result = {"ok": True, "saved_path": str(saved)}
         except Exception as exc:
             result = {"ok": False, "error": str(exc)}
-        args.result_json.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        args.result_json.write_text(
+            json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         return 0 if result["ok"] else 1
     launch_gui()
     return 0

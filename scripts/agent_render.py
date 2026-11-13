@@ -9,15 +9,49 @@ import argparse
 import hashlib
 import json
 import sys
+from collections.abc import Iterable, Sequence
 from contextlib import redirect_stdout
 from pathlib import Path
-from typing import Any, Never, Optional, Sequence
+from typing import Any, Never
 
 # This source-checkout tool must also work when invoked from another directory.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
-def _sha256(path: Path) -> str:
+def _coded_diagnostics(issues: Iterable[str]) -> list[dict[str, str]]:
+    """Keep each coded issue intact, including punctuation inside file paths."""
+    from input_safety import RejectionCode
+
+    return [
+        {"code": code.value, "message": issue}
+        for issue in issues
+        for code in RejectionCode
+        if issue.startswith(f"[{code}] ")
+    ]
+
+
+def _rejection_diagnostics(error: BaseException) -> list[dict[str, str]]:
+    """Collect individual issues from documented rejections in a cause chain."""
+    from input_safety import InputLimitError, StrictValidationError
+
+    diagnostics = []
+    current: BaseException | None = error
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        if isinstance(current, StrictValidationError):
+            diagnostics.extend(_coded_diagnostics(current.issues))
+        elif isinstance(current, InputLimitError):
+            diagnostics.extend(_coded_diagnostics((str(current),)))
+        current = current.__cause__
+    return diagnostics
+
+
+def _sha256(path: Path, *, markdown: bool = False) -> str:
+    if markdown:
+        from input_safety import read_input_file
+
+        return hashlib.sha256(read_input_file(path)).hexdigest()
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
@@ -34,8 +68,8 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 def render_document(
     source: str,
     output_dir: str,
-    profile: Optional[str] = None,
-    expected_terms: Optional[str] = None,
+    profile: str | None = None,
+    expected_terms: str | None = None,
 ) -> dict[str, Any]:
     """Render one source in an exclusively reserved output directory.
 
@@ -52,16 +86,23 @@ def render_document(
         strict-render failures produce no DOCX.
     """
     result: dict[str, Any] = {
-        "ok": False, "status": "failed", "stage": "setup", "diagnostics": [],
+        "ok": False,
+        "status": "failed",
+        "stage": "setup",
+        "diagnostics": [],
         "input": {"path": str(source), "sha256": None},
         "output": {"directory": str(output_dir), "path": None, "sha256": None},
-        "profile": profile, "audit": None, "visual_review": "not_performed",
+        "profile": profile,
+        "audit": None,
+        "visual_review": "not_performed",
         "expected_terms": {
-            "status": "not_requested", "checked": 0,
+            "status": "not_requested",
+            "checked": 0,
             "scope": "Exact comparison with parsed terms only; not source truth or prose completeness.",
         },
     }
-    owned_directory: Optional[Path] = None
+    owned_directory: Path | None = None
+    rejection_types: tuple[type[ValueError], ...] = ()
     try:
         source_path = Path(source).resolve()
         destination = Path(output_dir).resolve()
@@ -75,8 +116,11 @@ def render_document(
         destination.mkdir(parents=True, exist_ok=False)
         owned_directory = destination
         result["stage"] = "input"
-        result["input"]["sha256"] = _sha256(source_path)
         with redirect_stdout(sys.stderr):
+            from input_safety import ConversionRejection
+
+            rejection_types = (ConversionRejection,)
+            result["input"]["sha256"] = _sha256(source_path, markdown=True)
             from converters import get_default_registry
 
             registry = get_default_registry()
@@ -85,9 +129,9 @@ def render_document(
             result["profile"] = model.parsed_profile
             if model.warnings:
                 result["diagnostics"].extend(
-                    {"code": "input_validation", "message": message}
-                    for message in model.warnings
+                    {"code": "input_validation", "message": message} for message in model.warnings
                 )
+                result["diagnostics"].extend(_coded_diagnostics(model.warnings))
                 raise ValueError("Strict input validation failed")
             if expected_path is not None:
                 result["stage"] = "expected_terms"
@@ -102,21 +146,32 @@ def render_document(
                     not isinstance(key, str) or not isinstance(value, str)
                     for key, value in expected.items()
                 ):
-                    raise ValueError("Expected terms must be a JSON object of string keys and values")
+                    raise ValueError(
+                        "Expected terms must be a JSON object of string keys and values"
+                    )
                 actual = model.metadata.extra.get("terms", {})
                 mismatches = [key for key, value in expected.items() if actual.get(key) != value]
-                comparison.update({
-                    "checked": len(expected),
-                    "status": "mismatch" if mismatches else ("matched" if expected else "empty"),
-                    "mismatched_keys": mismatches,
-                })
+                comparison.update(
+                    {
+                        "checked": len(expected),
+                        "status": "mismatch"
+                        if mismatches
+                        else ("matched" if expected else "empty"),
+                        "mismatched_keys": mismatches,
+                    }
+                )
                 if mismatches:
                     raise ValueError("Expected terms absent or different: " + ", ".join(mismatches))
             result["stage"] = "render"
-            saved = Path(registry.convert(
-                model, output_format="docx", output_path=destination / "document.docx",
-                strict=True, profile=profile,
-            )).resolve()
+            saved = Path(
+                registry.convert(
+                    model,
+                    output_format="docx",
+                    output_path=destination / "document.docx",
+                    strict=True,
+                    profile=profile,
+                )
+            ).resolve()
             result["output"].update({"path": str(saved), "sha256": _sha256(saved)})
             result["stage"] = "audit"
             from docx import Document
@@ -133,7 +188,11 @@ def render_document(
                 raise ValueError("Structural audit failed; generated DOCX retained for diagnosis")
         result.update({"ok": True, "status": "ready_for_review", "stage": "complete"})
     except Exception as exc:
-        result["diagnostics"].append({"code": type(exc).__name__, "message": str(exc)})
+        # Dedicated rejection subclasses retain the runner's earlier ValueError entry.
+        code = "ValueError" if isinstance(exc, rejection_types) else type(exc).__name__
+        result["diagnostics"].append({"code": code, "message": str(exc)})
+        if rejection_types:
+            result["diagnostics"].extend(_rejection_diagnostics(exc))
     if owned_directory is not None:
         try:
             with (owned_directory / "result.json").open("x", encoding="utf-8") as stream:
@@ -150,7 +209,7 @@ class _JsonArgumentParser(argparse.ArgumentParser):
         raise ValueError(message)
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Print one JSON result and return zero only for a successful strict render.
 
     Args:
@@ -168,14 +227,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         arguments = parser.parse_args(argv)
     except ValueError as exc:
         result = {
-            "ok": False, "status": "failed", "stage": "arguments",
+            "ok": False,
+            "status": "failed",
+            "stage": "arguments",
             "diagnostics": [{"code": "invalid_arguments", "message": str(exc)}],
-            "audit": None, "visual_review": "not_performed",
+            "audit": None,
+            "visual_review": "not_performed",
         }
         print(json.dumps(result, ensure_ascii=True))
         return 2
     result = render_document(
-        arguments.source, arguments.output_dir, arguments.profile, arguments.expected_terms,
+        arguments.source,
+        arguments.output_dir,
+        arguments.profile,
+        arguments.expected_terms,
     )
     # ASCII-escaped JSON is lossless, even when a Windows caller captures a legacy code page.
     print(json.dumps(result, ensure_ascii=True))

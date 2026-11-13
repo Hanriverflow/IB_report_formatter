@@ -14,10 +14,12 @@ Changelog (term variables):
 """
 
 import re
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import replace
-from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Pattern, Set, Tuple
+from re import Pattern
+from typing import Any
 
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -34,7 +36,7 @@ TERM_KEY_RE = re.compile(r"[a-z][a-z0-9_]{0,39}")
 TERM_REFERENCE_RE = re.compile(r"\{\{([^{}\n]*)\}\}")
 
 # Private-use token -> (key, value) for one substituted text field.
-TokenMap = Dict[str, Tuple[str, str]]
+TokenMap = dict[str, tuple[str, str]]
 
 _LINE_BREAK_RE = re.compile("[\n\r\x85\u2028\u2029]")
 _CONTROL_RE = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f]")
@@ -46,7 +48,7 @@ _INVALID_HINT = "keys use lowercase letters, digits and underscores and start wi
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def validate_terms(value: Any) -> Dict[str, str]:
+def validate_terms(value: Any) -> dict[str, str]:
     """Validate the `terms:` frontmatter mapping.
 
     Args:
@@ -60,8 +62,10 @@ def validate_terms(value: Any) -> Dict[str, str]:
             not a single-line string.
     """
     if not isinstance(value, dict):
-        raise ValueError('terms must be a YAML mapping of key: "text" pairs (write terms: {} for none)')
-    terms: Dict[str, str] = {}
+        raise ValueError(
+            'terms must be a YAML mapping of key: "text" pairs (write terms: {} for none)'
+        )
+    terms: dict[str, str] = {}
     for key, text in value.items():
         if not isinstance(key, str) or not TERM_KEY_RE.fullmatch(key):
             raise ValueError(
@@ -129,10 +133,10 @@ class TermResolver:
             values: Validated key-to-text mapping (see `validate_terms`).
             corpus: Source text the token prefix must never occur in.
         """
-        self.values: Dict[str, str] = dict(values)
-        self.used: Set[str] = set()
-        self.undefined: Set[str] = set()
-        self.invalid: Set[str] = set()
+        self.values: dict[str, str] = dict(values)
+        self.used: set[str] = set()
+        self.undefined: set[str] = set()
+        self.invalid: set[str] = set()
         self._prefix = self._TOKEN_PREFIX
         self._count = 0
         self.reserve(corpus)
@@ -142,7 +146,7 @@ class TermResolver:
         while self._prefix in text:
             self._prefix += "X"
 
-    def token(self, reference: str, key: str, tokens: TokenMap) -> Optional[str]:
+    def token(self, reference: str, key: str, tokens: TokenMap) -> str | None:
         """Return a token for a defined key; record undefined or malformed references.
 
         Args:
@@ -165,7 +169,7 @@ class TermResolver:
         tokens[token] = (key, self.values[key])
         return token
 
-    def warnings(self) -> List[str]:
+    def warnings(self) -> list[str]:
         """Return one sorted model warning per undefined key or malformed reference."""
         messages = ["Undefined term: {{" + key + "}}" for key in self.undefined]
         messages.extend(
@@ -173,7 +177,7 @@ class TermResolver:
         )
         return sorted(messages)
 
-    def unused(self) -> List[str]:
+    def unused(self) -> list[str]:
         """Return defined keys that no substituted reference used."""
         return sorted(set(self.values) - self.used)
 
@@ -185,7 +189,7 @@ TERM_TOKEN_PATTERN = (
 )
 
 
-def split_term_runs(runs: List[TextRun], tokens: TokenMap) -> List[TextRun]:
+def split_term_runs(runs: list[TextRun], tokens: TokenMap) -> list[TextRun]:
     """Split token-bearing runs into before, value and after runs.
 
     Args:
@@ -199,7 +203,7 @@ def split_term_runs(runs: List[TextRun], tokens: TokenMap) -> List[TextRun]:
     if not tokens:
         return runs
     pattern = _token_pattern(tokens)
-    result: List[TextRun] = []
+    result: list[TextRun] = []
     for run in runs:
         parts = pattern.split(run.text)
         if len(parts) == 1:
@@ -215,7 +219,9 @@ def split_term_runs(runs: List[TextRun], tokens: TokenMap) -> List[TextRun]:
 
 
 def restore_terms(
-    text: str, tokens: TokenMap, transform: Optional[Callable[[str], str]] = None,
+    text: str,
+    tokens: TokenMap,
+    transform: Callable[[str], str] | None = None,
 ) -> str:
     """Insert values into a plain string field in one pass (values are not rescanned).
 
@@ -242,7 +248,7 @@ def _token_pattern(tokens: TokenMap) -> Pattern[str]:
     return re.compile("(" + "|".join(re.escape(token) for token in tokens) + ")")
 
 
-def term_cell_text(cell: TableCell) -> Optional[str]:
+def term_cell_text(cell: TableCell) -> str | None:
     """Text a table cell shows when it carries term values, else None.
 
     A cell keeps its raw `content` (with `{{key}}`) for span markers; table
@@ -281,13 +287,13 @@ class TermRunCollector:
             tagging: Whether registered runs are wrapped as content controls.
         """
         self.tagging = tagging
-        self._runs: Dict[Any, Tuple[str, str]] = {}
+        self._runs: dict[Any, tuple[str, str]] = {}
 
     def register(self, run: Any, key: str, value: str) -> None:
         """Remember a rendered `w:r` element and the term value it shows."""
         self._runs[run] = (key, value)
 
-    def get(self, run: Any) -> Optional[Tuple[str, str]]:
+    def get(self, run: Any) -> tuple[str, str] | None:
         """Return the key and value registered for a `w:r` element, if any."""
         return self._runs.get(run)
 
@@ -296,7 +302,7 @@ class TermRunCollector:
         return len(self._runs)
 
 
-_TERM_RUNS: ContextVar[Optional[TermRunCollector]] = ContextVar("term_runs", default=None)
+_TERM_RUNS: ContextVar[TermRunCollector | None] = ContextVar("term_runs", default=None)
 # Children of a rendered value run that a plain-text content control may hold.
 _CONTROL_RUN_CHILDREN = frozenset(qn(tag) for tag in ("w:rPr", "w:t", "w:tab", "w:br", "w:cr"))
 
@@ -338,7 +344,7 @@ def register_term_run(run: Any, key: str, value: str) -> None:
         collector.register(run, key, value)
 
 
-def wrap_term_controls(document: Any, collector: TermRunCollector) -> Dict[str, str]:
+def wrap_term_controls(document: Any, collector: TermRunCollector) -> dict[str, str]:
     """Wrap registered runs still in the body in unlocked plain-text content controls.
 
     Each control holds one run, in `w:sdtPr` order alias, tag, id and text, with
@@ -356,11 +362,12 @@ def wrap_term_controls(document: Any, collector: TermRunCollector) -> Dict[str, 
         return {}
     root = document.element
     used_ids = {
-        int(value) for value in root.xpath("//@w:id | //w:sdtPr/w:id/@w:val")
+        int(value)
+        for value in root.xpath("//@w:id | //w:sdtPr/w:id/@w:val")
         if value.lstrip("-").isdigit()
     }
     control_id = 0
-    tagged: Dict[str, str] = {}
+    tagged: dict[str, str] = {}
     # Materialize first: wrapping moves runs later in document order.
     for run in list(root.body.iter(qn("w:r"))):
         entry = collector.get(run)
@@ -387,7 +394,9 @@ def _plain_text_control(key: str, control_id: int) -> Any:
     control = OxmlElement("w:sdt")
     properties = OxmlElement("w:sdtPr")
     for tag, value in (
-        ("w:alias", key), ("w:tag", TERM_TAG_PREFIX + key), ("w:id", str(control_id)),
+        ("w:alias", key),
+        ("w:tag", TERM_TAG_PREFIX + key),
+        ("w:id", str(control_id)),
     ):
         element = OxmlElement(tag)
         element.set(qn("w:val"), value)

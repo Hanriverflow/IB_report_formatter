@@ -10,11 +10,12 @@ Changelog (feature port):
 import math
 import re
 from io import BytesIO
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import yaml
 
 from document_model import ChartSeries, ChartSpec
+from input_safety import load_yaml
 from render_styles import STYLE, RasterFontPolicy
 
 
@@ -27,12 +28,22 @@ class _ChartSchema:
 
     NUMBER_FORMAT = re.compile(r"^,?(?:\.[0-9]{1,2})?f$")
     TYPES = {"bar", "line", "waterfall"}
-    FIELDS = {"type", "chart_type", "title", "labels", "series", "y_label",
-              "unit", "source", "total_label", "number_format"}
+    FIELDS = {
+        "type",
+        "chart_type",
+        "title",
+        "labels",
+        "series",
+        "y_label",
+        "unit",
+        "source",
+        "total_label",
+        "number_format",
+    }
     FORMATS = {"number", "percent", "bps", "multiple"}
 
 
-def _optional_string(data: Dict[str, Any], key: str) -> Optional[str]:
+def _optional_string(data: dict[str, Any], key: str) -> str | None:
     value = data.get(key)
     if value is not None and not isinstance(value, str):
         raise ChartSpecError(f"{key} must be a string or null")
@@ -52,8 +63,8 @@ def parse_chart_spec(text: str) -> ChartSpec:
         ChartSpecError: Invalid YAML, fields or values, including the title if known.
     """
     try:
-        data = yaml.safe_load(text)
-    except yaml.YAMLError as exc:
+        data = load_yaml(text)
+    except (yaml.YAMLError, ValueError) as exc:
         raise ChartSpecError(f"YAML is invalid: {exc}") from exc
     if not isinstance(data, dict):
         raise ChartSpecError("spec must be a YAML mapping")
@@ -65,7 +76,7 @@ def parse_chart_spec(text: str) -> ChartSpec:
         raise ChartSpecError(f"Chart{name} {exc}") from exc
 
 
-def _validate_spec(data: Dict[str, Any]) -> ChartSpec:
+def _validate_spec(data: dict[str, Any]) -> ChartSpec:
     unknown = set(data) - _ChartSchema.FIELDS
     if unknown:
         raise ChartSpecError("unknown field(s): " + ", ".join(sorted(map(str, unknown))))
@@ -115,18 +126,22 @@ def _validate_spec(data: Dict[str, Any]) -> ChartSpec:
                 raise ChartSpecError(f"{value_field} must be finite")
             values.append(number)
         series.append(ChartSeries(item["name"], values))
-    strings = {key: _optional_string(data, key) for key in
-               ("title", "y_label", "unit", "source", "total_label", "number_format")}
+    strings = {
+        key: _optional_string(data, key)
+        for key in ("title", "y_label", "unit", "source", "total_label", "number_format")
+    }
     number_format = strings["number_format"]
     if number_format is not None and number_format not in _ChartSchema.FORMATS:
         if not _ChartSchema.NUMBER_FORMAT.fullmatch(number_format):
-            raise ChartSpecError("number_format must be number, percent, bps, multiple or e.g. ',.2f'")
+            raise ChartSpecError(
+                "number_format must be number, percent, bps, multiple or e.g. ',.2f'"
+            )
     if kind == "waterfall":
         waterfall_positions(series[0].values)
     return ChartSpec(chart_type=kind, labels=labels, series=series, **strings)
 
 
-def waterfall_positions(values: List[float]) -> Tuple[List[float], List[float], float]:
+def waterfall_positions(values: list[float]) -> tuple[list[float], list[float], float]:
     """Compute PR #5's cumulative deltas and final total from an implicit zero.
 
     Args:
@@ -147,7 +162,7 @@ def waterfall_positions(values: List[float]) -> Tuple[List[float], List[float], 
     return bottoms, tops, cumulative
 
 
-def format_value(value: float, number_format: Optional[str] = None) -> str:
+def format_value(value: float, number_format: str | None = None) -> str:
     """Format a value for display; percent/bps/multiple never change its scale.
 
     Args:
@@ -168,7 +183,10 @@ def format_value(value: float, number_format: Optional[str] = None) -> str:
 
 
 def render_chart_png(
-    spec: ChartSpec, width_inches: float = 6.0, height_inches: float = 3.2, dpi: int = 200,
+    spec: ChartSpec,
+    width_inches: float = 6.0,
+    height_inches: float = 3.2,
+    dpi: int = 200,
 ) -> bytes:
     """Render a chart with per-artist font/color settings and an unregistered figure.
 
@@ -204,8 +222,16 @@ def render_chart_png(
 
         def annotate(x: float, end: float, value: float) -> None:
             offset, align = (3, "bottom") if value >= 0 else (-3, "top")
-            ax.annotate(format_value(value, spec.number_format), (x, end), xytext=(0, offset),
-                        textcoords="offset points", ha="center", va=align, fontsize=8, color=dark)
+            ax.annotate(
+                format_value(value, spec.number_format),
+                (x, end),
+                xytext=(0, offset),
+                textcoords="offset points",
+                ha="center",
+                va=align,
+                fontsize=8,
+                color=dark,
+            )
 
         if spec.chart_type == "bar":
             width = 0.8 / len(spec.series)
@@ -213,24 +239,36 @@ def render_chart_png(
                 offset = (index - (len(spec.series) - 1) / 2.0) * width
                 xs = [x + offset for x in positions]
                 ax.bar(xs, series.values, width=width, color=palette[index % 3], label=series.name)
-                for x, value in zip(xs, series.values):
+                for x, value in zip(xs, series.values, strict=False):
                     annotate(x, value, value)
         elif spec.chart_type == "line":
             for index, series in enumerate(spec.series):
-                ax.plot(positions, series.values, color=palette[index % 3], label=series.name,
-                        marker="o", linewidth=1.8, markersize=4)
+                ax.plot(
+                    positions,
+                    series.values,
+                    color=palette[index % 3],
+                    label=series.name,
+                    marker="o",
+                    linewidth=1.8,
+                    markersize=4,
+                )
         elif spec.chart_type == "waterfall":
             values = spec.series[0].values
             bottoms, tops, total = waterfall_positions(values)
-            heights = [top - bottom for bottom, top in zip(bottoms, tops)]
+            heights = [top - bottom for bottom, top in zip(bottoms, tops, strict=True)]
             colors = [navy if value >= 0 else f"#{STYLE.CHART_NEGATIVE_COLOR}" for value in values]
             ax.bar(positions, heights, bottom=bottoms, width=0.65, color=colors)
             cumulative = 0.0
             for index, value in enumerate(values):
                 cumulative += value
                 annotate(index, cumulative, value)
-                ax.plot([index + 0.325, index + 0.675], [cumulative, cumulative],
-                        color=medium, linestyle=":", linewidth=1.0)
+                ax.plot(
+                    [index + 0.325, index + 0.675],
+                    [cumulative, cumulative],
+                    color=medium,
+                    linestyle=":",
+                    linewidth=1.0,
+                )
             total_x = len(positions)
             ax.bar([total_x], [abs(total)], bottom=[min(0.0, total)], width=0.65, color=medium)
             annotate(total_x, total, total)
@@ -247,7 +285,9 @@ def render_chart_png(
         ax.set_ylabel(spec.y_label or spec.unit or "", fontsize=9, color=dark)
         if len(spec.series) > 1:
             ax.legend(frameon=False, prop=FontProperties(family=font.get_family(), size=8))
-        ax.yaxis.set_major_formatter(FuncFormatter(lambda value, pos: format_value(value, spec.number_format)))
+        ax.yaxis.set_major_formatter(
+            FuncFormatter(lambda value, pos: format_value(value, spec.number_format))
+        )
         ax.set_axisbelow(True)
         ax.yaxis.grid(True, color=medium, alpha=0.25, linewidth=0.7)
         ax.xaxis.grid(False)
@@ -263,7 +303,9 @@ def render_chart_png(
             artist.set_fontfamily(font.get_family())
         fig.tight_layout(rect=(0.0, 0.09 if spec.source else 0.02, 1.0, 1.0))
         with BytesIO() as buffer:
-            fig.savefig(buffer, format="png", dpi=dpi, facecolor=fig.get_facecolor(), edgecolor="none")
+            fig.savefig(
+                buffer, format="png", dpi=dpi, facecolor=fig.get_facecolor(), edgecolor="none"
+            )
             return buffer.getvalue()
     finally:
         fig.clear()

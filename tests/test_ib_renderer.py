@@ -327,7 +327,7 @@ class TestImageRendererMimeTypes:
         )
 
         renderer = IBDocumentRenderer()
-        doc = renderer.render(model)
+        doc = renderer.render(model, asset_roots=(tmp_path,))
 
         assert len(doc.inline_shapes) >= 1
         inline_shape = doc.inline_shapes[0]
@@ -1215,8 +1215,8 @@ class TestCoverMetadataInference:
 
         model = DocumentModel(
             metadata=DocumentMetadata(
-                title="일동제약 주식회사 수익성 변화 분석 보고서",
-                company="일동제약 주식회사",
+                title="가상제약 주식회사 수익성 변화 분석 보고서",
+                company="가상제약 주식회사",
                 extra={
                     "date": "2026년 3월 20일",
                     "analysis_period": "제9기→제10기",
@@ -1232,7 +1232,7 @@ class TestCoverMetadataInference:
         assert ["REPORT DATE", "2026년 3월 20일"] in rows
         assert ["ANALYSIS PERIOD", "제9기→제10기"] in rows
         assert ["ANALYSIS BASIS", "연결재무제표 기준"] in rows
-        assert ["INSTITUTION", "일동제약 주식회사"] in rows
+        assert ["INSTITUTION", "가상제약 주식회사"] in rows
         assert not any(row[0] == "PREPARED BY" for row in rows)
         assert not any(row[0] == "SECTOR" for row in rows)
 
@@ -1241,8 +1241,8 @@ class TestCoverMetadataInference:
 
         model = DocumentModel(
             metadata=DocumentMetadata(
-                title="주식회사 웅진 자회사 보유구조 및 영업관계 분석",
-                company="주식회사 웅진",
+                title="주식회사 예시홀딩스 자회사 보유구조 및 영업관계 분석",
+                company="주식회사 예시홀딩스",
                 extra={"date": "2026년 3월 23일"},
             )
         )
@@ -1264,8 +1264,8 @@ class TestCoverMetadataInference:
 
         model = DocumentModel(
             metadata=DocumentMetadata(
-                title="일동제약 주식회사 수익성 변화 분석 보고서",
-                company="일동제약 주식회사",
+                title="가상제약 주식회사 수익성 변화 분석 보고서",
+                company="가상제약 주식회사",
                 sector="SECTOR",
             )
         )
@@ -1275,18 +1275,18 @@ class TestCoverMetadataInference:
 
         assert "SECTOR" not in texts
         assert "DCM RESEARCH" not in texts
-        assert "일동제약 주식회사" in texts
+        assert "가상제약 주식회사" in texts
         assert "수익성 변화 분석 보고서" in texts
-        assert "일동제약 주식회사 수익성 변화 분석 보고서" not in texts
+        assert "가상제약 주식회사 수익성 변화 분석 보고서" not in texts
 
     def test_subject_company_only_affects_cover_not_disclaimer_brand(self):
         from ib_renderer import IBDocumentRenderer
 
         model = DocumentModel(
             metadata=DocumentMetadata(
-                title="일동제약 주식회사 수익성 변화 분석 보고서",
+                title="가상제약 주식회사 수익성 변화 분석 보고서",
                 company="Korea Development Bank",
-                extra={"subject_company": "일동제약 주식회사"},
+                extra={"subject_company": "가상제약 주식회사"},
             )
         )
 
@@ -1294,7 +1294,7 @@ class TestCoverMetadataInference:
         cover_rows = [[cell.text.strip() for cell in row.cells] for row in doc.tables[0].rows]
         texts = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
 
-        assert ["INSTITUTION", "일동제약 주식회사"] in cover_rows
+        assert ["INSTITUTION", "가상제약 주식회사"] in cover_rows
         assert any("Korea Development Bank. All rights reserved." in text for text in texts)
 
 

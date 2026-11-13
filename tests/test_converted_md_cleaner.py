@@ -94,7 +94,9 @@ BODY = """라마바은행 자본시장부
 """
 
 FRONT = "---\nprofile: term-sheet\ntitle: 가나다제일차(유) 유동화증권\n---\n"
-REWROTE = "rewrote the frontmatter as block YAML the parser reads; its comments and layout were not kept"
+REWROTE = (
+    "rewrote the frontmatter as block YAML the parser reads; its comments and layout were not kept"
+)
 
 
 def _split(cleaned: str):
@@ -113,7 +115,14 @@ def test_converted_input_becomes_term_sheet_markdown() -> None:
         "confidential_label": "Strictly Confidential",
         "disclaimer": DISCLAIMER,
     }
-    assert list(front) == ["profile", "title", "subtitle", "date", "confidential_label", "disclaimer"]
+    assert list(front) == [
+        "profile",
+        "title",
+        "subtitle",
+        "date",
+        "confidential_label",
+        "disclaimer",
+    ]
     assert body == BODY
 
 
@@ -143,7 +152,10 @@ def test_every_change_and_undecided_line_is_reported() -> None:
     [
         ("**1. 본건 개요**\n\n본문입니다.\n", "## 1. 본건 개요"),
         ("1. 본건 개요\n\n| 가 | 나 |\n|---|---|\n| 1 | 2 |\n", "## 1. 본건 개요"),
-        ("1\\. 본건 개요\n\n<table><tr><td>가</td></tr><tr><td>1</td></tr></table>\n", "## 1. 본건 개요"),
+        (
+            "1\\. 본건 개요\n\n<table><tr><td>가</td></tr><tr><td>1</td></tr></table>\n",
+            "## 1. 본건 개요",
+        ),
         ("**12. 기타**\n", "## 12. 기타"),
     ],
 )
@@ -251,7 +263,9 @@ def test_a_band_kept_as_a_table_does_not_make_a_cover_without_chapters() -> None
 
 
 def test_html_band_text_keeps_inline_runs_together() -> None:
-    cleaned, _ = clean_converted_term_sheet(FRONT + "<table><tr><td>별첨 1<span>0</span></td><td><p>상환</p></td></tr></table>\n")
+    cleaned, _ = clean_converted_term_sheet(
+        FRONT + "<table><tr><td>별첨 1<span>0</span></td><td><p>상환</p></td></tr></table>\n"
+    )
     assert cleaned == FRONT + "\n## 별첨 10 | 상환\n"
 
 
@@ -270,7 +284,9 @@ def test_blocks_with_nested_lists_or_quotes_stay_whole(source: str) -> None:
 
 
 def test_a_quote_right_after_a_title_line_stays_a_quote() -> None:
-    cleaned, report = clean_converted_term_sheet("**초안**\n> Strictly Confidential\n- 목록 항목\n\n## 1. 조건\n")
+    cleaned, report = clean_converted_term_sheet(
+        "**초안**\n> Strictly Confidential\n- 목록 항목\n\n## 1. 조건\n"
+    )
     front, body = _split(cleaned)
     assert front == {"profile": "term-sheet", "title": "초안"}
     assert body == "> Strictly Confidential\n- 목록 항목\n\n## 1. 조건\n"
@@ -338,7 +354,9 @@ def test_hard_breaks_in_a_disclaimer_become_line_breaks() -> None:
 
 
 def test_flow_style_frontmatter_is_rewritten_as_block_yaml_and_reported() -> None:
-    cleaned, report = clean_converted_term_sheet("---\n{title: 초안, version: v1}\n---\n\n**1. 개요**\n")
+    cleaned, report = clean_converted_term_sheet(
+        "---\n{title: 초안, version: v1}\n---\n\n**1. 개요**\n"
+    )
     front, _ = _split(cleaned)
     assert front == {"title": "초안", "version": "v1", "profile": "term-sheet"}
     assert REWROTE in report.lines()
@@ -353,14 +371,21 @@ def test_flow_style_frontmatter_is_rewritten_even_without_new_keys() -> None:
 
 
 def test_a_yaml_document_end_closer_is_rewritten_for_the_parser() -> None:
-    cleaned, report = clean_converted_term_sheet("---\ntitle: 초안\n...\n\n**1. 개요**\n\n본문입니다.\n")
+    cleaned, report = clean_converted_term_sheet(
+        "---\ntitle: 초안\n...\n\n**1. 개요**\n\n본문입니다.\n"
+    )
     assert cleaned == "---\ntitle: 초안\nprofile: term-sheet\n---\n\n## 1. 개요\n\n본문입니다.\n"
-    assert 'line 3: frontmatter closer "..." -> "---" (the parser closes frontmatter with ---)' in report.lines()
+    assert (
+        'line 3: frontmatter closer "..." -> "---" (the parser closes frontmatter with ---)'
+        in report.lines()
+    )
     assert MarkdownParser().parse(cleaned).metadata.title == "초안"
 
 
 def test_existing_keys_are_matched_without_case() -> None:
-    cleaned, report = clean_converted_term_sheet("---\nTitle: 기존 제목\n---\n\n**새 제목**\n\n**1. 개요**\n")
+    cleaned, report = clean_converted_term_sheet(
+        "---\nTitle: 기존 제목\n---\n\n**새 제목**\n\n**1. 개요**\n"
+    )
     assert "**새 제목**\n\n## 1. 개요" in cleaned
     assert "title: 새 제목" not in cleaned
     assert 'line 5: kept (frontmatter already sets title): "**새 제목**"' in report.lines()
@@ -381,7 +406,9 @@ def test_cover_lines_in_one_paragraph_are_classified_line_by_line() -> None:
         "confidential_label": "대외비",
     }
     assert body == "## 1. 개요\n\n본문입니다.\n"
-    assert "disclaimer not found: the house file or the frontmatter must supply it" in report.lines()
+    assert (
+        "disclaimer not found: the house file or the frontmatter must supply it" in report.lines()
+    )
 
 
 def test_unclear_cover_lines_stay_in_place_and_are_reported() -> None:
@@ -423,13 +450,19 @@ def test_existing_frontmatter_lines_and_keys_are_kept() -> None:
         "---\n# 기존 설정\nprofile: term-sheet\ntitle: 기존 제목\nhouse: house.yaml\nsubtitle: Term Sheet\n---\n"
     )
     assert "**가나다제일차(유) 유동화증권**\n\n## 1. 개요" in cleaned
-    assert 'line 8: kept (frontmatter already sets title): "**가나다제일차(유) 유동화증권**"' in report.lines()
+    assert (
+        'line 8: kept (frontmatter already sets title): "**가나다제일차(유) 유동화증권**"'
+        in report.lines()
+    )
     assert not any("profile" in line for line in report.lines())
 
 
 def test_without_a_chapter_heading_the_cover_is_not_moved() -> None:
     cleaned, report = clean_converted_term_sheet("**가나다제일차(유) 유동화증권**\n\n본문입니다.\n")
-    assert cleaned == "---\nprofile: term-sheet\n---\n\n**가나다제일차(유) 유동화증권**\n\n본문입니다.\n"
+    assert (
+        cleaned
+        == "---\nprofile: term-sheet\n---\n\n**가나다제일차(유) 유동화증권**\n\n본문입니다.\n"
+    )
     assert "no chapter heading found: cover lines were not moved" in report.lines()
 
 
@@ -449,7 +482,9 @@ def test_cleaned_output_renders_strictly_without_warnings(tmp_path: Path) -> Non
     assert not renderer.errors
     assert doc.core_properties.title == "가나다제일차(유) 유동화증권"
     texts = [paragraph.text for paragraph in doc.paragraphs]
-    assert {"1. 본건 개요", "2. 발행 조건", "별첨 | 상환스케줄", "라마바은행 자본시장부"} <= set(texts)
+    assert {"1. 본건 개요", "2. 발행 조건", "별첨 | 상환스케줄", "라마바은행 자본시장부"} <= set(
+        texts
+    )
     assert not doc.element.body.xpath(".//w:drawing")
 
 
@@ -457,15 +492,23 @@ def test_the_formatter_uses_the_cleanup_only_when_asked(tmp_path: Path) -> None:
     source = tmp_path / "converted.md"
     source.write_text(CONVERTED, encoding="utf-8")
     plain = Path(format_file_with_options(str(source), str(tmp_path / "plain.md")))
-    assert plain.read_text(encoding="utf-8") == format_markdown(CONVERTED, cleaner_config=CleanerConfig())
-    cleaned = Path(format_file_with_options(str(source), str(tmp_path / "ts.md"), converted_term_sheet=True))
+    assert plain.read_text(encoding="utf-8") == format_markdown(
+        CONVERTED, cleaner_config=CleanerConfig()
+    )
+    cleaned = Path(
+        format_file_with_options(str(source), str(tmp_path / "ts.md"), converted_term_sheet=True)
+    )
     assert cleaned.read_text(encoding="utf-8") == clean_converted_term_sheet(CONVERTED)[0]
     for options in ({"cleaner_mode": "on"}, {"cite_mode": "strip"}, {"cleaner_report": True}):
         with pytest.raises(ValueError, match="DeepResearch"):
-            format_file_with_options(str(source), str(tmp_path / "x.md"), converted_term_sheet=True, **options)
+            format_file_with_options(
+                str(source), str(tmp_path / "x.md"), converted_term_sheet=True, **options
+            )
 
 
-@pytest.mark.parametrize("extra", [["--check"], ["--cite-mode", "strip"], ["--deepresearch-cleaner", "on"]])
+@pytest.mark.parametrize(
+    "extra", [["--check"], ["--cite-mode", "strip"], ["--deepresearch-cleaner", "on"]]
+)
 def test_the_cli_rejects_options_that_do_not_apply(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, extra: list
 ) -> None:
@@ -484,9 +527,15 @@ def test_the_cli_flag_writes_the_cleaned_file_and_logs_the_report(
     source = tmp_path / "converted.md"
     source.write_text(CONVERTED, encoding="utf-8")
     target = tmp_path / "term-sheet.md"
-    monkeypatch.setattr(sys, "argv", ["md-format", str(source), str(target), "--converted-term-sheet"])
-    monkeypatch.setattr(md_formatter, "configure_logging", lambda: None)  # keep caplog's root handler
+    monkeypatch.setattr(
+        sys, "argv", ["md-format", str(source), str(target), "--converted-term-sheet"]
+    )
+    monkeypatch.setattr(
+        md_formatter, "configure_logging", lambda: None
+    )  # keep caplog's root handler
     with caplog.at_level(logging.INFO, logger="md_formatter"):
         main()
     assert target.read_text(encoding="utf-8") == clean_converted_term_sheet(CONVERTED)[0]
-    assert "Converted term sheet: lines 35-36: band table -> \"## 별첨 | 상환스케줄\"" in caplog.messages
+    assert (
+        'Converted term sheet: lines 35-36: band table -> "## 별첨 | 상환스케줄"' in caplog.messages
+    )

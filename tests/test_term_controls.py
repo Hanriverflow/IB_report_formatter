@@ -4,7 +4,6 @@ import json
 import re
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import pytest
 from docx import Document
@@ -25,12 +24,12 @@ VALUES = {"amount": "500억원", "tenor": "3년"}
 NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 
 
-def xp(element, path: str) -> List:
+def xp(element, path: str) -> list:
     """XPath with explicit namespaces; python-docx has no class for `w:sdt`."""
     return etree.XPath(path, namespaces=NS)(element)
 
 
-def front(values: Dict[str, str], extra: str = "") -> str:
+def front(values: dict[str, str], extra: str = "") -> str:
     """Frontmatter with exact YAML string values (JSON is valid YAML)."""
     lines = "".join(
         f"  {key}: {json.dumps(value, ensure_ascii=False)}\n" for key, value in values.items()
@@ -39,14 +38,20 @@ def front(values: Dict[str, str], extra: str = "") -> str:
 
 
 def render(
-    markdown: str, profile: str = "plain", renderer: Optional[IBDocumentRenderer] = None,
+    markdown: str,
+    profile: str = "plain",
+    renderer: IBDocumentRenderer | None = None,
     **options,
 ) -> DocxDocument:
     """Parse and render strictly through the production path, then reopen the file."""
     model = MarkdownParser(profile=profile).parse(markdown)
-    renderer = renderer or IBDocumentRenderer(options=RenderOptions(
-        profile=profile, strict=True, **options,
-    ))
+    renderer = renderer or IBDocumentRenderer(
+        options=RenderOptions(
+            profile=profile,
+            strict=True,
+            **options,
+        )
+    )
     return reopen(renderer.render(model))
 
 
@@ -58,7 +63,7 @@ def reopen(doc: DocxDocument) -> DocxDocument:
     return Document(payload)
 
 
-def controls(doc: DocxDocument) -> List:
+def controls(doc: DocxDocument) -> list:
     """Run-level structured document tags in the body, in document order."""
     return xp(doc.element.body, ".//w:sdt")
 
@@ -68,7 +73,7 @@ def local(element) -> str:
     return etree.QName(element).localname
 
 
-def describe(sdt) -> Tuple[str, str, int, str]:
+def describe(sdt) -> tuple[str, str, int, str]:
     """Alias, tag, id and text of one control."""
     properties = sdt.find(qn("w:sdtPr"))
     return (
@@ -84,17 +89,17 @@ def xml_text(element) -> str:
     return "".join(xp(element, ".//w:t/text()"))
 
 
-def custom_properties(doc: DocxDocument) -> Dict[str, Tuple[int, str]]:
+def custom_properties(doc: DocxDocument) -> dict[str, tuple[int, str]]:
     """Custom document properties as name -> (pid, text)."""
     part = doc.part.package.part_related_by(RT.CUSTOM_PROPERTIES)
     root = etree.fromstring(part.blob)
     return {prop.get("name"): (int(prop.get("pid")), "".join(prop.itertext())) for prop in root}
 
 
-def term_properties(doc: DocxDocument) -> Dict[str, str]:
+def term_properties(doc: DocxDocument) -> dict[str, str]:
     """Only the term snapshot properties."""
     return {
-        name[len("ibrep.term."):]: value
+        name[len("ibrep.term.") :]: value
         for name, (_, value) in custom_properties(doc).items()
         if name.startswith("ibrep.term.")
     }
@@ -128,8 +133,13 @@ def test_every_occurrence_is_tagged_with_a_unique_id() -> None:
     )
     described = [describe(sdt) for sdt in controls(doc)]
     assert [(alias, text) for alias, _, _, text in described] == [
-        ("tenor", "3년"), ("amount", "500억원"), ("amount", "500억원"), ("amount", "500억원"),
-        ("tenor", "3년"), ("amount", "500억원"), ("amount", "500억원"),
+        ("tenor", "3년"),
+        ("amount", "500억원"),
+        ("amount", "500억원"),
+        ("amount", "500억원"),
+        ("tenor", "3년"),
+        ("amount", "500억원"),
+        ("amount", "500억원"),
     ]
     ids = [control_id for _, _, control_id, _ in described]
     assert len(set(ids)) == len(ids) and min(ids) > 0
@@ -167,12 +177,15 @@ def test_run_formatting_survives_inside_the_control() -> None:
 
 def test_table_styles_apply_to_values_and_numbers_keep_their_written_form() -> None:
     doc = render(
-        front({"loss": "(1234)", "level": "High", "base": "7"}, extra=(
-            "tables:\n"
-            "  - type: financial\n    columns: [text, money]\n"
-            "  - type: risk\n"
-            "  - type: sensitivity\n    base_case: {row: 1, column: 2}\n"
-        ))
+        front(
+            {"loss": "(1234)", "level": "High", "base": "7"},
+            extra=(
+                "tables:\n"
+                "  - type: financial\n    columns: [text, money]\n"
+                "  - type: risk\n"
+                "  - type: sensitivity\n    base_case: {row: 1, column: 2}\n"
+            ),
+        )
         + "| Item | Amount |\n|---|---|\n| Loss | {{loss}} |\n| Typed | (1234) |\n\n"
         "| Risk | Impact |\n|---|---|\n| Rate | {{level}} |\n\n"
         "| BEP | Case |\n|---|---|\n| A | {{base}} |",
@@ -194,11 +207,15 @@ def test_table_styles_apply_to_values_and_numbers_keep_their_written_form() -> N
 @pytest.mark.parametrize("profile", ["plain", "ib-memo"])
 def test_term_cells_are_measured_and_aligned_like_their_values(profile: str) -> None:
     table = "| Item | Amount |\n|---|---|\n| Loan | {cell} |"
-    with_term = render(front({"n": "12345"}) + table.format(cell="{{n}}"), profile=profile).tables[0]
+    with_term = render(front({"n": "12345"}) + table.format(cell="{{n}}"), profile=profile).tables[
+        0
+    ]
     typed = render(table.format(cell="12345"), profile=profile).tables[0]
     assert with_term.cell(1, 1).paragraphs[0].alignment == typed.cell(1, 1).paragraphs[0].alignment
     assert typed.cell(1, 1).paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.RIGHT
-    assert [column.width for column in with_term.columns] == [column.width for column in typed.columns]
+    assert [column.width for column in with_term.columns] == [
+        column.width for column in typed.columns
+    ]
 
 
 def test_hyperlinked_value_is_substituted_but_never_tagged() -> None:
@@ -211,14 +228,18 @@ def test_hyperlinked_value_is_substituted_but_never_tagged() -> None:
 
 
 @pytest.mark.parametrize("tags", [True, False])
-@pytest.mark.parametrize("notes", [
-    "\n\n[^1]: Note.",
-    "\n\n## References\n\n1. Source document.",
-])
+@pytest.mark.parametrize(
+    "notes",
+    [
+        "\n\n[^1]: Note.",
+        "\n\n## References\n\n1. Source document.",
+    ],
+)
 def test_legacy_footnote_inference_never_consumes_a_term_value(tags: bool, notes: str) -> None:
     doc = render(
         front({"value": "01"}) + "Typed^1^ and ^{{value}}^ and {{value}}." + notes,
-        profile="ib-memo", term_tags=tags,
+        profile="ib-memo",
+        term_tags=tags,
     )
     [paragraph] = [p for p in doc.paragraphs if xml_text(p._p).startswith("Typed")]
     assert xml_text(paragraph._p) == "Typed and 01 and 01."
@@ -226,7 +247,9 @@ def test_legacy_footnote_inference_never_consumes_a_term_value(tags: bool, notes
     assert len(xp(doc.element.body, ".//w:footnoteReference")) == 1
     if tags:
         assert [describe(sdt)[3] for sdt in controls(doc)] == ["01", "01"]
-        assert xp(controls(doc)[0], "./w:sdtContent/w:r/w:rPr/w:vertAlign/@w:val") == ["superscript"]
+        assert xp(controls(doc)[0], "./w:sdtContent/w:r/w:rPr/w:vertAlign/@w:val") == [
+            "superscript"
+        ]
         assert term_properties(doc) == {"value": "01"}
     else:
         assert controls(doc) == [] and term_properties(doc) == {}
@@ -244,7 +267,8 @@ def test_empty_value_becomes_an_empty_control() -> None:
 
 def test_business_report_opening_uses_substituted_untagged_strings() -> None:
     doc = render(
-        front(VALUES, extra='title: "가나다 {{amount}}"\ndate: "{{tenor}} 후"\n') + "Body {{tenor}}.",
+        front(VALUES, extra='title: "가나다 {{amount}}"\ndate: "{{tenor}} 후"\n')
+        + "Body {{tenor}}.",
         profile="business-report",
     )
     title = next(p for p in doc.paragraphs if p.style.name == "Title")
@@ -260,18 +284,18 @@ def test_business_report_opening_uses_substituted_untagged_strings() -> None:
 
 def test_snapshot_records_tagged_keys_and_preserves_generator_properties() -> None:
     doc = render(
-        front({**VALUES, "quote": 'A<&>"\'B', "spare": "unused"})
+        front({**VALUES, "quote": "A<&>\"'B", "spare": "unused"})
         + "Deal {{amount}} [{{tenor}}](https://example.com) {{quote}}."
     )
     properties = custom_properties(doc)
     assert properties["generator"][1] == "ib_report_formatter"
     assert properties["generator_profile"][1] == "plain"
     assert "generator_version" in properties
-    assert term_properties(doc) == {"amount": "500억원", "quote": 'A<&>"\'B'}
+    assert term_properties(doc) == {"amount": "500억원", "quote": "A<&>\"'B"}
     pids = [pid for pid, _ in properties.values()]
     assert len(set(pids)) == len(pids) and min(pids) >= 2
     [quote] = [sdt for sdt in controls(doc) if describe(sdt)[0] == "quote"]
-    assert describe(quote)[3] == 'A<&>"\'B'
+    assert describe(quote)[3] == "A<&>\"'B"
 
 
 @pytest.mark.parametrize("profile", ["plain", "business-report"])
@@ -290,7 +314,11 @@ def test_unreferenced_terms_leave_the_document_unchanged(profile: str) -> None:
 
 
 def test_documents_without_tagged_values_have_no_snapshot_or_controls() -> None:
-    for markdown in ["No terms here.", front(VALUES) + "Unused values only.", "---\nterms: {}\n---\nText."]:
+    for markdown in [
+        "No terms here.",
+        front(VALUES) + "Unused values only.",
+        "---\nterms: {}\n---\nText.",
+    ]:
         doc = render(markdown)
         assert controls(doc) == []
         assert term_properties(doc) == {}
@@ -302,15 +330,20 @@ def test_documents_without_tagged_values_have_no_snapshot_or_controls() -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("layout, option, tagged", [
-    ("", None, True),
-    ("layout:\n  term_tags: false\n", None, False),
-    ("layout:\n  term_tags: false\n", True, True),
-    ("layout:\n  term_tags: true\n", False, False),
-    ("", False, False),
-])
+@pytest.mark.parametrize(
+    "layout, option, tagged",
+    [
+        ("", None, True),
+        ("layout:\n  term_tags: false\n", None, False),
+        ("layout:\n  term_tags: false\n", True, True),
+        ("layout:\n  term_tags: true\n", False, False),
+        ("", False, False),
+    ],
+)
 def test_term_tags_precedence_between_yaml_and_api(
-    layout: str, option: Optional[bool], tagged: bool,
+    layout: str,
+    option: bool | None,
+    tagged: bool,
 ) -> None:
     doc = render(front(VALUES, extra=layout) + "Deal {{amount}} closes.", term_tags=option)
     assert bool(controls(doc)) is tagged
@@ -321,10 +354,12 @@ def test_term_tags_precedence_between_yaml_and_api(
 
 
 @pytest.mark.parametrize("flags, tagged", [([], True), (["--no-term-tags"], False)])
-def test_cli_no_term_tags_flag(tmp_path: Path, flags: List[str], tagged: bool) -> None:
+def test_cli_no_term_tags_flag(tmp_path: Path, flags: list[str], tagged: bool) -> None:
     source, output = tmp_path / "terms.md", tmp_path / "terms.docx"
     source.write_text(front(VALUES) + "Deal {{amount}} closes.", encoding="utf-8")
-    args = build_parser().parse_args([str(source), str(output), "--profile", "plain", "--strict", *flags])
+    args = build_parser().parse_args(
+        [str(source), str(output), "--profile", "plain", "--strict", *flags]
+    )
     assert run_conversion(source, args) == 0
     doc = Document(output)
     assert bool(controls(doc)) is tagged
@@ -357,7 +392,8 @@ def test_renderer_reuse_starts_each_render_with_an_empty_collector() -> None:
 
 def test_tagged_document_passes_strict_rendering_and_structural_audit() -> None:
     doc = render(
-        front(VALUES) + "Deal {{amount}}.[^1]\n\n| A | B |\n|---|---|\n| {{tenor}} | 2 |\n\n[^1]: Note.",
+        front(VALUES)
+        + "Deal {{amount}}.[^1]\n\n| A | B |\n|---|---|\n| {{tenor}} | 2 |\n\n[^1]: Note.",
     )
     assert inspect_document(doc).issues == []
     assert controls(doc)

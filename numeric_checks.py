@@ -19,20 +19,30 @@ Changelog:
 
 import json
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Context, Decimal, DecimalException, localcontext
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # READING DISPLAYED VALUES
 # ═══════════════════════════════════════════════════════════════════════════════
 
-_MONEY_UNITS: Dict[str, Decimal] = {
-    "조": Decimal(10) ** 12, "억": Decimal(10) ** 8, "천만": Decimal(10) ** 7,
-    "백만": Decimal(10) ** 6, "만": Decimal(10) ** 4, "천": Decimal(1000),
+_MONEY_UNITS: dict[str, Decimal] = {
+    "조": Decimal(10) ** 12,
+    "억": Decimal(10) ** 8,
+    "천만": Decimal(10) ** 7,
+    "백만": Decimal(10) ** 6,
+    "만": Decimal(10) ** 4,
+    "천": Decimal(1000),
 }
 _SUFFIX_DIMENSIONS = {
-    "%p": "percent", "%": "percent", "bps": "bp", "bp": "bp", "개월": "months", "년": "years",
+    "%p": "percent",
+    "%": "percent",
+    "bps": "bp",
+    "bp": "bp",
+    "개월": "months",
+    "년": "years",
 }
 # Thousands separators must group three digits (`1,234.5`, never `1,2` or `1,,000`).
 _NUMBER = r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
@@ -98,7 +108,7 @@ def read_quantity(text: str) -> Quantity:
     return quantity
 
 
-def _read_money(text: str) -> Optional[Quantity]:
+def _read_money(text: str) -> Quantity | None:
     """Read `5억 3,000만원`-style money; None when the text is not money."""
     body = text[:-1].rstrip() if text.endswith("원") else text
     parts = list(_MONEY_PART_RE.finditer(body))
@@ -111,7 +121,10 @@ def _read_money(text: str) -> Optional[Quantity]:
         return None  # only the last part may lack a unit (`5억 3,000만원`, not `5 3억원`)
     with localcontext(_CONTEXT):
         value = sum(
-            (_decimal(part.group(1)) * _MONEY_UNITS.get(part.group(2) or "", Decimal(1)) for part in parts),
+            (
+                _decimal(part.group(1)) * _MONEY_UNITS.get(part.group(2) or "", Decimal(1))
+                for part in parts
+            ),
             Decimal(0),
         )
         last = parts[-1]
@@ -119,15 +132,17 @@ def _read_money(text: str) -> Optional[Quantity]:
     return Quantity(value, "money", step)
 
 
-def _read_suffixed(text: str) -> Optional[Quantity]:
+def _read_suffixed(text: str) -> Quantity | None:
     match = _SUFFIX_RE.match(text)
     if match is None:
         return None
     suffix = (match.group(2) or "").lower()
-    return Quantity(_decimal(match.group(1)), _SUFFIX_DIMENSIONS.get(suffix, "plain"), _step(match.group(1)))
+    return Quantity(
+        _decimal(match.group(1)), _SUFFIX_DIMENSIONS.get(suffix, "plain"), _step(match.group(1))
+    )
 
 
-def read_cell_number(text: str) -> Optional[Tuple[Decimal, Decimal]]:
+def read_cell_number(text: str) -> tuple[Decimal, Decimal] | None:
     """Read a plain table number such as `1,234.5`, `(12)` or `△3`.
 
     Args:
@@ -164,7 +179,7 @@ def format_quantity(quantity: Quantity) -> str:
     return shown + suffix.get(quantity.dimension, "")
 
 
-def money_unit(unit_text: str) -> Optional[Decimal]:
+def money_unit(unit_text: str) -> Decimal | None:
     """The 원 multiplier of a table unit such as `억원`, `금액 백만원` or `원`."""
     match = re.search(r"(조|억|천만|백만|만|천)?원\s*$", unit_text.strip())
     if match is None:
@@ -179,11 +194,13 @@ def money_unit(unit_text: str) -> Optional[Decimal]:
 # Custom document property holding the checks as JSON, for `docx-audit`.
 CHECKS_PROPERTY = "ibrep.checks"
 
-_TOKEN_RE = re.compile(r"\s*(?:(?P<number>\d+(?:\.\d+)?)|(?P<name>[a-z][a-z0-9_]*)|(?P<op>[-+*/()=]))")
+_TOKEN_RE = re.compile(
+    r"\s*(?:(?P<number>\d+(?:\.\d+)?)|(?P<name>[a-z][a-z0-9_]*)|(?P<op>[-+*/()=]))"
+)
 _MAX_TOKENS = 200  # bounds parsing and evaluation depth
 _MAX_NESTING = 20
 
-Node = Tuple[Any, ...]  # ("number", Decimal), ("name", key), ("negate", node) or (op, left, right)
+Node = tuple[Any, ...]  # ("number", Decimal), ("name", key), ("negate", node) or (op, left, right)
 
 
 class CheckError(ValueError):
@@ -197,11 +214,11 @@ class Check:
     source: str
     left: Node
     right: Node
-    tolerance: Optional[str] = None
+    tolerance: str | None = None
 
 
-def _tokens(source: str) -> List[Tuple[str, str]]:
-    tokens: List[Tuple[str, str]] = []
+def _tokens(source: str) -> list[tuple[str, str]]:
+    tokens: list[tuple[str, str]] = []
     position = 0
     source = source.rstrip()
     while position < len(source):
@@ -225,10 +242,10 @@ class _Parser:
         self.index = 0
         self.depth = 0
 
-    def peek(self) -> Tuple[str, str]:
+    def peek(self) -> tuple[str, str]:
         return self.tokens[self.index] if self.index < len(self.tokens) else ("end", "")
 
-    def take(self) -> Tuple[str, str]:
+    def take(self) -> tuple[str, str]:
         token = self.peek()
         self.index += 1
         return token
@@ -268,7 +285,7 @@ class _Parser:
         raise self.fail()
 
 
-def parse_checks(raw: Any) -> List[Check]:
+def parse_checks(raw: Any) -> list[Check]:
     """Validate the `checks:` frontmatter list.
 
     Args:
@@ -282,9 +299,9 @@ def parse_checks(raw: Any) -> List[Check]:
     """
     if not isinstance(raw, list):
         raise ValueError("checks must be a list of `left = right` relations")
-    checks: List[Check] = []
+    checks: list[Check] = []
     for item in raw:
-        tolerance: Optional[str] = None
+        tolerance: str | None = None
         if isinstance(item, dict):
             if set(item) - {"check", "tolerance"} or "check" not in item:
                 raise ValueError("checks: a mapping needs `check` and may have `tolerance`")
@@ -351,7 +368,7 @@ def _evaluate(node: Node, values: Mapping[str, str]) -> Quantity:
     raise CheckError(f"cannot divide {left.dimension} by {right.dimension}")
 
 
-def evaluate_check(check: Check, values: Mapping[str, str]) -> Optional[str]:
+def evaluate_check(check: Check, values: Mapping[str, str]) -> str | None:
     """Evaluate one relation against term values.
 
     Args:
@@ -369,7 +386,9 @@ def evaluate_check(check: Check, values: Mapping[str, str]) -> Optional[str]:
             if check.tolerance is not None:
                 tolerance = read_quantity(check.tolerance)
                 if tolerance.dimension not in (left.dimension, "plain"):
-                    raise CheckError(f"the tolerance is {tolerance.dimension}, not {left.dimension}")
+                    raise CheckError(
+                        f"the tolerance is {tolerance.dimension}, not {left.dimension}"
+                    )
                 allowed = abs(tolerance.value)
             else:
                 allowed = left.step / 2
@@ -387,14 +406,14 @@ def evaluate_check(check: Check, values: Mapping[str, str]) -> Optional[str]:
         return f"Check cannot be evaluated: {check.source} ({error or 'arithmetic error'})"
 
 
-def evaluate_checks(checks: Sequence[Check], values: Mapping[str, str]) -> List[str]:
+def evaluate_checks(checks: Sequence[Check], values: Mapping[str, str]) -> list[str]:
     """Diagnostics for every relation that fails or cannot be evaluated."""
     return [message for check in checks if (message := evaluate_check(check, values)) is not None]
 
 
-def check_names(checks: Sequence[Check]) -> List[str]:
+def check_names(checks: Sequence[Check]) -> list[str]:
     """Term keys the checks refer to, in first-use order."""
-    names: List[str] = []
+    names: list[str] = []
 
     def visit(node: Node) -> None:
         if node[0] == "name":
@@ -433,7 +452,7 @@ def checks_to_json(checks: Sequence[Check], values: Mapping[str, str]) -> str:
     )
 
 
-def checks_from_json(text: str) -> Tuple[List[Check], Dict[str, str]]:
+def checks_from_json(text: str) -> tuple[list[Check], dict[str, str]]:
     """Read checks and generated values stored by `checks_to_json`.
 
     Raises:
@@ -443,10 +462,16 @@ def checks_from_json(text: str) -> Tuple[List[Check], Dict[str, str]]:
     if not isinstance(data, dict) or not isinstance(data.get("values"), dict):
         raise ValueError("the stored checks are not a checks/values object")
     items = data.get("checks")
-    checks = parse_checks([
-        {key: value for key, value in item.items() if value is not None} if isinstance(item, dict) else item
-        for item in items
-    ] if isinstance(items, list) else items)
+    checks = parse_checks(
+        [
+            {key: value for key, value in item.items() if value is not None}
+            if isinstance(item, dict)
+            else item
+            for item in items
+        ]
+        if isinstance(items, list)
+        else items
+    )
     return checks, {str(key): str(value) for key, value in data["values"].items()}
 
 
@@ -464,15 +489,15 @@ class ScheduleSpec:
 
     repayment: int
     balance: int
-    months: Optional[int] = None
-    principal: Optional[Decimal] = None
-    principal_step: Optional[Decimal] = None  # display step of the stated principal
+    months: int | None = None
+    principal: Decimal | None = None
+    principal_step: Decimal | None = None  # display step of the stated principal
     total: bool = False  # the last body row is a totals row, not a period
-    average_life: Optional[Quantity] = None
-    tolerance: Optional[Decimal] = None  # for amounts only
+    average_life: Quantity | None = None
+    tolerance: Decimal | None = None  # for amounts only
 
 
-def check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> List[str]:
+def check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> list[str]:
     """Check a repayment schedule's arithmetic.
 
     Each stated balance must equal the previous balance less that period's
@@ -499,15 +524,18 @@ def check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> List[st
         return [f"the schedule cannot be checked ({error or 'arithmetic error'})"]
 
 
-def _check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> List[str]:
-    problems: List[str] = []
+def _check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> list[str]:
+    problems: list[str] = []
     periods = list(rows[:-1]) if spec.total and rows else list(rows)
     if not periods:
         return ["the schedule has no period rows"]
 
     def number(
-        row_index: int, row: Sequence[str], column: Optional[int], what: str,
-    ) -> Optional[Tuple[Decimal, Decimal]]:
+        row_index: int,
+        row: Sequence[str],
+        column: int | None,
+        what: str,
+    ) -> tuple[Decimal, Decimal] | None:
         if column is None or column >= len(row):
             return None
         try:
@@ -519,11 +547,11 @@ def _check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> List[s
     def allowed(step: Decimal) -> Decimal:
         return spec.tolerance if spec.tolerance is not None else step / 2
 
-    repayments: List[Tuple[Decimal, Optional[Decimal]]] = []
-    previous: Optional[Decimal] = spec.principal
-    opening: Optional[Decimal] = spec.principal
+    repayments: list[tuple[Decimal, Decimal | None]] = []
+    previous: Decimal | None = spec.principal
+    opening: Decimal | None = spec.principal
     opening_step: Decimal = spec.principal_step if spec.principal_step is not None else Decimal(1)
-    last_balance: Optional[Tuple[Decimal, Decimal]] = None
+    last_balance: tuple[Decimal, Decimal] | None = None
     for index, row in enumerate(periods):
         repaid = number(index, row, spec.repayment, "repayment")
         balance = number(index, row, spec.balance, "balance")
@@ -566,7 +594,9 @@ def _check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> List[s
             if any(months is None for amount, months in repayments if amount):
                 problems.append("average_life needs the months of every repayment")
             else:
-                weighted = sum((amount * (months or 0) for amount, months in repayments), Decimal(0))
+                weighted = sum(
+                    (amount * (months or 0) for amount, months in repayments), Decimal(0)
+                )
                 years = weighted / repaid_total / 12
                 stated_life = spec.average_life
                 if abs(years - stated_life.value) > stated_life.step / 2:

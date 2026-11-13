@@ -30,8 +30,9 @@ import logging
 import threading
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, BinaryIO, List, Optional, Union, cast
+from typing import Any, BinaryIO, cast
 
+from input_safety import DEFAULT_LIMITS
 from md_parser import DocumentModel
 from stream_utils import detect_format, ensure_seekable, is_stream
 
@@ -50,12 +51,12 @@ class BaseConverter(ABC):
     priority: int = 100  # Lower = tried first
 
     @abstractmethod
-    def accepts(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> bool:
+    def accepts(self, source: str | Path | BinaryIO | DocumentModel, **kwargs: Any) -> bool:
         """Return True if this converter can handle the given source."""
         ...
 
     @abstractmethod
-    def convert(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> Any:
+    def convert(self, source: str | Path | BinaryIO | DocumentModel, **kwargs: Any) -> Any:
         """Execute the conversion."""
         ...
 
@@ -67,18 +68,20 @@ class InputConverter(BaseConverter):
     For streams, uses extension hint or signature-based format detection.
     """
 
-    supported_extensions: List[str] = []
+    supported_extensions: list[str] = []
     # Format name for stream detection (e.g. "docx", "md")
     supported_format: str = ""
 
-    def accepts(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> bool:
+    def accepts(self, source: str | Path | BinaryIO | DocumentModel, **kwargs: Any) -> bool:
         if isinstance(source, DocumentModel):
             return False
 
         # Stream path: use hint or detect format
         if is_stream(source):
             hint = kwargs.get("extension_hint")
-            fmt = detect_format(cast(BinaryIO, source), hint=hint)
+            options = kwargs.get("render_options")
+            limits = kwargs.get("limits") or getattr(options, "limits", None) or DEFAULT_LIMITS
+            fmt = detect_format(cast(BinaryIO, source), hint=hint, limits=limits)
             return fmt == self.supported_format
 
         # File path
@@ -93,7 +96,7 @@ class OutputConverter(BaseConverter):
 
     output_format: str = ""
 
-    def accepts(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> bool:
+    def accepts(self, source: str | Path | BinaryIO | DocumentModel, **kwargs: Any) -> bool:
         if not isinstance(source, DocumentModel):
             return False
         fmt = kwargs.get("output_format", "")
@@ -109,7 +112,7 @@ class ConverterRegistry:
     """Registry of available converters with priority-based lookup."""
 
     def __init__(self) -> None:
-        self._converters: List[BaseConverter] = []
+        self._converters: list[BaseConverter] = []
 
     def register(self, converter: BaseConverter) -> None:
         """Register a converter. Lower priority values are tried first."""
@@ -117,15 +120,15 @@ class ConverterRegistry:
         self._converters.sort(key=lambda c: c.priority)
 
     def find_converter(
-        self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any
-    ) -> Optional[BaseConverter]:
+        self, source: str | Path | BinaryIO | DocumentModel, **kwargs: Any
+    ) -> BaseConverter | None:
         """Find the first converter that accepts the source."""
         for converter in self._converters:
             if converter.accepts(source, **kwargs):
                 return converter
         return None
 
-    def convert(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> Any:
+    def convert(self, source: str | Path | BinaryIO | DocumentModel, **kwargs: Any) -> Any:
         """Find a matching converter and execute conversion.
 
         For Markdown BinaryIO streams, pass extension_hint="md" (or ".md") to
@@ -133,7 +136,9 @@ class ConverterRegistry:
         """
         # Ensure stream is seekable before converter lookup (accepts may peek)
         if is_stream(source):
-            source = ensure_seekable(cast(BinaryIO, source))
+            options = kwargs.get("render_options")
+            limits = kwargs.get("limits") or getattr(options, "limits", None) or DEFAULT_LIMITS
+            source = ensure_seekable(cast(BinaryIO, source), limits=limits)
 
         converter = self.find_converter(source, **kwargs)
         if converter is None:
@@ -141,7 +146,7 @@ class ConverterRegistry:
         return converter.convert(source, **kwargs)
 
     @property
-    def converters(self) -> List[BaseConverter]:
+    def converters(self) -> list[BaseConverter]:
         """List all registered converters (sorted by priority)."""
         return list(self._converters)
 
@@ -160,14 +165,24 @@ class MarkdownInputConverter(InputConverter):
     supported_format = "md"
 
     def convert(
-        self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any
+        self, source: str | Path | BinaryIO | DocumentModel, **kwargs: Any
     ) -> DocumentModel:
+        from document_profiles import RenderOptions
         from md_parser import parse_markdown_file
+
+        options = kwargs.get("render_options")
+        roots = kwargs.get("asset_roots", ())
+        profile = kwargs.get("profile")
+        limits = kwargs.get("limits") or getattr(options, "limits", None) or DEFAULT_LIMITS
+        if isinstance(options, RenderOptions):
+            roots = (*options.asset_roots, *roots)
 
         # parse_markdown_file now accepts both str and BinaryIO
         if is_stream(source):
-            return parse_markdown_file(cast(BinaryIO, source), profile=kwargs.get("profile"))
-        return parse_markdown_file(str(source), profile=kwargs.get("profile"))
+            return parse_markdown_file(
+                cast(BinaryIO, source), profile=profile, asset_roots=roots, limits=limits
+            )
+        return parse_markdown_file(str(source), profile=profile, asset_roots=roots, limits=limits)
 
 
 class DocxOutputConverter(OutputConverter):
@@ -177,7 +192,7 @@ class DocxOutputConverter(OutputConverter):
     priority = 100
     output_format = "docx"
 
-    def convert(self, source: Union[str, Path, BinaryIO, DocumentModel], **kwargs: Any) -> Any:
+    def convert(self, source: str | Path | BinaryIO | DocumentModel, **kwargs: Any) -> Any:
         from ib_renderer import IBDocumentRenderer, rebase_local_links
 
         assert isinstance(source, DocumentModel)
@@ -203,7 +218,9 @@ class DocxOutputConverter(OutputConverter):
         if not isinstance(options, RenderOptions):
             raise TypeError("render_options must be RenderOptions")
         renderer = IBDocumentRenderer(options=options)
-        doc = renderer.render(source)
+        doc = renderer.render(
+            source, asset_roots=kwargs.get("asset_roots", ()), limits=kwargs.get("limits")
+        )
         output_path = kwargs.get("output_path")
         if output_path:
             from cli_utils import safe_save
@@ -223,7 +240,7 @@ class DocxOutputConverter(OutputConverter):
 # DEFAULT REGISTRY
 # ═══════════════════════════════════════════════════════════════════════════════
 
-_default_registry: Optional[ConverterRegistry] = None
+_default_registry: ConverterRegistry | None = None
 _default_registry_lock = threading.Lock()
 
 

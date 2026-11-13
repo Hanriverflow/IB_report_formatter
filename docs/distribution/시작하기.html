@@ -29,7 +29,7 @@
 <tr><td><code>minimal-term-sheet.md</code></td><td>거래별 원본. 제목, 조건 변수, 표, 본문과 상환일정을 수정합니다.</td></tr>
 <tr><td><code>minimal-house.yaml</code></td><td>기관 공통 문구. 작성 기관, 면책문구, 기밀표시, 고객확인 문구, 서식 옵션을 관리합니다.</td></tr>
 <tr><td><code>*.docx</code></td><td>생성 결과. Word에서 페이지와 내용을 검토하고 전달합니다. Word 수정분은 원본으로 자동 반영되지 않습니다.</td></tr>
-<tr><td><code>assets/</code> 등 이미지 폴더</td><td>로고나 본문 이미지가 있을 때 함께 보관합니다. 원본과 상대적인 폴더 위치를 유지합니다.</td></tr>
+<tr><td><code>assets/</code> 등 이미지 폴더</td><td>문서에 필요한 이미지, 기관 파일과 로고를 초안 MD가 있는 작업 폴더(하위 폴더 포함)로 복사하고 상대 경로로 가리킵니다.</td></tr>
 </tbody></table><p><strong>메모장 저장:</strong> 파일 형식을 <strong>모든 파일</strong>로 선택하고 파일명을 <code>거래명.md</code>, 인코딩을 <strong>UTF-8</strong>로 저장합니다. 탐색기에서 파일 확장명을 표시하여 <code>거래명.md.txt</code>가 되지 않았는지 확인합니다. YAML 파일도 UTF-8로 저장합니다.</p><p>기관 공통 파일을 따로 쓰기 어렵다면 아래 <code>prepared_by</code>와 <code>disclaimer</code>를 Markdown 맨 위 설정에 직접 넣고 <code>house:</code>를 지울 수 있습니다. 고객확인란을 쓰면 <code>confirmation:</code> 문구도 필요합니다.</p></section>
 
 <section id="template"><h2>3. 가장 작은 완성 예제</h2><p>배포 폴더의 <code>예제/빠른시작/minimal-term-sheet.md</code>가 다음 원본입니다. 아래 전체 내용을 복사해도 됩니다. 단, <code>minimal-house.yaml</code>을 같은 폴더에 두세요.</p>
@@ -171,6 +171,8 @@ checks:
 <section id="finish"><h2>8. 완성본 검토와 전달</h2><ol><li>생성된 DOCX를 Word에서 열어 <strong>모든 페이지</strong>의 표 잘림·줄바꿈·머리글·바닥글·쪽 번호를 확인합니다.</li><li>회사명, 금액, 금리, 만기, 상환 합계와 승인된 면책문구가 맞는지 검토합니다. 엄격 검사 통과는 시각적 완성이나 거래조건의 타당성을 보장하지 않습니다.</li><li>최종 전달용은 검토한 DOCX 또는 Word에서 저장한 PDF를 사용합니다. 이 변환기는 DOCX를 생성하며 문서 PDF 변환은 Word 등에서 수행합니다.</li><li>다음에 수정할 수 있도록 <strong>원본 MD + house YAML + 사용한 이미지</strong>를 같은 폴더 구조로 보관합니다. 다른 작성자에게 넘길 때는 이 원본 폴더 전체를 ZIP으로 묶습니다.</li></ol><p>더 긴 예제는 <code>예제/전체예제/term-sheet.md</code>와 <code>term-sheet-house.yaml</code>을 함께 참고하세요. <a href="예제/전체예제/term-sheet.docx">전체 예제 Word 문서</a>도 포함되어 있습니다. 여러 조건표·고객확인란·상환스케줄·산식 검사를 포함한 가상 ABCP 예제입니다. 문서의 일부 표만 가져올 때는 맨 위 <code>tables:</code>도 새 표 순서에 맞게 다시 구성합니다.</p></section>
 
 <section id="faq"><h2>문제 해결</h2>
+<details open><summary>asset_outside_root로 거부됩니다</summary><p>초안 MD 폴더 밖의 이미지나 로고는 사용할 수 없습니다. 필요한 이미지, 기관 파일과 로고를 MD와 같은 작업 폴더나 그 하위 폴더로 복사하고 상대 경로를 수정하세요. <code>house: house.yaml</code>은 MD 기준, 기관 파일 안의 <code>style.logo: assets/logo.png</code>는 기관 파일 기준입니다.</p></details>
+<details open><summary>limit_ 코드와 한도 초과 메시지가 나옵니다</summary><p>Markdown 바이트 수, 표 하나의 칸 수, 목록 중첩, 이미지 바이트 수·픽셀 수에 한도가 있습니다. 창에 표시된 한도와 측정값을 확인하고 입력·표·이미지를 줄이거나 나누세요. 이미지 픽셀 수가 넘으면 해상도를 낮추세요. 휴대용 변환기는 항상 엄격 모드이며 허용 폴더를 추가하거나 한도를 올리는 옵션·입력 칸은 없습니다. 원자료의 사실과 검사 조건을 유지한 채 수정하고 다시 변환합니다.</p></details>
 <details open><summary>house 파일이나 이미지가 없다고 나옵니다</summary><p>입력 MD 옆에 공통 YAML이 있는지, <code>house:</code> 파일명이 실제 이름과 같은지 확인합니다. 파일명 변경 후에는 설정도 바꿉니다. 공유할 때 MD만 보내지 말고 공통 파일·이미지를 함께 전달하세요.</p></details>
 <details open><summary>YAML 오류가 납니다</summary><p>들여쓰기를 공백으로 맞추고 따옴표 쌍, 콜론 뒤 공백을 확인합니다. 날짜·숫자처럼 보이는 변수 값은 <code>"100억원"</code>, <code>"2028-10-15"</code>처럼 따옴표로 감쌉니다. 복사한 코드 블록의 <code>```yaml</code> 표시를 파일의 맨 위 설정에 넣지 마세요.</p></details>
 <details open><summary>표를 추가한 후 열 수·병합 오류가 납니다</summary><p>표의 모든 행에서 칸 수를 맞추고, 그 표에 대응하는 <code>tables</code> 항목과 <code>columns</code> 개수를 확인합니다. 중간 표에 설정이 없더라도 <code>{}</code>로 순서를 유지합니다. 병합이 직사각형인지, 머리행과 본문을 넘지 않는지도 확인합니다.</p></details>

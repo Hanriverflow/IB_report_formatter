@@ -258,9 +258,7 @@ Paragraph two.
 
     def test_light_format_keeps_markers_when_cleaner_off(self):
         """Light-format path should keep markers when cleaner is not enabled."""
-        marker = (
-            f"{MARKER_START}cite{MARKER_SEPARATOR}turn1search0{MARKER_END}"
-        )
+        marker = f"{MARKER_START}cite{MARKER_SEPARATOR}turn1search0{MARKER_END}"
         text = "\n".join([f"line {i}" for i in range(25)]) + f"\nreference {marker}"
 
         result = format_markdown(text)
@@ -268,9 +266,7 @@ Paragraph two.
 
     def test_light_format_cleans_markers_when_cleaner_enabled(self):
         """Light-format path should clean markers when cleaner is enabled."""
-        marker = (
-            f"{MARKER_START}cite{MARKER_SEPARATOR}turn1search0{MARKER_END}"
-        )
+        marker = f"{MARKER_START}cite{MARKER_SEPARATOR}turn1search0{MARKER_END}"
         text = "\n".join([f"line {i}" for i in range(25)]) + f"\nreference {marker}"
 
         result = format_markdown(

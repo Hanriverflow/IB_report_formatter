@@ -7,7 +7,6 @@ All names and figures are fictional.
 
 import hashlib
 from io import BytesIO
-from typing import List
 
 import pytest
 import yaml
@@ -100,15 +99,15 @@ def text(element) -> str:
     return "".join(element.xpath(".//w:t/text()"))
 
 
-def attr(element, path: str, name: str = "w:val") -> List[str]:
+def attr(element, path: str, name: str = "w:val") -> list[str]:
     return [node.get(qn(name)) for node in element.xpath(path)]
 
 
-def fill(tc) -> List[str]:
+def fill(tc) -> list[str]:
     return attr(tc, "./w:tcPr/w:shd", "w:fill")
 
 
-def run_values(paragraph, path: str, name: str = "w:val") -> List[str]:
+def run_values(paragraph, path: str, name: str = "w:val") -> list[str]:
     return [node.get(qn(name)) for node in paragraph.xpath(".//w:r/w:rPr/" + path)]
 
 
@@ -168,13 +167,19 @@ def test_explicit_spans_merge_owner_cells_once_in_other_profiles(profile: str) -
         "| 항목[^1] | 설명 | 1234 |\n"
         "| ^^ | 추가 | 2345 |\n\n[^1]: 가상 각주입니다.\n"
     )
-    content = profile_markdown(profile, body, [{"spans": True, "columns": ["text", "text", "money"]}])
-    _, saved = render(content, strict=True, include_cover=False, include_toc=False, include_disclaimer=False)
+    content = profile_markdown(
+        profile, body, [{"spans": True, "columns": ["text", "text", "money"]}]
+    )
+    _, saved = render(
+        content, strict=True, include_cover=False, include_toc=False, include_disclaimer=False
+    )
     table = tables(saved)[0]
     header, first, second = rows(table)
     grid = [int(width) for width in attr(table, "./w:tblGrid/w:gridCol", "w:w")]
     assert attr(cells(header)[0], "./w:tcPr/w:gridSpan") == ["2"]
-    assert int(attr(cells(header)[0], "./w:tcPr/w:tcW", "w:w")[0]) == pytest.approx(grid[0] + grid[1], abs=1)
+    assert int(attr(cells(header)[0], "./w:tcPr/w:tcW", "w:w")[0]) == pytest.approx(
+        grid[0] + grid[1], abs=1
+    )
     assert attr(cells(first)[0], "./w:tcPr/w:vMerge") == ["restart"]
     assert attr(cells(second)[0], "./w:tcPr/w:vMerge") in ([None], ["continue"])
     assert text(table).count("항목") == 1 and text(table).count("1,234") == 1
@@ -208,7 +213,9 @@ def test_hand_built_merge_never_joins_the_rendered_header_row_to_the_body(profil
         col_count=2,
     )
     extra = {"prepared_by": FIELDS["prepared_by"], "disclaimer": FIELDS["disclaimer"]}
-    metadata = DocumentMetadata(title=TITLE, company="", sector="", analyst="", profile=profile, extra=extra)
+    metadata = DocumentMetadata(
+        title=TITLE, company="", sector="", analyst="", profile=profile, extra=extra
+    )
     model = DocumentModel(metadata=metadata, elements=[Element(ElementType.TABLE, table_model)])
     renderer = IBDocumentRenderer(options=RenderOptions(profile=profile))
     table = renderer.render(model).element.body.xpath("./w:tbl")[0]
@@ -233,8 +240,12 @@ LEGACY_BODY = (
 )
 LEGACY_SPECS = [
     {
-        "caption": "가상 표", "unit": "억원", "as_of": "2026-09-29", "source": "가상 출처",
-        "columns": ["text", "text", "money"], "spans": True,
+        "caption": "가상 표",
+        "unit": "억원",
+        "as_of": "2026-09-29",
+        "source": "가상 출처",
+        "columns": ["text", "text", "money"],
+        "spans": True,
     },
     {"spans": True},
 ]
@@ -265,7 +276,11 @@ def test_tables_without_merges_render_byte_identically(profile: str, monkeypatch
 
 @pytest.mark.parametrize("profile", ["plain", "ib-memo"])
 def test_note_is_rendered_after_source_in_other_profiles(profile: str) -> None:
-    content = profile_markdown(profile, "| 가 | 나 |\n|---|---|\n| 1 | 2 |\n", [{"note": "가상 주석", "source": "가상 자료"}])
+    content = profile_markdown(
+        profile,
+        "| 가 | 나 |\n|---|---|\n| 1 | 2 |\n",
+        [{"note": "가상 주석", "source": "가상 자료"}],
+    )
     _, saved = render(content, strict=True)
     source, note, spacer = following_paragraphs(tables(saved)[0], 3)
     assert text(source) == "출처: 가상 자료"
@@ -281,7 +296,9 @@ def test_note_specification_must_be_text(value) -> None:
 
 
 def test_note_specification_is_kept_on_the_model() -> None:
-    model = MarkdownParser().parse(profile_markdown("plain", "| 가 | 나 |\n|---|---|\n| 1 | 2 |\n", [{"note": 3}]))
+    model = MarkdownParser().parse(
+        profile_markdown("plain", "| 가 | 나 |\n|---|---|\n| 1 | 2 |\n", [{"note": 3}])
+    )
     assert model.elements[0].content.note == "3"
 
 
@@ -292,23 +309,32 @@ def test_note_specification_is_kept_on_the_model() -> None:
 
 def test_key_value_tables_share_the_fixed_label_grid() -> None:
     _, saved = render(ts_markdown(ONE_LABEL + "\n" + KEY_VALUE), strict=True)
-    grids = [[int(width) for width in attr(table, "./w:tblGrid/w:gridCol", "w:w")] for table in tables(saved)]
+    grids = [
+        [int(width) for width in attr(table, "./w:tblGrid/w:gridCol", "w:w")]
+        for table in tables(saved)
+    ]
     total = printable_twips(saved.sections[0])
     assert grids[0][0] == grids[1][0] == twips(33.5)
     assert grids[1][1] == twips(30)
     assert sum(grids[0]) == pytest.approx(total, abs=1)
     assert sum(grids[1]) == pytest.approx(total, abs=1)
-    for table, grid in zip(tables(saved), grids):
+    for table, grid in zip(tables(saved), grids, strict=False):
         assert attr(table, "./w:tblPr/w:tblLayout", "w:type") == ["fixed"]
         assert attr(table, "./w:tblPr/w:tblW", "w:type") == ["dxa"]
         assert int(attr(table, "./w:tblPr/w:tblW", "w:w")[0]) == pytest.approx(sum(grid), abs=1)
         assert attr(table, "./w:tblPr/w:tblInd", "w:w") == [str(term_sheet.CELL_MARGIN_HORIZONTAL)]
         first_cells = [cells(row)[0] for row in rows(table)[1:]]
-        assert {attr(tc, "./w:tcPr/w:tcW", "w:w")[0] for tc in first_cells if not tc.xpath("./w:tcPr/w:gridSpan")} == {str(grid[0])}
+        assert {
+            attr(tc, "./w:tcPr/w:tcW", "w:w")[0]
+            for tc in first_cells
+            if not tc.xpath("./w:tcPr/w:gridSpan")
+        } == {str(grid[0])}
 
 
 def test_landscape_key_value_table_takes_the_remaining_section_width() -> None:
-    _, saved = render(ts_markdown("앞 문단.\n\n" + ONE_LABEL, tables=[{"landscape": True}]), strict=True)
+    _, saved = render(
+        ts_markdown("앞 문단.\n\n" + ONE_LABEL, tables=[{"landscape": True}]), strict=True
+    )
     table = tables(saved)[0]
     grid = [int(width) for width in attr(table, "./w:tblGrid/w:gridCol", "w:w")]
     landscape = saved.sections[1]
@@ -353,16 +379,24 @@ def test_term_sheet_table_without_printable_width_is_diagnosed(landscape: bool) 
 def test_fixed_label_grid_is_kept_while_the_content_column_has_width(tmp_path) -> None:
     theme = write_theme(tmp_path, "margin_mm: 60\n")
     _, saved = render(ts_markdown(ONE_LABEL + "\n" + KEY_VALUE), strict=True, theme=theme)
-    grids = [[int(width) for width in attr(table, "./w:tblGrid/w:gridCol", "w:w")] for table in tables(saved)]
+    grids = [
+        [int(width) for width in attr(table, "./w:tblGrid/w:gridCol", "w:w")]
+        for table in tables(saved)
+    ]
     total = printable_twips(saved.sections[0])
     assert grids[0][0] == grids[1][0] == twips(33.5) and grids[1][1] == twips(30)
-    assert sum(grids[0]) == pytest.approx(total, abs=1) and sum(grids[1]) == pytest.approx(total, abs=1)
+    assert sum(grids[0]) == pytest.approx(total, abs=1) and sum(grids[1]) == pytest.approx(
+        total, abs=1
+    )
 
 
 def test_label_columns_that_cannot_fit_are_diagnosed(tmp_path) -> None:
     theme = write_theme(tmp_path, "LEFT_MARGIN: 3\nRIGHT_MARGIN: 3\n")
     renderer, saved = render(ts_markdown(ONE_LABEL + "\n" + KEY_VALUE), theme=theme)
-    one_label, two_labels = ([int(width) for width in attr(table, "./w:tblGrid/w:gridCol", "w:w")] for table in tables(saved))
+    one_label, two_labels = (
+        [int(width) for width in attr(table, "./w:tblGrid/w:gridCol", "w:w")]
+        for table in tables(saved)
+    )
     total = printable_twips(saved.sections[0])
     assert one_label[0] == twips(33.5)
     assert sum(two_labels) == pytest.approx(total, abs=3)
@@ -376,19 +410,34 @@ def test_term_sheet_frame_borders_margins_and_header_repeat() -> None:
     table = tables(saved)[0]
     borders = table.xpath("./w:tblPr/w:tblBorders/*")
     assert [etree.QName(node).localname for node in borders] == [
-        "top", "left", "bottom", "right", "insideH", "insideV",
+        "top",
+        "left",
+        "bottom",
+        "right",
+        "insideH",
+        "insideV",
     ]
-    assert {(node.get(qn("w:val")), node.get(qn("w:sz")), node.get(qn("w:color"))) for node in borders} == {
+    assert {
+        (node.get(qn("w:val")), node.get(qn("w:sz")), node.get(qn("w:color"))) for node in borders
+    } == {
         ("single", "4", "9AA5C4"),
     }
     margins = {
         etree.QName(node).localname: (node.get(qn("w:w")), node.get(qn("w:type")))
         for node in table.xpath("./w:tblPr/w:tblCellMar/*")
     }
-    assert margins == {"top": ("70", "dxa"), "left": ("100", "dxa"), "bottom": ("70", "dxa"), "right": ("100", "dxa")}
+    assert margins == {
+        "top": ("70", "dxa"),
+        "left": ("100", "dxa"),
+        "bottom": ("70", "dxa"),
+        "right": ("100", "dxa"),
+    }
     header = rows(table)[0]
     assert header.xpath("./w:trPr/w:tblHeader") and header.xpath("./w:trPr/w:cantSplit")
-    assert [etree.QName(node).localname for node in header.xpath("./w:trPr/*")] == ["cantSplit", "tblHeader"]
+    assert [etree.QName(node).localname for node in header.xpath("./w:trPr/*")] == [
+        "cantSplit",
+        "tblHeader",
+    ]
     for tc in cells(header):
         assert fill(tc) == ["DCE3F5"]
         paragraph = tc.xpath("./w:p")[0]
@@ -405,7 +454,9 @@ def test_header_row_paragraphs_keep_with_the_first_body_row() -> None:
         header, *body = rows(table)
         header_paragraphs = header.xpath("./w:tc/w:p")
         assert header_paragraphs and all(p.xpath("./w:pPr/w:keepNext") for p in header_paragraphs)
-        assert not any(p.xpath("./w:pPr/w:keepNext") for row in body for p in row.xpath("./w:tc/w:p"))
+        assert not any(
+            p.xpath("./w:pPr/w:keepNext") for row in body for p in row.xpath("./w:tc/w:p")
+        )
 
 
 def test_key_value_label_hierarchy_and_content_cells() -> None:
@@ -433,7 +484,9 @@ def test_grid_table_labels_are_shaded_regular_and_totals_keep_label_fill() -> No
     total_owner = cells(total)[0]
     assert attr(total_owner, "./w:tcPr/w:gridSpan") == ["3"]
     assert fill(total_owner) == ["F2F5FC"] and text(total_owner) == "합 계"
-    assert [attr(tc.xpath("./w:p")[0], "./w:pPr/w:jc") for tc in cells(senior)[1:]] == [["right"]] * 3
+    assert [attr(tc.xpath("./w:p")[0], "./w:pPr/w:jc") for tc in cells(senior)[1:]] == [
+        ["right"]
+    ] * 3
     grid = [int(width) for width in attr(table, "./w:tblGrid/w:gridCol", "w:w")]
     assert sum(grid) == pytest.approx(printable_twips(saved.sections[0]), abs=2)
 
@@ -481,12 +534,21 @@ def test_cell_lines_become_paragraphs_with_marker_hanging_indents() -> None:
     first_content = cells(rows(table)[1])[1]
     bullet, dash = first_content.xpath("./w:p")
     assert text(bullet).startswith("• 향후") and text(dash).startswith("- 집금계좌")
-    assert (attr(bullet, "./w:pPr/w:ind", "w:left"), attr(bullet, "./w:pPr/w:ind", "w:hanging")) == (["170"], ["170"])
-    assert (attr(dash, "./w:pPr/w:ind", "w:left"), attr(dash, "./w:pPr/w:ind", "w:hanging")) == (["340"], ["170"])
+    assert (
+        attr(bullet, "./w:pPr/w:ind", "w:left"),
+        attr(bullet, "./w:pPr/w:ind", "w:hanging"),
+    ) == (["170"], ["170"])
+    assert (attr(dash, "./w:pPr/w:ind", "w:left"), attr(dash, "./w:pPr/w:ind", "w:hanging")) == (
+        ["340"],
+        ["170"],
+    )
     cap_content = cells(rows(table)[3])[2]
     variable, note = cap_content.xpath("./w:p")
     assert text(note) == "※ 기준일 CD(3M) 기준"
-    assert (attr(note, "./w:pPr/w:ind", "w:left"), attr(note, "./w:pPr/w:ind", "w:hanging")) == (["227"], ["227"])
+    assert (attr(note, "./w:pPr/w:ind", "w:left"), attr(note, "./w:pPr/w:ind", "w:hanging")) == (
+        ["227"],
+        ["227"],
+    )
     assert set(run_values(note, "w:sz")) == {"16"}
     assert set(run_values(variable, "w:sz")) == {"18"}
     for paragraph in first_content.xpath("./w:p"):
@@ -496,7 +558,13 @@ def test_cell_lines_become_paragraphs_with_marker_hanging_indents() -> None:
 
 @pytest.mark.parametrize(
     ("line", "left", "hanging"),
-    [("· 3수준", "510", "170"), ("① 번호", "255", "255"), ("⑳ 번호", "255", "255"), ("-5%", None, None), ("-", None, None)],
+    [
+        ("· 3수준", "510", "170"),
+        ("① 번호", "255", "255"),
+        ("⑳ 번호", "255", "255"),
+        ("-5%", None, None),
+        ("-", None, None),
+    ],
 )
 def test_marker_table_matches_the_plan(line: str, left, hanging) -> None:
     _, saved = render(ts_markdown(ONE_LABEL.replace("• 500억원", "첫 줄<br>" + line)), strict=True)
@@ -534,7 +602,13 @@ def test_multi_row_owner_is_excluded_from_row_estimates() -> None:
 
 
 def test_caption_unit_line_and_trailing_note_source_spacer() -> None:
-    spec = {"caption": "주요 금융조건", "unit": "억원", "as_of": "2026-09-29", "note": "(VAT 별도)", "source": "가상 자료"}
+    spec = {
+        "caption": "주요 금융조건",
+        "unit": "억원",
+        "as_of": "2026-09-29",
+        "note": "(VAT 별도)",
+        "source": "가상 자료",
+    }
     _, saved = render(ts_markdown(ONE_LABEL, tables=[spec]), strict=True)
     table = tables(saved)[0]
     heading = table.getprevious()
@@ -552,7 +626,9 @@ def test_caption_unit_line_and_trailing_note_source_spacer() -> None:
     assert unit_runs[0].font.size.pt == 8 and str(unit_runs[0].font.color.rgb) == "555555"
     note, source, spacer = following_paragraphs(table, 3)
     assert text(note) == "(VAT 별도)" and attr(note, "./w:pPr/w:jc") == ["right"]
-    assert set(run_values(note, "w:sz")) == {"16"} and set(run_values(note, "w:color")) == {"555555"}
+    assert set(run_values(note, "w:sz")) == {"16"} and set(run_values(note, "w:color")) == {
+        "555555"
+    }
     assert text(source) == "출처 : 가상 자료" and set(run_values(source, "w:sz")) == {"16"}
     assert not spacer.xpath(".//w:t")
     spacing = spacer.xpath("./w:pPr/w:spacing")[0]
@@ -574,7 +650,12 @@ def test_split_run_lines_preserves_formatting_links_footnotes_and_blank_lines() 
         TextRun("\n\n셋째 "),
     ]
     lines = term_sheet.split_run_lines(runs)
-    assert [[run.text for run in line] for line in lines] == [["첫 줄"], ["둘째", "링크", "1"], [], ["셋째 "]]
+    assert [[run.text for run in line] for line in lines] == [
+        ["첫 줄"],
+        ["둘째", "링크", "1"],
+        [],
+        ["셋째 "],
+    ]
     assert lines[0][0].bold and lines[1][0].bold
     assert lines[1][1].hyperlink == "https://example.com"
     assert lines[1][2].footnote_id == 1 and lines[1][2].superscript
@@ -584,22 +665,82 @@ def test_split_run_lines_preserves_formatting_links_footnotes_and_blank_lines() 
 
 
 TCPR_ORDER = (
-    "cnfStyle", "tcW", "gridSpan", "hMerge", "vMerge", "tcBorders", "shd", "noWrap", "tcMar",
-    "textDirection", "tcFitText", "vAlign", "hideMark", "headers", "cellIns", "cellDel",
-    "cellMerge", "tcPrChange",
+    "cnfStyle",
+    "tcW",
+    "gridSpan",
+    "hMerge",
+    "vMerge",
+    "tcBorders",
+    "shd",
+    "noWrap",
+    "tcMar",
+    "textDirection",
+    "tcFitText",
+    "vAlign",
+    "hideMark",
+    "headers",
+    "cellIns",
+    "cellDel",
+    "cellMerge",
+    "tcPrChange",
 )
 TBLPR_ORDER = (
-    "tblStyle", "tblpPr", "tblOverlap", "bidiVisual", "tblStyleRowBandSize",
-    "tblStyleColBandSize", "tblW", "jc", "tblCellSpacing", "tblInd", "tblBorders", "shd",
-    "tblLayout", "tblCellMar", "tblLook", "tblCaption", "tblDescription", "tblPrChange",
+    "tblStyle",
+    "tblpPr",
+    "tblOverlap",
+    "bidiVisual",
+    "tblStyleRowBandSize",
+    "tblStyleColBandSize",
+    "tblW",
+    "jc",
+    "tblCellSpacing",
+    "tblInd",
+    "tblBorders",
+    "shd",
+    "tblLayout",
+    "tblCellMar",
+    "tblLook",
+    "tblCaption",
+    "tblDescription",
+    "tblPrChange",
 )
 PPR_ORDER = (
-    "pStyle", "keepNext", "keepLines", "pageBreakBefore", "framePr", "widowControl", "numPr",
-    "suppressLineNumbers", "pBdr", "shd", "tabs", "suppressAutoHyphens", "kinsoku", "wordWrap",
-    "overflowPunct", "topLinePunct", "autoSpaceDE", "autoSpaceDN", "bidi", "adjustRightInd",
-    "snapToGrid", "spacing", "ind", "contextualSpacing", "mirrorIndents", "suppressOverlap", "jc",
-    "textDirection", "textAlignment", "textboxTightWrap", "outlineLvl", "divId", "cnfStyle",
-    "rPr", "sectPr", "pPrChange",
+    "pStyle",
+    "keepNext",
+    "keepLines",
+    "pageBreakBefore",
+    "framePr",
+    "widowControl",
+    "numPr",
+    "suppressLineNumbers",
+    "pBdr",
+    "shd",
+    "tabs",
+    "suppressAutoHyphens",
+    "kinsoku",
+    "wordWrap",
+    "overflowPunct",
+    "topLinePunct",
+    "autoSpaceDE",
+    "autoSpaceDN",
+    "bidi",
+    "adjustRightInd",
+    "snapToGrid",
+    "spacing",
+    "ind",
+    "contextualSpacing",
+    "mirrorIndents",
+    "suppressOverlap",
+    "jc",
+    "textDirection",
+    "textAlignment",
+    "textboxTightWrap",
+    "outlineLvl",
+    "divId",
+    "cnfStyle",
+    "rPr",
+    "sectPr",
+    "pPrChange",
 )
 
 
@@ -629,7 +770,9 @@ def test_term_sheet_properties_follow_the_schema_order(zebra: bool, tmp_path) ->
         {"type": "sensitivity", "base_case": {"row": 1, "column": 2}},
     ]
     confirmation = {"intro": "가상 안내", "items": ["□ 가상 항목"], "signature": "가상 서명"}
-    _, saved = render(ts_markdown(body, tables=spec, confirmation=confirmation), strict=True, **options)
+    _, saved = render(
+        ts_markdown(body, tables=spec, confirmation=confirmation), strict=True, **options
+    )
     body_element = saved.element.body
     assert body_element.xpath(".//w:tcPr/w:shd[@w:fill='FFFF00']")
     for tbl_pr in body_element.xpath(".//w:tblPr"):
@@ -646,7 +789,11 @@ def test_term_sheet_properties_follow_the_schema_order(zebra: bool, tmp_path) ->
 
 def test_strict_term_sheet_tables_have_no_audit_issues() -> None:
     body = ONE_LABEL + "\n" + KEY_VALUE + "\n" + GRID
-    spec = [{"caption": "개요", "unit": "억원"}, {"note": "가상 주석"}, {"landscape": True, "source": "가상 자료"}]
+    spec = [
+        {"caption": "개요", "unit": "억원"},
+        {"note": "가상 주석"},
+        {"landscape": True, "source": "가상 자료"},
+    ]
     renderer, saved = render(ts_markdown(body, tables=spec), strict=True)
     assert not renderer.errors
     assert inspect_document(saved).issues == []

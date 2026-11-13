@@ -29,7 +29,8 @@ def _tags(element) -> list:
 def test_opening_and_merged_cells_tag_term_values():
     md = (
         '---\nprofile: term-sheet\ntitle: "가나다머티리얼즈㈜ ABCP {{amount}}"\n'
-        'date: "{{issue_date}}"\n' + HOUSE
+        'date: "{{issue_date}}"\n'
+        + HOUSE
         + 'terms:\n  amount: "300억원"\n  issue_date: "2026. 10."\n  cap: "[1.10]%p"\n---\n\n'
         "## 1. 조건\n\n"
         "| 구 분 | << | 내 용 |\n|---|---|---|\n"
@@ -46,7 +47,8 @@ def test_opening_and_merged_cells_tag_term_values():
             break
         opening.append(child)
     assert [tag for child in opening for tag in _tags(child)] == [
-        "ibrep:term:amount", "ibrep:term:issue_date",
+        "ibrep:term:amount",
+        "ibrep:term:issue_date",
     ]
     assert _tags(table) == ["ibrep:term:amount", "ibrep:term:cap"]
     # The content cell keeps one Word paragraph per authored line.
@@ -57,7 +59,7 @@ def test_opening_and_merged_cells_tag_term_values():
 
 def test_table_note_substitutes_terms_and_reports_undefined_keys():
     md = (
-        "---\nprofile: plain\nterms:\n  amount: \"500\"\n"
+        '---\nprofile: plain\nterms:\n  amount: "500"\n'
         'tables:\n  - {note: "Amount {{amount}}; {{missing}}"}\n---\n\n'
         "| A | B |\n|---|---|\n| 1 | 2 |\n"
     )
@@ -73,7 +75,8 @@ def test_table_note_substitutes_terms_and_reports_undefined_keys():
 def test_blank_substituted_subtitle_falls_back_without_stale_runs(value):
     md = (
         '---\nprofile: term-sheet\ntitle: 가상 조건표\nsubtitle: "{{s}}"\nversion: v1\n'
-        + HOUSE + f'terms:\n  s: "{value}"\n---\n\n본문.\n'
+        + HOUSE
+        + f'terms:\n  s: "{value}"\n---\n\n본문.\n'
     )
     model, doc = _render(md)
     assert model.metadata.subtitle == "Term Sheet"
@@ -88,14 +91,18 @@ def test_title_length_is_checked_after_substitution():
     title = " ".join("{{" + key + "}}" for _ in range(6))
     assert len(title) > 255
     ok = (
-        f'---\nprofile: term-sheet\ntitle: "{title}"\n' + HOUSE
+        f'---\nprofile: term-sheet\ntitle: "{title}"\n'
+        + HOUSE
         + f'terms:\n  {key}: "A"\n---\n\n본문.\n'
     )
     model = MarkdownParser().parse(ok)
     assert model.metadata.title == "A A A A A A"
     too_long = (
-        '---\nprofile: term-sheet\ntitle: "{{t}}"\n' + HOUSE
-        + 'terms:\n  t: "' + "가" * 256 + '"\n---\n\n본문.\n'
+        '---\nprofile: term-sheet\ntitle: "{{t}}"\n'
+        + HOUSE
+        + 'terms:\n  t: "'
+        + "가" * 256
+        + '"\n---\n\n본문.\n'
     )
     with pytest.raises(ValueError, match="255"):
         MarkdownParser().parse(too_long)

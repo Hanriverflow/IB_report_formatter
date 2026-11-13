@@ -57,8 +57,12 @@ def render(markdown: str, **options):
 def latin_only(monkeypatch: pytest.MonkeyPatch) -> None:
     """Simulate a machine with only Matplotlib's bundled DejaVu font."""
     path = font_manager.findfont("DejaVu Sans", fallback_to_default=False)
-    monkeypatch.setattr(render_styles, "_installed_raster_font",
-                        lambda family: path if family == "DejaVu Sans" else None, raising=False)
+    monkeypatch.setattr(
+        render_styles,
+        "_installed_raster_font",
+        lambda family: path if family == "DejaVu Sans" else None,
+        raising=False,
+    )
     # Loss is intentional in these scenarios and asserted via the public diagnostic.
     warnings.filterwarnings("ignore", message=r"Glyph .* missing from font", category=UserWarning)
 
@@ -95,8 +99,11 @@ def test_cli_missing_font_rejects_before_save(tmp_path, monkeypatch, latin_only,
     source.write_text(CHART, encoding="utf-8")
     if existing:
         output.write_bytes(b"keep existing output")
-    monkeypatch.setattr(sys, "argv", ["md-to-word", str(source), str(output),
-                                    "--profile", "plain", "--charts", "--strict"])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["md-to-word", str(source), str(output), "--profile", "plain", "--charts", "--strict"],
+    )
     with pytest.raises(SystemExit) as exc:
         md_to_word.main()
     assert exc.value.code == 1
@@ -138,13 +145,18 @@ def installed_test_fonts(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("markdown", RASTERS)
-def test_nanum_fallback_is_drawn_without_missing_glyph_warnings(markdown, installed_test_fonts, monkeypatch):
+def test_nanum_fallback_is_drawn_without_missing_glyph_warnings(
+    markdown, installed_test_fonts, monkeypatch
+):
     families = []
     saved = Figure.savefig
 
     def inspect(figure, *args, **kwargs):
-        families.extend(artist.get_fontfamily() for artist in figure.findobj(match=Text)
-                        if "가" in artist.get_text() or "나" in artist.get_text())
+        families.extend(
+            artist.get_fontfamily()
+            for artist in figure.findobj(match=Text)
+            if "가" in artist.get_text() or "나" in artist.get_text()
+        )
         return saved(figure, *args, **kwargs)
 
     monkeypatch.setattr(Figure, "savefig", inspect)
@@ -159,7 +171,10 @@ def test_nanum_fallback_is_drawn_without_missing_glyph_warnings(markdown, instal
 
 @pytest.mark.parametrize("markdown", RASTERS)
 def test_theme_preferred_per_request_and_docx_font_declarations_unchanged(
-    installed_test_fonts, tmp_path, monkeypatch, markdown,
+    installed_test_fonts,
+    tmp_path,
+    monkeypatch,
+    markdown,
 ):
     monkeypatch.setattr("ib_renderer.uuid4", lambda: UUID(int=1))
     theme = tmp_path / "theme.yaml"
@@ -168,14 +183,22 @@ def test_theme_preferred_per_request_and_docx_font_declarations_unchanged(
     saved = Figure.savefig
 
     def inspect(figure, *args, **kwargs):
-        families.append(next(artist.get_fontfamily() for artist in figure.findobj(match=Text)
-                             if "가" in artist.get_text()))
+        families.append(
+            next(
+                artist.get_fontfamily()
+                for artist in figure.findobj(match=Text)
+                if "가" in artist.get_text()
+            )
+        )
         return saved(figure, *args, **kwargs)
 
     monkeypatch.setattr(Figure, "savefig", inspect)
     _, preferred_doc = render("가\n\n" + markdown, theme=str(theme), strict=True)
-    monkeypatch.setattr(render_styles, "_installed_raster_font",
-                        lambda family: installed_test_fonts.get(family) if family == "NanumGothic" else None)
+    monkeypatch.setattr(
+        render_styles,
+        "_installed_raster_font",
+        lambda family: installed_test_fonts.get(family) if family == "NanumGothic" else None,
+    )
     _, fallback_doc = render("가\n\n" + markdown, theme=str(theme), strict=True)
     _, default_doc = render("가\n\n" + markdown, strict=True)
     assert families == [["Test Theme CJK"], ["NanumGothic"], ["NanumGothic"]]
@@ -189,9 +212,17 @@ def test_theme_preferred_per_request_and_docx_font_declarations_unchanged(
             extent.set("cy", "0")
     assert preferred_doc.element.xml == fallback_doc.element.xml
     assert preferred_doc.styles.element.xml == fallback_doc.styles.element.xml
-    assert preferred_doc.part.numbering_part.element.xml == fallback_doc.part.numbering_part.element.xml
-    assert preferred_doc.paragraphs[0].runs[0]._r.rPr.rFonts.get(qn("w:eastAsia")) == "Test Theme CJK"
-    assert default_doc.paragraphs[0].runs[0]._r.rPr.rFonts.get(qn("w:eastAsia")) == FontPolicy.resolve_korean_font()
+    assert (
+        preferred_doc.part.numbering_part.element.xml
+        == fallback_doc.part.numbering_part.element.xml
+    )
+    assert (
+        preferred_doc.paragraphs[0].runs[0]._r.rPr.rFonts.get(qn("w:eastAsia")) == "Test Theme CJK"
+    )
+    assert (
+        default_doc.paragraphs[0].runs[0]._r.rPr.rFonts.get(qn("w:eastAsia"))
+        == FontPolicy.resolve_korean_font()
+    )
 
 
 def test_installed_latin_theme_does_not_count_as_cjk(tmp_path, latin_only):
@@ -225,10 +256,24 @@ def test_installed_lookup_is_cached_without_capturing_preference(monkeypatch):
     render_styles._installed_raster_font.cache_clear()
     try:
         for _ in range(2):
-            assert render_styles.RasterFontPolicy.resolve("First Test Family", "ASCII") == "First Test Family"
-            assert render_styles.RasterFontPolicy.resolve("Second Test Family", "ASCII") == "Second Test Family"
-            assert render_styles.RasterFontPolicy.resolve("Unavailable Test Family", "ASCII") == "Malgun Gothic"
-        assert calls == ["First Test Family", "Second Test Family", "Unavailable Test Family", "Malgun Gothic"]
+            assert (
+                render_styles.RasterFontPolicy.resolve("First Test Family", "ASCII")
+                == "First Test Family"
+            )
+            assert (
+                render_styles.RasterFontPolicy.resolve("Second Test Family", "ASCII")
+                == "Second Test Family"
+            )
+            assert (
+                render_styles.RasterFontPolicy.resolve("Unavailable Test Family", "ASCII")
+                == "Malgun Gothic"
+            )
+        assert calls == [
+            "First Test Family",
+            "Second Test Family",
+            "Unavailable Test Family",
+            "Malgun Gothic",
+        ]
     finally:
         render_styles._installed_raster_font.cache_clear()
 
@@ -236,11 +281,22 @@ def test_installed_lookup_is_cached_without_capturing_preference(monkeypatch):
 def test_real_installed_cjk_font_renders_hangul_without_glyph_loss():
     from matplotlib.ft2font import FT2Font
 
-    candidates = ("Malgun Gothic", "Apple SD Gothic Neo", "AppleGothic", "NanumGothic",
-                  "NanumBarunGothic", "Noto Sans CJK KR", "Noto Sans KR", "Source Han Sans KR", "UnDotum")
+    candidates = (
+        "Malgun Gothic",
+        "Apple SD Gothic Neo",
+        "AppleGothic",
+        "NanumGothic",
+        "NanumBarunGothic",
+        "Noto Sans CJK KR",
+        "Noto Sans KR",
+        "Source Han Sans KR",
+        "UnDotum",
+    )
     for family in candidates:
         try:
-            path = font_manager.findfont(font_manager.FontProperties(family=[family]), fallback_to_default=False)
+            path = font_manager.findfont(
+                font_manager.FontProperties(family=[family]), fallback_to_default=False
+            )
             if all(ord(character) in FT2Font(path).get_charmap() for character in "가나"):
                 break
         except ValueError:

@@ -22,7 +22,8 @@ def compose(profile="ib-report", frontmatter="", **kwargs):
         )
     model = MarkdownParser(profile=profile).parse(
         "---\ntitle: Bundle test\nsender: {organization: Example}\nrecipients: [Team]\n"
-        + frontmatter + "\n---\n# Bundle test\n\nBody text."
+        + frontmatter
+        + "\n---\n# Bundle test\n\nBody text."
     )
     options = RenderOptions(**kwargs)
     resolved = resolve_options(model.metadata, options)
@@ -37,10 +38,15 @@ def compose(profile="ib-report", frontmatter="", **kwargs):
 
 
 @pytest.mark.parametrize("profile", PROFILES)
-@pytest.mark.parametrize("preset, expected", [
-    ("ib-report", None), ("termsheet", (False, False, False)),
-    ("legal-memo", (False, True, False)), ("lecture-note", (True, True, False)),
-])
+@pytest.mark.parametrize(
+    "preset, expected",
+    [
+        ("ib-report", None),
+        ("termsheet", (False, False, False)),
+        ("legal-memo", (False, True, False)),
+        ("lecture-note", (True, True, False)),
+    ],
+)
 def test_all_presets_on_all_profiles(profile, preset, expected):
     resolved = compose(profile, preset=preset)
     actual = (resolved.cover, resolved.toc, resolved.disclaimer)
@@ -54,11 +60,14 @@ def test_each_preset_precedence_edge(section, enabled):
     override = {"include_" + section: enabled}
     yaml_flag = f"layout: {{{section}: {str(not enabled).lower()}}}"
     # Explicit field > caller preset > YAML field > YAML preset > profile.
-    result = compose(frontmatter="preset: lecture-note\n" + yaml_flag,
-                     preset="termsheet", **override)
+    result = compose(
+        frontmatter="preset: lecture-note\n" + yaml_flag, preset="termsheet", **override
+    )
     assert getattr(result, section) == enabled
-    result = compose(frontmatter="preset: lecture-note\nlayout: {cover: true, toc: true, disclaimer: true}",
-                     preset="termsheet")
+    result = compose(
+        frontmatter="preset: lecture-note\nlayout: {cover: true, toc: true, disclaimer: true}",
+        preset="termsheet",
+    )
     assert not getattr(result, section)
     result = compose(frontmatter="preset: termsheet\n" + yaml_flag)
     assert getattr(result, section) == (not enabled)
@@ -88,12 +97,17 @@ def test_cli_presets_listing_and_flags(tmp_path, monkeypatch, caplog):
     caplog.set_level(logging.INFO)
     monkeypatch.setattr(sys, "argv", ["md-to-word", "--list-presets"])
     md_to_word.main()
-    assert all(name in caplog.text for name in ("ib-report", "termsheet", "legal-memo", "lecture-note"))
+    assert all(
+        name in caplog.text for name in ("ib-report", "termsheet", "legal-memo", "lecture-note")
+    )
     source, output = tmp_path / "source.md", tmp_path / "result.docx"
-    source.write_text("---\npreset: termsheet\nlayout: {toc: false}\n---\n# Title\n\nBody.", encoding="utf-8")
+    source.write_text(
+        "---\npreset: termsheet\nlayout: {toc: false}\n---\n# Title\n\nBody.", encoding="utf-8"
+    )
     for extra, expected in [([], True), (["--no-toc"], False)]:
-        monkeypatch.setattr(sys, "argv", ["md-to-word", str(source), str(output),
-                                         "--preset", "legal-memo"] + extra)
+        monkeypatch.setattr(
+            sys, "argv", ["md-to-word", str(source), str(output), "--preset", "legal-memo"] + extra
+        )
         with pytest.raises(SystemExit) as exc:
             md_to_word.main()
         assert exc.value.code == 0
@@ -104,30 +118,42 @@ def test_cli_presets_listing_and_flags(tmp_path, monkeypatch, caplog):
 def test_unknown_preset_rejected_without_output(tmp_path, monkeypatch, use_cli):
     source, output = tmp_path / "bad.md", tmp_path / "bad.docx"
     source.write_text("Body." if use_cli else "---\npreset: typo\n---\nBody.", encoding="utf-8")
-    monkeypatch.setattr(sys, "argv", ["md-to-word", str(source), str(output)]
-                        + (["--preset", "typo"] if use_cli else []))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["md-to-word", str(source), str(output)] + (["--preset", "typo"] if use_cli else []),
+    )
     with pytest.raises(SystemExit) as exc:
         md_to_word.main()
     assert exc.value.code != 0
     assert not output.exists()
 
 
-@pytest.mark.parametrize("flag, preset, text", [
-    ("--no-cover", "lecture-note", "CONFIDENTIAL - FOR INSTITUTIONAL USE ONLY"),
-    ("--no-toc", "lecture-note", "TABLE OF CONTENTS"),
-    ("--no-disclaimer", "ib-report", "면책 조항"),
-])
+@pytest.mark.parametrize(
+    "flag, preset, text",
+    [
+        ("--no-cover", "lecture-note", "CONFIDENTIAL - FOR INSTITUTIONAL USE ONLY"),
+        ("--no-toc", "lecture-note", "TABLE OF CONTENTS"),
+        ("--no-disclaimer", "ib-report", "면책 조항"),
+    ],
+)
 def test_explicit_cli_section_flags_beat_preset(tmp_path, monkeypatch, flag, preset, text):
     source, output = tmp_path / "input.md", tmp_path / "output.docx"
-    source.write_text("---\nlayout: {cover: true, toc: true, disclaimer: true}\n---\n# Title\n\nBody.",
-                      encoding="utf-8")
-    monkeypatch.setattr(sys, "argv", ["md-to-word", str(source), str(output), "--preset", preset, flag])
+    source.write_text(
+        "---\nlayout: {cover: true, toc: true, disclaimer: true}\n---\n# Title\n\nBody.",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["md-to-word", str(source), str(output), "--preset", preset, flag]
+    )
     with pytest.raises(SystemExit) as exc:
         md_to_word.main()
     assert exc.value.code == 0
     doc = Document(output)
     if flag == "--no-cover":
         # Cover-only large title run; body headings and TOC use smaller fonts.
-        assert not any(run.font.size and run.font.size.pt >= 24 for p in doc.paragraphs for run in p.runs)
+        assert not any(
+            run.font.size and run.font.size.pt >= 24 for p in doc.paragraphs for run in p.runs
+        )
     else:
         assert text not in [p.text for p in doc.paragraphs]

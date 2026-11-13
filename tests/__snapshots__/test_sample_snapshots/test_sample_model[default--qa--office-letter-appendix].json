@@ -1,0 +1,932 @@
+{
+  "metadata": {
+    "title": "운영자료 확인 및 보완 요청",
+    "subtitle": "",
+    "company": "",
+    "ticker": "",
+    "sector": "",
+    "analyst": "",
+    "extra": {
+      "document_no": "예시-2026-021",
+      "date": "2026-09-15",
+      "sender": {
+        "organization": "주식회사 가상회사",
+        "department": "업무지원팀",
+        "signatory": "주식회사 가상회사\n대표이사 [성명 기재]\n",
+        "contact": "office@example.com"
+      },
+      "recipients": [
+        "가상협력회사 업무지원부서장"
+      ],
+      "cc": [
+        "자료 관리 담당자"
+      ],
+      "attachments": [
+        "운영자료 확인 내역 1부",
+        "자료 보완 양식 1부"
+      ],
+      "letter": {
+        "appendix_heading": "운영자료 확인 내역",
+        "appendix_label": "붙임 1"
+      },
+      "tables": [
+        {
+          "columns": [
+            "code",
+            "text",
+            "text"
+          ]
+        }
+      ]
+    },
+    "profile": "office-letter",
+    "display_runs": {}
+  },
+  "sections": [],
+  "elements": [
+    {
+      "element_type": "HEADING_1",
+      "content": {
+        "level": 1,
+        "text": "운영자료 확인 및 보완 요청",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "# 운영자료 확인 및 보완 요청",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "NUMBERED_LIST",
+      "content": [
+        "1",
+        {
+          "text": "귀사의 업무 협조에 감사드립니다.",
+          "runs": [
+            {
+              "text": "귀사의 업무 협조에 감사드립니다.",
+              "bold": false,
+              "italic": false,
+              "superscript": false,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": null,
+              "term_key": null,
+              "code": false,
+              "image": null
+            }
+          ],
+          "indent_level": 0
+        }
+      ],
+      "raw_text": "1. 귀사의 업무 협조에 감사드립니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "NUMBERED_LIST",
+      "content": [
+        "2",
+        {
+          "text": "귀사에서 제출한 운영자료를 검토한 결과, 일부 항목의 확인이 필요하여 붙임과 같이 보완을 요청드립니다. 확인 대상은 해당 자료의 관리번호와 담당 부서이며, 이미 확인이 끝난 항목은 다시 제출하지 않으셔도 됩니다.",
+          "runs": [
+            {
+              "text": "귀사에서 제출한 운영자료를 검토한 결과, 일부 항목의 확인이 필요하여 붙임과 같이 보완을 요청드립니다. 확인 대상은 해당 자료의 관리번호와 담당 부서이며, 이미 확인이 끝난 항목은 다시 제출하지 않으셔도 됩니다.",
+              "bold": false,
+              "italic": false,
+              "superscript": false,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": null,
+              "term_key": null,
+              "code": false,
+              "image": null
+            }
+          ],
+          "indent_level": 0
+        }
+      ],
+      "raw_text": "2. 귀사에서 제출한 운영자료를 검토한 결과, 일부 항목의 확인이 필요하여 붙임과 같이 보완을 요청드립니다. 확인 대상은 해당 자료의 관리번호와 담당 부서이며, 이미 확인이 끝난 항목은 다시 제출하지 않으셔도 됩니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "NUMBERED_LIST",
+      "content": [
+        "3",
+        {
+          "text": "붙임의 확인 내역을 검토하시어 수정이 필요한 부분을 기재한 후, 2026년 9월 25일까지 담당자 전자우편으로 회신해 주시기 바랍니다.",
+          "runs": [
+            {
+              "text": "붙임의 확인 내역을 검토하시어 수정이 필요한 부분을 기재한 후, 2026년 9월 25일까지 담당자 전자우편으로 회신해 주시기 바랍니다.",
+              "bold": false,
+              "italic": false,
+              "superscript": false,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": null,
+              "term_key": null,
+              "code": false,
+              "image": null
+            }
+          ],
+          "indent_level": 0
+        }
+      ],
+      "raw_text": "3. 붙임의 확인 내역을 검토하시어 수정이 필요한 부분을 기재한 후, 2026년 9월 25일까지 담당자 전자우편으로 회신해 주시기 바랍니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "NUMBERED_LIST",
+      "content": [
+        "4",
+        {
+          "text": "요청 내용이나 제출 일정에 관하여 협의가 필요한 경우 아래 담당자에게 연락해 주시기 바랍니다.",
+          "runs": [
+            {
+              "text": "요청 내용이나 제출 일정에 관하여 협의가 필요한 경우 아래 담당자에게 연락해 주시기 바랍니다.",
+              "bold": false,
+              "italic": false,
+              "superscript": false,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": null,
+              "term_key": null,
+              "code": false,
+              "image": null
+            }
+          ],
+          "indent_level": 0
+        }
+      ],
+      "raw_text": "4. 요청 내용이나 제출 일정에 관하여 협의가 필요한 경우 아래 담당자에게 연락해 주시기 바랍니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_1",
+      "content": {
+        "level": 1,
+        "text": "운영자료 확인 내역",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "# 운영자료 확인 내역",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "확인 대상",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 확인 대상",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "아래 관리번호와 담당 부서의 일치 여부를 확인해 주시기 바랍니다. 관리번호 앞의 0은 코드의 일부이므로 삭제하지 않습니다.",
+        "runs": [
+          {
+            "text": "아래 관리번호와 담당 부서의 일치 여부를 확인해 주시기 바랍니다. 관리번호 앞의 0은 코드의 일부이므로 삭제하지 않습니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "아래 관리번호와 담당 부서의 일치 여부를 확인해 주시기 바랍니다. 관리번호 앞의 0은 코드의 일부이므로 삭제하지 않습니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "TABLE",
+      "content": {
+        "rows": [
+          {
+            "cells": [
+              {
+                "content": "관리번호",
+                "runs": [
+                  {
+                    "text": "관리번호",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "확인 항목",
+                "runs": [
+                  {
+                    "text": "확인 항목",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "요청 사항",
+                "runs": [
+                  {
+                    "text": "요청 사항",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": true
+          },
+          {
+            "cells": [
+              {
+                "content": "001234",
+                "runs": [
+                  {
+                    "text": "001234",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "운영실적 집계",
+                "runs": [
+                  {
+                    "text": "운영실적 집계",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "담당 부서 확인",
+                "runs": [
+                  {
+                    "text": "담당 부서 확인",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "005678",
+                "runs": [
+                  {
+                    "text": "005678",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "설비 운영계획",
+                "runs": [
+                  {
+                    "text": "설비 운영계획",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "변경 사유 기재",
+                "runs": [
+                  {
+                    "text": "변경 사유 기재",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "009012",
+                "runs": [
+                  {
+                    "text": "009012",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "인력 운영계획",
+                "runs": [
+                  {
+                    "text": "인력 운영계획",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "제출 예정일 확인",
+                "runs": [
+                  {
+                    "text": "제출 예정일 확인",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          }
+        ],
+        "table_type": "GENERIC",
+        "col_count": 3,
+        "alignments": [
+          "left",
+          "left",
+          "left"
+        ],
+        "column_types": [
+          "code",
+          "text",
+          "text"
+        ],
+        "caption": "",
+        "unit": "",
+        "source": "",
+        "as_of": "",
+        "landscape": false,
+        "warnings": [],
+        "spans": null,
+        "label_columns": null,
+        "note": "",
+        "header_rows": 1,
+        "schedule": null
+      },
+      "raw_text": "| 관리번호 | 확인 항목 | 요청 사항 |\n|---|---|---|\n| 001234 | 운영실적 집계 | 담당 부서 확인 |\n| 005678 | 설비 운영계획 | 변경 사유 기재 |\n| 009012 | 인력 운영계획 | 제출 예정일 확인 |",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "회신 방법",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 회신 방법",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "확인 결과는 자료 보완 양식에 작성해 보내주시기 바랍니다. 변경 사항이 없는 항목에는 ‘변경 없음’으로 기재합니다.",
+        "runs": [
+          {
+            "text": "확인 결과는 자료 보완 양식에 작성해 보내주시기 바랍니다. 변경 사항이 없는 항목에는 ‘변경 없음’으로 기재합니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "확인 결과는 자료 보완 양식에 작성해 보내주시기 바랍니다. 변경 사항이 없는 항목에는 ‘변경 없음’으로 기재합니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "TABLE",
+      "content": {
+        "rows": [
+          {
+            "cells": [
+              {
+                "content": "구분",
+                "runs": [
+                  {
+                    "text": "구분",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "내용",
+                "runs": [
+                  {
+                    "text": "내용",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": true
+          },
+          {
+            "cells": [
+              {
+                "content": "회신 기한",
+                "runs": [
+                  {
+                    "text": "회신 기한",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2026년 9월 25일",
+                "runs": [
+                  {
+                    "text": "2026년 9월 25일",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "회신처",
+                "runs": [
+                  {
+                    "text": "회신처",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "업무지원팀 담당자<br>office@example.com",
+                "runs": [
+                  {
+                    "text": "업무지원팀 담당자\noffice@example.com",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "파일명",
+                "runs": [
+                  {
+                    "text": "파일명",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "회사명_자료보완_작성일",
+                "runs": [
+                  {
+                    "text": "회사명_자료보완_작성일",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          }
+        ],
+        "table_type": "GENERIC",
+        "col_count": 2,
+        "alignments": [
+          "left",
+          "left"
+        ],
+        "column_types": [],
+        "caption": "",
+        "unit": "",
+        "source": "",
+        "as_of": "",
+        "landscape": false,
+        "warnings": [],
+        "spans": null,
+        "label_columns": null,
+        "note": "",
+        "header_rows": 1,
+        "schedule": null
+      },
+      "raw_text": "| 구분 | 내용 |\n|---|---|\n| 회신 기한 | 2026년 9월 25일 |\n| 회신처 | 업무지원팀 담당자<br>office@example.com |\n| 파일명 | 회사명_자료보완_작성일 |",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "※ 이 예제의 기관명·관리번호·연락처는 테스트용 가상 정보입니다.",
+        "runs": [
+          {
+            "text": "※ 이 예제의 기관명·관리번호·연락처는 테스트용 가상 정보입니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "※ 이 예제의 기관명·관리번호·연락처는 테스트용 가상 정보입니다.",
+      "inferred_subtitle": false
+    }
+  ],
+  "footnotes": {},
+  "warnings": [],
+  "parsed_profile": "office-letter",
+  "source_dir": ".",
+  "asset_roots": [
+    "."
+  ],
+  "limits": {
+    "max_input_bytes": 16777216,
+    "max_table_cells": 50000,
+    "max_list_depth": 32,
+    "max_image_bytes": 20971520,
+    "max_image_pixels": 50000000
+  }
+}

@@ -19,11 +19,15 @@ Production-quality follow-up: `docs/improvement-plan-20260915.md` and `docs/veri
 Next-step research roadmap (owner decisions D1–D5 and candidate work E1–E17; not active requirements until approved): `docs/improvement-roadmap-20260929.md`.
 Input-loss, save-safety and performance hardening: `docs/verification-20260929.md`.
 Term-sheet profile and term variables: design `docs/term-sheet-design-20260929.md`, plan `docs/term-sheet-plan-20260929.md` (§2 decisions override the design), verification `docs/verification-term-sheet-20260929.md`.
+Asset path restriction, input limits, Word schema gate, snapshot and property tests (roadmap E1–E3): verification `docs/verification-20261110.md`.
 
 ## Quick reference
 
 ```sh
 uv sync --extra dev
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy .
 uv run md-to-word input.md output.docx --strict
 uv run md-to-word input.md output.docx --profile plain
 uv run md-to-word samples/profiles/office-letter.md letter.docx --strict
@@ -51,7 +55,8 @@ Existing `md_to_word.py` and `ib-report` remain entry points. On Windows, use a 
 | `ib_renderer.py` | One composition path for all callers; reusable element renderers |
 | `office_layout.py` | Letter/report/minutes metadata and native Korean numbering |
 | `term_sheet.py` | House texts and term-sheet composition; must not import `ib_renderer` |
-| `ooxml_order.py` | Schema-ordered insertion for hand-built tblPr/tcPr/pPr/rPr children |
+| `ooxml_order.py` | Schema-ordered insertion for hand-built tblPr/tcPr/pPr/rPr and settings children |
+| `input_safety.py` | Allowed asset folders, input limits, the six rejection codes and the rejection exception types |
 | `term_variables.py` | Term variables, content-control tags and snapshots |
 | `numeric_checks.py` | `checks:` relations and table `schedule` arithmetic; reads displayed amounts, reports only |
 | `docx_audit.py` | Structural diagnostics, not reverse conversion or visual QA |
@@ -79,7 +84,30 @@ Existing `md_to_word.py` and `ib-report` remain entry points. On Windows, use a 
 - Inline HTML breaks must reach Word paragraphs, emphasis, headings, lists and cells without changing code/escaped literals or link URLs.
 - Word's nonprinting pagination squares are not list bullets. Do not globally add or remove keep-lines/keep-next; retain necessary heading controls. Audit warnings and visual-review status are distinct from structural issues.
 - Word QA requires a new/empty output directory. Record source/output hashes, actual/expected pages and Word version; `visualReview: pending` is not a visual pass. Inspect every page and record review against the manifest hash.
-- Built distributions explicitly include engine code only; never package private reports, QA artifacts or user files.
+- Built distributions explicitly include engine code only; never package private reports, QA artifacts or user files. A new engine module must be added to the wheel `only-include` list, the sdist `include` list and ruff's `known-first-party` in `pyproject.toml`.
+
+## Input safety
+
+Document content (body, frontmatter, and the house or theme files it names) is untrusted. Operator CLI/API arguments are trusted.
+
+- Images and logos load only from allowed folders: the source file's folder, plus folders the operator adds with `--asset-root` or `asset_roots`. Text, stream and hand-built-model input has no default folder. Nothing in a document can add a folder.
+- Resolve the final location (relative parts, symlinks, junctions) and decide inside/outside **before** checking that the file exists, so the result for an outside path never depends on whether it exists.
+- A house logo is restricted when the document names the house file and trusted when the operator does (`--house`, API). Hyperlinks, embedded Base64 images and `data:` URIs are not path-restricted.
+- Five limits stop the conversion in both modes and leave no output: input bytes, cells per table, list depth, image bytes, image pixels (`InputLimits`, `--max-*`). Judge size before reading or decoding. Nothing in a document can raise a limit, and there is no unlimited value.
+- There are exactly six rejection codes (`asset_outside_root` and five `limit_*`). A coded issue starts with `[code] ` and keeps that prefix inside joined messages. Do not add codes to existing warnings or change their wording.
+- Strict rejections raise `StrictValidationError` and limit failures raise `InputLimitError`; both are `ValueError` subclasses and must stay reachable through `__cause__` when wrapped. The renderer's per-element resilience must not turn either into a placeholder.
+- A validator that rejects the document's own settings (frontmatter values, table specifications, house or theme content named by the document, terms, checks) runs inside `input_safety.document_validation`, which re-raises the same message as `StrictValidationError`. An error in an operator argument keeps its plain `ValueError`. Do not wrap with a blanket `except Exception`.
+- Strings that reach the document from decoded YAML go through `validate_xml_strings`; the Markdown body is checked on the raw text. Strict rendering checks the whole model. Non-strict rendering checks metadata only and keeps per-element resilience for the body; do not widen that check, or documents that convert today get rejected. A `ValueError` that escapes composition is reported as the character rejection only after operator arguments are validated and only when the model really holds such a character; never decide by the error's message.
+- Metadata is not type-checked ahead of use: numbers, dates and lists of text render today and must keep rendering. Composers that consume metadata as text run inside `_metadata_text` in `ib_renderer.py`, which reports the `TypeError` or `AttributeError` of a wrong type as a rejection. Wrap a new metadata-consuming composer the same way.
+- Load YAML written in or named by a document with `input_safety.load_yaml`, not `yaml.safe_load`: the safe loader raises `AttributeError`, `KeyError` or `IndexError` for some malformed scalars, and it loads alias structures that refer to themselves or expand without bound, which stall whatever walks or prints them. `load_yaml` refuses those (`YAML structure refers to itself`, `YAML aliases expand to too much content`) on the parsed nodes, before construction, because a merge key copies its mapping while values are built; keep the check ahead of `construct_document`, and keep it opening each collection once however often it is aliased. One mapping may hold at most 100 merge keys and at most 100 integer keys of 18 or more characters (merged keys included), and one integer at most 20 colons. Safety hardening of this loader was closed by the owner on 2026-11-13; handle a new finding as its own change, with a reproduction. The allowance must stay out of reach for YAML without aliases; do not replace it with a fixed cap on values.
+- The plugin runner and the portable converter stay strict and take no option that adds folders or raises limits. The runner applies the input-size limit before hashing the draft.
+- `docx-audit` decides which parts are XML from `[Content_Types].xml` with python-docx's own lookup rules (never from file names), and checks those and every relationship part with the hardened parser before python-docx opens the package.
+
+## Verification gates
+
+- Hand-built XML children go through `ooxml_order.insert_ordered`. The CI job `word-schema` renders every sample and fails on any OOXML-Validator error that `scripts/word_schema_exceptions.json` does not cover; see `scripts/word_schema_validation.md`. The script runs the validator only from an archive whose hash it has just verified. An exception needs a reproduction from a document saved by Word itself, and the reproduction document stays out of the repository.
+- `tests/test_sample_snapshots.py` pins the parsed model and every XML part of every sample. A missing snapshot fails. Update only for an intended output change, with `uv run pytest tests/test_sample_snapshots.py --snapshot-update`, and review the diff; a snapshot change in a sample also needs the Word page check below.
+- `tests/test_markdown_properties.py` holds four Hypothesis properties (visible text, cell count, literal code and escapes, strict save-or-reject). Do not shrink the generated input or loosen a comparison to pass. Its one strict `xfail` records the intended tree-value emphasis inside code blocks; a new known gap that needs an owner decision is recorded the same way, and fixing one means removing its mark. `tests/test_config_properties.py` applies the save-or-reject property to generated house and theme file content and to YAML aliases, and runs alias cases under a time limit so a conversion that never ends fails instead of hanging the run.
 
 ## Converter registry
 
@@ -104,6 +132,14 @@ Only `MarkdownInputConverter` and `DocxOutputConverter` are built in.
 
 Regression coverage is in `tests/test_md_parser.py` (soft wrap merge, hard-break policy, opt-in legacy mode, spacing normalization).
 
+### Markdown reading rules (2026-11)
+
+- Bullet markers are `-`, `*` and `+`. `#` to `######` are headings; levels 5 and 6 are emitted as level 4, the deepest styled level.
+- A closed code fence is literal, including blank lines and spaces at its end. Do not add spacer text to a blank code line: the paragraph mark sets the line height.
+- A backslash escapes any ASCII punctuation character (`TextParser._ESCAPE_RE`). Inside code spans, link destinations and text between dollar signs only the earlier set applies (`_LEGACY_ESCAPE_RE`), so LaTeX commands such as `\%` and `\,` survive in every context. Keep both rules together when adding a path that resolves escapes.
+- The table row splitter resolves only an escaped pipe; the cell's inline parse resolves every other escape once.
+- Edge cases are pinned in `tests/test_markdown_proposals.py`.
+
 ## Dependencies
 
 - **pyyaml** - YAML frontmatter parsing
@@ -120,10 +156,14 @@ Regression coverage is in `tests/test_md_parser.py` (soft wrap merge, hard-break
 - Python floor raised to 3.12 by owner decision D1 on 2026-09-29
 
 ### Type Hints
+Use built-in generics and `X | None`; import abstract types from `collections.abc`. `ruff check` enforces this (pyupgrade rules).
 ```python
-from typing import List, Dict, Optional, Tuple, Union
+from collections.abc import Mapping
 
-def parse(lines: List[str]) -> Tuple[DocumentMetadata, List[str]]:
+def parse(lines: list[str]) -> tuple[DocumentMetadata, list[str]]:
+    ...
+
+def find(options: Mapping[str, str], key: str) -> str | None:
     ...
 
 def render(self, model: DocumentModel) -> Document:
@@ -159,7 +199,7 @@ class IBStyle:
 class TableCell:
     """A cell in a table"""
     content: str
-    runs: List[TextRun] = field(default_factory=list)
+    runs: list[TextRun] = field(default_factory=list)
     is_numeric: bool = False
 ```
 
@@ -183,7 +223,7 @@ class TextParser:
     _ESCAPE_RE = re.compile(r'\\([~.*"\'()\[\]{}|_-])')
 
     @classmethod
-    def parse_runs(cls, text: str) -> List[TextRun]:
+    def parse_runs(cls, text: str) -> list[TextRun]:
         parts = cls._BOLD_SPLIT_RE.split(text)
         ...
 ```
@@ -278,8 +318,8 @@ import sys
 import time
 import logging
 from pathlib import Path
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Tuple, Union
 from enum import Enum, auto
 
 # 2. Third-party
@@ -351,6 +391,8 @@ SENTENCE_END_RE = re.compile(
 2. **Regex without compile** - Compile patterns as class attributes
 3. **Missing type hints** - All public functions should have type hints
 4. **Print vs logging** - Use logging module for all output
+5. **`zip()` without `strict=`** - Pass `strict=True` only where the surrounding code guarantees equal lengths; otherwise write `strict=False` explicitly
+6. **Unformatted code** - Run `uv run ruff format .`; CI rejects unformatted files
 
 ---
 
@@ -377,7 +419,7 @@ Claude settings are in `.claude/settings.local.json` for allowed permissions.
 
 ### Images
 - **Base64 embedded images**: Automatically decoded and inserted
-- **File path images**: Local files inserted if found; percent-encoded paths (`a%20b.png`) are tried decoded
+- **File path images**: Local files inside the allowed folders are inserted if found; percent-encoded paths (`a%20b.png`) are tried decoded
 - **Inline images**: In text and table cells, fitted to the cell width
 - **Fallback**: Placeholder text if image cannot be loaded (strict mode rejects it)
 

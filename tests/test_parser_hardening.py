@@ -2,7 +2,6 @@
 
 import base64
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 import pytest
 from docx import Document
@@ -16,23 +15,35 @@ from md_parser import MarkdownParser
 
 
 def _render(
-    markdown: str, profile: str = "plain", strict: bool = True,
-    cover: Optional[bool] = None,
-) -> Tuple[DocumentModel, DocxDocument]:
+    markdown: str,
+    profile: str = "plain",
+    strict: bool = True,
+    cover: bool | None = None,
+    asset_roots: tuple[Path, ...] = (),
+) -> tuple[DocumentModel, DocxDocument]:
     """Parse and render with matching profiles and explicit strictness."""
     model = MarkdownParser(profile=profile).parse(markdown)
-    doc = IBDocumentRenderer(options=RenderOptions(
-        profile=profile, strict=strict, include_cover=cover,
-        include_toc=False, include_disclaimer=False,
-    )).render(model)
+    doc = IBDocumentRenderer(
+        options=RenderOptions(
+            profile=profile,
+            strict=strict,
+            include_cover=cover,
+            include_toc=False,
+            include_disclaimer=False,
+            asset_roots=asset_roots,
+        )
+    ).render(model)
     return model, doc
 
 
-def _texts(doc: DocxDocument) -> List[str]:
+def _texts(doc: DocxDocument) -> list[str]:
     """Include hyperlink text and text inside tables in source order."""
     return [
-        "".join("\n" if node.tag == qn("w:br") else (node.text or "")
-                for node in p.iter() if node.tag in {qn("w:t"), qn("w:br")})
+        "".join(
+            "\n" if node.tag == qn("w:br") else (node.text or "")
+            for node in p.iter()
+            if node.tag in {qn("w:t"), qn("w:br")}
+        )
         for p in doc.element.body.iter(qn("w:p"))
     ]
 
@@ -87,15 +98,21 @@ def test_p1e_dash_only_body_row_is_preserved(tmp_path: Path) -> None:
     doc.save(str(target))
     reopened = Document(str(target))
     assert [[c.text for c in r.cells] for r in reopened.tables[0].rows] == [
-        ["A", "B"], ["x", "1"], ["-", "-"], ["z", "3"],
+        ["A", "B"],
+        ["x", "1"],
+        ["-", "-"],
+        ["z", "3"],
     ]
 
 
-@pytest.mark.parametrize("source,expected", [
-    # Inline code is shown without its backticks; its content stays literal.
-    ("Use `[^7]` as an example.", "Use [^7] as an example."),
-    (r"Use \[^7] as an example.", "Use [^7] as an example."),
-])
+@pytest.mark.parametrize(
+    "source,expected",
+    [
+        # Inline code is shown without its backticks; its content stays literal.
+        ("Use `[^7]` as an example.", "Use [^7] as an example."),
+        (r"Use \[^7] as an example.", "Use [^7] as an example."),
+    ],
+)
 def test_p2a_literal_footnote_has_no_warning(source: str, expected: str) -> None:
     model, doc = _render(source)
     assert not model.warnings
@@ -103,13 +120,15 @@ def test_p2a_literal_footnote_has_no_warning(source: str, expected: str) -> None
     assert not doc.element.body.xpath(".//w:footnoteReference")
 
 
-@pytest.mark.parametrize("source,expected", [
-    ("Prose\n```python\nx = 1\n```\n\nAfter.", "x = 1"),
-    ("~~~python\nx = 1\n~~~\n\nAfter.", "x = 1"),
-    ("````python\nx = 1\n```\n~~~~\n````info\n`````\n\nAfter.",
-     "x = 1\n```\n~~~~\n````info"),
-    ("~~~~\n[^7]: literal\n~~~\n```\n~~~~~\n\nAfter.", "[^7]: literal\n~~~\n```"),
-])
+@pytest.mark.parametrize(
+    "source,expected",
+    [
+        ("Prose\n```python\nx = 1\n```\n\nAfter.", "x = 1"),
+        ("~~~python\nx = 1\n~~~\n\nAfter.", "x = 1"),
+        ("````python\nx = 1\n```\n~~~~\n````info\n`````\n\nAfter.", "x = 1\n```\n~~~~\n````info"),
+        ("~~~~\n[^7]: literal\n~~~\n```\n~~~~~\n\nAfter.", "[^7]: literal\n~~~\n```"),
+    ],
+)
 def test_p2b_shared_fence_boundaries(source: str, expected: str) -> None:
     model, doc = _render(source)
     blocks = [e.content for e in model.elements if isinstance(e.content, CodeBlock)]
@@ -139,11 +158,13 @@ def test_p2d_list_continuation_keeps_numbering(continuation: str) -> None:
 @pytest.mark.parametrize("angled", [False, True])
 def test_p2e_image_destination_excludes_title(tmp_path: Path, angled: bool) -> None:
     image = tmp_path / ("chart with spaces.png" if angled else "chart.png")
-    image.write_bytes(base64.b64decode(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWZkAAAAASUVORK5CYII="
-    ))
+    image.write_bytes(
+        base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWZkAAAAASUVORK5CYII="
+        )
+    )
     destination = f"<{image.as_posix()}>" if angled else image.as_posix()
-    _, doc = _render(f'![Chart]({destination} "Revenue")')
+    _, doc = _render(f'![Chart]({destination} "Revenue")', asset_roots=(tmp_path,))
     target = tmp_path / "image.docx"
     doc.save(str(target))
     assert len(Document(str(target)).inline_shapes) == 1
@@ -162,7 +183,10 @@ def test_p2f_comments_are_hidden_outside_code() -> None:
         "`<!-- literal -->`\n\n```\n<!-- code -->\n```\n\nEnd."
     )
     assert [text for text in _texts(doc) if text] == [
-        "Before after.", "<!-- literal -->", "<!-- code -->", "End.",
+        "Before after.",
+        "<!-- literal -->",
+        "<!-- code -->",
+        "End.",
     ]
     assert not model.warnings
 
@@ -180,7 +204,9 @@ def test_p2f_reference_links_resolve_and_definitions_disappear(tmp_path: Path) -
     links = reopened.element.body.xpath(".//w:hyperlink")
     assert len(links) == 3
     assert [reopened.part.rels[link.get(qn("r:id"))].target_ref for link in links] == [
-        "https://x.test", "https://docs.test", "https://docs.test",
+        "https://x.test",
+        "https://docs.test",
+        "https://docs.test",
     ]
 
 
@@ -210,15 +236,23 @@ def test_p1b_escaped_emphasis_does_not_rewrite_link_destination() -> None:
 @pytest.mark.parametrize("cover", [True, False])
 @pytest.mark.parametrize("toc", [True, False])
 def test_d1_inferred_subtitle_follows_cover_and_toc(
-    tmp_path: Path, profile: str, cover: bool, toc: bool,
+    tmp_path: Path,
+    profile: str,
+    cover: bool,
+    toc: bool,
 ) -> None:
     model = MarkdownParser(profile=profile).parse(
         "# 예시기업 ABCP 구조\n## 투자 검토 요약\n\n본문 문단.\n\n## 본문 범위\n\n검토 사항.\n"
     )
-    renderer = IBDocumentRenderer(options=RenderOptions(
-        profile=profile, strict=True, include_cover=cover,
-        include_toc=toc, include_disclaimer=False,
-    ))
+    renderer = IBDocumentRenderer(
+        options=RenderOptions(
+            profile=profile,
+            strict=True,
+            include_cover=cover,
+            include_toc=toc,
+            include_disclaimer=False,
+        )
+    )
     target = tmp_path / "subtitle.docx"
     renderer.render(model).save(str(target))
     doc = Document(str(target))
@@ -229,19 +263,28 @@ def test_d1_inferred_subtitle_follows_cover_and_toc(
     )
     assert len(matches) == (1 if subtitle_in_block or not toc else 2)
     assert model.metadata.subtitle == "투자 검토 요약"
-    assert sum(
-        isinstance(e.content, Heading) and e.content.text == "투자 검토 요약"
-        for e in model.elements
-    ) == 1
+    assert (
+        sum(
+            isinstance(e.content, Heading) and e.content.text == "투자 검토 요약"
+            for e in model.elements
+        )
+        == 1
+    )
     assert _texts(doc).count("본문 범위") == (2 if toc else 1)
     assert not any("**" in text for text in _texts(doc))
     # Rendering must not mutate the source model; memo keeps its existing body H2.
-    other = IBDocumentRenderer(options=RenderOptions(
-        profile=profile, strict=True, include_cover=not cover,
-        include_toc=False, include_disclaimer=False,
-    )).render(model)
-    assert sum(p.text == "투자 검토 요약" and p.style.name == "Heading 2"
-               for p in other.paragraphs) == int(cover and profile == "ib-memo")
+    other = IBDocumentRenderer(
+        options=RenderOptions(
+            profile=profile,
+            strict=True,
+            include_cover=not cover,
+            include_toc=False,
+            include_disclaimer=False,
+        )
+    ).render(model)
+    assert sum(
+        p.text == "투자 검토 요약" and p.style.name == "Heading 2" for p in other.paragraphs
+    ) == int(cover and profile == "ib-memo")
 
 
 @pytest.mark.parametrize("profile", ["ib-report", "ib-memo"])
@@ -249,23 +292,31 @@ def test_d1_inferred_subtitle_follows_cover_and_toc(
 def test_d1_explicit_yaml_subtitle_keeps_h2_in_body(profile: str, cover: bool) -> None:
     model, doc = _render(
         '---\nsubtitle: "명시적 부제"\n---\n# 보고서\n## 투자 검토 요약\n\n본문.\n',
-        profile, cover=cover,
+        profile,
+        cover=cover,
     )
     assert model.metadata.subtitle == "명시적 부제"
     assert [p.text for p in doc.paragraphs if p.style.name == "Heading 2"] == ["투자 검토 요약"]
     assert _texts(doc).count("명시적 부제") == int(cover or profile == "ib-report")
 
 
-@pytest.mark.parametrize("profile", ["plain", "office-letter", "business-report", "meeting-minutes"])
+@pytest.mark.parametrize(
+    "profile", ["plain", "office-letter", "business-report", "meeting-minutes"]
+)
 @pytest.mark.parametrize("cover", [True, False])
 def test_d1_general_profiles_do_not_infer_subtitle(profile: str, cover: bool) -> None:
     model = MarkdownParser(profile=profile).parse("# 보고서\n## 투자 검토 요약\n\n본문.\n")
     if profile == "office-letter":
         model.metadata.extra.update(recipients=["수신인"], sender={"organization": "발신기관"})
-    doc = IBDocumentRenderer(options=RenderOptions(
-        profile=profile, strict=True, include_cover=cover,
-        include_toc=False, include_disclaimer=False,
-    )).render(model)
+    doc = IBDocumentRenderer(
+        options=RenderOptions(
+            profile=profile,
+            strict=True,
+            include_cover=cover,
+            include_toc=False,
+            include_disclaimer=False,
+        )
+    ).render(model)
     assert model.metadata.subtitle == ""
     assert [p.text for p in doc.paragraphs if p.style.name == "Heading 2"] == ["투자 검토 요약"]
     assert _texts(doc).count("투자 검토 요약") == 1
@@ -277,10 +328,15 @@ def test_d1_hand_built_model_does_not_hide_matching_heading(cover: bool) -> None
         metadata=DocumentMetadata(title="Report", subtitle="Scope"),
         elements=[Element(ElementType.HEADING_2, Heading(level=2, text="Scope"))],
     )
-    doc = IBDocumentRenderer(options=RenderOptions(
-        profile="ib-report", strict=True, include_cover=cover,
-        include_toc=False, include_disclaimer=False,
-    )).render(model)
+    doc = IBDocumentRenderer(
+        options=RenderOptions(
+            profile="ib-report",
+            strict=True,
+            include_cover=cover,
+            include_toc=False,
+            include_disclaimer=False,
+        )
+    ).render(model)
     assert [p.text for p in doc.paragraphs if p.style.name == "Heading 2"] == ["Scope"]
 
 
@@ -288,12 +344,17 @@ def test_d1_hand_built_model_does_not_hide_matching_heading(cover: bool) -> None
 @pytest.mark.parametrize("cover", [True, False])
 @pytest.mark.parametrize("strict", [True, False])
 def test_d2_consecutive_header_metadata_has_separate_cover_cells(
-    tmp_path: Path, labels: Tuple[str, str], cover: bool, strict: bool,
+    tmp_path: Path,
+    labels: tuple[str, str],
+    cover: bool,
+    strict: bool,
 ) -> None:
     date_label, analyst_label = labels
     model, doc = _render(
         f"# Title\n\n**{date_label}:** 2026-09-01\n**{analyst_label}:** Kim\n\nBody.\n",
-        "ib-report", strict=strict, cover=cover,
+        "ib-report",
+        strict=strict,
+        cover=cover,
     )
     target = tmp_path / "metadata.docx"
     doc.save(str(target))
@@ -317,7 +378,9 @@ def test_d2_consecutive_header_metadata_has_separate_cover_cells(
 @pytest.mark.parametrize("labels", [("Date", "Analyst", "Risk"), ("작성일", "작성자", "위험")])
 @pytest.mark.parametrize("cover", [True, False])
 def test_d2_unknown_labels_survive_among_consecutive_metadata(
-    labels: Tuple[str, str, str], unknown_index: int, cover: bool,
+    labels: tuple[str, str, str],
+    unknown_index: int,
+    cover: bool,
 ) -> None:
     date_label, analyst_label, risk_label = labels
     lines = [f"**{date_label}:** 2026-09-01", f"**{analyst_label}:** Kim"]
@@ -337,7 +400,8 @@ def test_d2_metadata_stops_at_ordinary_body_text(cover: bool) -> None:
     model, doc = _render(
         "# Title\n\n**Date:** 2026-09-01\n**Analyst:** Kim\n"
         "Body starts here\nand continues.\n\n**Date:** body example\n",
-        "ib-report", cover=cover,
+        "ib-report",
+        cover=cover,
     )
     assert "Body starts here and continues." in _texts(doc)
     assert "Date: body example" in _texts(doc)
@@ -345,7 +409,9 @@ def test_d2_metadata_stops_at_ordinary_body_text(cover: bool) -> None:
     assert model.metadata.analyst == "Kim"
 
 
-@pytest.mark.parametrize("profile", ["plain", "office-letter", "business-report", "meeting-minutes"])
+@pytest.mark.parametrize(
+    "profile", ["plain", "office-letter", "business-report", "meeting-minutes"]
+)
 def test_d2_general_profiles_keep_consecutive_labels_in_body(profile: str) -> None:
     model = MarkdownParser(profile=profile).parse(
         "# Title\n\n**Date:** 2026-09-01\n**Analyst:** Kim\n\nBody.\n"
@@ -361,7 +427,8 @@ def test_d2_general_profiles_keep_consecutive_labels_in_body(profile: str) -> No
 def test_d2_yaml_metadata_does_not_consume_body_labels() -> None:
     model, doc = _render(
         '---\ntitle: Title\ndate: "2026-09-02"\nanalyst: Lee\n---\n'
-        "**Date:** 2026-09-01\n**Analyst:** Kim\n\nBody.\n", "ib-report",
+        "**Date:** 2026-09-01\n**Analyst:** Kim\n\nBody.\n",
+        "ib-report",
     )
     assert "Date: 2026-09-01 Analyst: Kim" in _texts(doc)
     assert model.metadata.extra["date"] == "2026-09-02"
@@ -372,7 +439,9 @@ def test_d2_yaml_metadata_does_not_consume_body_labels() -> None:
 def test_d2_unknown_label_keeps_soft_wrapped_body_paragraph(cover: bool) -> None:
     model, doc = _render(
         "# Title\n\n**Date:** 2026-09-01\n**Analyst:** Kim\n"
-        "**Risk:** Total loss\nis possible.\n\nBody.\n", "ib-report", cover=cover,
+        "**Risk:** Total loss\nis possible.\n\nBody.\n",
+        "ib-report",
+        cover=cover,
     )
     assert "Risk: Total loss is possible." in _texts(doc)
     assert model.metadata.extra["date"] == "2026-09-01"

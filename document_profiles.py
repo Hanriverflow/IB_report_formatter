@@ -11,16 +11,17 @@ Changelog (term-sheet foundation):
 
 import math
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields, replace
 from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any
 
-import yaml
 from docx.shared import Inches, Pt, RGBColor
 
 from document_model import DocumentMetadata, DocumentModel, ElementType, Table, TableType
+from input_safety import InputLimits, document_validation, load_yaml, validate_xml_strings
 from numeric_checks import Quantity, ScheduleSpec, check_schedule, money_unit, read_quantity
 from render_styles import IBStyle
 from term_variables import term_cell_text
@@ -97,31 +98,47 @@ def validate_term_sheet_metadata(metadata: DocumentMetadata, check_length: bool 
 
 @dataclass(frozen=True)
 class RenderOptions:
-    """Explicit caller overrides; None inherits frontmatter/profile defaults."""
+    """Explicit caller overrides; None inherits frontmatter/profile defaults.
 
-    include_cover: Optional[bool] = None
-    include_toc: Optional[bool] = None
-    include_disclaimer: Optional[bool] = None
-    separator_mode: Optional[str] = None
-    profile: Optional[str] = None
-    theme: Optional[str] = None
-    strict: Optional[bool] = None
-    confidential: Optional[bool] = None
-    charts: Optional[bool] = None
-    preset: Optional[str] = None
-    house: Optional[str] = None
-    term_tags: Optional[bool] = None
+    Asset roots are additive caller settings and never inherit document values.
+    Limits inherit the parsed model unless the caller explicitly overrides them.
+    """
+
+    include_cover: bool | None = None
+    include_toc: bool | None = None
+    include_disclaimer: bool | None = None
+    separator_mode: str | None = None
+    profile: str | None = None
+    theme: str | None = None
+    strict: bool | None = None
+    confidential: bool | None = None
+    charts: bool | None = None
+    preset: str | None = None
+    house: str | None = None
+    term_tags: bool | None = None
+    # Additive operator-only folders; never inherited from YAML or presets.
+    asset_roots: tuple[str | Path, ...] = ()
+    # None inherits the parsed model's policy, never frontmatter or house/theme data.
+    limits: InputLimits | None = None
 
 
-PRESETS: Mapping[str, RenderOptions] = MappingProxyType({
-    "ib-report": RenderOptions(),
-    "termsheet": RenderOptions(include_cover=False, include_toc=False, include_disclaimer=False),
-    "legal-memo": RenderOptions(include_cover=False, include_toc=True, include_disclaimer=False),
-    "lecture-note": RenderOptions(include_cover=True, include_toc=True, include_disclaimer=False),
-})
+PRESETS: Mapping[str, RenderOptions] = MappingProxyType(
+    {
+        "ib-report": RenderOptions(),
+        "termsheet": RenderOptions(
+            include_cover=False, include_toc=False, include_disclaimer=False
+        ),
+        "legal-memo": RenderOptions(
+            include_cover=False, include_toc=True, include_disclaimer=False
+        ),
+        "lecture-note": RenderOptions(
+            include_cover=True, include_toc=True, include_disclaimer=False
+        ),
+    }
+)
 
 
-def get_preset(name: Optional[str]) -> RenderOptions:
+def get_preset(name: str | None) -> RenderOptions:
     """Resolve an immutable section bundle, with None supplying no overrides.
 
     Args:
@@ -147,28 +164,40 @@ class ResolvedOptions:
     disclaimer: bool
     confidential: bool
     separator_mode: str
-    theme: Optional[str]
+    theme: str | None
     strict: bool
     charts: bool
-    house: Optional[str] = None
+    house: str | None = None
     term_tags: bool = True
 
 
 def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> ResolvedOptions:
     """Resolve CLI/API > frontmatter > profile, validating known settings."""
-    profile = get_profile(options.profile or metadata.profile)
-    layout = metadata.extra.get("layout", {})
-    if not isinstance(layout, dict):
-        raise ValueError("layout must be a YAML mapping")
-    allowed = {"cover", "toc", "disclaimer", "confidential", "separator_mode", "strict", "term_tags"}
+    with document_validation(not options.profile):
+        profile = get_profile(options.profile or metadata.profile)
+    with document_validation():
+        layout = metadata.extra.get("layout", {})
+        if not isinstance(layout, dict):
+            raise ValueError("layout must be a YAML mapping")
+    allowed = {
+        "cover",
+        "toc",
+        "disclaimer",
+        "confidential",
+        "separator_mode",
+        "strict",
+        "term_tags",
+    }
     unknown = set(layout) - allowed
-    if unknown:
-        raise ValueError("Unknown layout settings: {}".format(", ".join(sorted(unknown))))
+    with document_validation(errors=(ValueError, TypeError)):
+        if unknown:
+            raise ValueError("Unknown layout settings: {}".format(", ".join(sorted(unknown))))
 
     caller_preset = get_preset(options.preset)
-    yaml_preset = get_preset(metadata.extra.get("preset"))
+    with document_validation():
+        yaml_preset = get_preset(metadata.extra.get("preset"))
 
-    def flag(key: str, override: Optional[bool], default: bool) -> bool:
+    def flag(key: str, override: bool | None, default: bool) -> bool:
         attribute = "include_" + key
         caller_value = getattr(caller_preset, attribute, None)
         yaml_value = getattr(yaml_preset, attribute, None)
@@ -178,25 +207,33 @@ def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> Resol
             value = caller_value
         if override is not None:
             value = override
-        if not isinstance(value, bool):
-            raise ValueError(f"layout.{key} must be true or false")
+        with document_validation(override is None):
+            if not isinstance(value, bool):
+                raise ValueError(f"layout.{key} must be true or false")
         return value
 
     separator = options.separator_mode or layout.get("separator_mode", "auto")
-    if separator not in {"auto", "rule", "page-break"}:
-        raise ValueError("separator_mode must be auto, rule or page-break")
+    with document_validation(not options.separator_mode, errors=(ValueError, TypeError)):
+        if separator not in {"auto", "rule", "page-break"}:
+            raise ValueError("separator_mode must be auto, rule or page-break")
     theme = options.theme if options.theme is not None else metadata.extra.get("theme")
-    if theme is not None and not isinstance(theme, str):
-        raise ValueError("theme must be a name or YAML file path")
+    with document_validation(options.theme is None):
+        if theme is not None and not isinstance(theme, str):
+            raise ValueError("theme must be a name or YAML file path")
     charts = options.charts if options.charts is not None else metadata.extra.get("charts", False)
-    if not isinstance(charts, bool):
-        raise ValueError("charts must be true or false")
+    with document_validation(options.charts is None):
+        if not isinstance(charts, bool):
+            raise ValueError("charts must be true or false")
     house = options.house if options.house is not None else metadata.extra.get("house")
-    if house is not None and (not isinstance(house, str) or not house.strip()):
-        raise ValueError("house must be a YAML file path")
-    term_tags = options.term_tags if options.term_tags is not None else layout.get("term_tags", True)
-    if not isinstance(term_tags, bool):
-        raise ValueError("layout.term_tags must be true or false")
+    with document_validation(options.house is None):
+        if house is not None and (not isinstance(house, str) or not house.strip()):
+            raise ValueError("house must be a YAML file path")
+    term_tags = (
+        options.term_tags if options.term_tags is not None else layout.get("term_tags", True)
+    )
+    with document_validation(options.term_tags is None):
+        if not isinstance(term_tags, bool):
+            raise ValueError("layout.term_tags must be true or false")
     return ResolvedOptions(
         profile=profile,
         cover=flag("cover", options.include_cover, profile.cover),
@@ -212,7 +249,7 @@ def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> Resol
     )
 
 
-def load_style(profile: DocumentProfile, theme: Optional[str] = None) -> IBStyle:
+def load_style(profile: DocumentProfile, theme: str | None = None) -> IBStyle:
     """Build an isolated style from a profile and a validated presentation theme.
 
     Args:
@@ -293,7 +330,8 @@ def load_style(profile: DocumentProfile, theme: Optional[str] = None) -> IBStyle
     if not theme or theme in {"default", "mono"}:
         return style
     path = Path(theme)
-    data = yaml.safe_load(path.read_text(encoding="utf-8-sig"))
+    data = load_yaml(path.read_text(encoding="utf-8-sig"))
+    validate_xml_strings(data)
     if not isinstance(data, dict):
         raise ValueError("Theme must be a YAML mapping")
     aliases = {
@@ -304,13 +342,18 @@ def load_style(profile: DocumentProfile, theme: Optional[str] = None) -> IBStyle
         "primary_color",
         "margin_mm",
     }
-    attributes = {field.name for field in fields(IBStyle)
-                  if not field.name.startswith("STYLE_") and field.name != "NATIVE_NUMBERING"}
+    attributes = {
+        field.name
+        for field in fields(IBStyle)
+        if not field.name.startswith("STYLE_") and field.name != "NATIVE_NUMBERING"
+    }
     if set(data) - (aliases | attributes):
         raise ValueError(
-            "Unknown theme settings: {}".format(", ".join(sorted(map(str, set(data) - (aliases | attributes)))))
+            "Unknown theme settings: {}".format(
+                ", ".join(sorted(map(str, set(data) - (aliases | attributes))))
+            )
         )
-    values: Dict[str, Any] = {}
+    values: dict[str, Any] = {}
     for key, attribute in [
         ("body_font", "BODY_FONT"),
         ("heading_font", "HEADING_FONT"),
@@ -351,8 +394,11 @@ def load_style(profile: DocumentProfile, theme: Optional[str] = None) -> IBStyle
         raise ValueError("Conflicting theme aliases: " + ", ".join(sorted(conflicts)))
     values.update(explicit)
     # Keep RGB/OOXML representations aligned unless both are explicitly supplied.
-    for rgb, hex_key in (("NAVY", "NAVY_HEX"), ("LIGHT_GRAY", "LIGHT_GRAY_HEX"),
-                         ("ACCENT_BLUE", "ACCENT_BLUE_HEX")):
+    for rgb, hex_key in (
+        ("NAVY", "NAVY_HEX"),
+        ("LIGHT_GRAY", "LIGHT_GRAY_HEX"),
+        ("ACCENT_BLUE", "ACCENT_BLUE_HEX"),
+    ):
         if rgb in values and hex_key not in values:
             values[hex_key] = str(values[rgb])
         elif hex_key in values and rgb not in values:
@@ -415,7 +461,7 @@ class _ThemeSchema:
         return value
 
 
-def string_list(extra: Dict[str, Any], key: str) -> List[str]:
+def string_list(extra: dict[str, Any], key: str) -> list[str]:
     """Read a scalar or string list without stringifying mappings silently."""
     value = extra.get(key, [])
     if isinstance(value, str):
@@ -449,7 +495,7 @@ def validate_office_metadata(metadata: DocumentMetadata) -> None:
             raise ValueError("letter.appendix_label requires appendix_heading")
 
 
-def header_labels(rows: Sequence[Sequence[str]]) -> List[str]:
+def header_labels(rows: Sequence[Sequence[str]]) -> list[str]:
     """Each column's header text across all header rows, following span markers.
 
     A `<<` cell takes the label of its owner to the left and a `^^` cell the one
@@ -463,9 +509,9 @@ def header_labels(rows: Sequence[Sequence[str]]) -> List[str]:
         One label per column of the widest row.
     """
     width = max((len(row) for row in rows), default=0)
-    labels: List[str] = []
+    labels: list[str] = []
     for column in range(width):
-        parts: List[str] = []
+        parts: list[str] = []
         for row_index in range(len(rows)):
             row, position = row_index, column
             text = ""
@@ -528,7 +574,9 @@ def apply_table_specs(model: DocumentModel) -> None:
         if "header_rows" in spec:
             count = spec["header_rows"]
             if type(count) is not int or not 1 <= count < len(table.rows):
-                raise ValueError("Table header_rows must be an integer from 1 to the row count minus 1")
+                raise ValueError(
+                    "Table header_rows must be an integer from 1 to the row count minus 1"
+                )
             table.header_rows = count
             for row_index, row in enumerate(table.rows):
                 row.is_header = row_index < count
@@ -543,7 +591,9 @@ def apply_table_specs(model: DocumentModel) -> None:
         if "label_columns" in spec:
             count = spec["label_columns"]
             if type(count) is not int or not 0 <= count < table.col_count:
-                raise ValueError("Table label_columns must be an integer from 0 to column count minus 1")
+                raise ValueError(
+                    "Table label_columns must be an integer from 0 to column count minus 1"
+                )
             table.label_columns = count
         if "type" in spec:
             if spec["type"] not in kinds:
@@ -569,17 +619,21 @@ def apply_table_specs(model: DocumentModel) -> None:
                 cell.is_base_case = False
                 cell.risk_level = None
         if table.table_type == TableType.RISK_MATRIX:
-            column_labels = header_labels([
+            column_labels = header_labels(
                 [
-                    cell.content if (shown := term_cell_text(cell)) is None else shown
-                    for cell in header_row.cells
+                    [
+                        cell.content if (shown := term_cell_text(cell)) is None else shown
+                        for cell in header_row.cells
+                    ]
+                    for header_row in table.rows[: table.header_rows]
                 ]
-                for header_row in table.rows[:table.header_rows]
-            ])
-            for body_row in table.rows[table.header_rows:]:
+            )
+            for body_row in table.rows[table.header_rows :]:
                 for column_index, cell in enumerate(body_row.cells):
                     header = (
-                        column_labels[column_index].lower() if column_index < len(column_labels) else ""
+                        column_labels[column_index].lower()
+                        if column_index < len(column_labels)
+                        else ""
                     )
                     if any(
                         key in header
@@ -610,10 +664,18 @@ def apply_table_specs(model: DocumentModel) -> None:
             table.rows[table.header_rows - 1 + row].cells[column - 1].is_base_case = True
 
 
-_SCHEDULE_KEYS = {"repayment", "balance", "months", "principal", "total", "average_life", "tolerance"}
+_SCHEDULE_KEYS = {
+    "repayment",
+    "balance",
+    "months",
+    "principal",
+    "total",
+    "average_life",
+    "tolerance",
+}
 
 
-def _schedule_spec(raw: Any, col_count: int) -> Dict[str, Any]:
+def _schedule_spec(raw: Any, col_count: int) -> dict[str, Any]:
     """Validate a table's `schedule` spec; figures are resolved after term substitution.
 
     Args:
@@ -634,7 +696,7 @@ def _schedule_spec(raw: Any, col_count: int) -> Dict[str, Any]:
             "Table schedule needs one-based `repayment` and `balance` columns and may have "
             "`months`, `principal`, `total`, `average_life` and `tolerance`"
         )
-    columns: Dict[str, Optional[int]] = {}
+    columns: dict[str, int | None] = {}
     for key in ("repayment", "balance", "months"):
         value = raw.get(key)
         if value is None and key == "months":
@@ -651,7 +713,9 @@ def _schedule_spec(raw: Any, col_count: int) -> Dict[str, Any]:
         raise ValueError("Table schedule total must be true (a last totals row) or false")
     for key in ("principal", "average_life", "tolerance"):
         value = raw.get(key)
-        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float, str))):
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, (int, float, str))
+        ):
             raise ValueError(f"Table schedule {key} must be a number or text")
     if "average_life" in raw and columns["months"] is None:
         raise ValueError("Table schedule average_life needs the months column")
@@ -675,7 +739,7 @@ def _stated(value: Any, terms: Mapping[str, Any]) -> Quantity:
     return read_quantity(text)
 
 
-def _table_amount(quantity: Quantity, table: Table, what: str) -> Tuple[Decimal, Decimal]:
+def _table_amount(quantity: Quantity, table: Table, what: str) -> tuple[Decimal, Decimal]:
     """An amount and its display step in table units; money is converted with the table `unit`."""
     if quantity.dimension == "plain":
         return quantity.value, quantity.step
@@ -692,7 +756,9 @@ def _resolved_schedule(table: Table, terms: Mapping[str, Any]) -> ScheduleSpec:
     raw = table.schedule or {}
     principal = principal_step = None
     if raw.get("principal") is not None:
-        principal, principal_step = _table_amount(_stated(raw["principal"], terms), table, "principal")
+        principal, principal_step = _table_amount(
+            _stated(raw["principal"], terms), table, "principal"
+        )
     average_life = None
     if raw.get("average_life") is not None:
         stated_life = _stated(raw["average_life"], terms)
@@ -705,9 +771,14 @@ def _resolved_schedule(table: Table, terms: Mapping[str, Any]) -> ScheduleSpec:
     if raw.get("tolerance") is not None:
         tolerance = abs(_table_amount(_stated(raw["tolerance"], terms), table, "tolerance")[0])
     return ScheduleSpec(
-        repayment=raw["repayment"], balance=raw["balance"], months=raw.get("months"),
-        principal=principal, principal_step=principal_step, total=raw["total"],
-        average_life=average_life, tolerance=tolerance,
+        repayment=raw["repayment"],
+        balance=raw["balance"],
+        months=raw.get("months"),
+        principal=principal,
+        principal_step=principal_step,
+        total=raw["total"],
+        average_life=average_life,
+        tolerance=tolerance,
     )
 
 
@@ -736,7 +807,7 @@ def check_schedules(model: DocumentModel) -> None:
             continue
         rows = [
             ["".join(run.text for run in cell.runs) for cell in row.cells]
-            for row in table.rows[table.header_rows:]
+            for row in table.rows[table.header_rows :]
         ]
         model.warnings.extend(
             f"Table {index} schedule: {problem}" for problem in check_schedule(rows, spec)

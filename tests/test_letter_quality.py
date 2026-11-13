@@ -47,7 +47,15 @@ def test_breaks_do_not_add_an_extra_space_or_duplicate_source_newline():
     assert doc.paragraphs[0].text == "앞\n뒤\n\n끝"
 
 
-@pytest.mark.parametrize("source, expected", [(r"앞\<br>뒤", "앞<br>뒤"), ("`<br>`", "<br>"), ("`**<br>**`", "**<br>**"), ("`$5<br>$`", "$5<br>$")])
+@pytest.mark.parametrize(
+    "source, expected",
+    [
+        (r"앞\<br>뒤", "앞<br>뒤"),
+        ("`<br>`", "<br>"),
+        ("`**<br>**`", "**<br>**"),
+        ("`$5<br>$`", "$5<br>$"),
+    ],
+)
 def test_literal_break_syntax_stays_literal(source, expected):
     doc = render(source)
     assert doc.paragraphs[0].text == expected
@@ -123,9 +131,19 @@ def test_invalid_appendix_boundary_is_rejected(replacement):
         render(LETTER.replace("# 상세 내역", replacement), "office-letter")
 
 
-@pytest.mark.parametrize("metadata", ["letter: wrong", "letter: {unknown: true}", "letter: {appendix_label: 붙임}", "letter: {appendix_heading: 123}"])
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        "letter: wrong",
+        "letter: {unknown: true}",
+        "letter: {appendix_label: 붙임}",
+        "letter: {appendix_heading: 123}",
+    ],
+)
 def test_letter_options_fail_closed(metadata):
-    source = LETTER.replace("letter:\n  appendix_heading: 상세 내역\n  appendix_label: 붙임 1", metadata)
+    source = LETTER.replace(
+        "letter:\n  appendix_heading: 상세 내역\n  appendix_label: 붙임 1", metadata
+    )
     with pytest.raises(ValueError, match="letter"):
         render(source, "office-letter")
 
@@ -177,9 +195,11 @@ def test_office_letter_with_explicit_cover_has_closing_styles():
 
 
 def test_existing_closing_marker_is_not_duplicated_without_attachments():
-    source = LETTER.split("# 상세 내역")[0].replace(
-        "attachments: [상세 내역 1부, 확인서 1부]\n", ""
-    ).replace("letter:\n  appendix_heading: 상세 내역\n  appendix_label: 붙임 1\n", "")
+    source = (
+        LETTER.split("# 상세 내역")[0]
+        .replace("attachments: [상세 내역 1부, 확인서 1부]\n", "")
+        .replace("letter:\n  appendix_heading: 상세 내역\n  appendix_label: 붙임 1\n", "")
+    )
     doc = render(source + "\n본문을 마칩니다.  끝.", "office-letter")
     assert sum(p.text.count("끝.") for p in doc.paragraphs) == 1
 
@@ -195,7 +215,9 @@ def test_office_letter_cli_api_registry_share_appendix_composition(tmp_path, mon
     with pytest.raises(SystemExit) as result:
         main()
     assert result.value.code == 0
-    IBReportConverter(str(source), str(paths[1]), render_options=RenderOptions(strict=True)).convert()
+    IBReportConverter(
+        str(source), str(paths[1]), render_options=RenderOptions(strict=True)
+    ).convert()
     registry = get_default_registry()
     model = registry.convert(str(source))
     registry.convert(model, output_format="docx", output_path=str(paths[2]), strict=True)
@@ -232,6 +254,8 @@ def test_wrapped_letter_metadata_aligns_below_value_not_label():
 
 
 def test_appendix_requires_preceding_letter_body():
-    source = LETTER.replace("1. 입력 내용을 확인해 주시기 바랍니다.\n2. 처리 결과를 담당자에게 알려주시기 바랍니다.", "")
+    source = LETTER.replace(
+        "1. 입력 내용을 확인해 주시기 바랍니다.\n2. 처리 결과를 담당자에게 알려주시기 바랍니다.", ""
+    )
     with pytest.raises(ValueError, match="appendix_heading must follow"):
         render(source, "office-letter")

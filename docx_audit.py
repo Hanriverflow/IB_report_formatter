@@ -1,5 +1,9 @@
 """Inspect generated DOCX structure without an inverse Word-to-Markdown parser.
 
+Changelog (XML safety):
+    - Disable entity resolution, DTD loading and network access for raw XML parts.
+    - Report unreadable or DTD-bearing parts without consuming their values.
+
 Changelog (output encoding):
     - Write the JSON report as UTF-8 regardless of the console code page.
 
@@ -17,11 +21,14 @@ import argparse
 import codecs
 import json
 import logging
+import posixpath
 import re
 import sys
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, cast
+from typing import Any, cast
+from zipfile import BadZipFile, ZipFile
 
 from docx import Document
 from docx.document import Document as DocxDocument
@@ -48,8 +55,8 @@ class DocumentAudit:
     headings: int = 0
     images: int = 0
     numbered_paragraphs: int = 0
-    issues: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
+    issues: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     pagination_marked_paragraphs: int = 0
     visual_review: str = "not_performed"
 
@@ -70,11 +77,11 @@ class TermAudit:
             values; None when the document stores no checks.
     """
 
-    mismatched: Dict[str, List[str]] = field(default_factory=dict)
-    changed: Dict[str, Dict[str, str]] = field(default_factory=dict)
-    missing: List[str] = field(default_factory=list)
-    indicative: List[str] = field(default_factory=list)
-    failed_checks: Optional[List[str]] = None
+    mismatched: dict[str, list[str]] = field(default_factory=dict)
+    changed: dict[str, dict[str, str]] = field(default_factory=dict)
+    missing: list[str] = field(default_factory=list)
+    indicative: list[str] = field(default_factory=list)
+    failed_checks: list[str] | None = None
 
 
 # Visible run content of a control's value other than text (`w:t`) and symbols
@@ -82,11 +89,18 @@ class TermAudit:
 # text, so they read as U+FFFC. An optional hyphen is invisible unless a line
 # breaks there: `w:softHyphen` reads as nothing and U+00AD is dropped from both
 # current and generated values, because Word may convert one into the other.
-_VISIBLE_RUN_CONTENT: Dict[str, str] = {
-    qn("w:tab"): "\t", qn("w:ptab"): "\t", qn("w:br"): "\n", qn("w:cr"): "\n",
-    qn("w:noBreakHyphen"): "\u2011", qn("w:softHyphen"): "",
-    qn("w:drawing"): "\ufffc", qn("w:pict"): "\ufffc", qn("w:object"): "\ufffc",
-    qn("w:footnoteReference"): "\ufffc", qn("w:endnoteReference"): "\ufffc",
+_VISIBLE_RUN_CONTENT: dict[str, str] = {
+    qn("w:tab"): "\t",
+    qn("w:ptab"): "\t",
+    qn("w:br"): "\n",
+    qn("w:cr"): "\n",
+    qn("w:noBreakHyphen"): "\u2011",
+    qn("w:softHyphen"): "",
+    qn("w:drawing"): "\ufffc",
+    qn("w:pict"): "\ufffc",
+    qn("w:object"): "\ufffc",
+    qn("w:footnoteReference"): "\ufffc",
+    qn("w:endnoteReference"): "\ufffc",
 }
 _TEXT_TAG = qn("w:t")
 _SYMBOL_TAG = qn("w:sym")
@@ -110,20 +124,24 @@ class _StyleLookup:
 
     def __init__(self, doc: DocxDocument) -> None:
         self.styles = {style.style_id: style for style in doc.styles}
-        self.default = next((
-            style for style in self.styles.values()
-            if style.type == WD_STYLE_TYPE.PARAGRAPH
-            and style.element.get(qn("w:default")) in {"1", "true", "on"}
-        ), None)
-        self.defaults: Dict[str, bool] = {}
+        self.default = next(
+            (
+                style
+                for style in self.styles.values()
+                if style.type == WD_STYLE_TYPE.PARAGRAPH
+                and style.element.get(qn("w:default")) in {"1", "true", "on"}
+            ),
+            None,
+        )
+        self.defaults: dict[str, bool] = {}
         for _, tag in _PAGINATION_FLAGS:
             nodes = doc.styles.element.xpath("./w:docDefaults/w:pPrDefault/w:pPr/w:" + tag)
             self.defaults[tag] = bool(
                 nodes and nodes[0].get(qn("w:val"), "1") not in {"0", "false", "off"}
             )
-        self.flags: Dict[Tuple[Optional[str], str], bool] = {}
+        self.flags: dict[tuple[str | None, str], bool] = {}
 
-    def paragraph_style(self, paragraph: Paragraph) -> Optional[ParagraphStyle]:
+    def paragraph_style(self, paragraph: Paragraph) -> ParagraphStyle | None:
         """Resolve a paragraph style, including the default for unknown IDs."""
         style = self.styles.get(paragraph._p.style)
         if style is None or style.type != WD_STYLE_TYPE.PARAGRAPH:
@@ -146,11 +164,16 @@ class _StyleLookup:
 
 
 def _effective_pagination_flag(
-    paragraph: Paragraph, attribute: str, xml_tag: str, styles: _StyleLookup,
+    paragraph: Paragraph,
+    attribute: str,
+    xml_tag: str,
+    styles: _StyleLookup,
 ) -> bool:
     """Resolve local > paragraph style ancestry > document default controls."""
     value = getattr(paragraph.paragraph_format, attribute)
-    return bool(value) if value is not None else styles.inherited_flag(paragraph, attribute, xml_tag)
+    return (
+        bool(value) if value is not None else styles.inherited_flag(paragraph, attribute, xml_tag)
+    )
 
 
 def inspect_document(doc: DocxDocument) -> DocumentAudit:
@@ -168,7 +191,9 @@ def inspect_document(doc: DocxDocument) -> DocumentAudit:
     result = DocumentAudit(
         paragraphs=len(doc.paragraphs),
         tables=len(doc.tables),
-        headings=sum(style is not None and style.name.startswith("Heading ") for style in paragraph_styles),
+        headings=sum(
+            style is not None and style.name.startswith("Heading ") for style in paragraph_styles
+        ),
         images=len(doc.inline_shapes),
         numbered_paragraphs=len(doc.element.xpath(".//w:pPr/w:numPr")),
         issues=inspect_document_issues(doc),
@@ -190,14 +215,16 @@ def inspect_document(doc: DocxDocument) -> DocumentAudit:
     # examples. Real rendering failures are recorded by the renderer itself.
     for text in doc.element.xpath(".//w:t/text()"):
         if "[Render Error:" in text or text.startswith(("[Image:", "[Diagram:")):
-            result.warnings.append("Possible rendering placeholder (may be literal user text): " + text)
+            result.warnings.append(
+                "Possible rendering placeholder (may be literal user text): " + text
+            )
     terms = inspect_terms(doc)
     if terms is not None:
         result.warnings.extend(_term_warnings(terms))
     return result
 
 
-def inspect_terms(doc: DocxDocument) -> Optional[TermAudit]:
+def inspect_terms(doc: DocxDocument) -> TermAudit | None:
     """Compare tagged term values with each other and with the generation snapshot.
 
     Only the tagged values are compared; numbers typed outside a control and
@@ -241,9 +268,9 @@ def inspect_terms(doc: DocxDocument) -> Optional[TermAudit]:
     return result
 
 
-def _current_term_values(doc: DocxDocument) -> Dict[str, List[str]]:
+def _current_term_values(doc: DocxDocument) -> dict[str, list[str]]:
     """Read each remaining term control's current text in document order."""
-    values: Dict[str, List[str]] = {}
+    values: dict[str, list[str]] = {}
     for control in doc.element.body.iter(qn("w:sdt")):
         tag = control.find(_TERM_TAG_PATH)
         name = tag.get(qn("w:val"), "") if tag is not None else ""
@@ -254,7 +281,7 @@ def _current_term_values(doc: DocxDocument) -> Dict[str, List[str]]:
         # Word refills a cleared control with placeholder text and flags it.
         if content is not None and not _shows_placeholder(control):
             text = _current_text(content, control)
-        values.setdefault(name[len(TERM_TAG_PREFIX):], []).append(text)
+        values.setdefault(name[len(TERM_TAG_PREFIX) :], []).append(text)
     return values
 
 
@@ -266,7 +293,7 @@ def _shows_placeholder(control: Any) -> bool:
 
 def _current_text(content: Any, control: Any) -> str:
     """Join visible run content, including insertions but not deletions or moves away."""
-    parts: List[str] = []
+    parts: list[str] = []
     for node in content.iter(*_RUN_CONTENT_TAGS):
         if _is_removed(node, stop=control):
             continue
@@ -302,27 +329,55 @@ def _is_removed(node: Any, stop: Any = None) -> bool:
     return False
 
 
-def _custom_property(doc: DocxDocument, name: str) -> Optional[str]:
+def _parse_xml_part(blob: bytes) -> Any | None:
+    """Read an untrusted XML part without resolving entities or loading a DTD.
+
+    Args:
+        blob: Raw XML bytes from the document package.
+
+    Returns:
+        The root element, or None for malformed XML or a DTD-bearing part.
+        Callers report rejected parts without exposing parser error contents.
+    """
+    parser = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True)
+    try:
+        root = etree.fromstring(blob, parser=parser)
+    except etree.XMLSyntaxError:
+        return None
+    # Even with entity resolution disabled, internal entities in attributes
+    # can be substituted. Do not consume any values from a DTD-bearing tree.
+    if root.getroottree().docinfo.doctype:
+        return None
+    return root
+
+
+def _custom_property(doc: DocxDocument, name: str) -> str | None:
     """Text of one custom document property, or None when it is absent."""
     try:
         part = doc.part.package.part_related_by(RT.CUSTOM_PROPERTIES)
     except KeyError:
         return None
-    for prop in etree.fromstring(part.blob):
+    root = _parse_xml_part(part.blob)
+    if root is None:
+        return None
+    for prop in root:
         if isinstance(prop.tag, str) and prop.get("name") == name:
             value = next((child for child in prop if isinstance(child.tag, str)), None)
             return (value.text or "") if value is not None else ""
     return None
 
 
-def _generated_term_values(doc: DocxDocument) -> Dict[str, str]:
+def _generated_term_values(doc: DocxDocument) -> dict[str, str]:
     """Read the `ibrep.term.` snapshot written when the document was generated."""
     try:
         part = doc.part.package.part_related_by(RT.CUSTOM_PROPERTIES)
     except KeyError:
         return {}
-    values: Dict[str, str] = {}
-    for prop in etree.fromstring(part.blob):
+    root = _parse_xml_part(part.blob)
+    if root is None:
+        return {}
+    values: dict[str, str] = {}
+    for prop in root:
         if not isinstance(prop.tag, str):
             continue  # comments and processing instructions
         name = prop.get("name") or ""
@@ -332,11 +387,11 @@ def _generated_term_values(doc: DocxDocument) -> Dict[str, str]:
         # property's own whitespace is only XML indentation.
         value = next((child for child in prop if isinstance(child.tag, str)), None)
         text = (value.text or "") if value is not None else ""
-        values[name[len(TERM_PROPERTY_PREFIX):]] = _visible(text)
+        values[name[len(TERM_PROPERTY_PREFIX) :]] = _visible(text)
     return values
 
 
-def _term_warnings(terms: TermAudit) -> List[str]:
+def _term_warnings(terms: TermAudit) -> list[str]:
     """Human-readable warnings for inconsistent and missing term values."""
     warnings = [
         f"Term {key!r} has inconsistent values in the document: "
@@ -351,7 +406,7 @@ def _term_warnings(terms: TermAudit) -> List[str]:
     return warnings
 
 
-def audit_to_dict(result: DocumentAudit, terms: Optional[TermAudit] = None) -> Dict[str, Any]:
+def audit_to_dict(result: DocumentAudit, terms: TermAudit | None = None) -> dict[str, Any]:
     """Serialize an audit report; documents without terms keep the previous schema.
 
     Args:
@@ -369,7 +424,7 @@ def audit_to_dict(result: DocumentAudit, terms: Optional[TermAudit] = None) -> D
     return data
 
 
-def inspect_document_issues(doc: DocxDocument) -> List[str]:
+def inspect_document_issues(doc: DocxDocument) -> list[str]:
     """Validate structure without computing descriptive audit observations.
 
     Args:
@@ -378,7 +433,7 @@ def inspect_document_issues(doc: DocxDocument) -> List[str]:
     Returns:
         Structural errors suitable for strict render validation.
     """
-    issues: List[str] = []
+    issues: list[str] = []
     for index, section in enumerate(doc.sections, 1):
         width, left, right = section.page_width, section.left_margin, section.right_margin
         if width is not None and left is not None and right is not None and width <= left + right:
@@ -387,11 +442,14 @@ def inspect_document_issues(doc: DocxDocument) -> List[str]:
     if references:
         try:
             part = doc.part.part_related_by(RT.FOOTNOTES)
-            notes = etree.fromstring(part.blob)
-            ids = {node.get(qn("w:id")) for node in notes}
-            for reference in references:
-                if reference.get(qn("w:id")) not in ids:
-                    issues.append("Footnote reference has no definition")
+            notes = _parse_xml_part(part.blob)
+            if notes is None:
+                issues.append("Footnote definitions part cannot be read safely")
+            else:
+                ids = {node.get(qn("w:id")) for node in notes}
+                for reference in references:
+                    if reference.get(qn("w:id")) not in ids:
+                        issues.append("Footnote reference has no definition")
         except KeyError:
             issues.append("Footnote definitions part is missing")
     for hyperlink in doc.element.xpath(".//w:hyperlink"):
@@ -402,28 +460,35 @@ def inspect_document_issues(doc: DocxDocument) -> List[str]:
     return issues
 
 
-def _numbering_issues(doc: DocxDocument) -> List[str]:
+def _numbering_issues(doc: DocxDocument) -> list[str]:
     """Validate numbering definitions and numPr references across XML parts."""
-    issues: List[str] = []
+    issues: list[str] = []
     definitions = {}
     try:
         numbering = cast(NumberingPart, doc.part.part_related_by(RT.NUMBERING)).element
     except KeyError:
         numbering = None
     if numbering is not None:
-        abstracts = {node.get(qn("w:abstractNumId")) for node in numbering.findall(qn("w:abstractNum"))}
+        abstracts = {
+            node.get(qn("w:abstractNumId")) for node in numbering.findall(qn("w:abstractNum"))
+        }
         definitions = {node.get(qn("w:numId")): node for node in numbering.findall(qn("w:num"))}
         for num_id, node in definitions.items():
             abstract = node.find(qn("w:abstractNumId"))
             abstract_id = abstract.get(qn("w:val")) if abstract is not None else None
             if abstract_id is None or abstract_id not in abstracts:
-                issues.append(f"Numbering numId {num_id} has no abstract definition ({abstract_id})")
+                issues.append(
+                    f"Numbering numId {num_id} has no abstract definition ({abstract_id})"
+                )
     for part in doc.part.package.parts:
         root = getattr(part, "element", None)
         if root is None:
             if not part.content_type.endswith("+xml"):
                 continue
-            root = etree.fromstring(part.blob)
+            root = _parse_xml_part(part.blob)
+            if root is None:
+                issues.append(f"XML part cannot be read safely: {part.partname}")
+                continue
         for properties in root.iter(qn("w:numPr")):
             for reference in properties.findall(qn("w:numId")):
                 num_id = reference.get(qn("w:val"))
@@ -443,7 +508,73 @@ def _numbering_issues(doc: DocxDocument) -> List[str]:
 
 def audit_file(path: str) -> DocumentAudit:
     """Open an output file and inspect its structure."""
-    return inspect_document(Document(path))
+    return _audit_package(path)[0]
+
+
+def _read_package_xml(archive: ZipFile, name: str) -> Any | None:
+    """Read a package XML member without exposing unreadable or unsafe contents."""
+    try:
+        return _parse_xml_part(archive.read(name))
+    except (KeyError, OSError, BadZipFile, RuntimeError, NotImplementedError) as error:
+        logger.debug("Cannot read XML part %s: %s", name, error)
+        return None
+
+
+def _audit_package(path: str) -> tuple[DocumentAudit, TermAudit | None]:
+    """Check every XML part before allowing python-docx to consume the package.
+
+    Args:
+        path: Untrusted DOCX package to inspect.
+
+    Returns:
+        A rejection naming unsafe parts, or the ordinary document and term audit.
+    """
+    with open(path, "rb") as stream:
+        with ZipFile(stream) as archive:
+            types_name = "[Content_Types].xml"
+            types = _read_package_xml(archive, types_name)
+            namespace = "{http://schemas.openxmlformats.org/package/2006/content-types}"
+            if types is None or types.tag != namespace + "Types":
+                return DocumentAudit(
+                    issues=[f"XML part cannot be read safely: /{types_name}"]
+                ), None
+            defaults: dict[str, str] = {}
+            overrides: dict[str, str] = {}
+            for node in types:
+                if node.tag not in {namespace + "Default", namespace + "Override"}:
+                    continue
+                key = "Extension" if node.tag == namespace + "Default" else "PartName"
+                name, content_type = node.get(key), node.get("ContentType")
+                if name is None or content_type is None:
+                    return DocumentAudit(
+                        issues=[f"XML part cannot be read safely: /{types_name}"]
+                    ), None
+                mapping = defaults if key == "Extension" else overrides
+                mapping[name.lower()] = content_type.lower()
+            # Match python-docx's case-insensitive content-type lookup, including
+            # override precedence. PartFactory's registered XML classes all use
+            # XML content types; generic binary Parts retain their bytes unchanged.
+            issues = []
+            for part in archive.infolist():
+                if part.filename == types_name:
+                    continue
+                name = part.filename.lower()
+                # The extension as python-docx's PackURI.ext derives it: empty for a
+                # name without one and for a dotfile, which a Default may also declare.
+                extension = posixpath.splitext(name)[1].removeprefix(".")
+                content_type = overrides.get("/" + name, defaults.get(extension, ""))
+                is_xml = (
+                    name.endswith(".rels")
+                    or content_type in {"application/xml", "text/xml"}
+                    or content_type.endswith("+xml")
+                )
+                if is_xml and _read_package_xml(archive, part.filename) is None:
+                    issues.append(f"XML part cannot be read safely: /{part.filename}")
+        if issues:
+            return DocumentAudit(issues=issues), None
+        stream.seek(0)
+        document = Document(stream)
+        return inspect_document(document), inspect_terms(document)
 
 
 @contextmanager
@@ -459,7 +590,7 @@ def _utf8_log_stream() -> Iterator[None]:
     reconfigure = getattr(stream, "reconfigure", None)
     encoding = getattr(stream, "encoding", None)
     errors = getattr(stream, "errors", None)
-    restore: Optional[Callable[..., Any]] = None
+    restore: Callable[..., Any] | None = None
     if callable(reconfigure) and codecs.lookup(encoding or "ascii").name != "utf-8":
         try:
             reconfigure(encoding="utf-8")
@@ -484,9 +615,7 @@ def main() -> None:
     with _utf8_log_stream():
         logging.basicConfig(level=logging.INFO, format="%(message)s")
         try:
-            document = Document(args.input_file)
-            result = inspect_document(document)
-            terms = inspect_terms(document)
+            result, terms = _audit_package(args.input_file)
         except Exception as exc:
             logger.error("Cannot inspect DOCX: %s", exc)
             raise SystemExit(1) from exc

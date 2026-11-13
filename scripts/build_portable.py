@@ -22,26 +22,50 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_NAME = "문서변환기"
 PROFILE_FILES = (
-    "business-report.md", "company-theme.yaml", "ib-memo.md", "ib-report.md",
-    "meeting-minutes.md", "office-letter.md", "plain.md", "term-sheet-house.yaml",
+    "business-report.md",
+    "company-theme.yaml",
+    "ib-memo.md",
+    "ib-report.md",
+    "meeting-minutes.md",
+    "office-letter.md",
+    "plain.md",
+    "term-sheet-house.yaml",
     "term-sheet.md",
 )
 INTRO_FILES = ("minimal-term-sheet.md", "minimal-house.yaml")
 RUNTIME_DISTRIBUTIONS = (
-    "python-docx", "PyYAML", "matplotlib", "charset-normalizer", "lxml", "numpy",
-    "pillow", "contourpy", "cycler", "fonttools", "kiwisolver", "packaging",
-    "pyparsing", "python-dateutil", "six", "typing_extensions", "pyinstaller",
+    "python-docx",
+    "PyYAML",
+    "matplotlib",
+    "charset-normalizer",
+    "lxml",
+    "numpy",
+    "pillow",
+    "contourpy",
+    "cycler",
+    "fonttools",
+    "kiwisolver",
+    "packaging",
+    "pyparsing",
+    "python-dateutil",
+    "six",
+    "typing_extensions",
+    "pyinstaller",
 )
 
 
 def package_inputs() -> list[tuple[Path, Path]]:
     """Return the explicit public input-file allowlist and package destinations."""
-    files = [(ROOT / "docs/distribution/시작하기.html", Path("시작하기.html")),
-             (ROOT / "LICENSE", Path("라이선스/LICENSE.txt"))]
-    files.extend((ROOT / "samples/distribution" / name, Path("예제/빠른시작") / name)
-                 for name in INTRO_FILES)
-    files.extend((ROOT / "samples/profiles" / name, Path("예제/전체예제") / name)
-                 for name in PROFILE_FILES)
+    files = [
+        (ROOT / "docs/distribution/시작하기.html", Path("시작하기.html")),
+        (ROOT / "LICENSE", Path("라이선스/LICENSE.txt")),
+    ]
+    files.extend(
+        (ROOT / "samples/distribution" / name, Path("예제/빠른시작") / name) for name in INTRO_FILES
+    )
+    files.extend(
+        (ROOT / "samples/profiles" / name, Path("예제/전체예제") / name) for name in PROFILE_FILES
+    )
     return files
 
 
@@ -55,7 +79,9 @@ def collect_notices(destination: Path) -> dict[str, str]:
         folder.mkdir(parents=True)
         found = []
         for entry in distribution.files or []:
-            if any(part.lower() in {"licenses", "license"} for part in entry.parts) or entry.name.lower().startswith(("license", "copying", "notice")):
+            if any(
+                part.lower() in {"licenses", "license"} for part in entry.parts
+            ) or entry.name.lower().startswith(("license", "copying", "notice")):
                 source = Path(str(distribution.locate_file(entry)))
                 if source.is_file():
                     # Preserve nested license paths and avoid path traversal.
@@ -71,6 +97,7 @@ def collect_notices(destination: Path) -> dict[str, str]:
     python_license = Path(sys.base_prefix) / "LICENSE.txt"
     shutil.copy2(python_license, destination / "Python-LICENSE.txt")
     import tkinter
+
     interpreter = tkinter.Tcl()
     tcl_library = Path(interpreter.eval("info library"))
     patchlevel = interpreter.eval("info patchlevel")
@@ -107,12 +134,21 @@ def collect_runtime_notices(destination: Path, source: Path) -> dict[str, str]:
     """
     root = source.resolve()
     metadata = json.loads((root / "PYTHON.json").read_text(encoding="utf-8"))
-    if metadata["python_version"] != "3.12.12" or platform.python_version() != "3.12.12" or metadata["target_triple"] != "x86_64-pc-windows-msvc":
+    if (
+        metadata["python_version"] != "3.12.12"
+        or platform.python_version() != "3.12.12"
+        or metadata["target_triple"] != "x86_64-pc-windows-msvc"
+    ):
         raise RuntimeError("Runtime notice archive platform/version mismatch")
     base = Path(sys.base_prefix)
     reference = root / "install"
     records = {}
-    candidates = list(base.glob("*.exe")) + list(base.glob("*.dll")) + list((base / "DLLs").glob("*.dll")) + list((base / "DLLs").glob("*.pyd"))
+    candidates = (
+        list(base.glob("*.exe"))
+        + list(base.glob("*.dll"))
+        + list((base / "DLLs").glob("*.dll"))
+        + list((base / "DLLs").glob("*.pyd"))
+    )
     if not (base / "python312.dll").is_file() or not candidates:
         raise RuntimeError("Missing runtime binary inventory")
     for binary in candidates:
@@ -123,23 +159,42 @@ def collect_runtime_notices(destination: Path, source: Path) -> dict[str, str]:
             raise RuntimeError(f"Runtime binary does not match notice archive: {relative}")
         records[relative.as_posix()] = digest
     notices = root / "licenses"
-    required = {"LICENSE.cpython.txt", "LICENSE.expat.txt", "LICENSE.libffi.txt",
-                "LICENSE.liblzma.txt", "LICENSE.openssl-3.txt", "LICENSE.zlib.txt",
-                "LICENSE.bzip2.txt", "LICENSE.mpdecimal.txt"}
-    if any(not (notices / name).is_file() or not (notices / name).stat().st_size for name in required):
+    required = {
+        "LICENSE.cpython.txt",
+        "LICENSE.expat.txt",
+        "LICENSE.libffi.txt",
+        "LICENSE.liblzma.txt",
+        "LICENSE.openssl-3.txt",
+        "LICENSE.zlib.txt",
+        "LICENSE.bzip2.txt",
+        "LICENSE.mpdecimal.txt",
+    }
+    if any(
+        not (notices / name).is_file() or not (notices / name).stat().st_size for name in required
+    ):
         raise RuntimeError("Incomplete full-runtime notices")
     target = destination / "Python-standalone"
     shutil.copytree(notices, target)
     shutil.copy2(root / "PYTHON.json", target / "PYTHON.json")
-    (target / "provenance.json").write_text(json.dumps({
-        "url": RUNTIME_NOTICE_URL, "expected_archive_sha256": RUNTIME_NOTICE_SHA256,
-        "archive_hash_verification": "external prerequisite; directory input",
-        "runtime_binaries": records, "source": "exact full standalone runtime distribution",
-    }, indent=2), encoding="utf-8")
+    (target / "provenance.json").write_text(
+        json.dumps(
+            {
+                "url": RUNTIME_NOTICE_URL,
+                "expected_archive_sha256": RUNTIME_NOTICE_SHA256,
+                "archive_hash_verification": "external prerequisite; directory input",
+                "runtime_binaries": records,
+                "source": "exact full standalone runtime distribution",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return {"Python-build-standalone": "20251031"}
 
 
-def build(output: Path, app_dir: Path | None = None, python_runtime_source_dir: Path | None = None) -> Path:
+def build(
+    output: Path, app_dir: Path | None = None, python_runtime_source_dir: Path | None = None
+) -> Path:
     """Create a fresh staging folder, sample results, manifest and distributable ZIP."""
     if sys.platform != "win32":
         raise RuntimeError("Build the Windows package on Windows.")
@@ -154,16 +209,40 @@ def build(output: Path, app_dir: Path | None = None, python_runtime_source_dir: 
         raise FileExistsError(f"Use a new/empty output path that does not yet exist: {output}")
     output.mkdir(parents=True)
     if app_dir is None:
-        subprocess.run([
-            sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir",
-            "--windowed", "--name", APP_NAME, "--paths", str(ROOT),
-            "--distpath", str(output / "frozen"), "--workpath", str(output / "work"),
-            "--specpath", str(output), "--collect-data", "matplotlib",
-            "--hidden-import", "matplotlib.backends.backend_agg",
-            "--hidden-import", "charset_normalizer",
-            "--exclude-module", "pytest", "--exclude-module", "IPython",
-            str(ROOT / "tools/portable_launcher.py"),
-        ], check=True, cwd=ROOT)
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "PyInstaller",
+                "--noconfirm",
+                "--clean",
+                "--onedir",
+                "--windowed",
+                "--name",
+                APP_NAME,
+                "--paths",
+                str(ROOT),
+                "--distpath",
+                str(output / "frozen"),
+                "--workpath",
+                str(output / "work"),
+                "--specpath",
+                str(output),
+                "--collect-data",
+                "matplotlib",
+                "--hidden-import",
+                "matplotlib.backends.backend_agg",
+                "--hidden-import",
+                "charset_normalizer",
+                "--exclude-module",
+                "pytest",
+                "--exclude-module",
+                "IPython",
+                str(ROOT / "tools/portable_launcher.py"),
+            ],
+            check=True,
+            cwd=ROOT,
+        )
         app_dir = output / "frozen" / APP_NAME
     if not (app_dir / f"{APP_NAME}.exe").is_file():
         raise FileNotFoundError(f"Missing frozen executable in {app_dir}")
@@ -182,27 +261,45 @@ def build(output: Path, app_dir: Path | None = None, python_runtime_source_dir: 
     versions.update(collect_runtime_notices(package / "라이선스", python_runtime_source_dir))
     sys.path.insert(0, str(ROOT))
     from tools.portable_launcher import convert_document
+
     sample_records = []
     for source, relative in inputs:
         if source.suffix == ".md":
             packaged_source = package / relative
             saved = convert_document(str(packaged_source), str(packaged_source.parent))
-            sample_records.append({"source": relative.as_posix(), "output": saved.relative_to(package).as_posix(), "strict": True, "visual_review": "pending"})
+            sample_records.append(
+                {
+                    "source": relative.as_posix(),
+                    "output": saved.relative_to(package).as_posix(),
+                    "strict": True,
+                    "visual_review": "pending",
+                }
+            )
     (package / "버전정보.txt").write_text(
         f"IB 문서변환기 {version}\nWindows x64 · Python 설치 불필요\n"
         "ZIP 전체 압축을 해제한 뒤 문서변환기.exe를 실행하세요.\n"
         "시작하기.html에 텀시트 작성법과 예제가 있습니다.\n"
         "예제는 가상 자료입니다. 출력 내용·숫자·페이지 배치는 Word에서 확인하세요.\n"
         f"Build UTC: {datetime.now(UTC).isoformat()}\n\n"
-        + "\n".join(f"{key}: {value}" for key, value in versions.items()) + "\n",
+        + "\n".join(f"{key}: {value}" for key, value in versions.items())
+        + "\n",
         encoding="utf-8",
     )
-    manifest = {"version": version, "platform": platform.platform(), "dependencies": versions,
-                "samples": sample_records, "files": {}}
+    manifest = {
+        "version": version,
+        "platform": platform.platform(),
+        "dependencies": versions,
+        "samples": sample_records,
+        "files": {},
+    }
     for item in sorted(package.rglob("*")):
         if item.is_file():
-            manifest["files"][item.relative_to(package).as_posix()] = hashlib.sha256(item.read_bytes()).hexdigest()
-    (package / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+            manifest["files"][item.relative_to(package).as_posix()] = hashlib.sha256(
+                item.read_bytes()
+            ).hexdigest()
+    (package / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     archive = Path(shutil.make_archive(str(output / label), "zip", output, label))
     logging.info("Created %s", archive)
     return archive

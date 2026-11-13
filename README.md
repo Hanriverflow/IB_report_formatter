@@ -32,6 +32,7 @@ Repository review on **2026-09-27**: the default branch is `main`, the README ca
 
 - **Current usage and implementation:** this README, [Korean usage](README.ko.md), [runnable profiles](samples/profiles), [CLI source](md_to_word.py), [profile definitions](document_profiles.py), and [tests](tests). The built-in direction is Markdown to DOCX; Word-to-Markdown remains retired.
 - **Latest integration and reported verification:** [2026-09-26 consolidation](docs/pr-consolidation-20260926.md), including promoted functionality and deliberately deferred old-PR features. It reports 311 tests passed at product-code commit `cadc0ae515d2f5757d5006e64bec1acaff56ccba`, package/install checks, and nine synthetic documents / 16 pages of Word evidence. These are that record's results, not tests rerun during this documentation review or human/business approval.
+- **2026-11 hardening (unreleased):** asset path restriction, input limits, rejection codes, the Word schema CI gate, and snapshot and property tests are described in [Allowed asset folders, input limits and rejections](#allowed-asset-folders-input-limits-and-rejections) and the Unreleased section of the [changelog](CHANGELOG.md). Their recorded scope, environment and unverified items are in the [2026-11 verification record](docs/verification-20261110.md).
 - **Design and earlier evidence:** [September implementation plan](docs/implementation-plan-20260914.md), [September 14 verification](docs/verification-20260914.md), [letter improvement plan](docs/improvement-plan-20260915.md), and [September 15 verification](docs/verification-20260915.md). Plans explain intended work; dated verification records describe only their recorded scope and environment.
 - **Preserved historical plans:** [stability plan](plan.md), [upgrade plan](plan_upgrade.md), [next steps](next_step.md), and [roadmap](roadmap.md). Their bidirectional features, old test counts, and checkmarks are not the current feature list or a release guarantee.
 - **Preserved upload checklist:** [git_checklist.md](git_checklist.md) is an older repository-upload guide, not evidence that release gates have passed. Use the release checklist below for a future release. Do not reinitialize this repository or blindly stage all local files.
@@ -49,6 +50,7 @@ Run from a clean, isolated checkout of the exact proposed release commit, using 
 uv sync --locked --extra dev
 uv run pytest tests/
 uv run ruff check .
+uv run ruff format --check .
 uv run mypy .
 uv run md-to-word --help
 uv run md-to-word --list-profiles
@@ -389,9 +391,64 @@ Without roles, a column is numeric (right-aligned) when most of its first body v
 
 Sensitivity highlighting is **explicit only**: row 1 is the first data row; columns are one-based and include the label column. The old guessed centre-cell highlight is removed. Risk highlighting recognises supported risk headers and levels such as high/medium/low or 높음/중간/낮음.
 
+## Allowed asset folders, input limits and rejections
+
+**The image/logo path restriction changes earlier behaviour:** a local image that previously loaded can now be rejected if it is outside the allowed folders. For a Markdown file, its own folder and subfolders are allowed by default. Markdown text or a stream without a source file, and a directly constructed document model, have no default allowed folder; the current working directory is not implicitly allowed.
+
+An operator can add folders with repeatable `--asset-root FOLDER` options. The API equivalent is `asset_roots`, accepted by `parse_markdown_file`, `MarkdownParser`, `IBDocumentRenderer.render` and registry conversion calls; `RenderOptions(asset_roots=(... ,))` also supports converter configuration. Parsed models carry their allowed folders through a separate render/registry step. Added folders include subfolders and cannot remove the default folder. Only operator CLI/API arguments can add folders or change limits; document content, frontmatter, house and theme files cannot do so.
+
+```sh
+uv run md-to-word job/draft.md output.docx --strict --asset-root shared-assets
+```
+
+Paths are checked after resolving relative components, symbolic links and junctions to their final location, before checking whether the file exists. An escaping `../`, absolute or UNC path, or a link to an outside file is rejected. Absolute and UNC paths resolving inside an allowed folder are accepted, including the folder of a Markdown file on a network share. Original and percent-decoded path candidates receive the same check.
+
+| Asset or reference | Path restriction |
+|---|---|
+| Body, reference-style, HTML and table-cell images | Applies |
+| Frontmatter `style.logo` | Applies |
+| Logo in a house file selected by document frontmatter | Applies, even if the house file itself is elsewhere |
+| Logo in a house file supplied directly by operator `--house` or API `RenderOptions(house=...)` | Exempt; a frontmatter logo override remains restricted |
+| `data:` / Base64 images | No path restriction; image size limits still apply |
+| Frontmatter `house:` and `theme:` file paths themselves | No path restriction |
+| Local file hyperlinks | No path restriction; their file contents are not embedded |
+
+House logo paths remain relative to the house file; frontmatter logo paths are relative to the Markdown file. Without a source file, relative house/logo paths remain unsupported; absolute document-selected logos need an explicit allowed folder. Remote HTTP(S) images remain unsupported. Outside images are not read: normal mode leaves a body-image placeholder or omits a logo and warns with `asset_outside_root`; strict mode refuses to save.
+
+The following limits stop conversion in **both normal and strict modes**, without creating a DOCX. MiB means 1,048,576 bytes; CLI values are integer counts, not unit-suffixed strings.
+
+| Code | Measurement | Default | CLI option / `InputLimits` field |
+|---|---|---|---|
+| `limit_input_bytes` | Original Markdown bytes | 16 MiB (16,777,216) | `--max-input-bytes` / `max_input_bytes` |
+| `limit_table_cells` | Cells per table, including headers: rows × columns; expanded grid for HTML merges | 50,000 | `--max-table-cells` / `max_table_cells` |
+| `limit_list_depth` | Nested list levels | 32 | `--max-list-depth` / `max_list_depth` |
+| `limit_image_bytes` | Bytes per image or logo; decoded size for Base64 / `data:` | 20 MiB (20,971,520) | `--max-image-bytes` / `max_image_bytes` |
+| `limit_image_pixels` | Width × height per image or logo | 50,000,000 | `--max-image-pixels` / `max_image_pixels` |
+
+Image limits apply to all sources, including logos from operator-supplied house files. Oversized Base64 is rejected from its encoded length before decoding. Options accept positive integers only; there is no unlimited value. Pass an `InputLimits` instance as the API `limits` argument (parser, renderer, registry or `IBReportConverter`), or through `RenderOptions(limits=...)`. For example:
+
+```python
+from input_safety import InputLimits
+from md_parser import parse_markdown_file
+
+model = parse_markdown_file(
+    "job/draft.md",
+    asset_roots=("shared-assets",),
+    limits=InputLimits(max_table_cells=60_000),
+)
+```
+
+The policy applies to `md-to-word`, `ib-report`, file/text/stream APIs, direct model rendering, the registry and batch conversion. Text inputs are measured as UTF-8 bytes. With `--format` or other conversion preprocessing, Markdown size is checked before cleanup and again before parsing the cleaned result. In a batch, an over-limit file fails while the other files continue; the overall exit status reports failure. Standalone `md-format` and `docx-audit` inputs are outside these size limits.
+
+There are exactly six rejection codes: `asset_outside_root` and the five `limit_*` codes above. Each coded warning/issue starts with `[code] `, including inside combined strict-error messages; existing uncoded messages stay uncoded. API rejections derive from `ConversionRejection` (`ValueError`): `StrictValidationError.codes` lists the included codes and `InputLimitError` exposes `code`, `limit` and `measured`. Wrapped failures retain the rejection in `__cause__`. In the plugin runner's `result.json`, each coded issue also has its own diagnostic with that `code` and the full prefixed sentence as `message`; existing `input_validation`, `structural_issue`, exception-type and `invalid_arguments` entries remain, with strict rejections still reported as `ValueError` in the existing entry.
+
+The plugin runner and portable converter always use strict mode and provide **no option to add allowed folders or raise limits**. Copy the needed images, house file and its logo into the job folder holding the draft (subfolders allowed), and reference them with relative paths. Keep real document workspaces outside the repository/plugin. For `asset_outside_root`, copy the needed files and correct the references. For a limit rejection, use the reported limit and measured value to reduce or split the input, table or image while preserving source facts. The portable window explains each code in Korean; the runner writes diagnostics to `result.json` and requires a new output directory for each attempt. Absolute launcher, draft and output-directory command-line paths remain valid.
+
 ## Supported Markdown and limitations
 
 - Headings, paragraphs, emphasis, pipe tables, lists, blockquotes/callouts, local/base64 images, code blocks and existing diagram/LaTeX rendering.
+- Bullet markers are `-`, `*` and `+`. Headings go from `#` to `######`; levels 5 and 6 use the level 4 style. A closed code fence keeps its text exactly, including blank lines at its end.
+- A backslash escapes any ASCII punctuation character (`\#`, `\%`, `\*`, `\<`). Code, link destinations and text between dollar signs (`$5\%$`) keep their backslashes.
 - Emphasis follows CommonMark's flanking rule: `2 * 3 * 4` and a note marker followed by a space (`* 주요 매출처`) stay literal.
 - HTML `<table>` blocks from document converters become Word tables: `colspan`/`rowspan` merge cells, block tags and `<br>` break lines, `<b>`/`<i>`/`<code>`/`<sup>`/`<sub>`, colour spans and `<a href>` format text, `<img>` becomes a cell image and nested tables are flattened into their cell. HTML text stays literal (it is never re-read as Markdown); `{{key}}` references are substituted. Rows that the first row's spans cover stay separate header rows (`header_rows`). Unclosed tables and text outside cells are reported; strict mode rejects them.
 - Images inside text and table cells (`![alt](path)`) are inserted inline and fitted to the cell. Percent-encoded image paths (`a%20b.png`) are found, and a standalone `<img>` line is an image.
@@ -439,9 +496,17 @@ Audit `warnings` distinguish Normal-style pagination constraints from structural
 ```sh
 uv sync --extra dev
 uv run pytest tests/
-uv run mypy document_model.py document_profiles.py render_styles.py office_layout.py docx_audit.py md_parser.py ib_renderer.py md_to_word.py converters.py --follow-imports=silent
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy .
 uv build
 ```
+
+CI runs these on Ubuntu and Windows with Python 3.12 and 3.13. Three further checks guard the output:
+
+- **Word schema gate.** A separate CI job renders every sample in strict mode and checks the documents with a pinned OOXML-Validator build; any error outside `scripts/word_schema_exceptions.json` fails the job. [scripts/word_schema_validation.md](scripts/word_schema_validation.md) explains the local run and the exception rule. Passing it is a structural result, not a visual review.
+- **Snapshots.** `tests/test_sample_snapshots.py` compares the parsed model and every XML part of every sample with stored snapshots; a missing snapshot fails. After an intended output change, run `uv run pytest tests/test_sample_snapshots.py --snapshot-update`, review the diff, and check the changed samples in Word.
+- **Properties.** `tests/test_markdown_properties.py` generates Markdown with fixed examples and checks that visible text and table cells survive, that code and escapes stay literal, and that a strict conversion either saves a document or ends in a documented rejection without leaving a file. Its one strict `xfail` records the intended tree-value emphasis inside code blocks. `tests/test_config_properties.py` applies the same save-or-reject check to generated house and theme file content and to YAML built with aliases, under a time limit.
 
 Batch conversion: `uv run md-to-word samples/profiles --batch`. Optional clipboard cleanup: `--format`; optional DeepResearch cleanup: `--deepresearch-cleaner auto`. Preprocessors can change content, so review the cleaned input.
 

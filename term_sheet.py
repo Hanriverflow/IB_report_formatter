@@ -25,14 +25,15 @@ Changelog (A2 rendering):
       two-row confirmation box and per-section header/footer.
 """
 
-import base64
+import logging
 import math
 import re
 import unicodedata
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any
 
 import yaml
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
@@ -43,8 +44,21 @@ from docx.oxml.table import CT_Tc
 from docx.shared import Emu, Length, Mm, Pt, RGBColor, Twips
 
 from document_model import DocumentMetadata, Heading, Paragraph, TextRun
+from input_safety import (
+    DEFAULT_LIMITS,
+    AssetOutsideRootError,
+    InputLimitError,
+    check_image_source,
+    decode_image,
+    document_validation,
+    load_yaml,
+    local_asset_path,
+    validate_xml_strings,
+)
 from md_parser import TextParser
 from render_styles import STYLE
+
+logger = logging.getLogger(__name__)
 
 RenderRuns = Callable[..., None]
 """Injected `TextRenderer.render_runs(paragraph, runs, default_color=, font_name=, font_size=)`."""
@@ -61,36 +75,89 @@ _CONFIRMATION_GAP = Pt(6)  # air between a preceding note and the confirmation b
 _BOLD_ALLOWANCE = 1.1  # bold header glyphs are wider than the em estimate
 # Successor elements used to insert children in ECMA-376 schema order.
 _TCPR_AFTER_SHD = (
-    "w:noWrap", "w:tcMar", "w:textDirection", "w:tcFitText", "w:vAlign", "w:hideMark",
-    "w:headers", "w:cellIns", "w:cellDel", "w:cellMerge", "w:tcPrChange",
+    "w:noWrap",
+    "w:tcMar",
+    "w:textDirection",
+    "w:tcFitText",
+    "w:vAlign",
+    "w:hideMark",
+    "w:headers",
+    "w:cellIns",
+    "w:cellDel",
+    "w:cellMerge",
+    "w:tcPrChange",
 )
 _TBLPR_AFTER_IND = (
-    "w:tblBorders", "w:shd", "w:tblLayout", "w:tblCellMar", "w:tblLook",
-    "w:tblCaption", "w:tblDescription", "w:tblPrChange",
+    "w:tblBorders",
+    "w:shd",
+    "w:tblLayout",
+    "w:tblCellMar",
+    "w:tblLook",
+    "w:tblCaption",
+    "w:tblDescription",
+    "w:tblPrChange",
 )
 _TBLPR_AFTER_MARGINS = ("w:tblLook", "w:tblCaption", "w:tblDescription", "w:tblPrChange")
 _TRPR_AFTER_CANT_SPLIT = (
-    "w:trHeight", "w:tblHeader", "w:tblCellSpacing", "w:jc", "w:hidden", "w:ins", "w:del",
+    "w:trHeight",
+    "w:tblHeader",
+    "w:tblCellSpacing",
+    "w:jc",
+    "w:hidden",
+    "w:ins",
+    "w:del",
     "w:trPrChange",
 )
 _PPR_AFTER_KINSOKU = (
-    "w:wordWrap", "w:overflowPunct", "w:topLinePunct", "w:autoSpaceDE", "w:autoSpaceDN",
-    "w:bidi", "w:adjustRightInd", "w:snapToGrid", "w:spacing", "w:ind",
-    "w:contextualSpacing", "w:mirrorIndents", "w:suppressOverlap", "w:jc",
-    "w:textDirection", "w:textAlignment", "w:textboxTightWrap", "w:outlineLvl", "w:divId",
-    "w:cnfStyle", "w:rPr", "w:sectPr", "w:pPrChange",
+    "w:wordWrap",
+    "w:overflowPunct",
+    "w:topLinePunct",
+    "w:autoSpaceDE",
+    "w:autoSpaceDN",
+    "w:bidi",
+    "w:adjustRightInd",
+    "w:snapToGrid",
+    "w:spacing",
+    "w:ind",
+    "w:contextualSpacing",
+    "w:mirrorIndents",
+    "w:suppressOverlap",
+    "w:jc",
+    "w:textDirection",
+    "w:textAlignment",
+    "w:textboxTightWrap",
+    "w:outlineLvl",
+    "w:divId",
+    "w:cnfStyle",
+    "w:rPr",
+    "w:sectPr",
+    "w:pPrChange",
 )
 _PPR_AFTER_PBDR = ("w:shd", "w:tabs", "w:suppressAutoHyphens", "w:kinsoku", *_PPR_AFTER_KINSOKU)
 _RPR_AFTER_SZ_CS = (
-    "w:highlight", "w:u", "w:effect", "w:bdr", "w:shd", "w:fitText", "w:vertAlign", "w:rtl",
-    "w:cs", "w:em", "w:lang", "w:eastAsianLayout", "w:specVanish", "w:oMath",
+    "w:highlight",
+    "w:u",
+    "w:effect",
+    "w:bdr",
+    "w:shd",
+    "w:fitText",
+    "w:vertAlign",
+    "w:rtl",
+    "w:cs",
+    "w:em",
+    "w:lang",
+    "w:eastAsianLayout",
+    "w:specVanish",
+    "w:oMath",
 )
 _HEADING_RULE_SIZE = "8"  # 1pt accent rule under Heading 2
 _CHECKBOX = "□"
 _CHECKBOX_LAYOUT_MM = 4.5  # hanging indent of confirmation check items
 _COVER_TITLE_SPACE = Mm(60)  # sets the cover title block about a third down the page
 _COVER_DISCLAIMER_SPACE = Mm(30)
-_HOUSE_KEYS = frozenset({"prepared_by", "disclaimer", "confidential_label", "confirmation", "style"})
+_HOUSE_KEYS = frozenset(
+    {"prepared_by", "disclaimer", "confidential_label", "confirmation", "style"}
+)
 _CONFIRMATION_KEYS = frozenset({"intro", "items", "signature"})
 _STYLE_CHOICES = {
     "cover": ("inline", "page"),
@@ -109,7 +176,7 @@ class ConfirmationText:
     """Validated confirmation wording without mutable item collections."""
 
     intro: str = ""
-    items: Tuple[str, ...] = ()
+    items: tuple[str, ...] = ()
     signature: str = ""
 
 
@@ -154,11 +221,11 @@ class TermSheetTexts:
     prepared_by: str
     disclaimer: str
     confidential_label: str = "Strictly Confidential"
-    confirmation: Optional[ConfirmationText] = None
+    confirmation: ConfirmationText | None = None
     style: TermSheetStyle = TermSheetStyle()
 
 
-def validate_style(value: Any, base_dir: Optional[Path] = None) -> Dict[str, Any]:
+def validate_style(value: Any, base_dir: Path | None = None) -> dict[str, Any]:
     """Validate a `style:` mapping and resolve a relative logo path.
 
     Args:
@@ -175,7 +242,11 @@ def validate_style(value: Any, base_dir: Optional[Path] = None) -> Dict[str, Any
     """
     if not isinstance(value, dict):
         raise ValueError("style must be a mapping")
-    known = set(_STYLE_CHOICES) | set(_STYLE_FLAGS) | {"logo", "logo_width_mm", "label_color", "page_number"}
+    known = (
+        set(_STYLE_CHOICES)
+        | set(_STYLE_FLAGS)
+        | {"logo", "logo_width_mm", "label_color", "page_number"}
+    )
     unknown = set(value) - known
     if unknown:
         raise ValueError("Unknown style settings: " + ", ".join(sorted(map(str, unknown))))
@@ -183,7 +254,10 @@ def validate_style(value: Any, base_dir: Optional[Path] = None) -> Dict[str, Any
     # A YAML null is not the default: it would reach the renderer as None.
     nulls = sorted(key for key, item in settings.items() if item is None)
     if nulls:
-        raise ValueError(", ".join(f"style.{key}" for key in nulls) + " must not be null; omit it for the default")
+        raise ValueError(
+            ", ".join(f"style.{key}" for key in nulls)
+            + " must not be null; omit it for the default"
+        )
     for key, choices in _STYLE_CHOICES.items():
         if key in settings and settings[key] not in choices:
             raise ValueError(f"style.{key} must be one of: " + ", ".join(choices))
@@ -191,10 +265,14 @@ def validate_style(value: Any, base_dir: Optional[Path] = None) -> Dict[str, Any
         if key in settings and not isinstance(settings[key], bool):
             raise ValueError(f"style.{key} must be true or false")
     width = settings.get("logo_width_mm")
-    if width is not None and (isinstance(width, bool) or not isinstance(width, (int, float)) or not 5 <= width <= 150):
+    if width is not None and (
+        isinstance(width, bool) or not isinstance(width, (int, float)) or not 5 <= width <= 150
+    ):
         raise ValueError("style.logo_width_mm must be a number from 5 to 150")
     color = settings.get("label_color")
-    if color is not None and (not isinstance(color, str) or (color and not _HEX_COLOR_RE.fullmatch(color))):
+    if color is not None and (
+        not isinstance(color, str) or (color and not _HEX_COLOR_RE.fullmatch(color))
+    ):
         raise ValueError("style.label_color must be #RRGGBB, or empty for the default grey")
     page = settings.get("page_number")
     if page is not None and (
@@ -209,8 +287,17 @@ def validate_style(value: Any, base_dir: Optional[Path] = None) -> Dict[str, Any
         # "" is an explicit "no logo", so frontmatter can remove a house logo.
         if not isinstance(logo, str) or (logo and not logo.strip()):
             raise ValueError("style.logo must be an image path, a data: URI, or empty for no logo")
-        if logo and not logo.lower().startswith("data:") and base_dir is not None and not Path(logo).is_absolute():
-            settings["logo"] = str((base_dir / logo).resolve())
+        if (
+            logo
+            and not logo.lower().startswith("data:")
+            and base_dir is not None
+            and not Path(logo).is_absolute()
+        ):
+            # Keep the written components until local_asset_path judges each
+            # candidate; resolving a junction here would lose the decoded one.
+            # Rebuild from the joined string: on Python 3.12 a cross-drive
+            # Path join retains the old drive in its internal path segments.
+            settings["logo"] = str(Path(str(base_dir / logo)).absolute())
     return settings
 
 
@@ -239,7 +326,7 @@ def _confirmation_text(value: Any) -> ConfirmationText:
     )
 
 
-def _validate_house_fields(data: Dict[str, Any]) -> None:
+def _validate_house_fields(data: dict[str, Any]) -> None:
     """Reject unsupported keys and malformed values without requiring all fields."""
     unknown = set(data) - _HOUSE_KEYS
     if unknown:
@@ -253,7 +340,7 @@ def _validate_house_fields(data: Dict[str, Any]) -> None:
         validate_style(data["style"])
 
 
-def load_house(path: Union[str, Path]) -> Dict[str, Any]:
+def load_house(path: str | Path) -> dict[str, Any]:
     """Load and validate the fields supplied by a house YAML file.
 
     Args:
@@ -267,11 +354,12 @@ def load_house(path: Union[str, Path]) -> Dict[str, Any]:
         OSError: The selected file cannot be read.
     """
     try:
-        data = yaml.safe_load(Path(path).read_text(encoding="utf-8-sig"))
+        data = load_yaml(Path(path).read_text(encoding="utf-8-sig"))
     except yaml.YAMLError as exc:
         raise ValueError(f"Invalid house YAML: {exc}") from exc
     if not isinstance(data, dict):
         raise ValueError("house must be a YAML mapping")
+    validate_xml_strings(data)
     _validate_house_fields(data)
     if "style" in data:
         # A house logo path is relative to the house file.
@@ -280,7 +368,7 @@ def load_house(path: Union[str, Path]) -> Dict[str, Any]:
 
 
 def resolve_term_sheet_texts(
-    metadata: DocumentMetadata, house_path: Optional[str] = None
+    metadata: DocumentMetadata, house_path: str | None = None, *, document_house: bool = False
 ) -> TermSheetTexts:
     """Resolve boilerplate before rendering, preserving explicit empty values.
 
@@ -288,6 +376,7 @@ def resolve_term_sheet_texts(
         metadata: Term-sheet metadata containing optional boilerplate overrides.
         house_path: Effective house path after caller/frontmatter precedence.
             Source-relative paths must already be absolute; absent paths use no file.
+        document_house: Whether the document, rather than the operator, named the file.
 
     Returns:
         Immutable texts for the renderer's current request.
@@ -296,35 +385,41 @@ def resolve_term_sheet_texts(
         ValueError: A path is relative, a field is malformed, or required text is absent.
         OSError: The effective house file cannot be read.
     """
-    house: Dict[str, Any] = {}
+    house: dict[str, Any] = {}
     if house_path is not None:
-        if not isinstance(house_path, str) or not house_path.strip():
-            raise ValueError("house must be a YAML file path")
-        if not Path(house_path).is_absolute():
-            raise ValueError("house path must be absolute for input without a source file")
-        house = load_house(house_path)
+        with document_validation(document_house, errors=(ValueError, OSError)):
+            if not isinstance(house_path, str) or not house_path.strip():
+                raise ValueError("house must be a YAML file path")
+            if not Path(house_path).is_absolute():
+                raise ValueError("house path must be absolute for input without a source file")
+            house = load_house(house_path)
     values = {
         key: metadata.extra[key] if key in metadata.extra else house[key]
         for key in _HOUSE_KEYS - {"style"}
         if key in metadata.extra or key in house
     }
-    _validate_house_fields(values)
-    for key in ("prepared_by", "disclaimer"):
-        if key not in values or not values[key].strip():
-            raise ValueError(f"term-sheet requires non-empty {key}")
+    with document_validation():
+        _validate_house_fields(values)
+        for key in ("prepared_by", "disclaimer"):
+            if key not in values or not values[key].strip():
+                raise ValueError(f"term-sheet requires non-empty {key}")
     # Style settings merge key by key: frontmatter `style` overrides the house file's.
     style = dict(house.get("style", {}))
-    if "style" in metadata.extra:
-        style.update(validate_style(metadata.extra["style"]))
-    logo = style.get("logo")
-    if logo and not logo.lower().startswith("data:") and not Path(logo).is_absolute():
-        raise ValueError("style.logo must be absolute for input without a source file")
+    with document_validation():
+        if "style" in metadata.extra:
+            style.update(validate_style(metadata.extra["style"]))
+    document_logo = document_house or "logo" in metadata.extra.get("style", {})
+    with document_validation(document_logo):
+        logo = style.get("logo")
+        if logo and not logo.lower().startswith("data:") and not Path(logo).is_absolute():
+            raise ValueError("style.logo must be absolute for input without a source file")
     return TermSheetTexts(
         prepared_by=values["prepared_by"],
         disclaimer=values["disclaimer"],
         confidential_label=values.get("confidential_label", "Strictly Confidential"),
         confirmation=_confirmation_text(values["confirmation"])
-        if "confirmation" in values else None,
+        if "confirmation" in values
+        else None,
         style=TermSheetStyle(**style),
     )
 
@@ -379,7 +474,7 @@ _CIRCLED_LAYOUT = MarkerLayout(0.0, 4.5)
 _CIRCLED_NUMBERS = frozenset(chr(code) for code in range(0x2460, 0x2474))  # ①–⑳
 
 
-def marker_layout(text: str) -> Optional[MarkerLayout]:
+def marker_layout(text: str) -> MarkerLayout | None:
     """Return the layout for a line's leading marker; the text is never changed.
 
     A hyphen counts only when followed by whitespace, so negative amounts and a
@@ -396,7 +491,7 @@ def marker_layout(text: str) -> Optional[MarkerLayout]:
     return _MARKER_LAYOUTS.get(marker)
 
 
-def apply_marker_layout(paragraph: Any, text: str) -> Optional[Pt]:
+def apply_marker_layout(paragraph: Any, text: str) -> Pt | None:
     """Give a paragraph its marker hanging indent.
 
     Args:
@@ -418,12 +513,15 @@ def apply_marker_layout(paragraph: Any, text: str) -> Optional[Pt]:
 def _is_plain(run: TextRun) -> bool:
     """Semantic runs (equations, footnotes, term values, code, images) are never trimmed or split."""
     return (
-        not run.is_latex and run.footnote_id is None and run.term_key is None and not run.code
+        not run.is_latex
+        and run.footnote_id is None
+        and run.term_key is None
+        and not run.code
         and run.image is None
     )
 
 
-def _strip_edge(line: List[TextRun], leading: bool) -> List[TextRun]:
+def _strip_edge(line: list[TextRun], leading: bool) -> list[TextRun]:
     """Drop spaces and tabs beside a line break, as HTML does around `<br>`."""
     runs = list(line)
     index = 0 if leading else -1
@@ -436,7 +534,7 @@ def _strip_edge(line: List[TextRun], leading: bool) -> List[TextRun]:
     return runs
 
 
-def split_run_lines(runs: Sequence[TextRun]) -> List[List[TextRun]]:
+def split_run_lines(runs: Sequence[TextRun]) -> list[list[TextRun]]:
     """Split runs at line breaks into one run list per Word paragraph.
 
     Formatting, link targets, footnote references and term keys stay on every
@@ -449,7 +547,7 @@ def split_run_lines(runs: Sequence[TextRun]) -> List[List[TextRun]]:
     Returns:
         At least one, possibly empty, run list.
     """
-    lines: List[List[TextRun]] = [[]]
+    lines: list[list[TextRun]] = [[]]
     for run in runs:
         if not _is_plain(run) or "\n" not in run.text:
             lines[-1].append(run)
@@ -459,7 +557,7 @@ def split_run_lines(runs: Sequence[TextRun]) -> List[List[TextRun]]:
                 lines.append([])
             if piece:
                 lines[-1].append(replace(run, text=piece))
-    trimmed: List[List[TextRun]] = []
+    trimmed: list[list[TextRun]] = []
     for index, line in enumerate(lines):
         if index > 0:
             line = _strip_edge(line, leading=True)
@@ -497,10 +595,14 @@ def header_token_width(text: str, font_size: int) -> int:
     if not tokens:
         return 0
     widest = max(_em_width(token) for token in tokens)
-    return math.ceil(widest * int(font_size) * _BOLD_ALLOWANCE) + 2 * int(Twips(CELL_MARGIN_HORIZONTAL))
+    return math.ceil(widest * int(font_size) * _BOLD_ALLOWANCE) + 2 * int(
+        Twips(CELL_MARGIN_HORIZONTAL)
+    )
 
 
-def natural_cell_width(texts: Sequence[str], font_size: int, bold: bool = False, markers: bool = False) -> int:
+def natural_cell_width(
+    texts: Sequence[str], font_size: int, bold: bool = False, markers: bool = False
+) -> int:
     """Column width in EMU that keeps every line of a cell on one line.
 
     Uses the row estimator's em widths, the bold allowance for header text,
@@ -567,7 +669,7 @@ def _rgb(hex_color: str) -> RGBColor:
     return RGBColor.from_string(hex_color)
 
 
-def label_widths(label_columns: int) -> List[int]:
+def label_widths(label_columns: int) -> list[int]:
     """Fixed label column widths in EMU: the label, plus the second label tier."""
     widths = [int(STYLE.TS_LABEL_WIDTH)]
     if label_columns == 2:
@@ -575,7 +677,7 @@ def label_widths(label_columns: int) -> List[int]:
     return widths
 
 
-def key_value_widths(label_columns: int, available: int) -> Optional[List[int]]:
+def key_value_widths(label_columns: int, available: int) -> list[int] | None:
     """Fixed label grid for key-value tables, so their first vertical line is common.
 
     The labels keep their fixed widths whenever the content column keeps a
@@ -626,7 +728,9 @@ def apply_table_frame(word_table: Any, width: int, open_sides: bool = False) -> 
     table_width = tbl_pr.find(qn("w:tblW"))
     if table_width is None:
         table_width = OxmlElement("w:tblW")
-        tbl_pr.insert_element_before(table_width, "w:jc", "w:tblCellSpacing", "w:tblInd", *_TBLPR_AFTER_IND)
+        tbl_pr.insert_element_before(
+            table_width, "w:jc", "w:tblCellSpacing", "w:tblInd", *_TBLPR_AFTER_IND
+        )
     table_width.set(qn("w:w"), str(Emu(width).twips))
     table_width.set(qn("w:type"), "dxa")
     tbl_pr.insert_element_before(_measure("w:tblInd", CELL_MARGIN_HORIZONTAL), *_TBLPR_AFTER_IND)
@@ -645,8 +749,10 @@ def apply_table_frame(word_table: Any, width: int, open_sides: bool = False) -> 
     tbl_pr.insert_element_before(borders, *_TBLPR_AFTER_IND[1:])
     margins = OxmlElement("w:tblCellMar")
     for edge, value in (
-        ("top", CELL_MARGIN_VERTICAL), ("left", CELL_MARGIN_HORIZONTAL),
-        ("bottom", CELL_MARGIN_VERTICAL), ("right", CELL_MARGIN_HORIZONTAL),
+        ("top", CELL_MARGIN_VERTICAL),
+        ("left", CELL_MARGIN_HORIZONTAL),
+        ("bottom", CELL_MARGIN_VERTICAL),
+        ("right", CELL_MARGIN_HORIZONTAL),
     ):
         margins.append(_measure(f"w:{edge}", value))
     tbl_pr.insert_element_before(margins, *_TBLPR_AFTER_MARGINS)
@@ -685,7 +791,9 @@ def add_table_heading(
         width: Printable width of the current section in EMU (right tab stop).
     """
     details = ", ".join(
-        part for part in (f"단위 : {unit}" if unit else "", f"기준일 : {as_of}" if as_of else "") if part
+        part
+        for part in (f"단위 : {unit}" if unit else "", f"기준일 : {as_of}" if as_of else "")
+        if part
     )
     if not caption and not details:
         return
@@ -701,8 +809,10 @@ def add_table_heading(
         else:
             paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         render_runs(
-            paragraph, TextParser.parse_runs(f"({details})"),
-            default_color=_rgb(STYLE.TS_MUTED_HEX), font_size=STYLE.TS_NOTE_SIZE,
+            paragraph,
+            TextParser.parse_runs(f"({details})"),
+            default_color=_rgb(STYLE.TS_MUTED_HEX),
+            font_size=STYLE.TS_NOTE_SIZE,
         )
 
 
@@ -711,8 +821,10 @@ def add_table_note(doc: Any, note: str, render_runs: RenderRuns) -> None:
     paragraph = doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
     paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     render_runs(
-        paragraph, TextParser.parse_runs(note),
-        default_color=_rgb(STYLE.TS_MUTED_HEX), font_size=STYLE.TS_NOTE_SIZE,
+        paragraph,
+        TextParser.parse_runs(note),
+        default_color=_rgb(STYLE.TS_MUTED_HEX),
+        font_size=STYLE.TS_NOTE_SIZE,
     )
 
 
@@ -720,8 +832,10 @@ def add_table_source(doc: Any, source: str, render_runs: RenderRuns) -> None:
     """Muted `출처 : …` line below the table (and its note)."""
     paragraph = doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
     render_runs(
-        paragraph, TextParser.parse_runs("출처 : " + source),
-        default_color=_rgb(STYLE.TS_MUTED_HEX), font_size=STYLE.TS_NOTE_SIZE,
+        paragraph,
+        TextParser.parse_runs("출처 : " + source),
+        default_color=_rgb(STYLE.TS_MUTED_HEX),
+        font_size=STYLE.TS_NOTE_SIZE,
     )
 
 
@@ -745,7 +859,7 @@ def add_table_spacer(doc: Any) -> None:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _default_properties(doc: Any) -> Tuple[Any, Any]:
+def _default_properties(doc: Any) -> tuple[Any, Any]:
     """Return `docDefaults` paragraph and run properties, creating them if absent."""
     root = doc.styles.element
     defaults = root.find(qn("w:docDefaults"))
@@ -815,7 +929,12 @@ def setup_term_sheet_styles(doc: Any) -> None:
     heading2.font.color.rgb = STYLE.NAVY
     rule = OxmlElement("w:pBdr")
     bottom = OxmlElement("w:bottom")
-    for name, value in (("val", "single"), ("sz", _HEADING_RULE_SIZE), ("space", "1"), ("color", STYLE.NAVY_HEX)):
+    for name, value in (
+        ("val", "single"),
+        ("sz", _HEADING_RULE_SIZE),
+        ("space", "1"),
+        ("color", STYLE.NAVY_HEX),
+    ):
         bottom.set(qn(f"w:{name}"), value)
     rule.append(bottom)
     style_paragraph = heading2.element.get_or_add_pPr()
@@ -830,13 +949,13 @@ def setup_term_sheet_styles(doc: Any) -> None:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _display_runs(metadata: DocumentMetadata, key: str, text: str) -> List[TextRun]:
+def _display_runs(metadata: DocumentMetadata, key: str, text: str) -> list[TextRun]:
     """Parse-time runs (term substitution) when present, else the parsed text."""
     runs = metadata.display_runs.get(key)
     return list(runs) if runs else TextParser.parse_runs(text)
 
 
-def _bold(runs: Sequence[TextRun]) -> List[TextRun]:
+def _bold(runs: Sequence[TextRun]) -> list[TextRun]:
     return [replace(run, bold=True) for run in runs]
 
 
@@ -855,7 +974,12 @@ def _paragraph_rules(paragraph: Any, edges: Sequence[str]) -> None:
     rules = OxmlElement("w:pBdr")
     for edge in edges:
         border = OxmlElement(f"w:{edge}")
-        for name, value in (("val", "single"), ("sz", _BORDER_SIZE), ("space", "4"), ("color", STYLE.TS_BORDER_HEX)):
+        for name, value in (
+            ("val", "single"),
+            ("sz", _BORDER_SIZE),
+            ("space", "4"),
+            ("color", STYLE.TS_BORDER_HEX),
+        ):
             border.set(qn(f"w:{name}"), value)
         rules.append(border)
     paragraph._p.get_or_add_pPr().insert_element_before(rules, *_PPR_AFTER_PBDR)
@@ -892,22 +1016,30 @@ def render_term_sheet_opening(
     title.paragraph_format.space_before = _COVER_TITLE_SPACE if cover else Pt(0)
     title.paragraph_format.space_after = Pt(2)
     render_runs(
-        title, _bold(_display_runs(metadata, "title", metadata.title)),
-        default_color=STYLE.NAVY, font_name=STYLE.HEADING_FONT, font_size=STYLE.TS_TITLE_SIZE,
+        title,
+        _bold(_display_runs(metadata, "title", metadata.title)),
+        default_color=STYLE.NAVY,
+        font_name=STYLE.HEADING_FONT,
+        font_size=STYLE.TS_TITLE_SIZE,
     )
     render_runs(
-        _opening_paragraph(doc, Pt(8)), _bold(_display_runs(metadata, "subtitle", metadata.subtitle)),
-        default_color=STYLE.NAVY, font_name=STYLE.HEADING_FONT, font_size=STYLE.TS_SUBTITLE_SIZE,
+        _opening_paragraph(doc, Pt(8)),
+        _bold(_display_runs(metadata, "subtitle", metadata.subtitle)),
+        default_color=STYLE.NAVY,
+        font_name=STYLE.HEADING_FONT,
+        font_size=STYLE.TS_SUBTITLE_SIZE,
     )
     date = metadata.extra.get("date")
     date_text = str(date).strip() if date is not None else ""
     if metadata.display_runs.get("date") or date_text:
         render_runs(
-            _opening_paragraph(doc, Pt(0)), _display_runs(metadata, "date", date_text),
+            _opening_paragraph(doc, Pt(0)),
+            _display_runs(metadata, "date", date_text),
             font_size=STYLE.TS_META_SIZE,
         )
     render_runs(
-        _opening_paragraph(doc, Pt(8)), TextParser.parse_runs(texts.prepared_by.strip()),
+        _opening_paragraph(doc, Pt(8)),
+        TextParser.parse_runs(texts.prepared_by.strip()),
         font_size=STYLE.TS_META_SIZE,
     )
     if style.logo:
@@ -917,11 +1049,16 @@ def render_term_sheet_opening(
     for index, line in enumerate(lines):
         paragraph = doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
         paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        paragraph.paragraph_format.space_before = _COVER_DISCLAIMER_SPACE if cover and index == 0 else Pt(0)
+        paragraph.paragraph_format.space_before = (
+            _COVER_DISCLAIMER_SPACE if cover and index == 0 else Pt(0)
+        )
         paragraph.paragraph_format.space_after = Pt(6) if index == len(lines) - 1 else Pt(0)
         _paragraph_rules(paragraph, edges)
         render_runs(
-            paragraph, line, default_color=_rgb(STYLE.TS_MUTED_HEX), font_size=STYLE.TS_DISCLAIMER_SIZE
+            paragraph,
+            line,
+            default_color=_rgb(STYLE.TS_MUTED_HEX),
+            font_size=STYLE.TS_DISCLAIMER_SIZE,
         )
     if cover:
         doc.add_page_break()
@@ -933,19 +1070,39 @@ def render_term_sheet_opening(
 def _add_logo(doc: Any, style: TermSheetStyle) -> None:
     """Centre the house logo; a logo that cannot be loaded is a render diagnostic."""
     paragraph = _opening_paragraph(doc, Pt(8))
+    limits = getattr(doc.part, "_ib_limits", DEFAULT_LIMITS)
     try:
-        source: Union[str, BytesIO] = style.logo
+        source: str | BytesIO = style.logo
         if style.logo.lower().startswith("data:"):
             header, _, payload = style.logo.partition(",")
             if not header.lower().endswith(";base64"):
                 raise ValueError("only base64 data: URIs are supported")
-            source = BytesIO(base64.b64decode(payload))
+            source = decode_image(payload, limits)
+        elif not getattr(doc.part, "_ib_trusted_house_logo", False):
+            location = local_asset_path(
+                style.logo,
+                base_dir=getattr(doc.part, "_ib_source_dir", None),
+                asset_roots=getattr(doc.part, "_ib_asset_roots", ()),
+            )
+            # For an allowed missing/unreadable path, retain python-docx's existing
+            # diagnostic text. Outside candidates have already raised above.
+            source = str(location) if location is not None else style.logo
+        check_image_source(source, limits)
         paragraph.add_run().add_picture(source, width=Mm(style.logo_width_mm))
+    except InputLimitError:
+        raise
     except Exception as error:  # a missing or unreadable file must not break the opening
         paragraph._p.getparent().remove(paragraph._p)
         errors = getattr(doc.part, "_ib_render_errors", None)
+        message = (
+            str(error)
+            if isinstance(error, AssetOutsideRootError)
+            else f"House logo could not be rendered: {error}"
+        )
+        if isinstance(error, AssetOutsideRootError):
+            logger.warning("%s", message)
         if errors is not None:
-            errors.append(f"House logo could not be rendered: {error}")
+            errors.append(message)
 
 
 def render_term_sheet_heading(doc: Any, heading: Heading, render_runs: RenderRuns) -> None:
@@ -955,8 +1112,11 @@ def render_term_sheet_heading(doc: Any, heading: Heading, render_runs: RenderRun
     paragraph = doc.add_heading(level=level)
     runs = heading.runs or TextParser.parse_runs(heading.text)
     render_runs(
-        paragraph, _bold(runs), default_color=STYLE.NAVY if level < 4 else STYLE.DARK_GRAY,
-        font_name=STYLE.HEADING_FONT, font_size=sizes[level],
+        paragraph,
+        _bold(runs),
+        default_color=STYLE.NAVY if level < 4 else STYLE.DARK_GRAY,
+        font_name=STYLE.HEADING_FONT,
+        font_size=sizes[level],
     )
 
 
@@ -979,7 +1139,9 @@ def render_term_sheet_paragraph(doc: Any, paragraph: Paragraph, render_runs: Ren
 
 def confirmation_has_text(confirmation: ConfirmationText) -> bool:
     """True when any confirmation field has visible text to render."""
-    return any(text.strip() for text in (confirmation.intro, *confirmation.items, confirmation.signature))
+    return any(
+        text.strip() for text in (confirmation.intro, *confirmation.items, confirmation.signature)
+    )
 
 
 def printable_width(section: Any) -> int:
@@ -1030,7 +1192,7 @@ class _CellWriter:
         return paragraph
 
 
-def _item_layout(text: str) -> Optional[MarkerLayout]:
+def _item_layout(text: str) -> MarkerLayout | None:
     if text.lstrip().startswith(_CHECKBOX):
         return MarkerLayout(0.0, _CHECKBOX_LAYOUT_MM)
     return marker_layout(text)
@@ -1077,9 +1239,11 @@ def render_confirmation(doc: Any, confirmation: ConfirmationText, render_runs: R
         writer = _CellWriter(cell)
         if kind == "body":
             for line in split_run_lines(TextParser.parse_runs(intro)) if intro else []:
-                render_runs(writer.paragraph(), line, default_color=muted, font_size=STYLE.TS_NOTE_SIZE)
+                render_runs(
+                    writer.paragraph(), line, default_color=muted, font_size=STYLE.TS_NOTE_SIZE
+                )
             for item in items:
-                layout: Optional[MarkerLayout] = None
+                layout: MarkerLayout | None = None
                 for line_index, line in enumerate(split_run_lines(TextParser.parse_runs(item))):
                     paragraph = writer.paragraph()
                     if line_index == 0:
@@ -1087,7 +1251,9 @@ def render_confirmation(doc: Any, confirmation: ConfirmationText, render_runs: R
                         if layout is not None:
                             paragraph.paragraph_format.first_line_indent = Mm(-layout.hanging_mm)
                     if layout is not None:
-                        paragraph.paragraph_format.left_indent = Mm(layout.start_mm + layout.hanging_mm)
+                        paragraph.paragraph_format.left_indent = Mm(
+                            layout.start_mm + layout.hanging_mm
+                        )
                     render_runs(paragraph, line, font_size=STYLE.TS_META_SIZE)
             for paragraph in cell.paragraphs:
                 paragraph.paragraph_format.keep_with_next = True
@@ -1145,7 +1311,7 @@ def _add_field(paragraph: Any, instruction: str, color: RGBColor, size: Length) 
 def setup_term_sheet_header_footer(
     doc: Any,
     metadata: DocumentMetadata,
-    texts: Optional[TermSheetTexts],
+    texts: TermSheetTexts | None,
     confidential: bool,
     render_runs: RenderRuns,
 ) -> None:
@@ -1178,7 +1344,12 @@ def setup_term_sheet_header_footer(
         header = _reset_story(section.header)
         header.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         if label.strip():
-            render_runs(header, [TextRun(text=label, italic=True)], default_color=label_color, font_size=size)
+            render_runs(
+                header,
+                [TextRun(text=label, italic=True)],
+                default_color=label_color,
+                font_size=size,
+            )
         if style.header_rule:
             _accent_rule(header, "bottom")
         footer = _reset_story(section.footer)
@@ -1186,7 +1357,9 @@ def setup_term_sheet_header_footer(
             footer.style.paragraph_format.tab_stops.clear_all()
         if width > 0:  # a section without printable width is reported by the structural audit
             if style.page_number_align == "center":
-                footer.paragraph_format.tab_stops.add_tab_stop(Emu(width // 2), WD_TAB_ALIGNMENT.CENTER)
+                footer.paragraph_format.tab_stops.add_tab_stop(
+                    Emu(width // 2), WD_TAB_ALIGNMENT.CENTER
+                )
             else:
                 footer.paragraph_format.tab_stops.add_tab_stop(Emu(width), WD_TAB_ALIGNMENT.RIGHT)
         if style.footer_rule:

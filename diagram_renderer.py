@@ -14,7 +14,7 @@ import importlib
 import logging
 import os
 import tempfile
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING
 
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Inches
@@ -45,7 +45,7 @@ def _matplotlib_available() -> bool:
 class DiagramRenderer:
     """Renders Diagram objects as matplotlib images in Word documents."""
 
-    def __init__(self, doc: "DocxDocument", theme_colors: Optional[Dict[str, str]] = None):
+    def __init__(self, doc: "DocxDocument", theme_colors: dict[str, str] | None = None):
         self.doc = doc
         self.colors = theme_colors or {}
         self._navy = self.colors.get("navy", _NAVY)
@@ -77,7 +77,7 @@ class DiagramRenderer:
             self._placeholder(diagram.title)
             return False
 
-    def _render_image(self, diagram: "Diagram") -> Optional[str]:
+    def _render_image(self, diagram: "Diagram") -> str | None:
         """Render the diagram to a temporary PNG."""
         fig = None
         temp_path = None
@@ -88,8 +88,12 @@ class DiagramRenderer:
             from matplotlib.patches import FancyBboxPatch
 
             # ── Font setup ──────────────────────────────────────────────
-            texts = [diagram.title, *(box.label for box in diagram.boxes),
-                     *(arrow.label for arrow in diagram.arrows), *diagram.notes]
+            texts = [
+                diagram.title,
+                *(box.label for box in diagram.boxes),
+                *(arrow.label for arrow in diagram.arrows),
+                *diagram.notes,
+            ]
             korean_font = RasterFontPolicy.resolve(STYLE.KOREAN_FONT, "\n".join(texts))
 
             boxes = diagram.boxes
@@ -122,7 +126,7 @@ class DiagramRenderer:
             min_x_gap = float("inf")
             min_y_gap = float("inf")
             for i, b1 in enumerate(boxes):
-                for b2 in boxes[i + 1:]:
+                for b2 in boxes[i + 1 :]:
                     dx = abs(b1.pos[0] - b2.pos[0])
                     dy = abs(b1.pos[1] - b2.pos[1])
                     if dx > 0.01:
@@ -165,11 +169,16 @@ class DiagramRenderer:
                 color = _MEDIUM_GRAY
 
                 ax.annotate(
-                    "", xy=(ex, ey), xytext=(sx, sy),
+                    "",
+                    xy=(ex, ey),
+                    xytext=(sx, sy),
                     arrowprops={
-                        "arrowstyle": arrowstyle, "color": color,
-                        "lw": 2.0, "linestyle": ls,
-                        "shrinkA": 0, "shrinkB": 0,
+                        "arrowstyle": arrowstyle,
+                        "color": color,
+                        "lw": 2.0,
+                        "linestyle": ls,
+                        "shrinkA": 0,
+                        "shrinkB": 0,
                         "connectionstyle": "arc3,rad=0.0",
                     },
                     zorder=1,
@@ -181,20 +190,25 @@ class DiagramRenderer:
                     my = (sy + ey) / 2
                     # Perpendicular offset
                     dx, dy = ex - sx, ey - sy
-                    dist = max((dx ** 2 + dy ** 2) ** 0.5, 0.001)
+                    dist = max((dx**2 + dy**2) ** 0.5, 0.001)
                     off_x = -dy / dist * 0.28
                     off_y = dx / dist * 0.28
                     ax.text(
-                        mx + off_x, my + off_y,
+                        mx + off_x,
+                        my + off_y,
                         arrow.label,
-                        ha="center", va="center",
-                        fontsize=16, color=_DARK_GRAY,
+                        ha="center",
+                        va="center",
+                        fontsize=16,
+                        color=_DARK_GRAY,
                         fontfamily=korean_font,
                         linespacing=1.3,
                         bbox={
                             "boxstyle": "round,pad=0.25",
-                            "facecolor": "white", "edgecolor": "#DDDDDD",
-                            "alpha": 0.92, "linewidth": 0.5,
+                            "facecolor": "white",
+                            "edgecolor": "#DDDDDD",
+                            "alpha": 0.92,
+                            "linewidth": 0.5,
                         },
                         zorder=4,
                     )
@@ -206,20 +220,27 @@ class DiagramRenderer:
 
                 # Rounded rectangle
                 rect = FancyBboxPatch(
-                    (cx - box_w / 2, cy - box_h / 2), box_w, box_h,
+                    (cx - box_w / 2, cy - box_h / 2),
+                    box_w,
+                    box_h,
                     boxstyle="round,pad=0.06",
-                    facecolor=s["fill"], edgecolor=s["edge"],
-                    linewidth=1.8, zorder=2,
+                    facecolor=s["fill"],
+                    edgecolor=s["edge"],
+                    linewidth=1.8,
+                    zorder=2,
                 )
                 ax.add_patch(rect)
 
                 # Drop shadow (subtle)
                 shadow = FancyBboxPatch(
                     (cx - box_w / 2 + 0.02, cy - box_h / 2 - 0.02),
-                    box_w, box_h,
+                    box_w,
+                    box_h,
                     boxstyle="round,pad=0.06",
-                    facecolor="#00000010", edgecolor="none",
-                    linewidth=0, zorder=1,
+                    facecolor="#00000010",
+                    edgecolor="none",
+                    linewidth=0,
+                    zorder=1,
                 )
                 ax.add_patch(shadow)
 
@@ -236,29 +257,40 @@ class DiagramRenderer:
                     weight = "bold" if i == 0 else "normal"
                     size = 20 if i == 0 else 16
                     ax.text(
-                        cx, ly, line_text,
-                        ha="center", va="center",
-                        fontsize=size, fontweight=weight,
+                        cx,
+                        ly,
+                        line_text,
+                        ha="center",
+                        va="center",
+                        fontsize=size,
+                        fontweight=weight,
                         fontfamily=korean_font,
-                        color=s["text"], zorder=3,
+                        color=s["text"],
+                        zorder=3,
                     )
 
             # ── Title ───────────────────────────────────────────────────
             if diagram.title:
                 ax.set_title(
                     diagram.title,
-                    fontsize=24, fontweight="bold",
+                    fontsize=24,
+                    fontweight="bold",
                     fontfamily=korean_font,
-                    color=_DARK_GRAY, pad=25,
+                    color=_DARK_GRAY,
+                    pad=25,
                 )
 
             # ── Notes at bottom ─────────────────────────────────────────
             if diagram.notes:
                 note_text = "    ".join(f"※ {n}" for n in diagram.notes)
                 fig.text(
-                    0.5, 0.02, note_text,
-                    ha="center", va="bottom",
-                    fontsize=14, color=_MEDIUM_GRAY,
+                    0.5,
+                    0.02,
+                    note_text,
+                    ha="center",
+                    va="bottom",
+                    fontsize=14,
+                    color=_MEDIUM_GRAY,
                     fontfamily=korean_font,
                     style="italic",
                 )
@@ -268,8 +300,9 @@ class DiagramRenderer:
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False, mode="wb") as f:
                 temp_path = f.name
 
-            fig.savefig(temp_path, dpi=200, bbox_inches="tight",
-                        facecolor="white", edgecolor="none")
+            fig.savefig(
+                temp_path, dpi=200, bbox_inches="tight", facecolor="white", edgecolor="none"
+            )
             succeeded = True
             return temp_path
 
@@ -301,7 +334,7 @@ class DiagramRenderer:
             t = hh / abs(dy)
         return cx + dx * t, cy + dy * t
 
-    def _insert(self, file_path: str, title: str, notes: List[str]):
+    def _insert(self, file_path: str, title: str, notes: list[str]):
         """Insert diagram image centered with caption and notes."""
         p = self.doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -311,6 +344,7 @@ class DiagramRenderer:
         # Caption
         if title:
             from ib_renderer import STYLE, FontStyler
+
             cap = self.doc.add_paragraph()
             cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
             r = cap.add_run(title)
@@ -323,6 +357,7 @@ class DiagramRenderer:
     def _placeholder(self, title: str):
         """Text placeholder when matplotlib is unavailable."""
         from ib_renderer import STYLE, FontStyler
+
         p = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
         run = p.add_run(f"[Diagram: {title}]")
         FontStyler.apply_run_style(run, italic=True, color=STYLE.RED)

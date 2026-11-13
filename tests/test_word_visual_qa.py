@@ -8,15 +8,30 @@ from pathlib import Path
 import pytest
 
 POWERSHELL = shutil.which("powershell.exe")
-pytestmark = pytest.mark.skipif(os.name != "nt" or not POWERSHELL, reason="Windows PowerShell required")
+pytestmark = pytest.mark.skipif(
+    os.name != "nt" or not POWERSHELL, reason="Windows PowerShell required"
+)
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "word_visual_qa.ps1"
 
 
 def run_qa(source, output, *args):
     return subprocess.run(
-        [POWERSHELL, "-NoProfile", "-NonInteractive", "-File", str(SCRIPT),
-         "-InputDirectory", str(source), "-OutputDirectory", str(output), *args],
-        capture_output=True, timeout=30,
+        [
+            POWERSHELL,
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            str(SCRIPT),
+            "-InputDirectory",
+            str(source),
+            "-OutputDirectory",
+            str(output),
+            *args,
+        ],
+        capture_output=True,
+        # The script exits in its preflight; the limit only stops a hang. A cold
+        # PowerShell start on a loaded CI runner has exceeded 30 seconds.
+        timeout=120,
     )
 
 

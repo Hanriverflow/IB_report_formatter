@@ -83,28 +83,37 @@ def test_chart_is_model_element_and_saved_image(kind, type_key):
         assert not [w for w in caught if "Glyph" in str(w.message) and "missing" in str(w.message)]
 
 
-@pytest.mark.parametrize("frontmatter, override, count", [
-    ("", None, 0), ("charts: true", None, 1), ("charts: false", True, 1),
-    ("charts: true", False, 0), ("charts: false", None, 0),
-])
+@pytest.mark.parametrize(
+    "frontmatter, override, count",
+    [
+        ("", None, 0),
+        ("charts: true", None, 1),
+        ("charts: false", True, 1),
+        ("charts: true", False, 0),
+        ("charts: false", None, 0),
+    ],
+)
 def test_charts_precedence(frontmatter, override, count):
     _, _, doc = render("---\n" + frontmatter + "\n---\n" + CHART, charts=override)
     assert len(doc.inline_shapes) == count
 
 
-@pytest.mark.parametrize("spec, diagnostic", [
-    (SPEC.replace("bar", "pie"), "chart_type"),
-    (SPEC.replace("[100, -30]", "[100]"), "length"),
-    (SPEC.replace("[100, -30]", "[100, nope]"), "numeric"),
-    (SPEC.replace("[100, -30]", "[100, true]"), "numeric"),
-    (SPEC.replace("[100, -30]", "[100, .nan]"), "finite"),
-    (SPEC.replace("[100, -30]", "[100, .inf]"), "finite"),
-    (SPEC + "surprise: 1\n", "surprise"),
-    (SPEC + "unit: []\n", "unit"),
-    (SPEC + "number_format: unknown\n", "number_format"),
-    (SPEC + "type: line\n", "conflict"),
-    ("title: Broken\nlabels: [\n", "YAML"),
-])
+@pytest.mark.parametrize(
+    "spec, diagnostic",
+    [
+        (SPEC.replace("bar", "pie"), "chart_type"),
+        (SPEC.replace("[100, -30]", "[100]"), "length"),
+        (SPEC.replace("[100, -30]", "[100, nope]"), "numeric"),
+        (SPEC.replace("[100, -30]", "[100, true]"), "numeric"),
+        (SPEC.replace("[100, -30]", "[100, .nan]"), "finite"),
+        (SPEC.replace("[100, -30]", "[100, .inf]"), "finite"),
+        (SPEC + "surprise: 1\n", "surprise"),
+        (SPEC + "unit: []\n", "unit"),
+        (SPEC + "number_format: unknown\n", "number_format"),
+        (SPEC + "type: line\n", "conflict"),
+        ("title: Broken\nlabels: [\n", "YAML"),
+    ],
+)
 def test_chart_invalid_fallback_and_strict_save_safety(spec, diagnostic, tmp_path):
     markdown = "```chart\n" + spec + "```\n"
     _, renderer, doc = render(markdown, charts=True)
@@ -120,9 +129,15 @@ def test_chart_invalid_fallback_and_strict_save_safety(spec, diagnostic, tmp_pat
         if existing:
             output.write_bytes(b"preserve existing")
         with pytest.raises(RuntimeError, match="Chart"):
-            md_to_word.IBReportConverter(str(source), str(output), RenderOptions(
-                profile="plain", charts=True, strict=True,
-            )).convert()
+            md_to_word.IBReportConverter(
+                str(source),
+                str(output),
+                RenderOptions(
+                    profile="plain",
+                    charts=True,
+                    strict=True,
+                ),
+            ).convert()
         assert output.read_bytes() == b"preserve existing" if existing else not output.exists()
     _, disabled, code_doc = render(markdown, charts=False, strict=True)
     assert not disabled.errors and len(code_doc.tables) == 1
@@ -153,8 +168,12 @@ def test_waterfall_arithmetic_and_formats_do_not_rescale():
     assert waterfall_positions([100, -30, 20]) == ([0, 70, 70], [100, 100, 90], 90)
     assert waterfall_positions([-100, 30, -20]) == ([-100, -100, -90], [0, -70, -70], -90)
     assert waterfall_positions([0, -3.5, 3.5]) == ([0, -3.5, -3.5], [0, 0, 0], 0)
-    for number_format, expected in [("percent", "12.5%"), ("bps", "12.5 bps"),
-                                    ("multiple", "12.5x"), (",.2f", "12.50")]:
+    for number_format, expected in [
+        ("percent", "12.5%"),
+        ("bps", "12.5 bps"),
+        ("multiple", "12.5x"),
+        (",.2f", "12.50"),
+    ]:
         spec = parse_chart_spec(SPEC + f"number_format: '{number_format}'\nunit: 금액\n")
         assert spec.series[0].values == [100, -30]
         assert format_value(12.5, spec.number_format) == expected
@@ -169,11 +188,15 @@ def test_chart_registry_and_cli_use_same_options(tmp_path, monkeypatch):
     registry.convert(model, output_format="docx", output_path=output, charts=True, strict=True)
     assert len(Document(output).inline_shapes) == 1
     for flag, count in [("--charts", 1), ("--no-charts", 0)]:
-        source.write_text("---\ncharts: " + ("false" if count else "true") + "\n---\n" + CHART,
-                          encoding="utf-8")
+        source.write_text(
+            "---\ncharts: " + ("false" if count else "true") + "\n---\n" + CHART, encoding="utf-8"
+        )
         output = tmp_path / (flag[2:] + ".docx")
-        monkeypatch.setattr(sys, "argv", ["md-to-word", str(source), str(output),
-                                         "--profile", "plain", flag, "--strict"])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["md-to-word", str(source), str(output), "--profile", "plain", flag, "--strict"],
+        )
         with pytest.raises(SystemExit) as exc:
             md_to_word.main()
         assert exc.value.code == 0
@@ -191,9 +214,7 @@ def test_disabled_chart_xml_is_identical_to_code_block(profile, monkeypatch):
     from document_model import CodeBlock
 
     monkeypatch.setattr("ib_renderer.uuid4", lambda: UUID(int=0))
-    model = MarkdownParser(profile=profile).parse(
-        _profile_frontmatter(profile) + CHART
-    )
+    model = MarkdownParser(profile=profile).parse(_profile_frontmatter(profile) + CHART)
     chart_doc = IBDocumentRenderer().render(model)
     element = model.elements[0]
     element.element_type = ElementType.CODE_BLOCK
@@ -204,9 +225,13 @@ def test_disabled_chart_xml_is_identical_to_code_block(profile, monkeypatch):
     assert chart_doc.part.numbering_part.element.xml == code_doc.part.numbering_part.element.xml
 
 
-@pytest.mark.parametrize("profile, positive, negative", [
-    ("ib-memo", "#003366", "#c00000"), ("plain", "#202020", "#404040"),
-])
+@pytest.mark.parametrize(
+    "profile, positive, negative",
+    [
+        ("ib-memo", "#003366", "#c00000"),
+        ("plain", "#202020", "#404040"),
+    ],
+)
 def test_waterfall_geometry_palette_and_unscaled_labels(profile, positive, negative, monkeypatch):
     from matplotlib.colors import to_hex
     from matplotlib.figure import Figure
@@ -216,16 +241,25 @@ def test_waterfall_geometry_palette_and_unscaled_labels(profile, positive, negat
 
     def inspect(self, *args, **kwargs):
         ax = self.axes[0]
-        observations.append((
-            [p.get_y() for p in ax.patches], [p.get_height() for p in ax.patches],
-            [to_hex(p.get_facecolor()) for p in ax.patches], [t.get_text() for t in ax.texts],
-        ))
+        observations.append(
+            (
+                [p.get_y() for p in ax.patches],
+                [p.get_height() for p in ax.patches],
+                [to_hex(p.get_facecolor()) for p in ax.patches],
+                [t.get_text() for t in ax.texts],
+            )
+        )
         return saved(self, *args, **kwargs)
 
     monkeypatch.setattr(Figure, "savefig", inspect)
-    _, _, doc = render(CHART.replace("bar", "waterfall").replace(
-        "source: 가상 자료", "number_format: percent\nsource: 가상 자료"),
-        profile=profile, charts=True, strict=True)
+    _, _, doc = render(
+        CHART.replace("bar", "waterfall").replace(
+            "source: 가상 자료", "number_format: percent\nsource: 가상 자료"
+        ),
+        profile=profile,
+        charts=True,
+        strict=True,
+    )
     assert len(doc.inline_shapes) == 1
     bottoms, heights, colors, labels = observations[0]
     assert bottoms == [0, 70, 0]

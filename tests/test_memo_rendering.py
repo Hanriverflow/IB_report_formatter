@@ -38,11 +38,14 @@ def _hyperlink_targets(doc) -> list:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-@pytest.mark.parametrize("source,expected", [
-    ("계좌 `022-1` 참고", [("계좌 ", False), ("022-1", True), (" 참고", False)]),
-    ("`` a`b ``", [("a`b", True)]),
-    (r"\`literal\`", [("`literal`", False)]),
-])
+@pytest.mark.parametrize(
+    "source,expected",
+    [
+        ("계좌 `022-1` 참고", [("계좌 ", False), ("022-1", True), (" 참고", False)]),
+        ("`` a`b ``", [("a`b", True)]),
+        (r"\`literal\`", [("`literal`", False)]),
+    ],
+)
 def test_code_spans_become_literal_code_runs(source: str, expected: list) -> None:
     assert [(run.text, run.code) for run in TextParser.parse_runs(source)] == expected
 
@@ -108,21 +111,34 @@ def test_code_in_a_money_column_keeps_its_literal_digits() -> None:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-@pytest.mark.parametrize("source,target", [
-    ("[웹](https://example.com/a)", "https://example.com/a"),
-    ("[정리](03_정리.md)", "03_%EC%A0%95%EB%A6%AC.md"),
-    ("[꺾쇠](<C:/가상 폴더/정리.md>)", "file:///C:/%EA%B0%80%EC%83%81%20%ED%8F%B4%EB%8D%94/%EC%A0%95%EB%A6%AC.md"),
-    (r"[윈도](C:\docs\a.pdf)", "file:///C:/docs/a.pdf"),
-    ("[상위](../자료/표.xlsx)", "../%EC%9E%90%EB%A3%8C/%ED%91%9C.xlsx"),
-])
+@pytest.mark.parametrize(
+    "source,target",
+    [
+        ("[웹](https://example.com/a)", "https://example.com/a"),
+        ("[정리](03_정리.md)", "03_%EC%A0%95%EB%A6%AC.md"),
+        (
+            "[꺾쇠](<C:/가상 폴더/정리.md>)",
+            "file:///C:/%EA%B0%80%EC%83%81%20%ED%8F%B4%EB%8D%94/%EC%A0%95%EB%A6%AC.md",
+        ),
+        (r"[윈도](C:\docs\a.pdf)", "file:///C:/docs/a.pdf"),
+        ("[상위](../자료/표.xlsx)", "../%EC%9E%90%EB%A3%8C/%ED%91%9C.xlsx"),
+    ],
+)
 def test_local_and_web_links_become_hyperlinks(source: str, target: str) -> None:
     runs = TextParser.parse_runs(source)
     assert len(runs) == 1 and runs[0].hyperlink == target
 
 
-@pytest.mark.parametrize("source", [
-    "[참고](별첨)", "[주](Co.Ltd)", "[v](1.0)", "[도메인](www.example.com/a)", "[공백](./a b.md)",
-])
+@pytest.mark.parametrize(
+    "source",
+    [
+        "[참고](별첨)",
+        "[주](Co.Ltd)",
+        "[v](1.0)",
+        "[도메인](www.example.com/a)",
+        "[공백](./a b.md)",
+    ],
+)
 def test_non_path_parentheses_stay_literal(source: str) -> None:
     runs = TextParser.parse_runs(source)
     assert "".join(run.text for run in runs) == source
@@ -163,21 +179,32 @@ def _convert(entrypoint: str, source: Path, output: Path) -> None:
     if entrypoint == "converter":
         from md_to_word import IBReportConverter
 
-        IBReportConverter(str(source), str(output), render_options=RenderOptions(strict=True)).convert()
+        IBReportConverter(
+            str(source), str(output), render_options=RenderOptions(strict=True)
+        ).convert()
     else:
         from converters import get_default_registry
 
         registry = get_default_registry()
-        registry.convert(registry.convert(str(source)), output_format="docx", output_path=str(output), strict=True)
+        registry.convert(
+            registry.convert(str(source)),
+            output_format="docx",
+            output_path=str(output),
+            strict=True,
+        )
 
 
 @pytest.mark.parametrize("entrypoint", ["converter", "registry"])
-def test_saved_links_are_rebased_on_the_docx_folder(tmp_path: Path, entrypoint: str, caplog) -> None:
+def test_saved_links_are_rebased_on_the_docx_folder(
+    tmp_path: Path, entrypoint: str, caplog
+) -> None:
     source_dir = tmp_path / "source"
     attachment = source_dir / "첨부.pdf"
     source = _write_memo(
         source_dir,
-        "[절대](<" + attachment.as_posix() + ">) · [상대](sub/정리.md) · [웹](https://example.com/a)",
+        "[절대](<"
+        + attachment.as_posix()
+        + ">) · [상대](sub/정리.md) · [웹](https://example.com/a)",
     )
     same, export = source_dir / "same.docx", tmp_path / "export" / "export.docx"
     _convert(entrypoint, source, same)
@@ -201,7 +228,9 @@ def test_file_uris_angle_destinations_and_file_hashes_survive_saving(tmp_path: P
         tmp_path,
         "[URI](" + (tmp_path / "b.pdf").as_uri() + ") · [안내](<README>) · [정의][d] · "
         "[데이터](<" + (tmp_path / "data.json").as_posix() + ">) · "
-        "[해시](<" + (tmp_path / "a#b.pdf").as_posix() + ">) · [조각](정리.md#개요)\n\n[d]: <README>",
+        "[해시](<"
+        + (tmp_path / "a#b.pdf").as_posix()
+        + ">) · [조각](정리.md#개요)\n\n[d]: <README>",
     )
     output = tmp_path / "memo.docx"
     _convert("registry", source, output)
@@ -276,9 +305,15 @@ def test_rendered_local_link_is_an_external_hyperlink_showing_only_its_label() -
 
 
 def _auto_spacing(doc) -> dict:
-    defaults = doc.styles.element.find(qn("w:docDefaults")).find(qn("w:pPrDefault")).find(qn("w:pPr"))
+    defaults = (
+        doc.styles.element.find(qn("w:docDefaults")).find(qn("w:pPrDefault")).find(qn("w:pPr"))
+    )
     return {
-        tag: (defaults.find(qn("w:" + tag)).get(qn("w:val")) if defaults.find(qn("w:" + tag)) is not None else None)
+        tag: (
+            defaults.find(qn("w:" + tag)).get(qn("w:val"))
+            if defaults.find(qn("w:" + tag)) is not None
+            else None
+        )
         for tag in ("autoSpaceDE", "autoSpaceDN")
     }
 

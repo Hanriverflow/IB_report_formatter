@@ -2,6 +2,12 @@
 IB Renderer Module for Word Report Generation
 Handles styling and rendering of document elements in IB Bank style.
 
+Changelog (property-test regressions):
+    - Heading bold-marker removal skips code spans and escaped characters, and
+      escapes are resolved once; other headings render as before.
+    - A whitespace-only code line keeps its own whitespace (an empty line keeps
+      the one-space spacer).
+
 Changelog (house style fixes):
     - A landscape table right after a bare page break (cover, TOC) turns the
       page once: the section break replaces the page break.
@@ -57,34 +63,26 @@ Changelog (v2):
     - Blockquote multi-line content preserved
 """
 
-import base64
 import logging
 import os
 import platform
 import re
 import time
+from collections.abc import Callable, Iterator, Mapping, Sequence, Set
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import replace
 from importlib.metadata import PackageNotFoundError, version
 from io import BytesIO
 from pathlib import Path
 from typing import (
-    AbstractSet,
     Any,
-    Callable,
-    Dict,
-    List,
-    Mapping,
-    Optional,
-    Set,
-    Tuple,
-    Union,
     cast,
 )
-from urllib.parse import unquote
 from uuid import uuid4
 from xml.sax.saxutils import escape
 
+import yaml
 from docx import Document
 from docx.document import Document as DocxDocument
 from docx.enum.section import WD_ORIENT, WD_SECTION_START
@@ -108,6 +106,21 @@ from document_profiles import (
     resolve_options,
     validate_office_metadata,
     validate_term_sheet_metadata,
+)
+from input_safety import (
+    DEFAULT_LIMITS,
+    AssetOutsideRootError,
+    ConversionRejection,
+    InputLimitError,
+    InputLimits,
+    RejectionCode,
+    StrictValidationError,
+    check_image_source,
+    decode_image,
+    document_validation,
+    local_asset_path,
+    resolve_asset_roots,
+    validate_xml_strings,
 )
 from md_parser import (
     Blockquote,
@@ -216,7 +229,7 @@ class GeneratorSignatureWriter:
     _GENERATOR_NAME = "ib_report_formatter"
     _GENERATOR_PROFILE = "ib_generated"
     _PYPROJECT_VERSION_RE = re.compile(r'^version\s*=\s*"([^"]+)"\s*$')
-    _resolved_version: Optional[str] = None
+    _resolved_version: str | None = None
 
     @classmethod
     def apply(cls, doc: DocxDocument, profile: str = "ib_generated") -> None:
@@ -225,7 +238,10 @@ class GeneratorSignatureWriter:
 
     @classmethod
     def upsert_properties(
-        cls, doc: DocxDocument, properties: Mapping[str, str], owned_prefix: str = "",
+        cls,
+        doc: DocxDocument,
+        properties: Mapping[str, str],
+        owned_prefix: str = "",
     ) -> None:
         """Replace named string properties, preserving all others and their PIDs.
 
@@ -266,7 +282,10 @@ class GeneratorSignatureWriter:
 
     @classmethod
     def _upsert_properties(
-        cls, custom_props, properties: Mapping[str, str], owned_prefix: str = "",
+        cls,
+        custom_props,
+        properties: Mapping[str, str],
+        owned_prefix: str = "",
     ) -> None:
         """Replace only the given (and owned-prefix) properties, preserving others."""
         for prop in list(custom_props):
@@ -281,7 +300,7 @@ class GeneratorSignatureWriter:
             custom_props.append(cls._build_property(name, value, cls._next_pid(used_pids)))
 
     @classmethod
-    def _signature_properties(cls, profile: str = "ib_generated") -> Dict[str, str]:
+    def _signature_properties(cls, profile: str = "ib_generated") -> dict[str, str]:
         """Return the ordered generator signature payload."""
         return {
             "generator": cls._GENERATOR_NAME,
@@ -325,7 +344,7 @@ class GeneratorSignatureWriter:
         return parse_xml(property_xml.encode("utf-8"))
 
     @staticmethod
-    def _used_property_ids(custom_props) -> List[int]:
+    def _used_property_ids(custom_props) -> list[int]:
         """Collect all valid pid values already present in the custom-properties root."""
         used_pids = []
         for prop in list(custom_props):
@@ -337,7 +356,7 @@ class GeneratorSignatureWriter:
         return used_pids
 
     @staticmethod
-    def _next_pid(used_pids: List[int]) -> int:
+    def _next_pid(used_pids: list[int]) -> int:
         """Return the next unused custom-property PID (starts at 2 per OPC convention)."""
         candidate = 2
         while candidate in used_pids:
@@ -360,7 +379,7 @@ class FontStyler:
     """Handles font styling including East Asian fonts"""
 
     @staticmethod
-    def set_east_asian_font(element, font_name: Optional[str] = None):
+    def set_east_asian_font(element, font_name: str | None = None):
         """Set East Asian font (for Korean text) on a style or run element"""
         resolved_font = font_name or FontPolicy.resolve_korean_font()
         elm = element._element
@@ -369,19 +388,23 @@ class FontStyler:
             rPr.get_or_add_rFonts()
         rPr.rFonts.set(qn("w:eastAsia"), resolved_font)
         # Theme attributes take precedence over explicit fonts in Word.
-        for explicit, theme in (("ascii", "asciiTheme"), ("hAnsi", "hAnsiTheme"), ("eastAsia", "eastAsiaTheme")):
+        for explicit, theme in (
+            ("ascii", "asciiTheme"),
+            ("hAnsi", "hAnsiTheme"),
+            ("eastAsia", "eastAsiaTheme"),
+        ):
             if rPr.rFonts.get(qn("w:" + explicit)):
                 rPr.rFonts.attrib.pop(qn("w:" + theme), None)
 
     @staticmethod
     def apply_run_style(
         run,
-        font_name: Optional[str] = None,
-        font_size: Optional[Pt] = None,
-        bold: Optional[bool] = None,
-        italic: Optional[bool] = None,
-        color: Optional[RGBColor] = None,
-        superscript: Optional[bool] = None,
+        font_name: str | None = None,
+        font_size: Pt | None = None,
+        bold: bool | None = None,
+        italic: bool | None = None,
+        color: RGBColor | None = None,
+        superscript: bool | None = None,
     ):
         """Apply styling to a run"""
         if font_name:
@@ -403,7 +426,7 @@ class FontPolicy:
     """Declare Word fonts for the reader's machine, independently of raster fonts."""
 
     @classmethod
-    def resolve_korean_font(cls, system_name: Optional[str] = None) -> str:
+    def resolve_korean_font(cls, system_name: str | None = None) -> str:
         """Return the preferred Korean font for the current platform."""
         system = system_name or platform.system() or "Unknown"
         if system == "Darwin":
@@ -641,7 +664,9 @@ class DocumentStyler:
             if header_style is not None:
                 header_style.paragraph_format.tab_stops.clear_all()
             header_para.paragraph_format.tab_stops.clear_all()
-            header_para.paragraph_format.tab_stops.add_tab_stop(available_width, WD_TAB_ALIGNMENT.RIGHT)
+            header_para.paragraph_format.tab_stops.add_tab_stop(
+                available_width, WD_TAB_ALIGNMENT.RIGHT
+            )
             if company or confidential:
                 header_para.add_run("\t")
 
@@ -824,10 +849,10 @@ class TextRenderer:
     @staticmethod
     def render_runs(
         paragraph,
-        runs: List[TextRun],
-        default_color: Optional[RGBColor] = None,
-        font_name: Optional[str] = None,
-        font_size: Optional[Pt] = None,
+        runs: list[TextRun],
+        default_color: RGBColor | None = None,
+        font_name: str | None = None,
+        font_size: Pt | None = None,
     ):
         """Render text runs to a paragraph.
 
@@ -889,8 +914,14 @@ class TextRenderer:
         A picture that cannot be loaded leaves a visible marker and a diagnostic
         that strict mode rejects.
         """
+        message = "Image could not be rendered: " + (image.alt_text or image.path)
         try:
-            source = ImageRenderer.image_source(image, getattr(paragraph.part, "_ib_source_dir", None))
+            source = ImageRenderer.image_source(
+                image,
+                getattr(paragraph.part, "_ib_source_dir", None),
+                getattr(paragraph.part, "_ib_asset_roots", ()),
+                limits=getattr(paragraph.part, "_ib_limits", DEFAULT_LIMITS),
+            )
             if source is None:
                 raise FileNotFoundError(image.path)
             shape = paragraph.add_run().add_picture(source)
@@ -900,14 +931,22 @@ class TextRenderer:
                 shape.width = limit
             ImageRenderer._apply_alt_text(shape, image.alt_text)
             return
+        except InputLimitError:
+            raise
+        except AssetOutsideRootError as err:
+            message = str(err)
+            logger.warning("%s", message)
         except Exception as err:
             logger.warning("Inline image could not be inserted (%s): %s", image.alt_text, err)
         FontStyler.apply_run_style(
-            paragraph.add_run(f"[Image: {image.alt_text}]"), font_size=font_size, italic=True, color=STYLE.RED,
+            paragraph.add_run(f"[Image: {image.alt_text}]"),
+            font_size=font_size,
+            italic=True,
+            color=STYLE.RED,
         )
         errors = getattr(paragraph.part, "_ib_render_errors", None)
         if errors is not None:
-            errors.append("Image could not be rendered: " + (image.alt_text or image.path))
+            errors.append(message)
 
     @staticmethod
     def _render_inline_latex(paragraph, expression: str, font_size: Pt):
@@ -954,8 +993,8 @@ class TextRenderer:
     def render_text_with_bold(
         paragraph,
         text: str,
-        font_name: Optional[str] = None,
-        font_size: Optional[Pt] = None,
+        font_name: str | None = None,
+        font_size: Pt | None = None,
     ):
         """Parse and render text with **bold** markers (legacy, delegates to render_text_with_formatting)."""
         TextRenderer.render_text_with_formatting(
@@ -966,9 +1005,9 @@ class TextRenderer:
     def render_text_with_formatting(
         paragraph,
         text: str,
-        font_name: Optional[str] = None,
-        font_size: Optional[Pt] = None,
-        default_color: Optional[RGBColor] = None,
+        font_name: str | None = None,
+        font_size: Pt | None = None,
+        default_color: RGBColor | None = None,
     ):
         """Parse and render text with **bold**, *italic*, ^superscript^, and ~subscript~ markers.
 
@@ -982,8 +1021,14 @@ class TextRenderer:
 
         parsed_runs = TextParser.parse_runs_plain(text)
         if any(
-            run.bold or run.italic or run.superscript or run.subscript or run.color_hex
-            or run.code or run.hyperlink or run.image is not None
+            run.bold
+            or run.italic
+            or run.superscript
+            or run.subscript
+            or run.color_hex
+            or run.code
+            or run.hyperlink
+            or run.image is not None
             for run in parsed_runs
         ):
             TextRenderer.render_runs(
@@ -1052,7 +1097,7 @@ class TextRenderer:
         font_size: Pt,
         bold: bool,
         italic: bool,
-        color: Optional[RGBColor] = None,
+        color: RGBColor | None = None,
     ):
         """Render text, detecting ^superscript^ and ~subscript~ markers."""
         if not text:
@@ -1088,7 +1133,7 @@ class TextRenderer:
             FontStyler.set_east_asian_font(run)
 
     @staticmethod
-    def _rgb_from_hex(color_hex: Optional[str]) -> Optional[RGBColor]:
+    def _rgb_from_hex(color_hex: str | None) -> RGBColor | None:
         """Convert #RRGGBB strings to python-docx RGBColor."""
         if not color_hex:
             return None
@@ -1398,7 +1443,7 @@ class TOCRenderer:
     def __init__(self, doc: DocxDocument):
         self.doc = doc
 
-    def render(self, model: Optional[DocumentModel] = None):
+    def render(self, model: DocumentModel | None = None):
         """Insert an auto-updating TOC plus an immediate preview outline."""
         heading = self.doc.add_paragraph(STYLE.TOC_TITLE, style="TOC Heading")
         self._apply_toc_heading_style(heading)
@@ -1486,6 +1531,10 @@ class TOCRenderer:
 class HeadingRenderer:
     """Renders headings"""
 
+    # A code span, a backslash escape, or a bold marker. Only the bold marker is
+    # dropped (every heading run is bold); the other two keep their characters.
+    _BOLD_MARKER_RE = re.compile(TextParser._CODE_SPAN_RE.pattern + r"|\\.|\*\*", re.DOTALL)
+
     # Level → (font_size, color, bold)
     @property
     def _STYLE_CONFIG(self):
@@ -1504,10 +1553,12 @@ class HeadingRenderer:
         if heading.runs:
             source_runs = heading.runs
         else:
-            # Clean markdown bold markers from heading text
-            clean_text = heading.text.replace("**", "").strip()
-            clean_text = TextRenderer._cleanup(clean_text)
-            source_runs = TextParser.parse_runs(clean_text)
+            # Drop bold markers outside code spans and escapes, then parse once:
+            # unescaping before the parse turned escaped punctuation into syntax.
+            clean_text = self._BOLD_MARKER_RE.sub(
+                lambda match: "" if match.group(0) == "**" else match.group(0), heading.text
+            )
+            source_runs = TextParser.parse_runs(clean_text.strip())
 
         # Clamp level to 1-4 (Word supports Heading 1-9, but we style 1-4)
         level = max(1, min(heading.level, 4))
@@ -1516,7 +1567,9 @@ class HeadingRenderer:
         size, color, bold = self._STYLE_CONFIG.get(level, (STYLE.BODY_SIZE, STYLE.DARK_GRAY, True))
 
         runs = [replace(run, bold=bold) for run in source_runs]
-        TextRenderer.render_runs(p, runs, font_name=STYLE.HEADING_FONT, font_size=size, default_color=color)
+        TextRenderer.render_runs(
+            p, runs, font_name=STYLE.HEADING_FONT, font_size=size, default_color=color
+        )
 
 
 class ParagraphRenderer:
@@ -1632,7 +1685,10 @@ class TableRenderer:
     _MAX_TEXT_COLUMN_SHARE = 0.55
 
     def __init__(
-        self, doc: DocxDocument, term_sheet: bool = False, house_style: Optional[TermSheetStyle] = None,
+        self,
+        doc: DocxDocument,
+        term_sheet: bool = False,
+        house_style: TermSheetStyle | None = None,
     ):
         self.doc = doc
         # Profile-only layout; merge emission itself is shared by every profile.
@@ -1726,7 +1782,7 @@ class TableRenderer:
         self.doc.add_paragraph()
         self._end_landscape(previous_geometry)
 
-    def _begin_landscape(self, table: Table) -> Optional[Tuple[Any, int, int]]:
+    def _begin_landscape(self, table: Table) -> tuple[Any, int, int] | None:
         """Open a landscape section for a landscape table; return the prior geometry.
 
         The new section already starts on a new page, so a lone page break
@@ -1763,7 +1819,7 @@ class TableRenderer:
         ):
             body.remove(last)
 
-    def _end_landscape(self, previous_geometry: Optional[Tuple[Any, int, int]]) -> None:
+    def _end_landscape(self, previous_geometry: tuple[Any, int, int] | None) -> None:
         """Restore the page geometry that preceded a landscape table."""
         if previous_geometry:
             section = self.doc.add_section(WD_SECTION_START.NEW_PAGE)
@@ -1797,7 +1853,9 @@ class TableRenderer:
         word_table.style = STYLE.STYLE_TABLE_GRID
         column_kinds = self._infer_column_kinds(table)
         label_columns = (
-            table.label_columns if table.label_columns is not None else min(1, max(col_count - 1, 0))
+            table.label_columns
+            if table.label_columns is not None
+            else min(1, max(col_count - 1, 0))
         )
         key_value = label_columns in (1, 2) and col_count == label_columns + 1
         widths = key_value_widths(label_columns, available) if key_value else None
@@ -1813,7 +1871,9 @@ class TableRenderer:
         rectangles = self._merge_cells(word_table, table)
         covered = self._covered_cells(rectangles)
         extents = {(top, left): (bottom, right) for top, left, bottom, right in rectangles}
-        apply_table_frame(word_table, sum(widths), open_sides=self.house_style.table_sides == "open")
+        apply_table_frame(
+            word_table, sum(widths), open_sides=self.house_style.table_sides == "open"
+        )
 
         line_counts = [0] * row_count
         for row_index, row in enumerate(table.rows):
@@ -1823,18 +1883,33 @@ class TableRenderer:
                     continue
                 bottom, right = extents.get((row_index, column_index), (row_index, column_index))
                 cell_data = (
-                    row.cells[column_index] if column_index < len(row.cells) else TableCell(content="")
+                    row.cells[column_index]
+                    if column_index < len(row.cells)
+                    else TableCell(content="")
                 )
                 role = self._term_sheet_role(
-                    row_index, column_index, right, label_columns, key_value, table.header_rows,
+                    row_index,
+                    column_index,
+                    right,
+                    label_columns,
+                    key_value,
+                    table.header_rows,
                 )
                 texts, size = self._fill_term_sheet_cell(
-                    word_cells[column_index], cell_data, role, row_index, column_index,
-                    table, column_kinds,
+                    word_cells[column_index],
+                    cell_data,
+                    role,
+                    row_index,
+                    column_index,
+                    table,
+                    column_kinds,
                 )
                 if bottom == row_index:  # multi-row owners are excluded from row estimates
                     lines = estimate_cell_lines(
-                        texts, sum(widths[column_index:right + 1]), size, markers=role == "content"
+                        texts,
+                        sum(widths[column_index : right + 1]),
+                        size,
+                        markers=role == "content",
                     )
                     line_counts[row_index] = max(line_counts[row_index], lines)
         self._mirror_vertical_fills(word_table, rectangles)
@@ -1851,7 +1926,9 @@ class TableRenderer:
             add_table_source(self.doc, table.source, TextRenderer.render_runs)
         add_table_spacer(self.doc)
 
-    def _term_sheet_grid_widths(self, table: Table, available: int, column_kinds: List[str]) -> List[int]:
+    def _term_sheet_grid_widths(
+        self, table: Table, available: int, column_kinds: list[str]
+    ) -> list[int]:
         """Widths (EMU) for a term-sheet grid table, filling the section width.
 
         When the columns' content fits side by side on single lines, each column
@@ -1870,7 +1947,7 @@ class TableRenderer:
             fitted[-1] += available - sum(fitted)
             return fitted
         required = [0.0] * table.col_count
-        for header in table.rows[:table.header_rows]:
+        for header in table.rows[: table.header_rows]:
             for index in range(min(len(header.cells), table.col_count)):
                 if self._is_span_cell(header, index):
                     continue
@@ -1883,7 +1960,7 @@ class TableRenderer:
         )
         return [int(Inches(width)) for width in widths]
 
-    def _term_sheet_natural_widths(self, table: Table, column_kinds: List[str]) -> Optional[List[int]]:
+    def _term_sheet_natural_widths(self, table: Table, column_kinds: list[str]) -> list[int] | None:
         """Per-column widths (EMU) that keep every cell line on one line.
 
         Header lines are measured bold in the header size and body lines as
@@ -1901,7 +1978,7 @@ class TableRenderer:
             width text measurement cannot know.
         """
         natural = [0] * table.col_count
-        spanning: List[Tuple[int, int, int]] = []
+        spanning: list[tuple[int, int, int]] = []
         for row_index, row in enumerate(table.rows):
             header = row_index < table.header_rows
             for index in range(min(len(row.cells), table.col_count)):
@@ -1909,7 +1986,10 @@ class TableRenderer:
                 if cell.merge is not None:
                     continue
                 right = index
-                while right + 1 < min(len(row.cells), table.col_count) and row.cells[right + 1].merge == "left":
+                while (
+                    right + 1 < min(len(row.cells), table.col_count)
+                    and row.cells[right + 1].merge == "left"
+                ):
                     right += 1
                 if header:
                     runs = cell.runs or TextParser.parse_runs_plain(cell.content)
@@ -1922,7 +2002,10 @@ class TableRenderer:
                 if any(run.image is not None for run in runs):
                     return None
                 width = natural_cell_width(
-                    [line_text(line) for line in split_run_lines(runs)], size, bold=bold, markers=markers,
+                    [line_text(line) for line in split_run_lines(runs)],
+                    size,
+                    bold=bold,
+                    markers=markers,
                 )
                 if right == index:
                     natural[index] = max(natural[index], width)
@@ -1931,7 +2014,7 @@ class TableRenderer:
         floor = int(Inches(self._MIN_COLUMN_WIDTH_INCHES))
         natural = [max(width, floor) for width in natural]
         for left, right, width in spanning:
-            missing = width - sum(natural[left:right + 1])
+            missing = width - sum(natural[left : right + 1])
             if missing > 0:
                 share = -(-missing // (right - left + 1))
                 for index in range(left, right + 1):
@@ -1969,8 +2052,8 @@ class TableRenderer:
         row_index: int,
         column_index: int,
         table: Table,
-        column_kinds: List[str],
-    ) -> Tuple[List[str], Pt]:
+        column_kinds: list[str],
+    ) -> tuple[list[str], Pt]:
         """Fill and style one owner cell exactly once, one paragraph per line.
 
         Header: header fill, bold accent, centred. Key-value label: label fill,
@@ -1982,8 +2065,8 @@ class TableRenderer:
             The cell's line texts and base text size, for row-split estimation.
         """
         column_role = table.column_types[column_index] if table.column_types else None
-        fill: Optional[str] = None
-        color: Optional[RGBColor] = None
+        fill: str | None = None
+        color: RGBColor | None = None
         alignment = WD_ALIGN_PARAGRAPH.CENTER
         if role == "header":
             runs = [
@@ -2014,7 +2097,7 @@ class TableRenderer:
         if fill:
             set_cell_fill(word_cell._tc, fill)
         word_cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-        texts: List[str] = []
+        texts: list[str] = []
         for index, line in enumerate(split_run_lines(runs)):
             paragraph = word_cell.paragraphs[0] if index == 0 else word_cell.add_paragraph()
             configure_cell_paragraph(paragraph)
@@ -2025,7 +2108,11 @@ class TableRenderer:
             text = line_text(line)
             line_size = apply_marker_layout(paragraph, text) if role == "content" else None
             TextRenderer.render_runs(
-                paragraph, line, default_color=color, font_name=font_name, font_size=line_size or size
+                paragraph,
+                line,
+                default_color=color,
+                font_name=font_name,
+                font_size=line_size or size,
             )
             texts.append(text)
         if role != "header" and not (
@@ -2042,7 +2129,7 @@ class TableRenderer:
         set_cell_fill(cell._tc, hex_color)
 
     @staticmethod
-    def _set_column_widths(word_table, widths: List[int]) -> None:
+    def _set_column_widths(word_table, widths: list[int]) -> None:
         """Set exact grid and cell widths (EMU) on a table that is not merged yet."""
         word_table.autofit = False
         word_table.alignment = WD_TABLE_ALIGNMENT.LEFT
@@ -2051,7 +2138,7 @@ class TableRenderer:
             for cell in word_table.columns[index].cells:
                 cell.width = Emu(width)
 
-    def _merge_cells(self, word_table, table: Table) -> List[Tuple[int, int, int, int]]:
+    def _merge_cells(self, word_table, table: Table) -> list[tuple[int, int, int, int]]:
         """Merge validated span rectangles of an empty table whose widths are set.
 
         python-docx concatenates the paragraphs of merged cells that have content
@@ -2080,7 +2167,7 @@ class TableRenderer:
             errors.append(message)
 
     @staticmethod
-    def _span_rectangles(table: Table) -> Tuple[List[Tuple[int, int, int, int]], List[str]]:
+    def _span_rectangles(table: Table) -> tuple[list[tuple[int, int, int, int]], list[str]]:
         """Group span directives into rectangles, rejecting malformed groups.
 
         Parsed tables are already validated by `TableSpanResolver`; this guard keeps
@@ -2096,9 +2183,9 @@ class TableRenderer:
             Valid rectangles and one diagnostic per rejected group, whose cells
             are then rendered unmerged with their own content.
         """
-        roots: Dict[Tuple[int, int], Tuple[int, int]] = {}
-        groups: Dict[Tuple[int, int], List[Tuple[int, int]]] = {}
-        outside: Set[Tuple[int, int]] = set()
+        roots: dict[tuple[int, int], tuple[int, int]] = {}
+        groups: dict[tuple[int, int], list[tuple[int, int]]] = {}
+        outside: set[tuple[int, int]] = set()
         for row_index, row in enumerate(table.rows):
             for column_index, cell in enumerate(row.cells[: table.col_count]):
                 position = root = (row_index, column_index)
@@ -2114,8 +2201,8 @@ class TableRenderer:
                         outside.add(position)
                 roots[position] = root
                 groups.setdefault(root, []).append(position)
-        rectangles: List[Tuple[int, int, int, int]] = []
-        problems: List[str] = []
+        rectangles: list[tuple[int, int, int, int]] = []
+        problems: list[str] = []
         for (top, left), members in groups.items():
             if all(table.rows[row].cells[column].merge is None for row, column in members):
                 continue
@@ -2138,7 +2225,7 @@ class TableRenderer:
         return rectangles, problems
 
     @staticmethod
-    def _covered_cells(rectangles: List[Tuple[int, int, int, int]]) -> Set[Tuple[int, int]]:
+    def _covered_cells(rectangles: list[tuple[int, int, int, int]]) -> set[tuple[int, int]]:
         """Return grid positions represented by another cell's merged owner."""
         return {
             (row, column)
@@ -2149,7 +2236,7 @@ class TableRenderer:
         }
 
     @staticmethod
-    def _mirror_vertical_fills(word_table, rectangles: List[Tuple[int, int, int, int]]) -> None:
+    def _mirror_vertical_fills(word_table, rectangles: list[tuple[int, int, int, int]]) -> None:
         """Repeat each vertical owner's fill on its continuation `w:tc` elements.
 
         Continuation cells keep their own properties in OOXML, so the owner's fill
@@ -2174,7 +2261,7 @@ class TableRenderer:
             col_idx + 1 < len(cells) and cells[col_idx + 1].merge == "left"
         )
 
-    def _apply_column_widths(self, word_table, table: Table, column_kinds: List[str]) -> None:
+    def _apply_column_widths(self, word_table, table: Table, column_kinds: list[str]) -> None:
         """Apply content-aware column widths for more readable report tables."""
         widths = self._estimate_column_widths(
             table,
@@ -2197,9 +2284,9 @@ class TableRenderer:
         self,
         table: Table,
         available_width_inches: float,
-        column_kinds: Optional[List[str]] = None,
-        required_widths: Optional[List[float]] = None,
-    ) -> List[float]:
+        column_kinds: list[str] | None = None,
+        required_widths: list[float] | None = None,
+    ) -> list[float]:
         """Estimate table column widths from content density and column semantics.
 
         Args:
@@ -2222,8 +2309,10 @@ class TableRenderer:
             for column_info in column_infos
         ]
         if required_widths is not None:
-            min_widths = self._required_minimums(min_widths, required_widths, available_width_inches)
-            max_widths = [max(high, low) for high, low in zip(max_widths, min_widths)]
+            min_widths = self._required_minimums(
+                min_widths, required_widths, available_width_inches
+            )
+            max_widths = [max(high, low) for high, low in zip(max_widths, min_widths, strict=False)]
         preferred = [column_info["score"] for column_info in column_infos]
         widths = self._fit_widths_to_available_space(
             preferred,
@@ -2236,8 +2325,8 @@ class TableRenderer:
 
     @classmethod
     def _required_minimums(
-        cls, minimums: List[float], required: List[float], available_width_inches: float
-    ) -> List[float]:
+        cls, minimums: list[float], required: list[float], available_width_inches: float
+    ) -> list[float]:
         """Raise column minimums to required widths when the section can hold them.
 
         First the heuristic minimums are raised; if that overflows, the required
@@ -2245,7 +2334,7 @@ class TableRenderer:
         minimum); if even that overflows, the heuristic minimums are returned
         unchanged, so the table still fits without an error.
         """
-        raised = [max(low, need) for low, need in zip(minimums, required)]
+        raised = [max(low, need) for low, need in zip(minimums, required, strict=False)]
         if sum(raised) <= available_width_inches:
             return raised
         relaxed = [max(cls._MIN_COLUMN_WIDTH_INCHES, need) for need in required]
@@ -2253,7 +2342,7 @@ class TableRenderer:
             return relaxed
         return minimums
 
-    def _build_column_info(self, table: Table, col_idx: int, column_kind: str) -> Dict[str, Any]:
+    def _build_column_info(self, table: Table, col_idx: int, column_kind: str) -> dict[str, Any]:
         """Summarize the content profile of a single column."""
         texts = []
 
@@ -2278,7 +2367,7 @@ class TableRenderer:
             "score": score,
         }
 
-    def _infer_column_kinds(self, table: Table) -> List[str]:
+    def _infer_column_kinds(self, table: Table) -> list[str]:
         if table.column_types:
             return [
                 "text" if role in {"text", "code", "date"} else "numeric"
@@ -2294,7 +2383,7 @@ class TableRenderer:
         """
         sample_texts = []
 
-        for row in table.rows[table.header_rows:]:
+        for row in table.rows[table.header_rows :]:
             if col_idx >= len(row.cells) or self._is_span_cell(row, col_idx):
                 continue
 
@@ -2321,7 +2410,7 @@ class TableRenderer:
         return bool(cls._NUMERIC_LIKE_RE.match(normalized))
 
     @classmethod
-    def _representative_length(cls, texts: List[str]) -> int:
+    def _representative_length(cls, texts: list[str]) -> int:
         """Return a robust content length that ignores a few extreme outliers."""
         if not texts:
             return 0
@@ -2331,7 +2420,7 @@ class TableRenderer:
         return lengths[percentile_index]
 
     @classmethod
-    def _longest_token_length(cls, texts: List[str]) -> int:
+    def _longest_token_length(cls, texts: list[str]) -> int:
         """Return the length of the longest unbroken token in the sample."""
         longest = 0
         for text in texts:
@@ -2374,11 +2463,11 @@ class TableRenderer:
     @classmethod
     def _fit_widths_to_available_space(
         cls,
-        preferred: List[float],
-        min_widths: List[float],
-        max_widths: List[float],
+        preferred: list[float],
+        min_widths: list[float],
+        max_widths: list[float],
         available_width_inches: float,
-    ) -> List[float]:
+    ) -> list[float]:
         """Fit preferred widths into the available width with min/max guards."""
         col_count = len(preferred)
         if col_count == 0:
@@ -2404,12 +2493,12 @@ class TableRenderer:
     @classmethod
     def _rebalance_widths(
         cls,
-        widths: List[float],
-        min_widths: List[float],
-        max_widths: List[float],
-        preferred: List[float],
+        widths: list[float],
+        min_widths: list[float],
+        max_widths: list[float],
+        preferred: list[float],
         available_width_inches: float,
-    ) -> List[float]:
+    ) -> list[float]:
         """Rebalance widths after clamping so the table uses the full line width."""
         for _ in range(8):
             total_width = sum(widths)
@@ -2480,7 +2569,7 @@ class TableRenderer:
         word_table,
         row: TableRow,
         col_count: int,
-        covered: AbstractSet[Tuple[int, int]] = frozenset(),
+        covered: Set[tuple[int, int]] = frozenset(),
         row_index: int = 0,
     ):
         """Render one header row with Navy background, skipping merged-away cells."""
@@ -2507,8 +2596,10 @@ class TableRenderer:
             if cell_data.runs:
                 # Use structured runs but override style for header
                 TextRenderer.render_runs(
-                    p, [replace(run, bold=True, color_hex=None) for run in cell_data.runs],
-                    font_name=STYLE.HEADING_FONT, font_size=STYLE.TABLE_HEADER_SIZE,
+                    p,
+                    [replace(run, bold=True, color_hex=None) for run in cell_data.runs],
+                    font_name=STYLE.HEADING_FONT,
+                    font_size=STYLE.TABLE_HEADER_SIZE,
                     default_color=STYLE.TABLE_HEADER_COLOR,
                 )
             else:
@@ -2529,10 +2620,10 @@ class TableRenderer:
         row_idx: int,
         col_count: int,
         table_type: TableType,
-        column_kinds: List[str],
-        column_types: Optional[List[str]] = None,
-        alignments: Optional[List[str]] = None,
-        covered: AbstractSet[Tuple[int, int]] = frozenset(),
+        column_kinds: list[str],
+        column_types: list[str] | None = None,
+        alignments: list[str] | None = None,
+        covered: Set[tuple[int, int]] = frozenset(),
         header_rows: int = 1,
     ):
         """Render a data row with type-specific styling, skipping merged-away cells.
@@ -2582,29 +2673,34 @@ class TableRenderer:
                 self._apply_type_styling(cell, cell_data, row_idx, table_type)
 
             # ── Alternating row colors (unless special styling applied) ─────
-            if STYLE.TABLE_ZEBRA and (row_idx - header_rows) % 2 == 0 and not cell_data.is_base_case:
+            if (
+                STYLE.TABLE_ZEBRA
+                and (row_idx - header_rows) % 2 == 0
+                and not cell_data.is_base_case
+            ):
                 TableStyler.set_cell_background(cell, STYLE.LIGHT_GRAY_HEX)
 
     @staticmethod
     def _cell_alignment(
-        c_idx: int, column_kinds: List[str], alignments: Optional[List[str]]
+        c_idx: int, column_kinds: list[str], alignments: list[str] | None
     ) -> WD_ALIGN_PARAGRAPH:
         """Numeric columns align right; Markdown alignment markers take precedence."""
         if alignments and c_idx < len(alignments) and alignments[c_idx] in {"center", "right"}:
             return (
-                WD_ALIGN_PARAGRAPH.CENTER if alignments[c_idx] == "center" else WD_ALIGN_PARAGRAPH.RIGHT
+                WD_ALIGN_PARAGRAPH.CENTER
+                if alignments[c_idx] == "center"
+                else WD_ALIGN_PARAGRAPH.RIGHT
             )
         if c_idx < len(column_kinds) and column_kinds[c_idx] == "numeric":
             return WD_ALIGN_PARAGRAPH.RIGHT
         return WD_ALIGN_PARAGRAPH.LEFT
 
     def _display_content(
-        self, cell_data: TableCell, role: Optional[str], table_type: TableType
-    ) -> Tuple[str, List[TextRun]]:
+        self, cell_data: TableCell, role: str | None, table_type: TableType
+    ) -> tuple[str, list[TextRun]]:
         """Return display text and runs, formatting amounts only for numeric roles."""
-        format_numbers = (
-            role not in {None, "text", "code", "date"}
-            or (not role and table_type == TableType.FINANCIAL and cell_data.is_numeric)
+        format_numbers = role not in {None, "text", "code", "date"} or (
+            not role and table_type == TableType.FINANCIAL and cell_data.is_numeric
         )
         display_content = cell_data.content
         display_runs = cell_data.runs
@@ -2614,17 +2710,22 @@ class TableRenderer:
             # footnote's displayed number must never enter numeric formatting,
             # and a term value keeps the exact text written in `terms:`.
             display_runs = [
-                run if (
-                    run.footnote_id is not None or run.is_latex
-                    or run.superscript or run.subscript or run.term_key is not None
+                run
+                if (
+                    run.footnote_id is not None
+                    or run.is_latex
+                    or run.superscript
+                    or run.subscript
+                    or run.term_key is not None
                     or run.code
-                ) else replace(run, text=self._format_numeric_text(run.text, role))
+                )
+                else replace(run, text=self._format_numeric_text(run.text, role))
                 for run in display_runs
             ]
         return display_content, display_runs
 
     @classmethod
-    def _format_numeric_text(cls, text: str, role: Optional[str]) -> str:
+    def _format_numeric_text(cls, text: str, role: str | None) -> str:
         """Format a numeric text run without changing its semantic metadata.
 
         Args:
@@ -2640,8 +2741,8 @@ class TableRenderer:
         suffix = {"percent": "%", "bps": " bps", "multiple": "x"}.get(role or "", "")
         if suffix and cls._PURE_NUMBER_RE.fullmatch(text.strip()):
             formatted += suffix
-        leading = text[:len(text) - len(text.lstrip())]
-        trailing = text[len(text.rstrip()):]
+        leading = text[: len(text) - len(text.lstrip())]
+        trailing = text[len(text.rstrip()) :]
         return leading + formatted + trailing
 
     @staticmethod
@@ -2975,12 +3076,15 @@ class ImageRenderer:
     MAX_WIDTH_INCHES: float = 5.5
     # Word's default left/right cell margin when a table does not set one.
     _DEFAULT_CELL_MARGIN_TWIPS = 108
+    _URI_RE = re.compile(r"^(?:[a-zA-Z][a-zA-Z0-9+.-]*://|data:)", re.IGNORECASE)
 
     def __init__(self, doc: DocxDocument):
         self.doc = doc
 
     @staticmethod
-    def local_path(path: str, base_dir: Optional[Path] = None) -> Optional[Path]:
+    def local_path(
+        path: str, base_dir: Path | None = None, asset_roots: Sequence[str | Path] = ()
+    ) -> Path | None:
         """Return the existing local file an image destination names.
 
         Markdown destinations are URLs, so converters write `a%20b.png`; the
@@ -2990,32 +3094,29 @@ class ImageRenderer:
         Args:
             path: Destination as written.
             base_dir: Folder for a relative path; None keeps it cwd-relative.
+            asset_roots: Operator-supplied allowed folders.
 
         Returns:
             The file, or None when neither form names an existing file.
         """
-        candidates = [path]
-        decoded = unquote(path)
-        if decoded != path:
-            candidates.append(decoded)
-        for candidate in candidates:
-            location = Path(candidate)
-            if base_dir is not None and not location.is_absolute():
-                location = base_dir / location
-            try:
-                if location.is_file():
-                    return location
-            except (OSError, ValueError):
-                continue
-        return None
+        return local_asset_path(path, base_dir, asset_roots)
 
     @classmethod
-    def image_source(cls, image: Image, base_dir: Optional[Path] = None) -> Optional[Union[str, BytesIO]]:
+    def image_source(
+        cls,
+        image: Image,
+        base_dir: Path | None = None,
+        asset_roots: Sequence[str | Path] = (),
+        *,
+        limits: InputLimits = DEFAULT_LIMITS,
+    ) -> str | BytesIO | None:
         """Return what python-docx inserts for an image: decoded bytes or a file path.
 
         Args:
             image: Parsed image; Base64 data or a `data:` URI wins over a path.
             base_dir: Folder for a relative path (see `local_path`).
+            asset_roots: Operator-supplied allowed folders.
+            limits: Immutable caller limits for bytes and header pixel dimensions.
 
         Returns:
             A stream or path, or None when the file does not exist.
@@ -3026,8 +3127,12 @@ class ImageRenderer:
             if header.endswith(";base64"):
                 data = payload
         if data is not None:
-            return BytesIO(base64.b64decode(data))
-        location = cls.local_path(image.path, base_dir)
+            return decode_image(data, limits)
+        if cls._URI_RE.match(image.path) and not Path(image.path).is_absolute():
+            return None
+        location = cls.local_path(image.path, base_dir, asset_roots)
+        if location is not None:
+            check_image_source(str(location), limits)
         return str(location) if location is not None else None
 
     @classmethod
@@ -3053,7 +3158,7 @@ class ImageRenderer:
                 for cell in row.xpath("./w:tc"):
                     span_values = cell.xpath("./w:tcPr/w:gridSpan/@w:val")
                     span = int(span_values[0]) if span_values else 1
-                    limit = (sum(grid[column:column + span]) - sum(margins)) * 635  # twips to EMU
+                    limit = (sum(grid[column : column + span]) - sum(margins)) * 635  # twips to EMU
                     column += span
                     if limit <= 0:
                         continue
@@ -3083,12 +3188,15 @@ class ImageRenderer:
 
         inserted = False
         temp_file_path = None
+        message = "Image could not be rendered"
 
         try:
             # ── Case 1: Base64 embedded image ──────────────────────────────────
             if image.base64_data:
                 # Decode Base64 to bytes
-                img_bytes = base64.b64decode(image.base64_data)
+                img_bytes = decode_image(
+                    image.base64_data, getattr(self.doc.part, "_ib_limits", DEFAULT_LIMITS)
+                ).getvalue()
 
                 # Determine file extension from MIME type
                 ext = self._mime_to_extension(image.mime_type)
@@ -3106,7 +3214,12 @@ class ImageRenderer:
             # ── Case 2: File path image ────────────────────────────────────────
             elif image.path:
                 # File-backed parses made the path absolute; others stay cwd-relative.
-                source = self.image_source(image)
+                source = self.image_source(
+                    image,
+                    getattr(self.doc.part, "_ib_source_dir", None),
+                    getattr(self.doc.part, "_ib_asset_roots", ()),
+                    limits=getattr(self.doc.part, "_ib_limits", DEFAULT_LIMITS),
+                )
                 if source is None:
                     logger.warning(
                         "Image file not found: %s — inserting placeholder",
@@ -3117,6 +3230,11 @@ class ImageRenderer:
                     inserted = True
                     logger.debug("Inserted file image: %s", image.path[:80])
 
+        except InputLimitError:
+            raise
+        except AssetOutsideRootError as e:
+            message = str(e)
+            logger.warning("%s", message)
         except Exception as e:
             logger.warning(
                 "Failed to insert image '%s': %s — inserting placeholder",
@@ -3135,9 +3253,12 @@ class ImageRenderer:
         # ── Fallback: Placeholder ──────────────────────────────────────────────
         if not inserted:
             self._render_placeholder(image.alt_text)
+            errors = getattr(self.doc.part, "_ib_render_errors", None)
+            if errors is not None:
+                errors.append(message)
         return inserted
 
-    def _insert_image(self, file_path: Union[str, BytesIO], alt_text: str):
+    def _insert_image(self, file_path: str | BytesIO, alt_text: str):
         """
         Insert image file into document with proper sizing.
 
@@ -3218,13 +3339,17 @@ class FootnoteRenderer:
     def _render_native(self, footnotes: dict, allow_legacy_refs: bool = True) -> bool:
         """Replace superscript markers with native Word footnote references."""
         run_refs = self._collect_reference_runs(footnotes) if allow_legacy_refs else []
-        explicit_ids = {int(node.get(qn("w:id"))) for node in self.doc.element.xpath(".//w:footnoteReference")}
+        explicit_ids = {
+            int(node.get(qn("w:id"))) for node in self.doc.element.xpath(".//w:footnoteReference")
+        }
         if not run_refs and not explicit_ids:
             return False
 
         footnotes_part = NativeFootnotesPart.get_or_add(self.doc.part)
         referenced_numbers = sorted({number for _, number in run_refs} | explicit_ids)
-        footnotes_part.set_footnotes({number: footnotes[number] for number in referenced_numbers if number in footnotes})
+        footnotes_part.set_footnotes(
+            {number: footnotes[number] for number in referenced_numbers if number in footnotes}
+        )
 
         for run, number in run_refs:
             self._replace_with_native_reference(run, number)
@@ -3253,12 +3378,12 @@ class FootnoteRenderer:
             text_run = p.add_run(text)
             FontStyler.apply_run_style(text_run, font_size=STYLE.SMALL_SIZE)
 
-    def _collect_reference_runs(self, footnotes: dict) -> List[Tuple[object, int]]:
+    def _collect_reference_runs(self, footnotes: dict) -> list[tuple[object, int]]:
         """Find superscript numeric runs that correspond to known footnotes.
 
         A term value is text the author wrote in `terms:`, never a footnote marker.
         """
-        references: List[Tuple[object, int]] = []
+        references: list[tuple[object, int]] = []
         for paragraph in self._iter_document_paragraphs():
             for run in paragraph.runs:
                 if is_term_run(run._r):
@@ -3333,7 +3458,7 @@ class NativeFootnotesPart(XmlPart):
             document_part.relate_to(footnotes_part, RT.FOOTNOTES)
             return footnotes_part
 
-    def set_footnotes(self, footnotes: Dict[int, str]) -> None:
+    def set_footnotes(self, footnotes: dict[int, str]) -> None:
         """Replace dynamic footnotes with the provided note mapping."""
         for footnote in list(self._element):
             if not str(footnote.tag).endswith("footnote"):
@@ -3460,7 +3585,7 @@ class DisclaimerRenderer:
         )
 
     @staticmethod
-    def _split_content_lines(content: str) -> List[str]:
+    def _split_content_lines(content: str) -> list[str]:
         """Split disclaimer content into non-empty logical paragraphs."""
         lines = [line.strip() for line in content.split("\n")]
         return [line for line in lines if line]
@@ -3471,7 +3596,7 @@ class DisclaimerRenderer:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def rebase_local_links(document: DocxDocument, source_dir: Optional[Path], output_path: Path) -> None:
+def rebase_local_links(document: DocxDocument, source_dir: Path | None, output_path: Path) -> None:
     """Point local hyperlinks of a rendered document at its output folder.
 
     Relative links written against the Markdown folder then open from wherever
@@ -3491,7 +3616,9 @@ def rebase_local_links(document: DocxDocument, source_dir: Optional[Path], outpu
     for part in document.part.package.iter_parts():
         for relationship in part.rels.values():
             if relationship.reltype == RT.HYPERLINK and relationship.is_external:
-                relationship._target = rebase_link_target(relationship.target_ref, source_dir, output_dir)
+                relationship._target = rebase_link_target(
+                    relationship.target_ref, source_dir, output_dir
+                )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3538,6 +3665,28 @@ class ChartRenderer:
             raise
 
 
+@contextmanager
+def _metadata_text(area: str) -> Iterator[None]:
+    """Reject metadata of the wrong type at the composer that needs it as text.
+
+    Nothing is checked ahead of use, so every value that renders today keeps
+    rendering. Only the TypeError or AttributeError a value of the wrong type
+    causes inside the named composer is reported, with that error as the cause.
+
+    Args:
+        area: The part of the document being composed, named in the message.
+
+    Yields:
+        Control to the composer.
+    """
+    try:
+        yield
+    except (TypeError, AttributeError) as error:
+        raise StrictValidationError(
+            "", (f"Metadata for the {area} has a value of the wrong type: {error}",)
+        ) from error
+
+
 class IBDocumentRenderer:
     """Main renderer that orchestrates all component renderers"""
 
@@ -3550,16 +3699,16 @@ class IBDocumentRenderer:
     def __init__(
         self,
         separator_mode: str = "auto",
-        options: Optional[RenderOptions] = None,
-        profile: Optional[str] = None,
+        options: RenderOptions | None = None,
+        profile: str | None = None,
     ):
         self.options = options or RenderOptions(
             profile=profile, separator_mode=separator_mode if separator_mode != "auto" else None
         )
         self.separator_mode = separator_mode
-        self.errors: List[str] = []
+        self.errors: list[str] = []
         self.charts = False
-        self.term_sheet_texts: Optional[TermSheetTexts] = None
+        self.term_sheet_texts: TermSheetTexts | None = None
         self._term_sheet = False
         self._reset_document()
 
@@ -3584,10 +3733,65 @@ class IBDocumentRenderer:
         self.disclaimer_renderer = DisclaimerRenderer(self.doc)
         self.chart_renderer = ChartRenderer(self.doc)
 
-    def render(self, model: DocumentModel) -> DocxDocument:
-        """Render through one composition path, using request-local settings."""
+    def render(
+        self,
+        model: DocumentModel,
+        *,
+        asset_roots: Sequence[str | Path] = (),
+        limits: InputLimits | None = None,
+    ) -> DocxDocument:
+        """Render through one composition path, using request-local settings.
+
+        Args:
+            model: Parsed or hand-built document with its carried allowed folders.
+            asset_roots: Operator folders added to model and RenderOptions folders.
+            limits: Explicit policy overriding options and the parsed model's policy.
+
+        Returns:
+            The rendered document; strict rejections occur before callers can save it.
+        """
+        self._composing = False
+        try:
+            return self._render_model(model, asset_roots=asset_roots, limits=limits)
+        except ConversionRejection:
+            raise
+        except ValueError as error:
+            # Non-strict rendering keeps per-element resilience, so a character the
+            # XML writer cannot hold only gets this far from text outside it
+            # (footnotes, outline headings): lxml raises ValueError for control
+            # characters and UnicodeEncodeError, a ValueError, for lone surrogates.
+            # Operator arguments are all validated before composition starts, so
+            # an earlier error is never relabelled.
+            if not self._composing:
+                raise
+            try:
+                validate_xml_strings(model)
+            except ValueError as invalid:
+                raise StrictValidationError("", (str(invalid),)) from error
+            raise
+
+    def _render_model(
+        self,
+        model: DocumentModel,
+        *,
+        asset_roots: Sequence[str | Path],
+        limits: InputLimits | None,
+    ) -> DocxDocument:
+        """Compose the document for render(), which names XML-writer failures.
+
+        Args:
+            model: Parsed or hand-built document with its carried allowed folders.
+            asset_roots: Operator folders added to model and RenderOptions folders.
+            limits: Explicit policy overriding options and the parsed model's policy.
+
+        Returns:
+            The rendered document.
+        """
         self.term_sheet_texts = None
+        limits = limits or self.options.limits or model.limits
+        self._check_model_limits(model, limits)
         model = deepcopy(model)
+        roots = resolve_asset_roots((*model.asset_roots, *self.options.asset_roots, *asset_roots))
         resolved = resolve_options(model.metadata, self.options)
         if model.parsed_profile is not None and model.parsed_profile != resolved.profile.name:
             raise ValueError(
@@ -3601,25 +3805,35 @@ class IBDocumentRenderer:
                 if getattr(model.metadata, field_name) == getattr(old_defaults, field_name):
                     setattr(model.metadata, field_name, getattr(new_defaults, field_name))
             model.metadata.profile = resolved.profile.name
-        if not resolved.profile.is_ib:
-            validate_office_metadata(model.metadata)
+        with document_validation():
+            if not resolved.profile.is_ib:
+                validate_office_metadata(model.metadata)
         if resolved.profile.name == "term-sheet":
-            validate_term_sheet_metadata(model.metadata)
-            self.term_sheet_texts = resolve_term_sheet_texts(model.metadata, resolved.house)
-        report_title_block = (
-            not resolved.cover and resolved.profile.name == "ib-report"
-            and bool(model.metadata.title.strip())
-        )
+            with document_validation():
+                validate_term_sheet_metadata(model.metadata)
+            self.term_sheet_texts = resolve_term_sheet_texts(
+                model.metadata, resolved.house, document_house=self.options.house is None
+            )
+        with _metadata_text("title"):
+            report_title_block = (
+                not resolved.cover
+                and resolved.profile.name == "ib-report"
+                and bool(model.metadata.title.strip())
+            )
         term_sheet = resolved.profile.name == "term-sheet"
         # Without a cover, every other non-plain profile opens with its title too
         # (`render_office_opening`); it leads the page like the report title block.
         opening_title = (
-            not resolved.cover and not report_title_block and not term_sheet
+            not resolved.cover
+            and not report_title_block
+            and not term_sheet
             and resolved.profile.name not in {"plain", "ib-report"}
         )
         if (resolved.cover and resolved.profile.is_ib) or report_title_block:
             # Filter the private render copy so the TOC and body share the same outline.
-            model.elements = [element for element in model.elements if not element.inferred_subtitle]
+            model.elements = [
+                element for element in model.elements if not element.inferred_subtitle
+            ]
         if report_title_block or term_sheet or opening_title:
             # Transfer the first matching body H1 to the non-outline title block
             # (the term-sheet opening always renders the title).
@@ -3632,18 +3846,36 @@ class IBDocumentRenderer:
                 ):
                     model.elements.pop(index)
                     break
-        appendix_index = letter_appendix_index(model)
+        with document_validation():
+            appendix_index = letter_appendix_index(model)
         if resolved.strict and model.warnings:
-            raise ValueError("Input validation failed: " + "; ".join(model.warnings))
+            raise StrictValidationError("Input validation failed: ", model.warnings)
+        # Strict mode rejects such a character anywhere in the model. Otherwise the
+        # elements keep their per-element resilience and only metadata is checked here.
+        with document_validation():
+            validate_xml_strings(model if resolved.strict else model.metadata)
         self.errors = list(model.warnings)
         self._term_sheet = term_sheet
         self._reset_document()
         # Inline images (table cells, text) resolve relative paths against the source.
         cast(Any, self.doc.part)._ib_source_dir = model.source_dir
+        cast(Any, self.doc.part)._ib_asset_roots = roots
+        cast(Any, self.doc.part)._ib_limits = limits
+        # Only an operator-selected house can exempt its own logo. A frontmatter
+        # override remains document content even when it names the identical path.
+        style = model.metadata.extra.get("style", {})
+        cast(Any, self.doc.part)._ib_trusted_house_logo = (
+            self.options.house is not None and isinstance(style, dict) and "logo" not in style
+        )
         self.separator_mode = resolved.separator_mode
         self.charts = resolved.charts
+        with document_validation(
+            self.options.theme is None, errors=(ValueError, OSError, yaml.YAMLError)
+        ):
+            style_values = load_style(resolved.profile, resolved.theme)
+        self._composing = True
         with (
-            use_style(load_style(resolved.profile, resolved.theme)),
+            use_style(style_values),
             collect_raster_font_diagnostics() as font_warnings,
             collect_term_runs(resolved.term_tags) as term_runs,
         ):
@@ -3657,25 +3889,32 @@ class IBDocumentRenderer:
                 setup_korean_spacing(self.doc)
             update_fields = OxmlElement("w:updateFields")
             update_fields.set(qn("w:val"), "true")
-            self.doc.settings.element.append(update_fields)
+            insert_ordered(self.doc.settings.element, update_fields)
             if resolved.profile.a4:
                 for section in self.doc.sections:
                     section.page_width, section.page_height = Mm(210), Mm(297)
             if resolved.cover:
                 self.cover_renderer.include_disclaimer = resolved.disclaimer
-                self.cover_renderer.render(model.metadata)
-            title_inserted = (
-                render_office_opening(self.doc, model.metadata) if report_title_block else False
-            )
+                with _metadata_text("cover"):
+                    self.cover_renderer.render(model.metadata)
+            title_inserted = False
+            if report_title_block:
+                # The opening validates the attendee list itself for the report profiles.
+                with document_validation(), _metadata_text("title block"):
+                    title_inserted = render_office_opening(self.doc, model.metadata)
             if self._term_sheet:
                 # Resolved in preflight; the opening leads the first page, before any TOC.
-                title_inserted = render_term_sheet_opening(
-                    self.doc, model.metadata, cast(TermSheetTexts, self.term_sheet_texts),
-                    TextRenderer.render_runs,
-                )
+                with _metadata_text("term-sheet opening"):
+                    title_inserted = render_term_sheet_opening(
+                        self.doc,
+                        model.metadata,
+                        cast(TermSheetTexts, self.term_sheet_texts),
+                        TextRenderer.render_runs,
+                    )
             if opening_title:
                 # Title before the TOC, whose preview no longer lists the title H1.
-                title_inserted = render_office_opening(self.doc, model.metadata)
+                with document_validation(), _metadata_text("title block"):
+                    title_inserted = render_office_opening(self.doc, model.metadata)
             if resolved.toc:
                 self.toc_renderer.render(model)
             # The title H1 was already removed from the render copy for these paths.
@@ -3683,7 +3922,8 @@ class IBDocumentRenderer:
             office_closed = False
             for idx, element in enumerate(model.elements):
                 if idx == appendix_index:
-                    render_office_closing(self.doc, model.metadata)
+                    with _metadata_text("closing"):
+                        render_office_closing(self.doc, model.metadata)
                     office_closed = True
                     self.doc.add_page_break()
                     label = model.metadata.extra["letter"].get("appendix_label")
@@ -3702,6 +3942,8 @@ class IBDocumentRenderer:
                     self.list_renderer.numbering.reset()
                 try:
                     self._render_element(element)
+                except InputLimitError:
+                    raise
                 except Exception as exc:
                     message = f"Element {idx} ({element.element_type.name}): {exc}"
                     self.errors.append(message)
@@ -3713,39 +3955,53 @@ class IBDocumentRenderer:
                         color=STYLE.RED,
                     )
             if not office_closed:
-                render_office_closing(self.doc, model.metadata)
+                with _metadata_text("closing"):
+                    render_office_closing(self.doc, model.metadata)
             if model.footnotes:
-                self.footnote_renderer.render(model.footnotes, allow_legacy_refs=resolved.profile.is_ib)
+                self.footnote_renderer.render(
+                    model.footnotes, allow_legacy_refs=resolved.profile.is_ib
+                )
             if resolved.disclaimer:
-                self.disclaimer_renderer.render(model.metadata.company)
+                with _metadata_text("disclaimer (company)"):
+                    self.disclaimer_renderer.render(model.metadata.company)
             sender = model.metadata.extra.get("sender", {})
             company = (
                 sender.get("organization", model.metadata.company)
                 if isinstance(sender, dict)
                 else model.metadata.company
             )
-            if self._term_sheet:
-                setup_term_sheet_header_footer(
-                    self.doc, model.metadata, self.term_sheet_texts, resolved.confidential,
-                    TextRenderer.render_runs,
-                )
-            else:
-                self.styler.setup_header_footer(
-                    company="" if resolved.profile.name == "office-letter" else company,
-                    confidential=resolved.confidential, show_page_numbers=True
-                )
+            with _metadata_text("header (sender.organization or company)"):
+                if self._term_sheet:
+                    setup_term_sheet_header_footer(
+                        self.doc,
+                        model.metadata,
+                        self.term_sheet_texts,
+                        resolved.confidential,
+                        TextRenderer.render_runs,
+                    )
+                else:
+                    self.styler.setup_header_footer(
+                        company="" if resolved.profile.name == "office-letter" else company,
+                        confidential=resolved.confidential,
+                        show_page_numbers=True,
+                    )
             self.apply_generator_signature(
                 "ib_generated" if resolved.profile.name == "ib-report" else resolved.profile.name
             )
             self._apply_term_controls(term_runs)
             if "checks" in model.metadata.extra:
                 # Stored so docx-audit can re-evaluate the relations after edits in Word.
+                with document_validation(errors=(ValueError, AttributeError)):
+                    checks_json = checks_to_json(
+                        parse_checks(model.metadata.extra["checks"]),
+                        {
+                            str(key): str(value)
+                            for key, value in (model.metadata.extra.get("terms") or {}).items()
+                        },
+                    )
                 GeneratorSignatureWriter.upsert_properties(
                     self.doc,
-                    {CHECKS_PROPERTY: checks_to_json(
-                        parse_checks(model.metadata.extra["checks"]),
-                        {str(key): str(value) for key, value in (model.metadata.extra.get("terms") or {}).items()},
-                    )},
+                    {CHECKS_PROPERTY: checks_json},
                 )
             ImageRenderer.fit_table_cell_images(self.doc)
             from docx_audit import inspect_document_issues
@@ -3754,13 +4010,34 @@ class IBDocumentRenderer:
                 self.errors.append(warning)
                 paragraph = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
                 FontStyler.apply_run_style(
-                    paragraph.add_run(f"[Render Warning: {warning}]"), italic=True, color=STYLE.RED,
+                    paragraph.add_run(f"[Render Warning: {warning}]"),
+                    italic=True,
+                    color=STYLE.RED,
                 )
             issues = inspect_document_issues(self.doc)
             self.errors.extend(issue for issue in issues if issue not in self.errors)
             if resolved.strict and self.errors:
-                raise ValueError("Document validation failed: " + "; ".join(self.errors))
+                raise StrictValidationError("Document validation failed: ", self.errors)
         return self.doc
+
+    @staticmethod
+    def _check_model_limits(model: DocumentModel, limits: InputLimits) -> None:
+        """Preflight tables and lists even when the caller bypassed parsing.
+
+        Args:
+            model: Parsed or hand-built document.
+            limits: Effective caller policy for this render.
+        """
+        for element in model.elements:
+            content = element.content
+            if isinstance(content, Table):
+                columns = max(
+                    content.col_count, max((len(row.cells) for row in content.rows), default=0)
+                )
+                limits.check(RejectionCode.LIMIT_TABLE_CELLS, len(content.rows) * columns)
+            item = content[1] if isinstance(content, tuple) else content
+            if isinstance(item, ListItem):
+                limits.check(RejectionCode.LIMIT_LIST_DEPTH, item.indent_level + 1)
 
     def apply_generator_signature(self, profile: str = "ib_generated") -> None:
         """Stamp the DOCX package with a generator signature."""
@@ -3872,7 +4149,7 @@ class IBDocumentRenderer:
             self.list_renderer.render_bullet(cast(ListItem, element.content))
 
         elif etype == ElementType.NUMBERED_LIST:
-            content = cast(Tuple[str, ListItem], element.content)
+            content = cast(tuple[str, ListItem], element.content)
             number, item = content
             self.list_renderer.render_numbered(number, item)
 
@@ -3883,8 +4160,7 @@ class IBDocumentRenderer:
             self.callout_renderer.render(cast(Blockquote, element.content))
 
         elif etype == ElementType.IMAGE:
-            if not self.image_renderer.render(cast(Image, element.content)):
-                self.errors.append("Image could not be rendered")
+            self.image_renderer.render(cast(Image, element.content))
 
         elif etype == ElementType.LATEX_BLOCK:
             self._render_latex_block(cast(LaTeXEquation, element.content))
@@ -3922,7 +4198,9 @@ class IBDocumentRenderer:
                     message = f"{chart.label}: {exc}"
                     self.errors.append(message)
                     logger.warning("%s; rendering original code panel", message)
-            self._render_code_block(CodeBlock(chart.code, "chart", CodeBlock.detect_ascii_art(chart.code)))
+            self._render_code_block(
+                CodeBlock(chart.code, "chart", CodeBlock.detect_ascii_art(chart.code))
+            )
 
         elif etype == ElementType.DIAGRAM:
             from diagram_renderer import DiagramRenderer
@@ -4008,6 +4286,9 @@ class IBDocumentRenderer:
         self._style_code_block_table(table)
 
         lines = code_block.code.splitlines() or [""]
+        if code_block.code.endswith("\n"):
+            # splitlines() drops the empty line after a final line break.
+            lines.append("")
         for idx, line in enumerate(lines):
             paragraph = cell.paragraphs[0] if idx == 0 else cell.add_paragraph()
             paragraph.clear()
@@ -4053,13 +4334,15 @@ class IBDocumentRenderer:
     def _render_code_block_line(self, paragraph, line: str) -> None:
         """Render one line of a code block with light semantic emphasis for tree diagrams."""
         if not line.strip():
-            spacer = paragraph.add_run(" ")
+            spacer = paragraph.add_run(line)
             FontStyler.apply_run_style(
                 spacer,
                 font_name="Consolas",
                 font_size=Pt(9.5),
                 color=STYLE.MEDIUM_GRAY,
             )
+            # A blank line needs no spacer text: the paragraph mark, which keeps the
+            # body font, sets the height of every line of the panel (checked in Word).
             return
 
         prefix_match = self._TREE_PREFIX_RE.match(line)
@@ -4206,13 +4489,13 @@ class LaTeXRenderer:
     """
 
     # Flag to track if matplotlib is available
-    _matplotlib_available: Optional[bool] = None
+    _matplotlib_available: bool | None = None
     _NON_ASCII_RE = re.compile(r"[^\x00-\x7F]")
     _TEXT_COMMAND_RE = re.compile(r"\\(?:text|mathrm|operatorname)\{([^{}]*)\}")
     _FRAC_RE = re.compile(r"\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}")
     _MULTISPACE_RE = re.compile(r"\s+")
     _UNRESOLVED_COMMAND_RE = re.compile(r"\\[A-Za-z]+")
-    _LATEX_SYMBOL_REPLACEMENTS: Tuple[Tuple[str, str], ...] = (
+    _LATEX_SYMBOL_REPLACEMENTS: tuple[tuple[str, str], ...] = (
         (r"\Leftrightarrow", "⇔"),
         (r"\Leftarrow", "⇐"),
         (r"\Rightarrow", "⇒"),
@@ -4295,7 +4578,7 @@ class LaTeXRenderer:
         expression: str,
         fontsize: int = 14,
         dpi: int = 150,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Render a LaTeX expression to a PNG image file.
 
@@ -4355,7 +4638,7 @@ class LaTeXRenderer:
         expression: str,
         fontsize: int,
         dpi: int,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Render mathtext-compatible LaTeX to a PNG image."""
         fig = None
         temp_path = None
@@ -4417,7 +4700,7 @@ class LaTeXRenderer:
         display_text: str,
         fontsize: int,
         dpi: int,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Render a readable unicode fallback image for non-ASCII equations."""
         fig = None
         temp_path = None
@@ -4433,7 +4716,9 @@ class LaTeXRenderer:
             FigureCanvasAgg(fig)
             fig.patch.set_facecolor("white")
             fig.patch.set_alpha(1)
-            font_props = FontProperties(family=RasterFontPolicy.resolve(STYLE.KOREAN_FONT, display_text))
+            font_props = FontProperties(
+                family=RasterFontPolicy.resolve(STYLE.KOREAN_FONT, display_text)
+            )
 
             fig.text(
                 0.5,

@@ -5,7 +5,6 @@ import json
 import logging
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, List
 
 import pytest
 
@@ -29,12 +28,12 @@ from term_variables import validate_terms
 VALUES = {"amount": "500억원", "tenor": "3년", "rate": "CD(3개월) + [1.10]%"}
 # Every inline syntax the parser knows must survive verbatim inside a value.
 SPECIAL = (
-    '**x** $1 and $2 <br> | \\ a  b ( y ) [^1] `c` _u_ ~s~ ^p^ '
+    "**x** $1 and $2 <br> | \\ a  b ( y ) [^1] `c` _u_ ~s~ ^p^ "
     '<span style="color:#FF0000">r</span> [l](https://example.com) {{amount}}'
 )
 
 
-def front(values: Dict[str, str], extra: str = "") -> str:
+def front(values: dict[str, str], extra: str = "") -> str:
     """Build frontmatter whose values are exact YAML strings (JSON is valid YAML)."""
     lines = "".join(
         f"  {key}: {json.dumps(value, ensure_ascii=False)}\n" for key, value in values.items()
@@ -52,12 +51,12 @@ def first(model: DocumentModel, element_type: ElementType):
     return next(e.content for e in model.elements if e.element_type == element_type)
 
 
-def texts(runs: List[TextRun]) -> List[str]:
+def texts(runs: list[TextRun]) -> list[str]:
     """Visible text of each run."""
     return [run.text for run in runs]
 
 
-def keyed(runs: List[TextRun]) -> List[tuple]:
+def keyed(runs: list[TextRun]) -> list[tuple]:
     """Text and term key of each run."""
     return [(run.text, run.term_key) for run in runs]
 
@@ -79,7 +78,9 @@ def test_validate_terms_requires_a_mapping(value) -> None:
         validate_terms(value)
 
 
-@pytest.mark.parametrize("key", ["Amount", "1st", "a-b", "a b", "", "_a", "a" * 41, "금액", 1, True, None])
+@pytest.mark.parametrize(
+    "key", ["Amount", "1st", "a-b", "a b", "", "_a", "a" * 41, "금액", 1, True, None]
+)
 def test_validate_terms_rejects_malformed_keys(key) -> None:
     with pytest.raises(ValueError, match="term key"):
         validate_terms({key: "value"})
@@ -91,15 +92,18 @@ def test_validate_terms_rejects_scalars_with_a_quoting_hint(value) -> None:
         validate_terms({"rate": value})
 
 
-@pytest.mark.parametrize("value, message", [
-    (None, "no value"),
-    (["a"], "single string"),
-    ({"a": "b"}, "single string"),
-    ("a\nb", "single line"),
-    ("a\r\nb", "single line"),
-    ("a\u2028b", "single line"),
-    ("a\x07b", "control character"),
-])
+@pytest.mark.parametrize(
+    "value, message",
+    [
+        (None, "no value"),
+        (["a"], "single string"),
+        ({"a": "b"}, "single string"),
+        ("a\nb", "single line"),
+        ("a\r\nb", "single line"),
+        ("a\u2028b", "single line"),
+        ("a\x07b", "control character"),
+    ],
+)
 def test_validate_terms_rejects_non_text_values(value, message: str) -> None:
     with pytest.raises(ValueError, match=message):
         validate_terms({"rate": value})
@@ -125,21 +129,30 @@ def test_paragraph_reference_becomes_a_value_run() -> None:
     paragraph = first(parse(front(VALUES) + "Deal {{amount}} closes."), ElementType.PARAGRAPH)
     assert isinstance(paragraph, Paragraph)
     assert paragraph.runs == [
-        TextRun("Deal "), TextRun("500억원", term_key="amount"), TextRun(" closes."),
+        TextRun("Deal "),
+        TextRun("500억원", term_key="amount"),
+        TextRun(" closes."),
     ]
     assert paragraph.text == "Deal 500억원 closes."
 
 
-@pytest.mark.parametrize("markdown, expected", [
-    ("**{{amount}}**", TextRun("500억원", bold=True, term_key="amount")),
-    ("*{{amount}}*", TextRun("500억원", italic=True, term_key="amount")),
-    ("_{{amount}}_", TextRun("500억원", italic=True, term_key="amount")),
-    ("^{{amount}}^", TextRun("500억원", superscript=True, term_key="amount")),
-    ('<span style="color:#C00000">{{amount}}</span>',
-     TextRun("500억원", color_hex="#C00000", term_key="amount")),
-    ("[{{amount}}](https://example.com/deal)",
-     TextRun("500억원", hyperlink="https://example.com/deal", term_key="amount")),
-])
+@pytest.mark.parametrize(
+    "markdown, expected",
+    [
+        ("**{{amount}}**", TextRun("500억원", bold=True, term_key="amount")),
+        ("*{{amount}}*", TextRun("500억원", italic=True, term_key="amount")),
+        ("_{{amount}}_", TextRun("500억원", italic=True, term_key="amount")),
+        ("^{{amount}}^", TextRun("500억원", superscript=True, term_key="amount")),
+        (
+            '<span style="color:#C00000">{{amount}}</span>',
+            TextRun("500억원", color_hex="#C00000", term_key="amount"),
+        ),
+        (
+            "[{{amount}}](https://example.com/deal)",
+            TextRun("500억원", hyperlink="https://example.com/deal", term_key="amount"),
+        ),
+    ],
+)
 def test_value_run_inherits_surrounding_formatting(markdown: str, expected: TextRun) -> None:
     paragraph = first(parse(front(VALUES) + markdown), ElementType.PARAGRAPH)
     assert paragraph.runs == [expected]
@@ -149,9 +162,15 @@ def test_references_inside_subscript_and_superscript_take_the_offset() -> None:
     markdown = "H~{{n}}~O, x^{{n}}^y, C~{{n}}{{n}}~ and a~{{wide}}~b"
     paragraph = first(parse(front({"n": "2", "wide": "2+x y"}) + markdown), ElementType.PARAGRAPH)
     assert [(r.text, r.term_key, r.subscript, r.superscript) for r in paragraph.runs] == [
-        ("H", None, False, False), ("2", "n", True, False), ("O, x", None, False, False),
-        ("2", "n", False, True), ("y, C", None, False, False), ("2", "n", True, False),
-        ("2", "n", True, False), (" and a", None, False, False), ("2+x y", "wide", True, False),
+        ("H", None, False, False),
+        ("2", "n", True, False),
+        ("O, x", None, False, False),
+        ("2", "n", False, True),
+        ("y, C", None, False, False),
+        ("2", "n", True, False),
+        ("2", "n", True, False),
+        (" and a", None, False, False),
+        ("2+x y", "wide", True, False),
         ("b", None, False, False),
     ]
     typed = [(r.text, r.subscript) for r in TextParser.parse_runs("H~2~O")]
@@ -160,22 +179,30 @@ def test_references_inside_subscript_and_superscript_take_the_offset() -> None:
 
 
 def test_emphasis_around_a_reference_splits_into_three_formatted_runs() -> None:
-    paragraph = first(parse(front(VALUES) + "**A{{amount}}B** {{ tenor }}{{rate}}"), ElementType.PARAGRAPH)
+    paragraph = first(
+        parse(front(VALUES) + "**A{{amount}}B** {{ tenor }}{{rate}}"), ElementType.PARAGRAPH
+    )
     assert paragraph.runs == [
-        TextRun("A", bold=True), TextRun("500억원", bold=True, term_key="amount"),
-        TextRun("B", bold=True), TextRun(" "), TextRun("3년", term_key="tenor"),
+        TextRun("A", bold=True),
+        TextRun("500억원", bold=True, term_key="amount"),
+        TextRun("B", bold=True),
+        TextRun(" "),
+        TextRun("3년", term_key="tenor"),
         TextRun("CD(3개월) + [1.10]%", term_key="rate"),
     ]
 
 
-@pytest.mark.parametrize("template", [
-    "Start {{raw}} end.",
-    "- Start {{raw}} end.",
-    "1. Start {{raw}} end.",
-    "| Label |\n|---|\n| Start {{raw}} end. |",
-    "> Start {{raw}} end.",
-    "## Start {{raw}} end.",
-])
+@pytest.mark.parametrize(
+    "template",
+    [
+        "Start {{raw}} end.",
+        "- Start {{raw}} end.",
+        "1. Start {{raw}} end.",
+        "| Label |\n|---|\n| Start {{raw}} end. |",
+        "> Start {{raw}} end.",
+        "## Start {{raw}} end.",
+    ],
+)
 def test_values_are_never_reparsed(template: str) -> None:
     model = parse(front({"raw": SPECIAL, "amount": "500억원"}) + template)
     content = model.elements[0].content
@@ -187,8 +214,18 @@ def test_values_are_never_reparsed(template: str) -> None:
         runs = content.runs
     assert keyed(runs) == [("Start ", None), (SPECIAL, "raw"), (" end.", None)]
     value = runs[1]
-    assert not any([value.bold, value.italic, value.superscript, value.subscript,
-                    value.color_hex, value.hyperlink, value.footnote_id, value.is_latex])
+    assert not any(
+        [
+            value.bold,
+            value.italic,
+            value.superscript,
+            value.subscript,
+            value.color_hex,
+            value.hyperlink,
+            value.footnote_id,
+            value.is_latex,
+        ]
+    )
     assert model.warnings == []
 
 
@@ -196,30 +233,35 @@ def test_escaped_reference_stays_literal_without_diagnostics() -> None:
     model = parse(front(VALUES) + r"Literal \{{amount}} and \{{nope}} but \\{{tenor}}.")
     paragraph = first(model, ElementType.PARAGRAPH)
     assert keyed(paragraph.runs) == [
-        ("Literal {{amount}} and {{nope}} but \\", None), ("3년", "tenor"), (".", None),
+        ("Literal {{amount}} and {{nope}} but \\", None),
+        ("3년", "tenor"),
+        (".", None),
     ]
     assert model.warnings == []
 
 
 def test_escaped_underscore_inside_a_reference_still_names_the_key() -> None:
-    paragraph = first(parse(front({"sign_date": "2026. 10. 1."}) + r"On {{sign\_date}}."), ElementType.PARAGRAPH)
+    paragraph = first(
+        parse(front({"sign_date": "2026. 10. 1."}) + r"On {{sign\_date}}."), ElementType.PARAGRAPH
+    )
     assert keyed(paragraph.runs) == [("On ", None), ("2026. 10. 1.", "sign_date"), (".", None)]
 
 
 def test_code_math_fences_and_link_destinations_are_not_substituted() -> None:
     model = parse(
-        front(VALUES)
-        + "Use `{{amount}}` or `{{nope}}`, math $x^{{2}}$ and "
+        front(VALUES) + "Use `{{amount}}` or `{{nope}}`, math $x^{{2}}$ and "
         "[{{amount}}](https://example.com/{{nope}}).\n\n"
         "```\n{{amount}} {{nope}}\n```\n\n"
-        "```chart\ntype: bar\ntitle: \"{{nope}}\"\n```\n"
+        '```chart\ntype: bar\ntitle: "{{nope}}"\n```\n'
     )
     paragraph = first(model, ElementType.PARAGRAPH)
     assert [run.text for run in paragraph.runs if run.term_key] == ["500억원"]
     # Code keeps the reference literal (shown without backticks, as a code run).
     assert [run.text for run in paragraph.runs if run.code] == ["{{amount}}", "{{nope}}"]
     assert [run.text for run in paragraph.runs if run.is_latex] == ["x^{{2}}"]
-    assert [run.hyperlink for run in paragraph.runs if run.hyperlink] == ["https://example.com/{{nope}}"]
+    assert [run.hyperlink for run in paragraph.runs if run.hyperlink] == [
+        "https://example.com/{{nope}}"
+    ]
     code = first(model, ElementType.CODE_BLOCK)
     assert isinstance(code, CodeBlock) and code.code == "{{amount}} {{nope}}"
     assert "{{nope}}" in first(model, ElementType.CHART).code
@@ -238,10 +280,13 @@ def test_link_destination_with_math_stays_literal_and_unchecked() -> None:
 
 def test_escaped_link_syntax_is_prose_so_its_reference_is_substituted() -> None:
     paragraph = first(
-        parse(front({"amount": "500"}) + r"\[X](https://example.com/{{amount}})"), ElementType.PARAGRAPH,
+        parse(front({"amount": "500"}) + r"\[X](https://example.com/{{amount}})"),
+        ElementType.PARAGRAPH,
     )
     assert keyed(paragraph.runs) == [
-        ("[X](https://example.com/", None), ("500", "amount"), (")", None),
+        ("[X](https://example.com/", None),
+        ("500", "amount"),
+        (")", None),
     ]
 
 
@@ -261,7 +306,11 @@ def test_value_containing_reference_syntax_is_not_substituted_again() -> None:
     assert keyed(model.metadata.display_runs["title"]) == [("Head ", None), ("{{b}}", "a")]
     paragraph = first(model, ElementType.PARAGRAPH)
     assert keyed(paragraph.runs) == [
-        ("Body ", None), ("{{b}}", "a"), (" and ", None), ("X", "b"), (".", None),
+        ("Body ", None),
+        ("{{b}}", "a"),
+        (" and ", None),
+        ("X", "b"),
+        (".", None),
     ]
     assert model.warnings == []
 
@@ -273,8 +322,7 @@ def test_value_containing_reference_syntax_is_not_substituted_again() -> None:
 
 def test_lists_and_table_cells_receive_value_runs_but_cells_keep_raw_content() -> None:
     model = parse(
-        front({**VALUES, "marker": "^^"})
-        + "- Bullet {{amount}}\n\n1. Number {{tenor}}\n\n"
+        front({**VALUES, "marker": "^^"}) + "- Bullet {{amount}}\n\n1. Number {{tenor}}\n\n"
         "| {{tenor}} | Value |\n|---|---|\n| Amount | {{amount}} |\n| Marker | {{marker}} |"
     )
     bullet, numbered = (e.content for e in model.elements[:2])
@@ -296,25 +344,34 @@ def test_table_semantics_follow_values_in_header_cells() -> None:
     assert detected.table_type == TableType.RISK_MATRIX
     assert [cell.risk_level for cell in detected.rows[1].cells] == [None, "high"]
     specified = first(
-        parse(front({"h": "Impact"}, extra="tables:\n  - type: risk\n") + risk), ElementType.TABLE,
+        parse(front({"h": "Impact"}, extra="tables:\n  - type: risk\n") + risk),
+        ElementType.TABLE,
     )
     assert [cell.risk_level for cell in specified.rows[1].cells] == [None, "high"]
     year = first(
-        parse(front({"year": "2026"}) + "| Item | {{year}} |\n|---|---|\n| Sales | 1 |", profile="ib-memo"),
+        parse(
+            front({"year": "2026"}) + "| Item | {{year}} |\n|---|---|\n| Sales | 1 |",
+            profile="ib-memo",
+        ),
         ElementType.TABLE,
     )
     assert year.table_type == TableType.FINANCIAL
     assert year.rows[0].cells[1].content == "{{year}}"
 
 
-@pytest.mark.parametrize("markdown, element_type", [
-    ("# Tenor {{tenor}}", ElementType.HEADING_1),
-    ("## Tenor {{tenor}}", ElementType.HEADING_2),
-    ("### Tenor {{tenor}}", ElementType.HEADING_3),
-    ("#### Tenor {{tenor}}", ElementType.HEADING_4),
-    ("Tenor {{tenor}}\n===", ElementType.HEADING_1),
-])
-def test_headings_carry_value_runs_and_substituted_text(markdown: str, element_type: ElementType) -> None:
+@pytest.mark.parametrize(
+    "markdown, element_type",
+    [
+        ("# Tenor {{tenor}}", ElementType.HEADING_1),
+        ("## Tenor {{tenor}}", ElementType.HEADING_2),
+        ("### Tenor {{tenor}}", ElementType.HEADING_3),
+        ("#### Tenor {{tenor}}", ElementType.HEADING_4),
+        ("Tenor {{tenor}}\n===", ElementType.HEADING_1),
+    ],
+)
+def test_headings_carry_value_runs_and_substituted_text(
+    markdown: str, element_type: ElementType
+) -> None:
     heading = first(parse(front(VALUES) + markdown), element_type)
     assert isinstance(heading, Heading)
     assert heading.text == "Tenor 3년"
@@ -338,24 +395,32 @@ def test_ib_numbered_heading_substitutes_from_the_source_line() -> None:
 
 def test_blockquote_carries_value_runs_after_its_label() -> None:
     quote = first(
-        parse(front(VALUES) + "> [참고] Amount {{amount}}\n> for {{tenor}}"), ElementType.BLOCKQUOTE,
+        parse(front(VALUES) + "> [참고] Amount {{amount}}\n> for {{tenor}}"),
+        ElementType.BLOCKQUOTE,
     )
     assert isinstance(quote, Blockquote)
     assert quote.title == "참고"
     assert quote.text == "Amount 500억원 for 3년"
     assert keyed(quote.runs) == [
-        ("Amount ", None), ("500억원", "amount"), (" for ", None), ("3년", "tenor"),
+        ("Amount ", None),
+        ("500억원", "amount"),
+        (" for ", None),
+        ("3년", "tenor"),
     ]
 
 
 def test_title_subtitle_and_date_get_display_runs_and_substituted_strings() -> None:
-    model = parse(front(
-        VALUES,
-        extra='title: "가나다 {{amount}}"\nsubtitle: "Tenor {{tenor}}"\ndate: "{{sign}}"\n',
-    ).replace("terms:\n", "terms:\n  sign: \"2026. 09.\"\n"))
+    model = parse(
+        front(
+            VALUES,
+            extra='title: "가나다 {{amount}}"\nsubtitle: "Tenor {{tenor}}"\ndate: "{{sign}}"\n',
+        ).replace("terms:\n", 'terms:\n  sign: "2026. 09."\n')
+    )
     metadata = model.metadata
     assert (metadata.title, metadata.subtitle, metadata.extra["date"]) == (
-        "가나다 500억원", "Tenor 3년", "2026. 09.",
+        "가나다 500억원",
+        "Tenor 3년",
+        "2026. 09.",
     )
     assert metadata.display_runs == {
         "title": [TextRun("가나다 "), TextRun("500억원", term_key="amount")],
@@ -365,7 +430,9 @@ def test_title_subtitle_and_date_get_display_runs_and_substituted_strings() -> N
 
 
 def test_substituted_ib_title_survives_file_and_stream_parsing(tmp_path: Path) -> None:
-    source = front({"name": "IB Report"}, extra='title: "{{name}}"\n') + "# Different title\n\nBody."
+    source = (
+        front({"name": "IB Report"}, extra='title: "{{name}}"\n') + "# Different title\n\nBody."
+    )
     path = tmp_path / "title.md"
     path.write_text(source, encoding="utf-8")
     for model in (
@@ -375,7 +442,9 @@ def test_substituted_ib_title_survives_file_and_stream_parsing(tmp_path: Path) -
     ):
         assert model.metadata.title == "IB Report"
         assert keyed(model.metadata.display_runs["title"]) == [("IB Report", "name")]
-    inferred = parse_markdown_file(BytesIO((front({"name": "x"}) + "# Heading title\n\nBody.").encode()))
+    inferred = parse_markdown_file(
+        BytesIO((front({"name": "x"}) + "# Heading title\n\nBody.").encode())
+    )
     assert inferred.metadata.title == "Heading title"
 
 
@@ -387,10 +456,13 @@ def test_metadata_without_references_keeps_no_display_runs() -> None:
 
 def test_table_caption_unit_source_and_as_of_are_substituted_as_text() -> None:
     model = parse(
-        front({**VALUES, "raw": SPECIAL}, extra=(
-            "tables:\n  - caption: \"표 {{amount}}\"\n    unit: \"{{tenor}}\"\n"
-            "    source: \"{{raw}}\"\n    as_of: \"\\\\{{tenor}}\"\n"
-        ))
+        front(
+            {**VALUES, "raw": SPECIAL},
+            extra=(
+                'tables:\n  - caption: "표 {{amount}}"\n    unit: "{{tenor}}"\n'
+                '    source: "{{raw}}"\n    as_of: "\\\\{{tenor}}"\n'
+            ),
+        )
         + "| A | B |\n|---|---|\n| 1 | 2 |"
     )
     table = first(model, ElementType.TABLE)
@@ -403,7 +475,7 @@ def test_table_caption_unit_source_and_as_of_are_substituted_as_text() -> None:
 
 def test_rendered_caption_shows_special_value_literally() -> None:
     model = parse(
-        front({"raw": SPECIAL, "amount": "500억원"}, extra="tables:\n  - caption: \"표 {{raw}}\"\n")
+        front({"raw": SPECIAL, "amount": "500억원"}, extra='tables:\n  - caption: "표 {{raw}}"\n')
         + "| A | B |\n|---|---|\n| 1 | 2 |"
     )
     doc = IBDocumentRenderer(options=RenderOptions(profile="plain", strict=True)).render(model)
@@ -413,7 +485,9 @@ def test_rendered_caption_shows_special_value_literally() -> None:
 def test_title_deduplication_uses_substituted_text() -> None:
     markdown = front(VALUES, extra='title: "가나다 {{amount}}"\n') + "# 가나다 {{amount}}\n\nBody."
     model = parse(markdown, profile="business-report")
-    doc = IBDocumentRenderer(options=RenderOptions(profile="business-report", strict=True)).render(model)
+    doc = IBDocumentRenderer(options=RenderOptions(profile="business-report", strict=True)).render(
+        model
+    )
     # Content-control text is invisible to Paragraph.text, so compare the XML text.
     visible = ["".join(p._p.xpath(".//w:t/text()")) for p in doc.paragraphs]
     assert visible.count("가나다 500억원") == 1
@@ -436,7 +510,9 @@ def test_undefined_and_invalid_references_warn_once_and_stay_literal() -> None:
         "underscores and start with a letter)",
         "Undefined term: {{nope}}",
     ]
-    assert texts(first(model, ElementType.PARAGRAPH).runs) == ["A {{nope}} {{nope}} {{Bad-Key}} {{}}"]
+    assert texts(first(model, ElementType.PARAGRAPH).runs) == [
+        "A {{nope}} {{nope}} {{Bad-Key}} {{}}"
+    ]
     assert first(model, ElementType.HEADING_2).text == "{{Bad-Key}}"
 
 
@@ -453,8 +529,10 @@ def test_unused_terms_are_logged_not_warned(caplog: pytest.LogCaptureFixture) ->
         model = parse(front({**VALUES, "spare": "x"}) + "Uses {{amount}}.")
     assert model.warnings == []
     assert any(
-        "Unused terms" in record.getMessage() and "spare" in record.getMessage()
-        and "tenor" in record.getMessage() and record.levelno == logging.INFO
+        "Unused terms" in record.getMessage()
+        and "spare" in record.getMessage()
+        and "tenor" in record.getMessage()
+        and record.levelno == logging.INFO
         for record in caplog.records
     )
 

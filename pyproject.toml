@@ -34,6 +34,8 @@ full = [
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "syrupy>=5.0",
+    "hypothesis>=6.0",
     "ruff>=0.1.0",
     "mypy>=1.0,<1.18",
     "types-PyYAML>=6.0",
@@ -51,6 +53,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 only-include = [
+    "input_safety.py",
     "chart_renderer.py", "converted_md_cleaner.py",
     "cli_utils.py", "converters.py", "deep_md_cleaner.py", "diagram_renderer.py",
     "document_model.py", "document_profiles.py", "docx_audit.py", "ib_renderer.py",
@@ -60,6 +63,7 @@ only-include = [
 
 [tool.hatch.build.targets.sdist]
 include = [
+    "/input_safety.py",
     "/chart_renderer.py", "/converted_md_cleaner.py",
     "/cli_utils.py", "/converters.py", "/deep_md_cleaner.py", "/diagram_renderer.py",
     "/document_model.py", "/document_profiles.py", "/docx_audit.py", "/ib_renderer.py",
@@ -92,16 +96,11 @@ select = [
 ignore = [
     "E501",   # line too long (handled by formatter)
     "B008",   # do not perform function calls in argument defaults
-    # Enabled by the Python 3.12 target; modernize in a follow-up PR.
-    "B905",   # zip without explicit strict
-    "UP006",  # use built-in collection annotations
-    "UP007",  # use union operator annotations
-    "UP035",  # deprecated typing imports
-    "UP045",  # use union operator for Optional annotations
 ]
 
 [tool.ruff.lint.isort]
 known-first-party = [
+    "input_safety",
     "chart_renderer",
     "cli_utils",
     "converted_md_cleaner",
@@ -129,7 +128,7 @@ warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
 # Legacy unreadable pytest temp dirs may exist in local checkouts (AGENTS.md: do not delete).
-exclude = ["tests/", "^Users[^/]*AppDataLocalTemp"]
+exclude = ["tests/", "^Users[^/]*AppDataLocalTemp", "^(temp|tmp|private)/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

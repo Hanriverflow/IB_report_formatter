@@ -29,7 +29,7 @@ Changelog (converted input):
 import html
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import yaml
 
@@ -60,7 +60,9 @@ _CONTAINER_RE = re.compile(r"^ {0,3}(?:>|[-+*](?:\s|$))")  # block quote or bull
 _ORDERED_ITEM_RE = re.compile(r"^ {0,3}\d{1,9}[.)](?:\s|$)")
 _TABLE_OPEN_RE = re.compile(r"<table\b", re.IGNORECASE)
 # Comments first, then whole tags (quoted attribute values may hold `>` or `</table>`).
-_HTML_TOKEN_RE = re.compile(r"<!--.*?-->|<(/?)([A-Za-z][\w:-]*)(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", re.DOTALL)
+_HTML_TOKEN_RE = re.compile(
+    r"<!--.*?-->|<(/?)([A-Za-z][\w:-]*)(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", re.DOTALL
+)
 # Characters the inline parser may read as syntax (emphasis, LaTeX, super/subscript, code,
 # links, escapes, HTML); a band heading holding any of them could change meaning.
 _INLINE_SYNTAX_RE = re.compile(r"[<>*_`\[\]\\|$~^]|&[#\w]+;")
@@ -69,7 +71,9 @@ _HTML_ROW_RE = re.compile(r"<tr\b", re.IGNORECASE)
 _HTML_CELL_RE = re.compile(
     r"<t([dh])\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>(.*?)</t\1\s*>", re.IGNORECASE | re.DOTALL
 )
-_HTML_PARAGRAPH_RE = re.compile(r"<p\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>(.*)</p\s*>", re.IGNORECASE | re.DOTALL)
+_HTML_PARAGRAPH_RE = re.compile(
+    r"<p\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>(.*)</p\s*>", re.IGNORECASE | re.DOTALL
+)
 # Formatting-only tags whose text reads the same inside a bold heading; any other tag
 # (breaks, super/subscript, links, blocks) keeps the table as written.
 _BAND_INLINE_TAGS = frozenset({"span", "font", "b", "strong", "i", "em", "u"})
@@ -105,18 +109,20 @@ class CleanupNote:
 class ConvertedCleanupReport:
     """Every change the cleanup made, plus the lines it left undecided."""
 
-    notes: List[CleanupNote] = field(default_factory=list)
+    notes: list[CleanupNote] = field(default_factory=list)
 
     def add(self, line: int, message: str, last: int = 0) -> None:
         """Record one note; lines are one-based, 0 for document-level notes."""
         self.notes.append(CleanupNote(line, message, last if last > line else 0))
 
-    def lines(self) -> List[str]:
+    def lines(self) -> list[str]:
         """Printable report lines: line-bound notes in input order, then the rest."""
         ordered = sorted(self.notes, key=lambda note: (note.line == 0, note.line))
         return [
-            (f"lines {note.line}-{note.last}: " if note.last else f"line {note.line}: ") + note.message
-            if note.line else note.message
+            (f"lines {note.line}-{note.last}: " if note.last else f"line {note.line}: ")
+            + note.message
+            if note.line
+            else note.message
             for note in ordered
         ]
 
@@ -127,9 +133,9 @@ class _Block:
 
     kind: str
     start: int  # zero-based index into the body lines
-    lines: List[str]
-    gap: List[str]  # blank lines before the block
-    removed: List[bool] = field(default_factory=list)
+    lines: list[str]
+    gap: list[str]  # blank lines before the block
+    removed: list[bool] = field(default_factory=list)
     band: bool = False  # a one-row table kept as a table; it still ends the cover
 
     def __post_init__(self) -> None:
@@ -152,7 +158,8 @@ class _Block:
         if _CONTAINER_RE.match(first):
             return True
         if any(
-            line[:1].isspace() and (_CONTAINER_RE.match(line.lstrip()) or _ORDERED_ITEM_RE.match(line.lstrip()))
+            line[:1].isspace()
+            and (_CONTAINER_RE.match(line.lstrip()) or _ORDERED_ITEM_RE.match(line.lstrip()))
             for line in rest
         ):
             return True
@@ -164,7 +171,7 @@ class _CoverMove:
     """Cover lines that become one frontmatter value, applied after the scan."""
 
     block: _Block
-    indexes: Tuple[int, ...]
+    indexes: tuple[int, ...]
     key: str
     value: str
 
@@ -174,7 +181,7 @@ class _CoverMove:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def clean_converted_term_sheet(text: str) -> Tuple[str, ConvertedCleanupReport]:
+def clean_converted_term_sheet(text: str) -> tuple[str, ConvertedCleanupReport]:
     """Rewrite converter-shaped Markdown into term-sheet input.
 
     Only top-level blocks change. Chapter headings: a one-line paragraph
@@ -216,7 +223,10 @@ def clean_converted_term_sheet(text: str) -> Tuple[str, ConvertedCleanupReport]:
         fields = {"profile": "term-sheet", **fields}
         report.add(0, 'frontmatter profile <- "term-sheet"')
     elif existing["profile"] != "term-sheet":
-        report.add(0, f"frontmatter profile is {_quote(str(existing['profile']))}; term-sheet input needs \"term-sheet\"")
+        report.add(
+            0,
+            f'frontmatter profile is {_quote(str(existing["profile"]))}; term-sheet input needs "term-sheet"',
+        )
     _report_missing(existing, fields, report)
 
     front = _write_frontmatter(front_lines, fields, report)
@@ -230,8 +240,8 @@ def clean_converted_term_sheet(text: str) -> Tuple[str, ConvertedCleanupReport]:
 
 
 def _read_frontmatter(
-    lines: List[str], report: ConvertedCleanupReport
-) -> Tuple[List[str], Dict[str, Any], int]:
+    lines: list[str], report: ConvertedCleanupReport
+) -> tuple[list[str], dict[str, Any], int]:
     """Return the frontmatter lines (with fences), its lower-cased mapping and the body start.
 
     The parser only closes frontmatter with `---`, so a YAML `...` closer is
@@ -251,8 +261,13 @@ def _read_frontmatter(
             front = lines[: index + 1]
             if closer == "...":
                 front[-1] = "---"
-                report.add(index + 1, 'frontmatter closer "..." -> "---" (the parser closes frontmatter with ---)')
-            existing = {str(key).strip().lower(): value for key, value in data.items() if key is not None}
+                report.add(
+                    index + 1,
+                    'frontmatter closer "..." -> "---" (the parser closes frontmatter with ---)',
+                )
+            existing = {
+                str(key).strip().lower(): value for key, value in data.items() if key is not None
+            }
             return front, existing, index + 1
     return [], {}, 0
 
@@ -265,7 +280,7 @@ def _is_pipe_row(line: str) -> bool:
     return _indent(line) <= 3 and line.lstrip().startswith("|")
 
 
-def _row_cells(line: str) -> List[str]:
+def _row_cells(line: str) -> list[str]:
     cells = _CELL_SPLIT_RE.split(line.strip())
     if cells and not cells[0].strip():
         cells = cells[1:]
@@ -279,8 +294,12 @@ def _is_delimiter_row(line: str) -> bool:
     return "|" in line and bool(cells) and all(_DELIMITER_CELL_RE.match(cell) for cell in cells)
 
 
-def _starts_pipe_table(lines: List[str], index: int) -> bool:
-    return _is_pipe_row(lines[index]) and index + 1 < len(lines) and _is_delimiter_row(lines[index + 1])
+def _starts_pipe_table(lines: list[str], index: int) -> bool:
+    return (
+        _is_pipe_row(lines[index])
+        and index + 1 < len(lines)
+        and _is_delimiter_row(lines[index + 1])
+    )
 
 
 def _starts_html_table(line: str) -> bool:
@@ -292,7 +311,7 @@ def _closes_fence(line: str, marker: str) -> bool:
     return len(stripped) >= len(marker) and set(stripped) == {marker[0]} and _indent(line) <= 3
 
 
-def _html_table_end(lines: List[str], index: int) -> int:
+def _html_table_end(lines: list[str], index: int) -> int:
     """Exclusive end line of the balanced HTML table opening at `index`.
 
     Comments and quoted attribute values are skipped; an unclosed table runs
@@ -309,19 +328,21 @@ def _html_table_end(lines: List[str], index: int) -> int:
     return len(lines)
 
 
-def _starts_block(lines: List[str], index: int) -> bool:
+def _starts_block(lines: list[str], index: int) -> bool:
     """A line that interrupts a paragraph: fence, ATX heading or table start."""
     line = lines[index]
     return bool(
-        _FENCE_RE.match(line) or _ATX_RE.match(line) or _starts_html_table(line)
+        _FENCE_RE.match(line)
+        or _ATX_RE.match(line)
+        or _starts_html_table(line)
         or _starts_pipe_table(lines, index)
     )
 
 
-def _split_blocks(lines: List[str]) -> Tuple[List[_Block], List[str]]:
+def _split_blocks(lines: list[str]) -> tuple[list[_Block], list[str]]:
     """Split body lines into blocks; returns the blocks and the trailing blank lines."""
-    blocks: List[_Block] = []
-    gap: List[str] = []
+    blocks: list[_Block] = []
+    gap: list[str] = []
     index = 0
     while index < len(lines):
         line = lines[index]
@@ -356,7 +377,11 @@ def _split_blocks(lines: List[str]) -> Tuple[List[_Block], List[str]]:
                     end < len(lines)
                     and lines[end].strip()
                     and not _starts_block(lines, end)
-                    and (in_container or lines[end][:1].isspace() or not _CONTAINER_RE.match(lines[end]))
+                    and (
+                        in_container
+                        or lines[end][:1].isspace()
+                        or not _CONTAINER_RE.match(lines[end])
+                    )
                 ):
                     end += 1
             kind = "text"
@@ -366,17 +391,19 @@ def _split_blocks(lines: List[str]) -> Tuple[List[_Block], List[str]]:
     return blocks, gap
 
 
-def _join_blocks(blocks: List[_Block], trailing: List[str]) -> List[str]:
+def _join_blocks(blocks: list[_Block], trailing: list[str]) -> list[str]:
     """Reassemble kept lines; a removed block takes its preceding blank lines with it."""
-    output: List[str] = []
+    output: list[str] = []
     for block in blocks:
-        kept = [line for line, removed in zip(block.lines, block.removed) if not removed]
+        kept = [
+            line for line, removed in zip(block.lines, block.removed, strict=False) if not removed
+        ]
         if kept:
             output.extend((block.gap if output else []) + kept)
     return output + trailing
 
 
-def _span(block: _Block, offset: int) -> Tuple[int, int]:
+def _span(block: _Block, offset: int) -> tuple[int, int]:
     """One-based first and last input lines of a block."""
     first = offset + block.start + 1
     return first, first + len(block.lines) - 1
@@ -387,7 +414,7 @@ def _span(block: _Block, offset: int) -> Tuple[int, int]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _unbold(line: str) -> Optional[str]:
+def _unbold(line: str) -> str | None:
     """Inner text of a line that is one bold span, otherwise None."""
     stripped = line.strip()
     if len(stripped) > 4 and stripped.startswith("**") and stripped.endswith("**"):
@@ -397,7 +424,9 @@ def _unbold(line: str) -> Optional[str]:
     return None
 
 
-def _promote_chapter_headings(blocks: List[_Block], offset: int, report: ConvertedCleanupReport) -> None:
+def _promote_chapter_headings(
+    blocks: list[_Block], offset: int, report: ConvertedCleanupReport
+) -> None:
     """`**1. Title**`, or `1. Title` right before a table, becomes `## 1. Title`."""
     for position, block in enumerate(blocks):
         if block.kind != "text" or len(block.lines) != 1 or not block.top_level:
@@ -408,7 +437,9 @@ def _promote_chapter_headings(blocks: List[_Block], offset: int, report: Convert
         if match is None:
             continue
         following = blocks[position + 1] if position + 1 < len(blocks) else None
-        before_table = following is not None and following.kind in ("pipe", "html") and following.top_level
+        before_table = (
+            following is not None and following.kind in ("pipe", "html") and following.top_level
+        )
         if inner is None and not before_table:
             # Left as list text; a chapter title the rules missed is worth a look.
             report.add(
@@ -420,16 +451,18 @@ def _promote_chapter_headings(blocks: List[_Block], offset: int, report: Convert
         heading = f"## {match.group(1)}. {match.group(2).strip()}"
         block.lines[0] = heading
         reason = "bold numbered line" if inner is not None else "numbered line before a table"
-        report.add(offset + block.start + 1, f"heading {_quote(source)} -> {_quote(heading)} ({reason})")
+        report.add(
+            offset + block.start + 1, f"heading {_quote(source)} -> {_quote(heading)} ({reason})"
+        )
 
 
-def _convert_band_tables(blocks: List[_Block], offset: int, report: ConvertedCleanupReport) -> None:
+def _convert_band_tables(blocks: list[_Block], offset: int, report: ConvertedCleanupReport) -> None:
     """A top-level table with a header row and no body rows becomes a `##` heading."""
     for block in blocks:
         if not block.top_level:
             continue
         first, last = _span(block, offset)
-        cells: Optional[List[str]] = None
+        cells: list[str] | None = None
         if block.kind == "pipe" and len(block.lines) == 2:
             cells = [_unbold(cell) or cell for cell in _row_cells(block.lines[0])]
         elif block.kind == "html":
@@ -449,13 +482,15 @@ def _convert_band_tables(blocks: List[_Block], offset: int, report: ConvertedCle
         if _INLINE_SYNTAX_RE.search(heading[3:].replace(" | ", " ")):
             # Joined cells (or decoded HTML) could open emphasis, LaTeX or markup in a heading.
             block.band = True
-            report.add(first, "kept a one-row table: its text has Markdown or HTML characters", last)
+            report.add(
+                first, "kept a one-row table: its text has Markdown or HTML characters", last
+            )
             continue
         block.kind, block.lines, block.removed = "text", [heading], [False]
         report.add(first, f"band table -> {_quote(heading)}", last)
 
 
-def _html_cell_text(content: str) -> Optional[str]:
+def _html_cell_text(content: str) -> str | None:
     """Text of a cell holding at most one `<p>` and formatting-only tags, else None.
 
     Formatting tags join their text (`1<span>00</span>` is `100`); a break,
@@ -472,7 +507,7 @@ def _html_cell_text(content: str) -> Optional[str]:
     return " ".join(html.unescape(_HTML_TOKEN_RE.sub("", inner)).split())
 
 
-def _html_band_cells(source: str) -> Tuple[Optional[List[str]], str]:
+def _html_band_cells(source: str) -> tuple[list[str] | None, str]:
     """Cell texts of a lone single-row HTML table.
 
     Returns:
@@ -503,7 +538,7 @@ def _html_band_cells(source: str) -> Tuple[Optional[List[str]], str]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _break_start(line: str) -> Optional[int]:
+def _break_start(line: str) -> int | None:
     """Index of an unescaped trailing hard-break marker (`\\` or `<br>`), else None."""
     text = line.rstrip()
     tag = _BR_TAG_RE.search(text)
@@ -528,7 +563,7 @@ def _plain(line: str) -> str:
     return _EMPHASIS_EDGE_RE.sub("", line)
 
 
-def _image_sources(line: str) -> Optional[List[str]]:
+def _image_sources(line: str) -> list[str] | None:
     """Image sources when the line holds only images (and emphasis), else None."""
     images = _IMAGE_RE.findall(line)
     if not images or _plain(_IMAGE_RE.sub("", line)):
@@ -537,11 +572,13 @@ def _image_sources(line: str) -> Optional[List[str]]:
     for image in images:
         match = _IMAGE_SOURCE_RE.search(image)
         source = next((group for group in match.groups() if group), "") if match else ""
-        sources.append("a data: URI" if source.lower().startswith("data:") else source or "an image")
+        sources.append(
+            "a data: URI" if source.lower().startswith("data:") else source or "an image"
+        )
     return sources
 
 
-def _title_text(line: str) -> Optional[str]:
+def _title_text(line: str) -> str | None:
     """Title candidate: a line that is one bold span, or a level-1 heading."""
     inner = _unbold(line)
     if inner is not None:
@@ -552,7 +589,7 @@ def _title_text(line: str) -> Optional[str]:
     return None
 
 
-def _cover_kind(core: str) -> Optional[str]:
+def _cover_kind(core: str) -> str | None:
     """Classify one cover line; None when the cleanup cannot tell."""
     plain = _plain(core)
     if _image_sources(core):
@@ -568,9 +605,9 @@ def _cover_kind(core: str) -> Optional[str]:
     return None
 
 
-def _paragraph_text(lines: List[str]) -> str:
+def _paragraph_text(lines: list[str]) -> str:
     """Soft-wrapped lines joined by spaces; hard breaks become line breaks."""
-    parts: List[str] = []
+    parts: list[str] = []
     for index, line in enumerate(lines):
         if index:
             parts.append("\n" if _break_start(lines[index - 1]) is not None else " ")
@@ -587,8 +624,8 @@ def _is_chapter(block: _Block) -> bool:
 
 
 def _extract_cover(
-    blocks: List[_Block], existing: Dict[str, Any], offset: int, report: ConvertedCleanupReport
-) -> Dict[str, str]:
+    blocks: list[_Block], existing: dict[str, Any], offset: int, report: ConvertedCleanupReport
+) -> dict[str, str]:
     """Move top-level cover lines into frontmatter values.
 
     Only a document with a chapter heading has a cover. The cover ends at the
@@ -598,11 +635,13 @@ def _extract_cover(
     if not any(_is_chapter(block) for block in blocks):
         report.add(0, "no chapter heading found: cover lines were not moved")
         return {}
-    first = next(position for position, block in enumerate(blocks) if block.band or _is_chapter(block))
-    moves: List[_CoverMove] = []
-    titles: List[_CoverMove] = []
+    first = next(
+        position for position, block in enumerate(blocks) if block.band or _is_chapter(block)
+    )
+    moves: list[_CoverMove] = []
+    titles: list[_CoverMove] = []
     title_open = True
-    label: Optional[str] = None
+    label: str | None = None
 
     def line_no(block: _Block, index: int) -> int:
         return offset + block.start + index + 1
@@ -616,7 +655,9 @@ def _extract_cover(
             if block.kind == "text":
                 what = "list or quote block" if block.top_level else "indented block"
             else:
-                what = {"fence": "code block", "indented": "indented block"}.get(block.kind, "table")
+                what = {"fence": "code block", "indented": "indented block"}.get(
+                    block.kind, "table"
+                )
             first_line, last_line = _span(block, offset)
             report.add(first_line, f"kept a {what} before the first chapter", last_line)
             continue
@@ -627,7 +668,7 @@ def _extract_cover(
             moves.append(_CoverMove(block, indexes, "disclaimer", _paragraph_text(block.lines)))
             title_open = title_open and not titles
             continue
-        for index, (core, kind) in enumerate(zip(cores, kinds)):
+        for index, (core, kind) in enumerate(zip(cores, kinds, strict=True)):
             plain = _plain(core)
             if block.lines[index][:1].isspace():  # a continuation line is never moved on its own
                 title_open = title_open and not titles
@@ -645,7 +686,10 @@ def _extract_cover(
                     moves.append(_CoverMove(block, (index,), "confidential_label", plain))
                 elif plain == label and "confidential_label" not in existing:
                     block.removed[index] = True
-                    report.add(line_no(block, index), f"removed repeated confidentiality line {_quote(plain)}")
+                    report.add(
+                        line_no(block, index),
+                        f"removed repeated confidentiality line {_quote(plain)}",
+                    )
                 else:
                     keep(block, index, "another confidentiality line")
             elif kind == "date":
@@ -661,15 +705,19 @@ def _extract_cover(
                 title_open = title_open and not titles
             else:
                 title_open = title_open and not titles
-                keep(block, index, "a bold line after the title" if kind == "title" else "unclassified cover text")
+                keep(
+                    block,
+                    index,
+                    "a bold line after the title" if kind == "title" else "unclassified cover text",
+                )
     return _apply_moves(moves + titles, existing, offset, report)
 
 
 def _apply_moves(
-    moves: List[_CoverMove], existing: Dict[str, Any], offset: int, report: ConvertedCleanupReport
-) -> Dict[str, str]:
+    moves: list[_CoverMove], existing: dict[str, Any], offset: int, report: ConvertedCleanupReport
+) -> dict[str, str]:
     """Remove moved lines and collect values; a key already set keeps its lines."""
-    values: Dict[str, List[str]] = {}
+    values: dict[str, list[str]] = {}
     for move in moves:
         first = offset + move.block.start + move.indexes[0] + 1
         last = offset + move.block.start + move.indexes[-1] + 1
@@ -682,10 +730,14 @@ def _apply_moves(
         values.setdefault(move.key, []).append(move.value)
         report.add(first, f"frontmatter {move.key} <- {_quote(move.value)}", last)
     joiners = {"subtitle": " ", "disclaimer": "\n"}
-    return {key: joiners.get(key, "").join(values[key]) for key in _FRONTMATTER_ORDER if key in values}
+    return {
+        key: joiners.get(key, "").join(values[key]) for key in _FRONTMATTER_ORDER if key in values
+    }
 
 
-def _report_missing(existing: Dict[str, Any], fields: Dict[str, str], report: ConvertedCleanupReport) -> None:
+def _report_missing(
+    existing: dict[str, Any], fields: dict[str, str], report: ConvertedCleanupReport
+) -> None:
     if "title" not in existing and "title" not in fields:
         report.add(0, "title not found: add title to the frontmatter")
     if "prepared_by" not in existing:
@@ -704,20 +756,24 @@ class _FrontmatterDumper(yaml.SafeDumper):
 
 
 def _represent_str(dumper: yaml.SafeDumper, value: str) -> yaml.Node:
-    return dumper.represent_scalar("tag:yaml.org,2002:str", value, style="|" if "\n" in value else None)
+    return dumper.represent_scalar(
+        "tag:yaml.org,2002:str", value, style="|" if "\n" in value else None
+    )
 
 
 _FrontmatterDumper.add_representer(str, _represent_str)
 
 
-def _dump(data: Dict[Any, Any]) -> List[str]:
-    text = yaml.dump(data, Dumper=_FrontmatterDumper, allow_unicode=True, sort_keys=False, width=4096)
+def _dump(data: dict[Any, Any]) -> list[str]:
+    text = yaml.dump(
+        data, Dumper=_FrontmatterDumper, allow_unicode=True, sort_keys=False, width=4096
+    )
     return text.rstrip("\n").split("\n")
 
 
 def _write_frontmatter(
-    front_lines: List[str], fields: Dict[str, str], report: ConvertedCleanupReport
-) -> List[str]:
+    front_lines: list[str], fields: dict[str, str], report: ConvertedCleanupReport
+) -> list[str]:
     """Existing frontmatter lines unchanged, new keys before the closing fence.
 
     Flow-style frontmatter (`{title: ...}`), which the parser does not read,
@@ -740,7 +796,10 @@ def _write_frontmatter(
             merged = None
         if merged == {**original, **fields}:
             return front_lines[:1] + appended + front_lines[-1:]
-    report.add(0, "rewrote the frontmatter as block YAML the parser reads; its comments and layout were not kept")
+    report.add(
+        0,
+        "rewrote the frontmatter as block YAML the parser reads; its comments and layout were not kept",
+    )
     return ["---", *_dump({**original, **fields}), "---"]
 
 

@@ -24,7 +24,8 @@ from ooxml_order import SEQUENCES, insert_ordered
 ROOT = Path(__file__).resolve().parents[1]
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 LEGACY_SAMPLES = sorted(
-    path for path in glob.glob(str(ROOT / "samples" / "profiles" / "*.md"))
+    path
+    for path in glob.glob(str(ROOT / "samples" / "profiles" / "*.md"))
     + glob.glob(str(ROOT / "samples" / "qa" / "*.md"))
     if "term-sheet" not in Path(path).name
 )
@@ -82,9 +83,9 @@ def test_insert_ordered_rejects_unknown_containers():
 @pytest.mark.parametrize("toc", [None, True])
 @pytest.mark.parametrize("path", LEGACY_SAMPLES, ids=lambda p: Path(p).name)
 def test_legacy_samples_follow_the_schema_order(path: str, toc) -> None:
-    doc = _reopen(IBDocumentRenderer(options=RenderOptions(include_toc=toc)).render(
-        parse_markdown_file(path)
-    ))
+    doc = _reopen(
+        IBDocumentRenderer(options=RenderOptions(include_toc=toc)).render(parse_markdown_file(path))
+    )
     roots = [doc.element.body, doc.styles.element]
     for section in doc.sections:
         roots += [section.header._element, section.footer._element]
@@ -100,21 +101,26 @@ OFFICE_FRONTMATTER = (
 )
 
 
-@pytest.mark.parametrize("profile,toc_title", [
-    ("business-report", "목차"),
-    ("meeting-minutes", "목차"),
-    ("office-letter", "목차"),
-    ("ib-memo", "TABLE OF CONTENTS"),
-])
+@pytest.mark.parametrize(
+    "profile,toc_title",
+    [
+        ("business-report", "목차"),
+        ("meeting-minutes", "목차"),
+        ("office-letter", "목차"),
+        ("ib-memo", "TABLE OF CONTENTS"),
+    ],
+)
 def test_forced_toc_follows_the_opening_title_and_omits_it(profile: str, toc_title: str) -> None:
     extra = OFFICE_FRONTMATTER if profile == "office-letter" else ""
     source = (
         f"---\nprofile: {profile}\ntitle: 가상 보고서\n{extra}---\n"
         "# 가상 보고서\n\n## 1. 개요\n\n본문.\n"
     )
-    doc = _reopen(IBDocumentRenderer(options=RenderOptions(include_toc=True, strict=True)).render(
-        MarkdownParser().parse(source)
-    ))
+    doc = _reopen(
+        IBDocumentRenderer(options=RenderOptions(include_toc=True, strict=True)).render(
+            MarkdownParser().parse(source)
+        )
+    )
     texts = [paragraph.text for paragraph in doc.paragraphs]
     title_lines = [index for index, text in enumerate(texts) if text.endswith("가상 보고서")]
     assert len(title_lines) == 1, texts
@@ -136,7 +142,10 @@ def test_docx_audit_writes_utf8_json_under_a_legacy_code_page(tmp_path: Path) ->
     env = dict(os.environ, PYTHONIOENCODING="cp949")
     completed = subprocess.run(
         [sys.executable, "-B", "-m", "docx_audit", str(path)],
-        cwd=str(ROOT), env=env, capture_output=True, check=False,
+        cwd=str(ROOT),
+        env=env,
+        capture_output=True,
+        check=False,
     )
     assert completed.returncode == 0, completed.stderr
     payload = json.loads((completed.stdout + completed.stderr).decode("utf-8"))
@@ -144,9 +153,11 @@ def test_docx_audit_writes_utf8_json_under_a_legacy_code_page(tmp_path: Path) ->
 
 
 def test_callout_border_children_follow_the_schema_order() -> None:
-    doc = _reopen(IBDocumentRenderer().render(MarkdownParser().parse(
-        "---\nprofile: plain\n---\n> 가상 메모 본문.\n"
-    )))
+    doc = _reopen(
+        IBDocumentRenderer().render(
+            MarkdownParser().parse("---\nprofile: plain\n---\n> 가상 메모 본문.\n")
+        )
+    )
     borders = doc.element.body.xpath(".//w:tblBorders")
     assert borders
     assert _order_violations(doc.element.body) == []

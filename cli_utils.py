@@ -13,8 +13,8 @@ import stat
 import sys
 import tempfile
 import time
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Callable, List, Optional, Sequence
 
 
 class LogFormatter(logging.Formatter):
@@ -101,9 +101,9 @@ def resolve_input_path(input_file: str, parent_dir: Path, script_path: Path) -> 
 
 def generate_output_path(
     input_path: Path,
-    output_path: Optional[str],
+    output_path: str | None,
     suffix: str,
-    default_name: Optional[Callable[[Path], str]] = None,
+    default_name: Callable[[Path], str] | None = None,
 ) -> Path:
     """Generate an output path while preserving Python 3.8 compatibility."""
     if output_path:
@@ -212,7 +212,7 @@ def safe_save(
         return new_path
 
 
-def list_files(parent_dir: Path, pattern: str, file_label: str, title_label: str) -> List[Path]:
+def list_files(parent_dir: Path, pattern: str, file_label: str, title_label: str) -> list[Path]:
     """Print a project-local file listing and return the discovered files."""
     files = sorted(parent_dir.glob(pattern))
 
@@ -237,7 +237,7 @@ def list_files(parent_dir: Path, pattern: str, file_label: str, title_label: str
     return files
 
 
-def interactive_select(files: Sequence[Path], prompt: str) -> Optional[Path]:
+def interactive_select(files: Sequence[Path], prompt: str) -> Path | None:
     """Prompt the user to select a file by number."""
     if not files:
         return None

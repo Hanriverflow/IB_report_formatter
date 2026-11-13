@@ -1,0 +1,14 @@
+{
+  "version": "v2.1.6",
+  "first_downloaded": "2026-11-10",
+  "assets": {
+    "linux-x64.zip": {
+      "url": "https://github.com/mikeebowen/OOXML-Validator/releases/download/v2.1.6/linux-x64.zip",
+      "sha256": "e1dcebba46b937a68831ec194f5a67e7312a300902678254c3b463dcff5cf499"
+    },
+    "win-x64.zip": {
+      "url": "https://github.com/mikeebowen/OOXML-Validator/releases/download/v2.1.6/win-x64.zip",
+      "sha256": "0f22c0da723d589c20168a82f7e8057c177698c621635e6924c4fdaa19ef1acb"
+    }
+  }
+}
