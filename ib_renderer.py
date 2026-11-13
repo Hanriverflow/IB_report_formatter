@@ -141,6 +141,7 @@ from numeric_checks import CHECKS_PROPERTY, checks_to_json, parse_checks
 from office_layout import (
     add_text,
     letter_appendix_index,
+    letter_partial_table_row,
     render_office_closing,
     render_office_opening,
     setup_korean_language,
@@ -742,6 +743,7 @@ class IBDocumentRenderer:
                     break
         with document_validation():
             appendix_index = letter_appendix_index(model)
+            partial_table_row = letter_partial_table_row(model, appendix_index)
         if resolved.strict and model.warnings:
             raise StrictValidationError("Input validation failed: ", model.warnings)
         # Strict mode rejects such a character anywhere in the model. Otherwise the
@@ -818,7 +820,7 @@ class IBDocumentRenderer:
             for idx, element in enumerate(model.elements):
                 if idx == appendix_index:
                     with _metadata_text("closing"):
-                        render_office_closing(self.doc, model.metadata)
+                        render_office_closing(self.doc, model.metadata, partial_table_row)
                     office_closed = True
                     self.doc.add_page_break()
                     label = model.metadata.extra["letter"].get("appendix_label")
@@ -851,7 +853,7 @@ class IBDocumentRenderer:
                     )
             if not office_closed:
                 with _metadata_text("closing"):
-                    render_office_closing(self.doc, model.metadata)
+                    render_office_closing(self.doc, model.metadata, partial_table_row)
             if model.footnotes:
                 self.footnote_renderer.render(
                     model.footnotes, allow_legacy_refs=resolved.profile.is_ib

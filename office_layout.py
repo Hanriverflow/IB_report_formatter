@@ -1,5 +1,10 @@
 """Office document composition and editable Word numbering.
 
+Changelog (letter closing):
+    - `letter.table_end: partial` writes 이하 빈칸 in the first blank row after the
+      last written row of the table that ends the letter body, instead of "끝."
+      (`letter_partial_table_row`). Without the setting the output is unchanged.
+
 Changelog (Korean language):
     - Every profile other than term-sheet declares `ko-KR` as the East Asian
       language (`setup_korean_language`), so Word keeps `㈜는` and `」에` whole.
@@ -19,8 +24,9 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Pt
+from docx.text.paragraph import Paragraph
 
-from document_model import DocumentMetadata, DocumentModel, ElementType, Heading
+from document_model import DocumentMetadata, DocumentModel, ElementType, Heading, Table, TableRow
 from document_profiles import string_list
 from ooxml_order import insert_ordered
 from render_styles import STYLE
@@ -149,6 +155,78 @@ def letter_appendix_index(model: DocumentModel) -> int | None:
     return matches[0]
 
 
+PARTIAL_TABLE_MARK = "이하 빈칸"
+
+
+def _blank_row(row: TableRow) -> bool:
+    """A row with nothing written: empty cells, or cells merged into one to the left.
+
+    A cell merged into the row above (`^^`) continues written content, so its row
+    is not blank.
+    """
+    return all(
+        cell.merge == "left" or (cell.merge is None and not cell.content.strip())
+        for cell in row.cells
+    )
+
+
+def letter_partial_table_row(model: DocumentModel, appendix_index: int | None) -> int | None:
+    """Resolve where `letter.table_end: partial` writes 이하 빈칸, before any output.
+
+    The setting declares that the table ending the letter body is filled only
+    partway. The mark goes in the first cell of the first blank row after the last
+    written row. Blank rows alone never trigger it: a reply form may keep blank
+    rows for the recipient.
+
+    Args:
+        model: Render copy of the document model, title H1 already removed.
+        appendix_index: Index of the explicit appendix H1; the body ends before it.
+
+    Returns:
+        Zero-based row index in the body's last table, or None without the setting.
+
+    Raises:
+        ValueError: The body does not end with a table, or that table has no blank
+            row after its last written row.
+    """
+    if model.metadata.profile != "office-letter":
+        return None
+    if model.metadata.extra.get("letter", {}).get("table_end") != "partial":
+        return None
+    body = model.elements if appendix_index is None else model.elements[:appendix_index]
+    last = body[-1] if body else None
+    if (
+        last is None
+        or last.element_type != ElementType.TABLE
+        or not isinstance(last.content, Table)
+    ):
+        raise ValueError("letter.table_end requires the letter body to end with a table")
+    rows = last.content.rows
+    written = [index for index, row in enumerate(rows) if not _blank_row(row)]
+    target = written[-1] + 1 if written else 0
+    if target >= len(rows):
+        raise ValueError(
+            "letter.table_end requires a blank row after the last written row of the final table"
+        )
+    return target
+
+
+def _mark_partial_table(doc, row_index: int) -> None:
+    """Write 이하 빈칸 into the first cell of a row of the last rendered table.
+
+    The table renderer creates one Word row per model row, so the model index
+    addresses the Word row. The mark is left-aligned even in a number column.
+    """
+    table = doc.element.body.findall(qn("w:tbl"))[-1]
+    cell = table.findall(qn("w:tr"))[row_index].findall(qn("w:tc"))[0]
+    paragraph = Paragraph(cell.findall(qn("w:p"))[0], doc)
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    run = paragraph.add_run(PARTIAL_TABLE_MARK)
+    run.font.name = STYLE.BODY_FONT
+    run.font.size = STYLE.TABLE_BODY_SIZE
+    run._element.get_or_add_rPr().get_or_add_rFonts().set(qn("w:eastAsia"), STYLE.KOREAN_FONT)
+
+
 def render_office_opening(doc, metadata: DocumentMetadata) -> bool:
     """Render profile metadata at the start of the body when there is no cover.
 
@@ -208,10 +286,22 @@ def render_office_opening(doc, metadata: DocumentMetadata) -> bool:
     return True
 
 
-def render_office_closing(doc, metadata: DocumentMetadata) -> None:
-    """Render attachments and sender without manufacturing a signature."""
+def render_office_closing(
+    doc, metadata: DocumentMetadata, partial_table_row: int | None = None
+) -> None:
+    """Render attachments and sender without manufacturing a signature.
+
+    Args:
+        doc: Document whose letter body was rendered last.
+        metadata: Letter metadata (attachments, sender, issue details).
+        partial_table_row: Row of the body's last table that receives 이하 빈칸
+            (`letter_partial_table_row`). That mark replaces "끝." unless
+            attachments follow, which still end with "끝.".
+    """
     if metadata.profile != "office-letter":
         return
+    if partial_table_row is not None:
+        _mark_partial_table(doc, partial_table_row)
     attachments = string_list(metadata.extra, "attachments")
     if attachments:
         label = add_text(doc, "붙임", style_name="Office Attachment", keep_next=True)
@@ -227,7 +317,7 @@ def render_office_closing(doc, metadata: DocumentMetadata) -> None:
             paragraph.paragraph_format.first_line_indent = Pt(-14)
             paragraph.paragraph_format.tab_stops.clear_all()
             paragraph.paragraph_format.tab_stops.add_tab_stop(Pt(30))
-    else:
+    elif partial_table_row is None:
         # Attach the closing marker to the last actual body paragraph when possible.
         last = doc.paragraphs[-1] if doc.paragraphs else None
         if (
