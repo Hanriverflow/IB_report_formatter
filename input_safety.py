@@ -254,6 +254,18 @@ _YAML_EXPANSION_FLOOR = 100_000
 # one mapping take quadratic time with no alias involved.
 _YAML_MERGE_KEYS = 100
 _YAML_MERGE_TAG = "tag:yaml.org,2002:merge"
+# Integer keys of this many characters or more that one mapping may hold, counting
+# the keys it merges in. Python hashes an integer by its remainder modulo
+# 2**61 - 1, so integers at least that large (eighteen characters in the
+# shortest notation) can be chosen to share one hash value, and a dict takes
+# quadratic time to hold thousands of them.
+_YAML_LONG_INTEGER_KEYS = 100
+_YAML_LONG_INTEGER_CHARACTERS = 18
+_YAML_INTEGER_TAG = "tag:yaml.org,2002:int"
+# Colons one integer may hold. YAML 1.1 reads `1:30:00` as a base-60 integer,
+# and the loader builds it part by part with ever larger numbers, so a scalar
+# of thousands of parts takes quadratic time. A time of day has two.
+_YAML_INTEGER_COLONS = 20
 
 
 def _yaml_children(node: Node) -> list[Node]:
@@ -280,15 +292,21 @@ def _check_yaml_expansion(root: Node, allowance: int) -> None:
         allowance: The largest size accepted.
 
     Raises:
-        ValueError: The graph is recursive or larger than the allowance, or one
-            mapping holds more merge keys than `_YAML_MERGE_KEYS`.
+        ValueError: The graph is recursive or larger than the allowance, one
+            mapping holds more merge keys than `_YAML_MERGE_KEYS` or more very
+            long integer keys than `_YAML_LONG_INTEGER_KEYS`, or an integer
+            holds more colons than `_YAML_INTEGER_COLONS`.
     """
     sizes: dict[int, int] = {}
+    # Very long integer keys a mapping ends up with, or a list's mappings hold together.
+    long_keys: dict[int, int] = {}
     active: set[int] = set()
     pending: list[tuple[Node, bool]] = [(root, False)]
     while pending:
         node, finished = pending.pop()
         if not isinstance(node, (MappingNode, SequenceNode)):
+            if node.tag == _YAML_INTEGER_TAG and node.value.count(":") > _YAML_INTEGER_COLONS:
+                raise ValueError("YAML integer has too many parts separated by ':'")
             continue
         identity = id(node)
         if finished:
@@ -299,6 +317,23 @@ def _check_yaml_expansion(root: Node, allowance: int) -> None:
             )
             if sizes[identity] > allowance:
                 raise ValueError("YAML aliases expand to too much content")
+            if isinstance(node, SequenceNode):
+                # What a merge key takes from this list when the list is its value.
+                long_keys[identity] = sum(long_keys.get(id(child), 0) for child in node.value)
+                continue
+            long_keys[identity] = sum(
+                long_keys.get(id(value), 0)
+                if key.tag == _YAML_MERGE_TAG
+                else isinstance(key, ScalarNode)
+                and key.tag == _YAML_INTEGER_TAG
+                and len(key.value) >= _YAML_LONG_INTEGER_CHARACTERS
+                for key, value in node.value
+            )
+            if long_keys[identity] > _YAML_LONG_INTEGER_KEYS:
+                raise ValueError(
+                    "YAML mapping has too many very long integer keys"
+                    " (quote the keys to keep them as text)"
+                )
         elif identity in active:
             raise ValueError("YAML structure refers to itself")
         elif identity not in sizes:

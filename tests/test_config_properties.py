@@ -153,10 +153,12 @@ for text in json.load(sys.stdin):
 
 @pytest.fixture(scope="module", autouse=True)
 def _alias_guard_is_in_place() -> None:
-    """Fail the whole module at once if the guard is gone.
+    """Fail the whole module at once if the alias checks are gone.
 
-    Without it the cases below load structures that take gigabytes to walk, and
-    a thread cannot be stopped. A child process can, so it goes first.
+    Without them the alias cases below load structures that take gigabytes to
+    walk, and a thread cannot be stopped. A child process can, so it goes first.
+    The other limits (merge keys, long integer keys, colons) cost seconds at
+    worst without their check, so their own tests are enough.
     """
     texts = ["loop: &x [*x]", _pyramid(9, 9), _merged_mapping(1_000, 1_000)]
     try:
@@ -358,6 +360,104 @@ def test_merge_keys_in_one_mapping_are_limited() -> None:
     listed = "base: &b {a: 1}\nmerged:\n  <<: [" + ", ".join(["*b"] * 500) + "]"
     assert load_yaml(listed)["merged"] == {"a": 1}
     assert len(load_yaml(_merged_mapping(3, 500))["rows"]) == 500
+
+
+_HASH_MODULUS = 2**61 - 1
+
+
+def _same_hash_keys(count: int, first: int = 1) -> list[int]:
+    """Integers Python hashes to the same value, so a dict holds them in quadratic time."""
+    return [_HASH_MODULUS * (first + index) for index in range(count)]
+
+
+@pytest.mark.parametrize(
+    "form",
+    ("decimal", "hex", "negative", "underscore", "set", "block"),
+)
+def test_very_long_integer_keys_in_one_mapping_are_limited(form: str) -> None:
+    def write(keys: list[int]) -> str:
+        if form == "hex":
+            return "{" + ",".join(hex(key) for key in keys) + "}"
+        if form == "negative":
+            return "{" + ",".join(str(-key) for key in keys) + "}"
+        if form == "underscore":
+            return "{" + ",".join(f"{key:_}" for key in keys) + "}"
+        if form == "set":
+            return "!!set {" + ",".join(str(key) for key in keys) + "}"
+        if form == "block":
+            return "\n".join(f"{key}: 1" for key in keys)
+        return "{" + ",".join(str(key) for key in keys) + "}"
+
+    assert len(load_yaml(write(_same_hash_keys(100)))) == 100
+    with pytest.raises(ValueError, match="YAML mapping has too many very long integer keys"):
+        load_yaml(write(_same_hash_keys(101)))
+    with pytest.raises(ValueError, match="YAML mapping has too many very long integer keys"):
+        load_yaml(write(_same_hash_keys(40_000)))
+
+
+def test_very_long_integer_keys_are_counted_through_merge_keys() -> None:
+    """Merged mappings end up as keys of one dict, so their keys count together."""
+
+    def anchored(name: str, keys: list[int]) -> str:
+        return f"{name}: &{name} {{" + ", ".join(f"{key}: 1" for key in keys) + "}"
+
+    halves = anchored("a", _same_hash_keys(50)) + "\n" + anchored("b", _same_hash_keys(50, 51))
+    assert len(load_yaml(halves + "\nall: {<<: [*a, *b]}")["all"]) == 100
+    over = anchored("a", _same_hash_keys(60)) + "\n" + anchored("b", _same_hash_keys(60, 61))
+    for merged in (
+        "all: {<<: [*a, *b]}",
+        "all: {<<: *a, <<: *b}",
+        "c: &c {<<: *a}\nall: {<<: [*c, *b]}",
+    ):
+        with pytest.raises(ValueError, match="YAML mapping has too many very long integer keys"):
+            load_yaml(over + "\n" + merged)
+    # The mappings themselves stay within the limit when nothing merges them.
+    assert len(load_yaml(over)) == 2
+
+
+def test_other_long_numbers_and_keys_are_not_limited() -> None:
+    long_keys = _same_hash_keys(5_000)
+    assert len(load_yaml("values: [" + ",".join(map(str, long_keys)) + "]")["values"]) == 5_000
+    assert len(load_yaml("{" + ",".join(f"'{key}': 1" for key in long_keys) + "}")) == 5_000
+    assert len(load_yaml("{" + ",".join(f"{index}: 1" for index in range(5_000)) + "}")) == 5_000
+    seventeen = "{" + ",".join(f"{10**16 + index}: 1" for index in range(5_000)) + "}"
+    assert len(load_yaml(seventeen)) == 5_000
+    # Many mappings that each hold the most allowed.
+    one = "{" + ",".join(map(str, _same_hash_keys(100))) + "}"
+    assert len(load_yaml("[" + ",".join([one] * 200) + "]")) == 200
+
+
+@pytest.mark.parametrize(
+    "template",
+    ("a: {number}", "a: !!int ' {number}'", "? {number}\n: a", "{number}", "- &n {number}\n- *n"),
+    ids=("plain", "tagged", "key", "document", "aliased"),
+)
+def test_integers_written_with_colons_are_limited(template: str) -> None:
+    """The loader builds a base-60 integer part by part, in quadratic time."""
+
+    def write(colons: int) -> str:
+        return template.format(number="1" + ":0" * colons)
+
+    assert load_yaml(write(2)) == yaml.safe_load(write(2))
+    assert load_yaml(write(20)) == yaml.safe_load(write(20))
+    for colons in (21, 100_000):
+        refused = write(colons)
+
+        def load(text: str = refused) -> None:
+            with pytest.raises(
+                ValueError, match="YAML integer has too many parts separated by ':'"
+            ):
+                load_yaml(text)
+
+        _finishes(load, 10.0)
+
+
+def test_text_with_many_colons_is_not_an_integer() -> None:
+    for text in (
+        "a: '1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0'",
+        "a: 가:나:다" + ":라" * 50,
+    ):
+        assert load_yaml(text) == yaml.safe_load(text)
 
 
 def test_input_that_is_not_text_is_a_value_error() -> None:
