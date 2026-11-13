@@ -89,6 +89,7 @@ SPLIT_LAYOUT: dict[str, tuple[str, tuple[str, ...]]] = {
             "_infer_company_from_title",
         ),
     ),
+    "md_parse_tables": ("md_parser", ("TableParser", "TableSpanResolver")),
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
