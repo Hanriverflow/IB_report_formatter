@@ -65,6 +65,21 @@ SPLIT_LAYOUT: dict[str, tuple[str, tuple[str, ...]]] = {
         ("TOCRenderer", "HeadingRenderer", "ParagraphRenderer", "ListRenderer", "CalloutRenderer"),
     ),
     "ib_render_tables": ("ib_renderer", ("TableRenderer", "_BLACK")),
+    "md_parse_text": (
+        "md_parser",
+        (
+            "TextParser",
+            "file_uri",
+            "rebase_link_target",
+            "_rebase_link_target",
+            "_parse_term_runs",
+            "_substitute_text",
+            "_document_int",
+            "_DRIVE_PATH_RE",
+            "_URI_DRIVE_PATH_RE",
+            "_URI_SCHEME_RE",
+        ),
+    ),
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
