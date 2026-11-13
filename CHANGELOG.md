@@ -50,6 +50,9 @@ Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Bet
 - Removed two sample files with real company names and the prototype script that read them; test names were replaced with fictional ones. Earlier commits are not rewritten.
 - Applied `ruff format` to the whole tree (the commit is listed in `.git-blame-ignore-revs`) and modernized type annotations. Sample output was compared before and after: all XML parts identical.
 
+### Internal structure
+- `ib_renderer.py` and `md_parser.py` are split into twelve internal files (`ib_render_*.py`, `md_parse_*.py`) by moving code only; every name is still imported from `ib_renderer` and `md_parser`, and output, commands, messages and log names are unchanged. Verification: `docs/verification-large-file-split-20261113.md`.
+
 ## [2.0.0-beta.1] - 2026-10-08
 
 First public distribution prerelease. The release tag identifies this delivery set; engine/package metadata remains **2.0.0 (Beta)** and the separately versioned plugin remains **0.1.0**.

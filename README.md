@@ -485,7 +485,7 @@ saved_path = registry.convert(model, output_format="docx",
                               output_path="output.docx", strict=True)
 ```
 
-Only Markdown input and DOCX output are built in. Models live in `document_model.py`; legacy model imports from `md_parser` remain supported.
+Only Markdown input and DOCX output are built in. Models live in `document_model.py`; legacy model imports from `md_parser` remain supported. `ib_renderer` and `md_parser` are split into internal files (`ib_render_*.py`, `md_parse_*.py`); import from `ib_renderer` and `md_parser` as before.
 
 ## Validation and development
 

@@ -51,8 +51,20 @@ Existing `md_to_word.py` and `ib-report` remain entry points. On Windows, use a 
 | `document_model.py` | Shared data classes and enums; re-exported by `md_parser` for compatibility |
 | `document_profiles.py` | Seven profiles, immutable options, YAML validation, table semantics, themes |
 | `render_styles.py` | Immutable style values and render-scoped ContextVar |
-| `md_parser.py` | Profile-aware Markdown parsing, frontmatter, tables, images, equations |
-| `ib_renderer.py` | One composition path for all callers; reusable element renderers |
+| `md_parser.py` | Profile-aware Markdown parsing: `MarkdownParser`, file and stream reading, `parse_markdown_file`; re-exports the parsing names below and the document model |
+| `md_parse_text.py` | Inline text runs (`TextParser`), local link targets, term-variable substitution |
+| `md_parse_frontmatter.py` | YAML frontmatter and metadata inferred from the body |
+| `md_parse_tables.py` | Pipe tables and table span resolution |
+| `md_parse_html_tables.py` | HTML tables from converter output |
+| `md_parse_blocks.py` | Code fences, footnotes, LaTeX blocks, Base64 images |
+| `ib_renderer.py` | One composition path for all callers (`IBDocumentRenderer`), cover and disclaimer, `_metadata_text`; re-exports the element renderers below |
+| `ib_render_fonts.py` | Run font styling and the raster font choice (`FontStyler`, `FontPolicy`) |
+| `ib_render_document_style.py` | Document styles, table styles, generator signature |
+| `ib_render_footnotes.py` | Native footnotes and local link rebasing before save |
+| `ib_render_media.py` | Images, charts, LaTeX equations |
+| `ib_render_text.py` | Inline text runs (`TextRenderer`) |
+| `ib_render_blocks.py` | TOC, headings, paragraphs, lists, callouts |
+| `ib_render_tables.py` | Tables in every profile (`TableRenderer`) |
 | `office_layout.py` | Letter/report/minutes metadata and native Korean numbering |
 | `term_sheet.py` | House texts and term-sheet composition; must not import `ib_renderer` |
 | `ooxml_order.py` | Schema-ordered insertion for hand-built tblPr/tcPr/pPr/rPr and settings children |
@@ -66,6 +78,8 @@ Existing `md_to_word.py` and `ib-report` remain entry points. On Windows, use a 
 | `converted_md_cleaner.py` | Opt-in MD→MD cleanup of HWP/Word-converted term sheets (`--converted-term-sheet`); reports every change |
 | `diagram_renderer.py` | Existing diagram rendering |
 | `cli_utils.py`, `stream_utils.py` | Shared I/O helpers |
+
+The `md_parse_*.py` and `ib_render_*.py` files are internal. Import from `md_parser` and `ib_renderer`, which re-export every name as before. A split file does not import its original module at module level, and logs under the original module's logger name; `tests/test_module_layout.py` checks the layout.
 
 ## Profiles and configuration
 
@@ -361,9 +375,9 @@ class LogFormatter(logging.Formatter):
 
 1. Add to `ElementType` enum in `document_model.py`
 2. Create dataclass for the element data
-3. Add parsing logic in `MarkdownParser._parse_elements()`
-4. Add rendering logic in `ib_renderer.py` (create Renderer class)
-5. Register in `IBDocumentRenderer._render_element()`
+3. Add parsing logic in `MarkdownParser._parse_elements()` (`md_parser.py`); a block scanner goes in `md_parse_blocks.py`
+4. Add rendering logic in the matching `ib_render_*.py` file (create Renderer class; block elements go in `ib_render_blocks.py`) and re-export it from `ib_renderer.py` as `Name as Name`
+5. Register in `IBDocumentRenderer._render_element()` (`ib_renderer.py`)
 
 ---
 

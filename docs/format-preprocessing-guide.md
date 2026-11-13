@@ -367,5 +367,5 @@ $$
 |------|------|
 | `md_to_word.py` | CLI 진입점, `--format` 플래그 처리 |
 | `md_formatter.py` | 전처리 로직 구현 |
-| `md_parser.py` | 구조화된 마크다운 파싱 |
-| `ib_renderer.py` | Word 문서 렌더링 |
+| `md_parser.py` | 구조화된 마크다운 파싱(블록 조립과 파일 읽기. 글자·앞머리·표·HTML 표·블록 파싱은 내부 파일 `md_parse_*.py`) |
+| `ib_renderer.py` | Word 문서 렌더링(문서 조립, 표지·면책. 요소별 렌더러는 내부 파일 `ib_render_*.py`) |
