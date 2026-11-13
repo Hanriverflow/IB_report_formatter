@@ -6,7 +6,7 @@
         <w:rFonts w:asciiTheme="minorHAnsi" w:cstheme="minorBidi" w:eastAsiaTheme="minorEastAsia" w:hAnsiTheme="minorHAnsi"/>
         <w:sz w:val="22"/>
         <w:szCs w:val="22"/>
-        <w:lang w:bidi="ar-SA" w:eastAsia="en-US" w:val="en-US"/>
+        <w:lang w:bidi="ar-SA" w:eastAsia="ko-KR" w:val="en-US"/>
       </w:rPr>
     </w:rPrDefault>
     <w:pPrDefault>
