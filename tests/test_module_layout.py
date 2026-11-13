@@ -50,6 +50,10 @@ SPLIT_FILE_PATTERNS = {"ib_renderer": "ib_render_*.py", "md_parser": "md_parse_*
 # Split files, in move order, with their original module and moved definitions.
 SPLIT_LAYOUT: dict[str, tuple[str, tuple[str, ...]]] = {
     "ib_render_fonts": ("ib_renderer", ("FontStyler", "FontPolicy")),
+    "ib_render_document_style": (
+        "ib_renderer",
+        ("GeneratorSignatureWriter", "DocumentStyler", "TableStyler"),
+    ),
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════

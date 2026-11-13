@@ -60,6 +60,7 @@ only-include = [
     "md_formatter.py", "md_parser.py", "md_to_word.py", "numeric_checks.py", "office_layout.py",
     "ooxml_order.py", "render_styles.py", "stream_utils.py", "term_sheet.py", "term_variables.py",
     "ib_render_fonts.py",
+    "ib_render_document_style.py",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -72,6 +73,7 @@ include = [
     "/ooxml_order.py",
     "/render_styles.py", "/stream_utils.py", "/term_sheet.py", "/term_variables.py",
     "/ib_render_fonts.py",
+    "/ib_render_document_style.py",
     "/pyproject.toml", "/uv.lock",
     "/README.md", "/README.ko.md", "/CHANGELOG.md", "/AGENTS.md", "/LICENSE",
     "/samples/profiles/**", "/samples/qa/**", "/scripts/word_visual_qa.ps1", "/docs/implementation-plan-20260914.md",
@@ -109,6 +111,7 @@ known-first-party = [
     "deep_md_cleaner",
     "ib_renderer",
     "ib_render_fonts",
+    "ib_render_document_style",
     "md_formatter",
     "md_parser",
     "document_model",
