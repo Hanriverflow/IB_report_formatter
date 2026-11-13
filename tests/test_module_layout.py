@@ -80,6 +80,15 @@ SPLIT_LAYOUT: dict[str, tuple[str, tuple[str, ...]]] = {
             "_URI_SCHEME_RE",
         ),
     ),
+    "md_parse_frontmatter": (
+        "md_parser",
+        (
+            "FrontmatterParser",
+            "_infer_metadata_from_elements",
+            "_extract_leading_metadata_pair",
+            "_infer_company_from_title",
+        ),
+    ),
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -67,6 +67,7 @@ only-include = [
     "ib_render_blocks.py",
     "ib_render_tables.py",
     "md_parse_text.py",
+    "md_parse_frontmatter.py",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -86,6 +87,7 @@ include = [
     "/ib_render_blocks.py",
     "/ib_render_tables.py",
     "/md_parse_text.py",
+    "/md_parse_frontmatter.py",
     "/pyproject.toml", "/uv.lock",
     "/README.md", "/README.ko.md", "/CHANGELOG.md", "/AGENTS.md", "/LICENSE",
     "/samples/profiles/**", "/samples/qa/**", "/scripts/word_visual_qa.ps1", "/docs/implementation-plan-20260914.md",
@@ -132,6 +134,7 @@ known-first-party = [
     "md_formatter",
     "md_parser",
     "md_parse_text",
+    "md_parse_frontmatter",
     "document_model",
     "document_profiles",
     "docx_audit",
