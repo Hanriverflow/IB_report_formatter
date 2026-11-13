@@ -11,6 +11,8 @@
     </w:rPrDefault>
     <w:pPrDefault>
       <w:pPr>
+        <w:autoSpaceDE w:val="0"/>
+        <w:autoSpaceDN w:val="0"/>
         <w:spacing w:after="200" w:line="276" w:lineRule="auto"/>
       </w:pPr>
     </w:pPrDefault>

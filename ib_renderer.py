@@ -781,8 +781,7 @@ class IBDocumentRenderer:
                 setup_term_sheet_styles(self.doc)
             else:
                 setup_korean_language(self.doc)
-                if not resolved.profile.is_ib:
-                    setup_korean_spacing(self.doc)
+                setup_korean_spacing(self.doc)
             update_fields = OxmlElement("w:updateFields")
             update_fields.set(qn("w:val"), "true")
             insert_ordered(self.doc.settings.element, update_fields)

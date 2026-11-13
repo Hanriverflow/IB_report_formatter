@@ -30,6 +30,7 @@ Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Bet
 
 ### Korean typesetting (output changes)
 - Every profile declares Korean (`ko-KR`) as the East Asian language in the document defaults; term-sheet already did. Word no longer breaks a line inside a Korean word after `㈜` or a closing `」` (`가나다㈜⏎는`, `「신탁법」⏎에`). Latin text keeps `en-US`, and term-sheet output is unchanged. Verification: `docs/verification-korean-typesetting-20261114.md`.
+- `ib-report` and `ib-memo` turn off Word's automatic spacing between Korean and Latin text or digits, as the other five profiles already did: `2025 년`, `300 억원`, `SPC 는` now print as `2025년`, `300억원`, `SPC는`. Page counts of the samples are unchanged.
 
 ### Fixes
 - `w:updateFields` is inserted at its schema position in `settings.xml` in every profile. Output changes only in element order.

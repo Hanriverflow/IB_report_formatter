@@ -7,6 +7,7 @@ Changelog (Korean language):
 Changelog (Korean spacing):
     - General profiles print Korean next to Latin text and digits without
       Word's automatic spacing (`setup_korean_spacing`).
+    - The IB profiles do the same, so `2025년` and `300억원` print tight there too.
 
 Changelog (hardening):
     - Scope native list instances to their parent item and override the actual level.
@@ -67,8 +68,8 @@ def setup_korean_spacing(doc) -> None:
 
     Word adds space between East Asian text and Latin text (`w:autoSpaceDE`) or
     digits (`w:autoSpaceDN`) by default, printing `SPC 는`, `제 2 종`, `300 억원`.
-    Korean business documents print these tight, so general profiles turn both
-    off in the document defaults (the term-sheet profile does the same).
+    Korean business documents print these tight, so every profile turns both
+    off in the document defaults (the term-sheet profile does so itself).
 
     Args:
         doc: Document whose request-scoped styles were created already.

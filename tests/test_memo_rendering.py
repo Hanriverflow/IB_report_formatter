@@ -325,6 +325,6 @@ def test_general_profiles_turn_off_korean_auto_spacing(profile: str) -> None:
 
 
 @pytest.mark.parametrize("profile", ["ib-report", "ib-memo"])
-def test_ib_profiles_keep_word_default_spacing(profile: str) -> None:
+def test_ib_profiles_turn_off_korean_auto_spacing(profile: str) -> None:
     doc = _render("# Memo\n\nBody.\n", profile=profile, strict=False)
-    assert _auto_spacing(doc) == {"autoSpaceDE": None, "autoSpaceDN": None}
+    assert _auto_spacing(doc) == {"autoSpaceDE": "0", "autoSpaceDN": "0"}

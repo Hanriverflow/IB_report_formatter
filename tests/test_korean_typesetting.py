@@ -68,6 +68,15 @@ def test_no_profile_breaks_korean_per_syllable(converted, profile):
                 assert element.get(qn("w:val")) not in {"0", "false", "off"}, name
 
 
+@pytest.mark.parametrize("profile", PROFILES)
+def test_every_profile_prints_korean_next_to_latin_and_digits_tight(converted, profile):
+    # Word's automatic gap would print "2025 년", "300 억원", "SPC 는".
+    paragraph_defaults = _styles(converted[profile]).find("w:docDefaults/w:pPrDefault/w:pPr", W)
+    for tag in ("autoSpaceDE", "autoSpaceDN"):
+        values = [element.get(qn("w:val")) for element in paragraph_defaults.findall(f"w:{tag}", W)]
+        assert values == ["0"], tag
+
+
 def test_korean_language_is_added_when_the_template_has_none():
     doc = Document()
     run_properties = doc.styles.element.find(qn("w:docDefaults")).find(qn("w:rPrDefault"))[0]
