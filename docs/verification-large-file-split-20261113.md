@@ -141,7 +141,48 @@ Word 스키마 검증 도구는 `scripts/word_schema_validator_assets.json`에 �
 - **배포 묶음.** `uv build` 종료 코드 0. wheel의 최상위 모듈 **28개**, wheel `only-include` 목록과 같음. sdist에도 새 파일 7개가 들어 있음.
 - **아직 하지 않은 것.** Word 스키마 검증, 변환·가져오기 시간, 대표 문서의 Word 쪽 비교는 T4의 최종 검증에서 한다. 스냅숏 279개(DOCX 안의 모든 XML 파트)가 커밋마다 같았으므로 산출 문서는 이 시점까지 같다.
 
-## 7. 하지 않은 것
+## 7. 파서 옮기기 (T3)
+
+`md_parser.py`의 정의 24개를 요구사항 4절 표의 새 파일 5개로, 표의 순서대로 한 파일씩 옮겼다. 새 파일 하나에 커밋 하나다. `MarkdownParser`, `_read_with_encoding`, `_decode_bytes`, `parse_markdown_file`, `logger`와 문서 모델 재수출(`from document_model import 이름 as 이름`)은 `md_parser.py`에 그대로 남았다. `md_parser.py`는 3,979줄에서 1,561줄이 됐다.
+
+### 옮긴 방법
+
+T2와 같은 절차다. 새 파일은 문서 모델 이름을 `document_model`에서 직접 가져오고, `md_parser`를 가져오지 않는다. 로그를 쓰는 새 파일 넷(`md_parse_text`, `md_parse_frontmatter`, `md_parse_tables`, `md_parse_blocks`)에는 `logger = logging.getLogger("md_parser")`를 두었다. `md_parse_html_tables`는 로그를 쓰지 않는다. 로그 이름 `md_parser`에 기대는 기존 테스트(`tests/test_term_variables.py`)는 고치지 않고 통과한다.
+
+**구획 주석.** 옮기는 정의만 이끄는 구획 주석(`LOCAL LINK TARGETS`, `HTML TABLES (converter output)`, `LaTeX PARSER (NEW v3)`, `BASE64 IMAGE PARSER (NEW v3)`)은 함께 옮겼다. `ENUMS`, `MARKDOWN PARSER (MAIN)`, `ENCODING UTILITIES (ENHANCED v3)`, `CONVENIENCE FUNCTION`은 `md_parser.py`에 남았다. 시작 커밋의 구획 주석 24줄은 모두 새 구성 안에 있다.
+
+**정의 사이의 빈 줄.** 원래 파일에서 빈 줄만을 사이에 두고 이어져 있던 정의는 새 파일에서도 그 빈 줄을 그대로 둔다. 그래서 `_DRIVE_PATH_RE`, `_URI_DRIVE_PATH_RE`, `_URI_SCHEME_RE` 세 줄은 원래처럼 붙어 있고, `LOCAL LINK TARGETS` 구획 주석부터 `TextParser` 앞까지의 줄은 시작 커밋과 글자 그대로 같다. (처음 옮기는 도구는 정의 사이에 늘 빈 줄 두 개를 넣었다. 커밋 전에 이를 발견해 그 단계를 되돌리고 도구를 고쳐 다시 옮겼다. T2에서 함께 옮긴 이웃 정의들은 원래도 빈 줄 두 개로 떨어져 있었으므로 T2의 결과는 이 수정과 관계없다.)
+
+**새 파일 사이의 가져오기.** 글자 ← 표·HTML 표·블록. 앞머리 파일은 다른 새 파일을 쓰지 않는다. 서로를 가리키는 쌍은 없다. 모듈을 읽는 시점의 참조는 `LaTeXParser`(클래스 본문에서 `TextParser`)와 `MarkdownParser`(클래스 본문에서 `FenceScanner`) 두 곳이며, 둘 다 가져오기 순서와 맞는다.
+
+### 요구사항 4절 표와 달라진 것
+
+없다. 묶음 변경, 5절 규칙 5로 더한 줄, 표와 달리 남긴 정의가 모두 없다. 기존 테스트가 `md_parser`에서 바꿔치기하는 모듈 수준 이름은 없다(새 테스트 3번 검사).
+
+### 보호 테스트
+
+옮긴 파일 목록에 파서 파일 5개를 차례로 더했다. 마지막 커밋에서 끝난 구성을 고정하는 검사를 하나 더했다: 새 파일은 정확히 12개이고, 옮긴 정의는 `ib_renderer`에서 19개, `md_parser`에서 24개이며, 옮긴 정의와 남는 정의를 합하면 요구사항 6절의 정의 목록(24개, 29개)과 같고, 원래 두 파일에는 남는 정의만 있다.
+
+### 커밋별 결과
+
+모든 커밋에서 `ruff check .`, `ruff format --check .`, `mypy .`, `pytest tests/`의 종료 코드가 0이고, 스냅숏 279개가 갱신 없이 통과했다. 기존 테스트 파일은 고치지 않았다.
+
+| 커밋 | 새 파일 | 옮긴 정의 | 통과 | 생략 | 예상 실패 |
+|---|---|---|---|---|---|
+| `37a4fe7` | `md_parse_text.py` | `TextParser`, `file_uri`, `rebase_link_target`, `_rebase_link_target`, `_parse_term_runs`, `_substitute_text`, `_document_int`, `_DRIVE_PATH_RE`, `_URI_DRIVE_PATH_RE`, `_URI_SCHEME_RE` | 2619 (2575 + 44) | 5 | 1 |
+| `438b44e` | `md_parse_frontmatter.py` | `FrontmatterParser`, `_infer_metadata_from_elements`, `_extract_leading_metadata_pair`, `_infer_company_from_title` | 2623 (+ 48) | 5 | 1 |
+| `d4803a1` | `md_parse_tables.py` | `TableParser`, `TableSpanResolver` | 2627 (+ 52) | 5 | 1 |
+| `620c2c7` | `md_parse_html_tables.py` | `_HtmlCell`, `_html_image`, `_HtmlTableReader`, `HtmlTableParser` | 2631 (+ 56) | 5 | 1 |
+| `411302e` | `md_parse_blocks.py` | `FenceScanner`, `FootnoteParser`, `LaTeXParser`, `Base64ImageParser` | 2636 (+ 61) | 5 | 1 |
+
+### T3 끝의 확인
+
+- **본문 동일성.** 모든 새 파일이 있어야 하는 방식(`--layout split`)으로 시작 커밋과 비교한 정의 **53개**, 다른 것 **0개**. 옮긴 43개(렌더러 19, 파서 24)는 정해진 새 파일에, 남은 10개(각 5개)는 원래 파일에 있다. 더한 가져오기 문(규칙 5) 0개. 새 파일 여덟의 `logger`가 규칙 2의 형태. 구획 주석 51줄(27 + 24) 모두 새 구성 안에 있음. 종료 코드 0.
+- **배포 묶음.** `uv build` 종료 코드 0. wheel의 최상위 모듈 **33개**, wheel `only-include` 목록과 같음. sdist에도 새 파일 12개가 들어 있음.
+- **새 파일 수.** 최상위 `ib_render_*.py`, `md_parse_*.py`가 정확히 12개(요구사항 7절 5번 검사 통과).
+- **아직 하지 않은 것.** Word 스키마 검증, 변환·가져오기 시간, 대표 문서의 Word 쪽 비교는 T4의 최종 검증에서 한다.
+
+## 8. 하지 않은 것
 
 - macOS·Linux에서의 측정. 이 기록의 시간 값은 위 Windows 기기에서만 쟀다. CI의 Ubuntu 결과는 PR 단계에서 확인한다.
 - 배포 묶음(플러그인·Codex 묶음, 휴대용 변환기)의 실제 재생성과 게시. 범위 밖이다.
