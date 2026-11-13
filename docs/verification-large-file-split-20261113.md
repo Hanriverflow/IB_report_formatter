@@ -86,7 +86,62 @@ Word 스키마 검증 도구는 `scripts/word_schema_validator_assets.json`에 �
 - **시작 시점의 결과.** 정의 **53개**(`ib_renderer.py` 24, `md_parser.py` 29)를 모두 찾았고, 53개 모두 같음. 정의 사이 구획 주석은 각각 27줄, 24줄이며 모두 그대로 있음. 종료 코드 0.
 - **도구 자체 확인.** 시작 커밋의 두 파일로 만든 임시 저장소에서 확인했다: 글꼴 클래스 두 개를 새 파일로 옮기면 통과, 함수 안에 가져오기 문을 더하면 "더한 가져오기 문"으로 표시하고 통과, 메서드 이름 한 글자를 바꾸면 구문 트리 차이로 실패, 주석 한 줄을 더하면 원문 줄 차이로 실패, `logger`를 `__name__`으로 두면 실패, 한 클래스만 옮기고 같은 파일로 갈 다른 클래스를 남기면 실패, `--layout split`에서 새 파일이 없으면 실패.
 
-## 6. 하지 않은 것
+## 6. 렌더러 옮기기 (T2)
+
+`ib_renderer.py`의 정의 19개를 요구사항 4절 표의 새 파일 7개로, 표의 순서대로 한 파일씩 옮겼다. 새 파일 하나에 커밋 하나다. `IBDocumentRenderer`, `_metadata_text`, `CoverRenderer`, `DisclaimerRenderer`, `logger`는 `ib_renderer.py`에 남았다. `ib_renderer.py`는 4,758줄에서 1,365줄이 됐다.
+
+### 옮긴 방법
+
+파일마다 같은 절차를 따랐다.
+
+1. 옮길 정의의 줄(장식자부터 마지막 줄까지)을 글자 그대로 잘라 새 파일에 원래 순서대로 붙였다.
+2. 새 파일 맨 위에는 모듈 설명 한 줄과, 옮긴 코드가 실제로 쓰는 이름의 가져오기 문만 두었다. 가져오기 문은 `ib_renderer.py`에 있던 것과 같은 모듈, 같은 별칭이다. 앞서 옮긴 새 파일의 이름은 그 파일에서 직접 가져왔다. `ib_renderer`에서 가져온 새 파일은 없다.
+3. 로그를 쓰는 새 파일 넷(`ib_render_fonts`, `ib_render_media`, `ib_render_text`, `ib_render_tables`)에는 `logger = logging.getLogger("ib_renderer")`를 두었다. 나머지 셋(`ib_render_document_style`, `ib_render_footnotes`, `ib_render_blocks`)은 로그를 쓰지 않는다.
+4. `ib_renderer.py`에 `from 새_파일 import 이름 as 이름`을 더하고, 쓰지 않게 된 가져오기 문을 지웠다. `platform`은 `import platform as platform`으로 남겼다.
+5. `ruff`로 가져오기 문만 정렬하고 안 쓰는 것을 지운 뒤 `ruff format`을 돌렸다. 바뀐 줄은 가져오기 문과 정의 사이의 빈 줄뿐이며, 옮긴 본문이 다시 정렬된 곳은 없다(본문 동일성 비교로 확인).
+6. `pyproject.toml`의 목록 세 곳과 `tests/test_module_layout.py`의 옮긴 파일 목록에 그 파일을 더했다.
+
+**구획 주석.** 한 정의만 이끄는 구획 주석(`DOCUMENT SIGNATURE`, `FONT STYLER`, `DOCUMENT STYLER`, `TABLE STYLER`, `SAVING`, `LATEX RENDERER (NEW)`)은 그 정의와 함께 옮겼다. 남는 코드를 이끄는 구획 주석(`STYLE CONFIGURATION`, `ELEMENT RENDERERS`, `DOCUMENT RENDERER (ORCHESTRATOR)`)은 `ib_renderer.py`에 그대로 두었다. 시작 커밋의 구획 주석 27줄은 모두 새 구성 안에 있다.
+
+**새 파일 사이의 가져오기.** 글꼴 ← 문서 스타일·각주·그림; 글자 ← 글꼴·각주·그림; 블록 ← 글꼴·문서 스타일·글자; 표 ← 글꼴·문서 스타일·글자. 서로를 가리키는 쌍은 없다.
+
+### 요구사항 4절 표와 달라진 것
+
+없다. 묶음 변경, 5절 규칙 5로 더한 줄(함수 안 가져오기 문), 표와 달리 남긴 정의가 모두 없다. 기존 테스트가 원래 파일에서 바꿔치기하는 모듈 수준 이름(`uuid4`, `Document`, `time`)을 읽는 정의는 4절대로 `ib_renderer.py`에 남았고, 그 밖에 새로 드러난 경우는 없다(새 테스트 3번 검사).
+
+### 보호 테스트 4~8번
+
+`tests/test_module_layout.py`에 요구사항 7절의 4~8번을 더했다. 옮긴 파일 목록은 파일을 하나 옮길 때마다 늘렸다.
+
+4. 옮긴 정의가 정해진 새 파일에 있고, 원래 파일에는 없으며, `ib_renderer`에서 가져온 것과 같은 객체다.
+5. wheel 목록과 sdist 목록의 `.py` 항목이 서로 같고 최상위 파이썬 파일과 같다. 새 모듈이 린트의 자사 모듈 목록에 있다. 디스크의 `ib_render_*.py`, `md_parse_*.py`가 옮긴 파일 목록과 정확히 같다(12개 여부는 T3 끝에서 고정).
+6. 새 파일은 모듈 수준에서 원래 모듈을 가져오지 않는다. `term_sheet.py`는 `ib_renderer`를 가져오지 않는다.
+7. 새 파일과 원래 두 모듈을 하나씩 새 파이썬 프로세스에서 가져와도 오류가 없다.
+8. 새 파일의 `logger`는 원래 모듈의 `logger`와 같은 객체다.
+
+### 커밋별 결과
+
+모든 커밋에서 `ruff check .`, `ruff format --check .`, `mypy .`, `pytest tests/`의 종료 코드가 0이고, 스냅숏 279개가 갱신 없이 통과했다. 기존 테스트 파일은 고치지 않았다. 통과 수 = 기준 2575 + `tests/test_module_layout.py`의 테스트 수.
+
+| 커밋 | 새 파일 | 옮긴 정의 | 통과 | 생략 | 예상 실패 |
+|---|---|---|---|---|---|
+| `4e20751` | `ib_render_fonts.py` | `FontStyler`, `FontPolicy` | 2591 (2575 + 16) | 5 | 1 |
+| `b3a1d15` | `ib_render_document_style.py` | `GeneratorSignatureWriter`, `DocumentStyler`, `TableStyler` | 2595 (+ 20) | 5 | 1 |
+| `af36696` | `ib_render_footnotes.py` | `FootnoteRenderer`, `NativeFootnotesPart`, `rebase_local_links` | 2599 (+ 24) | 5 | 1 |
+| `b4b5494` | `ib_render_media.py` | `ImageRenderer`, `ChartRenderer`, `LaTeXRenderer` | 2603 (+ 28) | 5 | 1 |
+| `c4666c8` | `ib_render_text.py` | `TextRenderer` | 2607 (+ 32) | 5 | 1 |
+| `f1f813e` | `ib_render_blocks.py` | `TOCRenderer`, `HeadingRenderer`, `ParagraphRenderer`, `ListRenderer`, `CalloutRenderer` | 2611 (+ 36) | 5 | 1 |
+| `9fd2046` | `ib_render_tables.py` | `TableRenderer`, `_BLACK` | 2615 (+ 40) | 5 | 1 |
+
+첫 커밋에서 `ruff format --check`가 새 테스트 파일 한 곳(긴 목록 내포 한 줄)을 다시 정렬하라고 해서, 커밋 전에 테스트 파일만 정렬했다. 옮긴 본문과는 관계없다.
+
+### T2 끝의 확인
+
+- **본문 동일성.** 시작 커밋과 비교한 정의 **53개**, 다른 것 **0개**. 옮긴 19개는 정해진 새 파일에, 남은 5개는 `ib_renderer.py`에 있다(파서 29개는 아직 `md_parser.py`). 더한 가져오기 문(규칙 5) 0개. 새 파일 넷의 `logger`가 규칙 2의 형태. 종료 코드 0.
+- **배포 묶음.** `uv build` 종료 코드 0. wheel의 최상위 모듈 **28개**, wheel `only-include` 목록과 같음. sdist에도 새 파일 7개가 들어 있음.
+- **아직 하지 않은 것.** Word 스키마 검증, 변환·가져오기 시간, 대표 문서의 Word 쪽 비교는 T4의 최종 검증에서 한다. 스냅숏 279개(DOCX 안의 모든 XML 파트)가 커밋마다 같았으므로 산출 문서는 이 시점까지 같다.
+
+## 7. 하지 않은 것
 
 - macOS·Linux에서의 측정. 이 기록의 시간 값은 위 Windows 기기에서만 쟀다. CI의 Ubuntu 결과는 PR 단계에서 확인한다.
 - 배포 묶음(플러그인·Codex 묶음, 휴대용 변환기)의 실제 재생성과 게시. 범위 밖이다.
