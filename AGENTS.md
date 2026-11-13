@@ -20,6 +20,7 @@ Next-step research roadmap (owner decisions D1–D5 and candidate work E1–E17;
 Input-loss, save-safety and performance hardening: `docs/verification-20260929.md`.
 Term-sheet profile and term variables: design `docs/term-sheet-design-20260929.md`, plan `docs/term-sheet-plan-20260929.md` (§2 decisions override the design), verification `docs/verification-term-sheet-20260929.md`.
 Asset path restriction, input limits, Word schema gate, snapshot and property tests (roadmap E1–E3): verification `docs/verification-20261110.md`.
+Document properties and DRAFT watermark (roadmap E8): verification `docs/verification-document-properties-20261114.md`.
 
 ## Quick reference
 
@@ -94,6 +95,9 @@ The `md_parse_*.py` and `ib_render_*.py` files are internal. Import from `md_par
 - Preserve blank cells, escapes, codes, dates and numeric presentation. Percent/bps/multiple roles do not rescale numeric values.
 - Strict mode rejects known input loss or rendering failures before saving. Diagnostics do not establish visual or financial correctness.
 - Changes to output must have regression tests through actual parsing/rendering and, for layout changes, representative page inspection.
+- Frontmatter `version` becomes the custom property `Version`, shown by a `DOCPROPERTY Version` field whose stored result is the version text: after the company in the header (not in office letters) and in the term-sheet footer. Never write the field without the property; Word prints an error for a missing one. `version` keeps the existing metadata display coercion (numbers render as YAML read them).
+- `status: draft` adds Word's own VML text watermark (ids `PowerPlusWaterMarkObject…`, which Word's Remove Watermark recognises) to every header part of every section, after all headers exist; Word's gallery alone would mark only one header. `final` or no status adds nothing; any other value is rejected in both modes.
+- The renderer writes the document's own core properties: title (not a profile's stand-in title), empty author and comment, and the conversion time. Snapshots already normalise the times.
 - Office letters close before the explicitly named unique H1 in `letter.appendix_heading`; no implicit appendix inference or second assembler. Optional `appendix_label` requires that boundary. Preserve native attachment numbers.
 - Inline HTML breaks must reach Word paragraphs, emphasis, headings, lists and cells without changing code/escaped literals or link URLs.
 - Word's nonprinting pagination squares are not list bullets. Do not globally add or remove keep-lines/keep-next; retain necessary heading controls. Audit warnings and visual-review status are distinct from structural issues.

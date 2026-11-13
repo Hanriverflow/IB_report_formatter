@@ -111,6 +111,18 @@ letter:
 
 업무보고는 `analyst`, `date`, `sender.department`; 회의록은 추가로 `meeting_time`, `location`, `attendees`를 사용합니다. 보고 요지·결정사항·후속 조치는 Markdown 본문에 직접 작성합니다. 이미 프로파일에서 만든 제목과 같은 첫 H1은 중복 출력하지 않습니다.
 
+## 버전 표시와 초안 워터마크
+
+```yaml
+version: "v1.2"   # 따옴표로 감쌉니다. 따옴표 없이 1.10이라 쓰면 YAML이 1.1로 읽습니다
+status: draft     # draft 또는 final
+```
+
+- `version`을 적으면 파일 속성의 사용자 지정 항목 `Version`에 기록하고, 머리글 회사명 뒤에 `예시금융 | v1.2`처럼 보여 줍니다(회사명이 없으면 `v1.2`만). 머리글의 버전은 `DOCPROPERTY Version` 필드이며 지금 값을 담고 있어 파일을 열자마자 바르게 보입니다. 공문은 속성만 기록하고 머리글에 버전을 보여 주지 않습니다. 텀싯은 지금처럼 바닥글에 `subtitle version`을 보여 주며, 버전 부분이 같은 필드입니다.
+- Word에서 버전을 바꾸려면 **파일 > 정보 > 속성 > 고급 속성 > 사용자 지정**에서 `Version` 값을 고친 뒤 필드를 갱신합니다. 머리글을 두 번 눌러 **Ctrl+A, F9**를 누르면 그 구역의 머리글이 바뀌고, **Ctrl+P**(인쇄 화면)나 인쇄 미리보기를 열면 모든 구역이 바뀝니다. 가로 표가 있는 문서는 구역이 여럿이므로 Ctrl+P가 간편합니다. 본문에서 Ctrl+A, F9를 눌러서는 머리글이 바뀌지 않습니다. 인쇄와 PDF 저장에는 새 값이 찍힙니다.
+- `status: draft`를 적으면 표지와 가로 표 쪽을 포함한 모든 쪽에 DRAFT 워터마크가 찍힙니다. Word가 쓰는 것과 같은 워터마크이므로 **디자인 > 워터마크 > 워터마크 제거** 한 번으로 모든 쪽에서 지워집니다. `status: final`이거나 적지 않으면 워터마크가 없고, 다른 값은 오류로 거부합니다.
+- 파일 > 정보에는 문서 제목이 나오고, 만든 이와 메모는 비어 있으며, 만든 날짜와 수정한 날짜는 변환한 시각입니다.
+
 ## 설정과 회사 테마
 
 우선순위: **CLI/API 명시값 > YAML > 프로파일 기본값**.
@@ -190,7 +202,7 @@ style:
 
 House/frontmatter 문구로 안내·체크 항목 행과 음영·가운데 정렬 서명 행을 만들고 한 페이지에 모읍니다. 문구 누락, 내용이 있는 펜스, 닫히지 않은 펜스는 원문을 진단 코드 패널로 보존하며 strict에서 거부합니다. 다른 프로파일에서는 일반 코드 블록입니다.
 
-모든 페이지 머리글에 `confidential_label`(기본 `Strictly Confidential`)을 표시합니다. 빈 라벨, `layout.confidential: false`, `--no-confidential`로 끌 수 있습니다. 바닥글 왼쪽은 `version`이 있을 때 `subtitle version`, 오른쪽은 `PAGE / NUMPAGES`입니다. 첫머리 면책은 `--no-disclaimer`와 무관하게 필수입니다. 기존 **`termsheet` 프리셋**은 표지·목차·끝 면책만 전환하며, 텀싯 프로파일 선택·기관 문구 로딩·조건표 서식은 적용하지 않습니다.
+모든 페이지 머리글에 `confidential_label`(기본 `Strictly Confidential`)을 표시합니다. 빈 라벨, `layout.confidential: false`, `--no-confidential`로 끌 수 있습니다. 바닥글 왼쪽은 `version`이 있을 때 `subtitle version`(버전은 `DOCPROPERTY Version` 필드, [버전 표시와 초안 워터마크](#버전-표시와-초안-워터마크) 참고), 오른쪽은 `PAGE / NUMPAGES`입니다. 첫머리 면책은 `--no-disclaimer`와 무관하게 필수입니다. 기존 **`termsheet` 프리셋**은 표지·목차·끝 면책만 전환하며, 텀싯 프로파일 선택·기관 문구 로딩·조건표 서식은 적용하지 않습니다.
 
 텀싯 문서는 한글을 어절 단위로 줄바꿈하고(`w:wordWrap=1`), 한글과 영문·숫자 사이의 자동 간격을 끄므로(`w:autoSpaceDE/DN=0`) `300억원`, `SPC에`처럼 붙여 씁니다.
 
