@@ -59,6 +59,7 @@ SPLIT_LAYOUT: dict[str, tuple[str, tuple[str, ...]]] = {
         ("FootnoteRenderer", "NativeFootnotesPart", "rebase_local_links"),
     ),
     "ib_render_media": ("ib_renderer", ("ImageRenderer", "ChartRenderer", "LaTeXRenderer")),
+    "ib_render_text": ("ib_renderer", ("TextRenderer",)),
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
