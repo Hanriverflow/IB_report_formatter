@@ -24,4 +24,7 @@
   <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.term.rate" pid="9">
     <vt:lpwstr>4.50%</vt:lpwstr>
   </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="Version" pid="10">
+    <vt:lpwstr>v1.0 / 가상 예시</vt:lpwstr>
+  </property>
 </Properties>

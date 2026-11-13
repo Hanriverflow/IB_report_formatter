@@ -65,6 +65,22 @@ def default_metadata(profile: str = "ib-report") -> DocumentMetadata:
     return DocumentMetadata(title="Document", company="", sector="", analyst="", profile=profile)
 
 
+def document_version(metadata: DocumentMetadata) -> str:
+    """Return the frontmatter `version` as display text, or "" when absent or blank.
+
+    The value keeps the existing metadata display coercion: an unquoted YAML
+    number renders as YAML read it (`1.10` becomes `1.1`), so authors quote it.
+
+    Args:
+        metadata: Parsed or hand-built document metadata.
+
+    Returns:
+        Version text without surrounding spaces.
+    """
+    value = metadata.extra.get("version")
+    return "" if value is None else str(value).strip()
+
+
 def validate_term_sheet_metadata(metadata: DocumentMetadata, check_length: bool = True) -> None:
     """Validate term-sheet display text before generic title inference.
 

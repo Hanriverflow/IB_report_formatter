@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import Mapping
+from copy import deepcopy
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from xml.sax.saxutils import escape
@@ -189,6 +190,54 @@ class GeneratorSignatureWriter:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# DOCUMENT PROPERTY FIELDS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Custom document property that holds the frontmatter `version`.
+VERSION_PROPERTY = "Version"
+_PROPERTY_NAME_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
+
+
+def make_property_field(run, name: str) -> None:
+    """Turn a rendered run into the stored result of a `DOCPROPERTY` field.
+
+    Word shows the stored result until the field is updated (F9 inside the
+    header or footer, the print preview, printing or saving as PDF), so the run
+    must already hold the property's current value. The field code matches what
+    Word itself writes, and every field-character run copies the result run's
+    formatting so an update keeps the look.
+
+    Args:
+        run: Run already added to its paragraph and styled.
+        name: Custom property name; letters, digits and underscores only.
+    """
+    if not _PROPERTY_NAME_RE.fullmatch(name):
+        raise ValueError(f"Unsupported document property name: {name!r}")
+    result = run._r
+    rpr = result.find(qn("w:rPr"))
+
+    def field_run(kind: str | None, instruction: str | None = None):
+        element = OxmlElement("w:r")
+        if rpr is not None:
+            element.append(deepcopy(rpr))
+        if kind is None:
+            code = OxmlElement("w:instrText")
+            code.set(qn("xml:space"), "preserve")
+            code.text = instruction
+            element.append(code)
+        else:
+            char = OxmlElement("w:fldChar")
+            char.set(qn("w:fldCharType"), kind)
+            element.append(char)
+        return element
+
+    result.addprevious(field_run("begin"))
+    result.addprevious(field_run(None, f" DOCPROPERTY {name} \\* MERGEFORMAT "))
+    result.addprevious(field_run("separate"))
+    result.addnext(field_run("end"))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # DOCUMENT STYLER
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -366,6 +415,7 @@ class DocumentStyler:
         company: str = "",
         confidential: bool = True,
         show_page_numbers: bool = True,
+        version: str = "",
     ):
         """
         Set up professional IB-style header and footer.
@@ -374,6 +424,9 @@ class DocumentStyler:
             company: Company name to display in header
             confidential: Whether to show "CONFIDENTIAL" mark
             show_page_numbers: Whether to show page numbers in footer
+            version: Version shown after the company as a `DOCPROPERTY Version`
+                field whose stored result is this text; empty shows nothing. The
+                caller writes the property itself.
         """
         for section in self.doc.sections:
             # ── Header ─────────────────────────────────────────────────────────
@@ -397,6 +450,19 @@ class DocumentStyler:
                     color=STYLE.DARK_GRAY,
                 )
 
+            # Version after the company, kept current by a document-property field.
+            if version:
+                labels = [" | ", version] if company else [version]
+                runs = [header_para.add_run(label) for label in labels]
+                for run in runs:
+                    FontStyler.apply_run_style(
+                        run,
+                        font_name=STYLE.HEADING_FONT,
+                        font_size=STYLE.SMALL_SIZE,
+                        color=STYLE.DARK_GRAY,
+                    )
+                make_property_field(runs[-1], VERSION_PROPERTY)
+
             # Tab width follows this section, including landscape tables.
             width, left, right = section.page_width, section.left_margin, section.right_margin
             if width is None or left is None or right is None:
@@ -409,7 +475,7 @@ class DocumentStyler:
             header_para.paragraph_format.tab_stops.add_tab_stop(
                 available_width, WD_TAB_ALIGNMENT.RIGHT
             )
-            if company or confidential:
+            if company or version or confidential:
                 header_para.add_run("\t")
 
             # Right-aligned confidential mark
@@ -424,7 +490,7 @@ class DocumentStyler:
                 )
 
             # Add separator line under header
-            if company or confidential:
+            if company or version or confidential:
                 self._add_header_border(header_para)
 
             # ── Footer ─────────────────────────────────────────────────────────

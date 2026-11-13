@@ -57,4 +57,7 @@
   <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="ibrep.checks" pid="20">
     <vt:lpwstr>{"checks": [{"check": "issue_rate = base_rate + cap_spread", "tolerance": null}, {"check": "all_in = issue_rate + credit_fee + running_cost", "tolerance": null}, {"check": "facility = amount * 1.05", "tolerance": null}], "values": {"issue_rate": "[3.80]%", "base_rate": "[2.70]%", "cap_spread": "[1.10]%p", "all_in": "[4.90]%", "credit_fee": "[0.90]%", "running_cost": "[0.20]%", "facility": "315억원", "amount": "300억원"}}</vt:lpwstr>
   </property>
+  <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" name="Version" pid="21">
+    <vt:lpwstr>v1.0 (가상 협의안)</vt:lpwstr>
+  </property>
 </Properties>

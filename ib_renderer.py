@@ -90,6 +90,7 @@ from document_model import Chart, ConfirmationBlock
 from document_profiles import (
     RenderOptions,
     default_metadata,
+    document_version,
     load_style,
     resolve_options,
     validate_office_metadata,
@@ -100,6 +101,7 @@ from ib_render_blocks import HeadingRenderer as HeadingRenderer
 from ib_render_blocks import ListRenderer as ListRenderer
 from ib_render_blocks import ParagraphRenderer as ParagraphRenderer
 from ib_render_blocks import TOCRenderer as TOCRenderer
+from ib_render_document_style import VERSION_PROPERTY
 from ib_render_document_style import DocumentStyler as DocumentStyler
 from ib_render_document_style import GeneratorSignatureWriter as GeneratorSignatureWriter
 from ib_render_document_style import TableStyler as TableStyler
@@ -875,10 +877,13 @@ class IBDocumentRenderer:
                         TextRenderer.render_runs,
                     )
                 else:
+                    letter = resolved.profile.name == "office-letter"
                     self.styler.setup_header_footer(
-                        company="" if resolved.profile.name == "office-letter" else company,
+                        company="" if letter else company,
                         confidential=resolved.confidential,
                         show_page_numbers=True,
+                        # Letters show no version; the property is still written.
+                        version="" if letter else document_version(model.metadata),
                     )
             self.apply_generator_signature(
                 "ib_generated" if resolved.profile.name == "ib-report" else resolved.profile.name
@@ -898,6 +903,10 @@ class IBDocumentRenderer:
                     self.doc,
                     {CHECKS_PROPERTY: checks_json},
                 )
+            version = document_version(model.metadata)
+            if version:
+                # Headers and the term-sheet footer refer to it by DOCPROPERTY fields.
+                GeneratorSignatureWriter.upsert_properties(self.doc, {VERSION_PROPERTY: version})
             ImageRenderer.fit_table_cell_images(self.doc)
             from docx_audit import inspect_document_issues
 
