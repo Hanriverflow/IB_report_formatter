@@ -224,3 +224,95 @@ def test_invalid_table_end_cli_does_not_save(tmp_path, monkeypatch):
         main()
     assert result.value.code != 0
     assert not output.exists()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ATTACHMENTS AS IN THE ADMINISTRATIVE HANDBOOK
+# ═══════════════════════════════════════════════════════════════════════════════
+
+BODY_END = "2. 관련 서류를 붙임과 같이 송부합니다.\n"
+
+
+def attachment_paragraphs(doc) -> list:
+    return [
+        p for p in doc.paragraphs if p.style is not None and p.style.name == "Office Attachment"
+    ]
+
+
+def visible_text(paragraph) -> str:
+    """Run text with tab characters as tabs (tab-stop definitions are not text)."""
+    parts = []
+    for run in paragraph._p.findall(qn("w:r")):
+        for node in run:
+            if node.tag == qn("w:tab"):
+                parts.append("\t")
+            elif node.tag == qn("w:t"):
+                parts.append(node.text or "")
+    return "".join(parts)
+
+
+def num_id(paragraph) -> int | None:
+    num_pr = paragraph._p.find(qn("w:pPr") + "/" + qn("w:numPr"))
+    return None if num_pr is None else int(num_pr.find(qn("w:numId")).get(qn("w:val")))
+
+
+def num_definition(doc, numbering_id: int):
+    numbering = doc.part.numbering_part.element
+    return next(
+        n for n in numbering.findall(qn("w:num")) if int(n.get(qn("w:numId"))) == numbering_id
+    )
+
+
+def test_one_attachment_is_one_unnumbered_line_ending_the_letter():
+    doc = render(letter(BODY_END, "attachments: [발행조건 요약표 1부]\n"))
+    paragraphs = attachment_paragraphs(doc)
+    assert len(paragraphs) == 1
+    assert visible_text(paragraphs[0]) == "붙임\t발행조건 요약표 1부.  끝."
+    assert num_id(paragraphs[0]) is None
+    assert all_text(doc).count("끝.") == 1
+    assert not any(p.text == "붙임" for p in doc.paragraphs)
+
+
+def test_several_attachments_share_one_native_list_labelled_on_the_first_line():
+    extra = "attachments: [발행조건 요약표 1부, 수요예측 일정표 1부., 증권신고서 초안 1부]\n"
+    doc = render(letter(BODY_END, extra))
+    paragraphs = attachment_paragraphs(doc)
+    assert [visible_text(p) for p in paragraphs] == [
+        "발행조건 요약표 1부.",
+        "수요예측 일정표 1부.",
+        "증권신고서 초안 1부.  끝.",
+    ]
+    ids = [num_id(p) for p in paragraphs]
+    assert None not in ids and ids[0] != ids[1] == ids[2]
+    first, rest = num_definition(doc, ids[0]), num_definition(doc, ids[1])
+    abstract = qn("w:abstractNumId")
+    # One abstract definition: Word counts 1, 2, 3 across both list instances.
+    assert first.find(abstract).get(qn("w:val")) == rest.find(abstract).get(qn("w:val"))
+    level_text = first.find(qn("w:lvlOverride") + "/" + qn("w:lvl") + "/" + qn("w:lvlText"))
+    assert level_text.get(qn("w:val")) == "붙임\t%1."
+    assert rest.find(qn("w:lvlOverride")) is None
+    assert not any(p.text == "붙임" for p in doc.paragraphs)
+    assert all_text(doc).count("끝.") == 1
+
+
+def test_attachment_numbers_align_under_the_first_number():
+    doc = render(letter(BODY_END, "attachments: [가 1부, 나 1부]\n"))
+    first, second = (p.paragraph_format for p in attachment_paragraphs(doc))
+    assert first.left_indent.pt == second.left_indent.pt == 42
+    assert first.first_line_indent.pt == -42
+    # The second number starts where the first one does, after "붙임" and its tab.
+    assert second.left_indent.pt + second.first_line_indent.pt == 30
+    assert [stop.position.pt for stop in first.tab_stops] == [30]
+
+
+def test_attachments_still_close_the_letter_before_an_explicit_appendix():
+    extra = (
+        "attachments: [상세 내역 1부, 확인서 1부]\n"
+        "letter:\n  appendix_heading: 상세 내역\n  appendix_label: 붙임 1\n"
+    )
+    source = letter(BODY_END, extra) + "\n# 상세 내역\n\n본문과 별도인 내역입니다.\n"
+    doc = render(source)
+    texts = [visible_text(p) for p in doc.paragraphs]
+    closing = texts.index("확인서 1부.  끝.")
+    assert closing < texts.index("가상금융 주식회사 대표이사") < texts.index("붙임 1")
+    assert len(doc.element.xpath('.//w:br[@w:type="page"]')) == 1

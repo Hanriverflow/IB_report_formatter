@@ -4,6 +4,9 @@ Changelog (letter closing):
     - `letter.table_end: partial` writes 이하 빈칸 in the first blank row after the
       last written row of the table that ends the letter body, instead of "끝."
       (`letter_partial_table_row`). Without the setting the output is unchanged.
+    - Attachments follow the administrative handbook: one attachment is a single
+      unnumbered line `붙임⇥항목.  끝.`; several start on the `붙임⇥1.` line of a
+      native list whose other numbers align under `1.` (`render_attachments`).
 
 Changelog (Korean language):
     - Every profile other than term-sheet declares `ko-KR` as the East Asian
@@ -18,6 +21,8 @@ Changelog (hardening):
     - Scope native list instances to their parent item and override the actual level.
     - Reuse memo title/metadata typography for cover-free IB reports, adding subtitles.
 """
+
+from copy import deepcopy
 
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -286,6 +291,49 @@ def render_office_opening(doc, metadata: DocumentMetadata) -> bool:
     return True
 
 
+# "붙임" (two characters of the 10pt attachment style) plus a one-character gap,
+# the 2타 of the administrative handbook. Attachment numbers start here.
+ATTACHMENT_NUMBER_PT = 30
+# Attachment text starts at the attachment style's own tab stop.
+ATTACHMENT_TEXT_PT = 42
+
+
+def render_attachments(doc, attachments: list[str]) -> None:
+    """Write the attachment lines as in the administrative handbook, ending in "끝.".
+
+    One attachment is unnumbered: `붙임⇥발행조건 요약표 1부.  끝.`. Several are a
+    native Word list whose first item carries the label (`붙임⇥1.`) and whose
+    other numbers align under `1.`; Word keeps counting across them, so the
+    numbers stay editable. Wrapped lines align with the attachment text.
+
+    Args:
+        doc: Document after the letter body.
+        attachments: Declared attachment names; each gets a closing period.
+    """
+    lines = [item.rstrip().rstrip(".") + "." for item in attachments]
+    lines[-1] += "  끝."
+    if len(lines) == 1:
+        paragraph = add_text(doc, "붙임\t" + lines[0], style_name="Office Attachment")
+        paragraph.paragraph_format.space_before = Pt(8)
+        paragraph.paragraph_format.left_indent = Pt(ATTACHMENT_NUMBER_PT)
+        paragraph.paragraph_format.first_line_indent = Pt(-ATTACHMENT_NUMBER_PT)
+        paragraph.paragraph_format.tab_stops.add_tab_stop(Pt(ATTACHMENT_NUMBER_PT))
+        return
+    numbering = NativeNumbering(doc)
+    for index, line in enumerate(lines):
+        paragraph = add_text(doc, line, style_name="Office Attachment")
+        numbering.apply(paragraph, 0)
+        fmt = paragraph.paragraph_format
+        fmt.left_indent = Pt(ATTACHMENT_TEXT_PT)
+        fmt.tab_stops.add_tab_stop(Pt(ATTACHMENT_NUMBER_PT))
+        if index == 0:
+            numbering.label_first_item(paragraph, "붙임\t")
+            fmt.space_before = Pt(8)
+            fmt.first_line_indent = Pt(-ATTACHMENT_TEXT_PT)
+        else:
+            fmt.first_line_indent = Pt(ATTACHMENT_NUMBER_PT - ATTACHMENT_TEXT_PT)
+
+
 def render_office_closing(
     doc, metadata: DocumentMetadata, partial_table_row: int | None = None
 ) -> None:
@@ -304,19 +352,7 @@ def render_office_closing(
         _mark_partial_table(doc, partial_table_row)
     attachments = string_list(metadata.extra, "attachments")
     if attachments:
-        label = add_text(doc, "붙임", style_name="Office Attachment", keep_next=True)
-        label.paragraph_format.space_before = Pt(8)
-        numbering = NativeNumbering(doc)
-        for index, item in enumerate(attachments, 1):
-            ending = "  끝." if index == len(attachments) else ""
-            paragraph = add_text(
-                doc, item.rstrip().rstrip(".") + "." + ending, style_name="Office Attachment"
-            )
-            numbering.apply(paragraph, 0)
-            paragraph.paragraph_format.left_indent = Pt(30)
-            paragraph.paragraph_format.first_line_indent = Pt(-14)
-            paragraph.paragraph_format.tab_stops.clear_all()
-            paragraph.paragraph_format.tab_stops.add_tab_stop(Pt(30))
+        render_attachments(doc, attachments)
     elif partial_table_row is None:
         # Attach the closing marker to the last actual body paragraph when possible.
         last = doc.paragraphs[-1] if doc.paragraphs else None
@@ -377,6 +413,43 @@ class NativeNumbering:
         num_pr = paragraph._p.get_or_add_pPr().get_or_add_numPr()
         num_pr.get_or_add_ilvl().val = level
         num_pr.get_or_add_numId().val = self.ids[key]
+
+    def label_first_item(self, paragraph, label: str) -> None:
+        """Put `label` before the number of a top-level list's first item.
+
+        A second list instance shares the abstract definition and overrides only
+        the level-0 text. Word counts items of one abstract definition together,
+        so the next items still number 2, 3, ... and stay editable.
+
+        Args:
+            paragraph: First item, already numbered at level 0 by `apply`.
+            label: Text before the number, such as "붙임	".
+        """
+        numbering = self.doc.part.numbering_part.element
+        num_id = self.ids[(0, "number")]
+        source = next(
+            n for n in numbering.findall(qn("w:num")) if int(n.get(qn("w:numId"))) == num_id
+        )
+        abstract_id = source.find(qn("w:abstractNumId")).get(qn("w:val"))
+        abstract = next(
+            a
+            for a in numbering.findall(qn("w:abstractNum"))
+            if a.get(qn("w:abstractNumId")) == abstract_id
+        )
+        level = deepcopy(abstract.find(qn("w:lvl")))
+        level.find(qn("w:lvlText")).set(qn("w:val"), label + "%1.")
+        override = OxmlElement("w:lvlOverride")
+        override.set(qn("w:ilvl"), "0")
+        override.append(level)
+        labelled = OxmlElement("w:num")
+        labelled_id = max(int(n.get(qn("w:numId"))) for n in numbering.findall(qn("w:num"))) + 1
+        labelled.set(qn("w:numId"), str(labelled_id))
+        reference = OxmlElement("w:abstractNumId")
+        reference.set(qn("w:val"), abstract_id)
+        labelled.append(reference)
+        labelled.append(override)
+        numbering.append(labelled)
+        paragraph._p.get_or_add_pPr().get_or_add_numPr().get_or_add_numId().val = labelled_id
 
     def _create(self, bullet: bool, start: int, start_level: int) -> int:
         numbering = self.doc.part.numbering_part.element
