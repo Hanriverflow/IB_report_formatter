@@ -143,6 +143,7 @@ from office_layout import (
     letter_appendix_index,
     render_office_closing,
     render_office_opening,
+    setup_korean_language,
     setup_korean_spacing,
     setup_letter_styles,
 )
@@ -778,7 +779,8 @@ class IBDocumentRenderer:
                 setup_letter_styles(self.doc)
             if self._term_sheet:
                 setup_term_sheet_styles(self.doc)
-            elif not resolved.profile.is_ib:
+            else:
+                setup_korean_language(self.doc)
                 setup_korean_spacing(self.doc)
             update_fields = OxmlElement("w:updateFields")
             update_fields.set(qn("w:val"), "true")

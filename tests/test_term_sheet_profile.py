@@ -675,7 +675,7 @@ def test_term_sheet_document_defaults_are_local_to_term_sheets():
     # General profiles print Korean next to Latin text and digits tight as well.
     assert xml_values(plain_defaults, "./w:pPrDefault/w:pPr/w:autoSpaceDE") == ["0"]
     assert xml_values(plain_defaults, "./w:pPrDefault/w:pPr/w:autoSpaceDN") == ["0"]
-    assert xml_values(plain_defaults, "./w:rPrDefault/w:rPr/w:lang", "w:eastAsia") == ["en-US"]
+    assert xml_values(plain_defaults, "./w:rPrDefault/w:rPr/w:lang", "w:eastAsia") == ["ko-KR"]
     assert xml_values(plain_defaults, "./w:rPrDefault/w:rPr/w:sz") == ["22"]
 
 

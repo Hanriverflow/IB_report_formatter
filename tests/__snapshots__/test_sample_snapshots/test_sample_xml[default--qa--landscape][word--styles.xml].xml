@@ -6,11 +6,13 @@
         <w:rFonts w:asciiTheme="minorHAnsi" w:cstheme="minorBidi" w:eastAsiaTheme="minorEastAsia" w:hAnsiTheme="minorHAnsi"/>
         <w:sz w:val="22"/>
         <w:szCs w:val="22"/>
-        <w:lang w:bidi="ar-SA" w:eastAsia="en-US" w:val="en-US"/>
+        <w:lang w:bidi="ar-SA" w:eastAsia="ko-KR" w:val="en-US"/>
       </w:rPr>
     </w:rPrDefault>
     <w:pPrDefault>
       <w:pPr>
+        <w:autoSpaceDE w:val="0"/>
+        <w:autoSpaceDN w:val="0"/>
         <w:spacing w:after="200" w:line="276" w:lineRule="auto"/>
       </w:pPr>
     </w:pPrDefault>
@@ -11850,7 +11852,7 @@
     <w:pPr>
       <w:widowControl/>
       <w:spacing w:after="120" w:line="276" w:lineRule="auto"/>
-      <w:jc w:val="both"/>
+      <w:jc w:val="left"/>
     </w:pPr>
     <w:rPr>
       <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>

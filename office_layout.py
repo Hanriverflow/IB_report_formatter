@@ -1,8 +1,13 @@
 """Office document composition and editable Word numbering.
 
+Changelog (Korean language):
+    - Every profile other than term-sheet declares `ko-KR` as the East Asian
+      language (`setup_korean_language`), so Word keeps `㈜는` and `」에` whole.
+
 Changelog (Korean spacing):
     - General profiles print Korean next to Latin text and digits without
       Word's automatic spacing (`setup_korean_spacing`).
+    - The IB profiles do the same, so `2025년` and `300억원` print tight there too.
 
 Changelog (hardening):
     - Scope native list instances to their parent item and override the actual level.
@@ -63,8 +68,8 @@ def setup_korean_spacing(doc) -> None:
 
     Word adds space between East Asian text and Latin text (`w:autoSpaceDE`) or
     digits (`w:autoSpaceDN`) by default, printing `SPC 는`, `제 2 종`, `300 억원`.
-    Korean business documents print these tight, so general profiles turn both
-    off in the document defaults (the term-sheet profile does the same).
+    Korean business documents print these tight, so every profile turns both
+    off in the document defaults (the term-sheet profile does so itself).
 
     Args:
         doc: Document whose request-scoped styles were created already.
@@ -86,6 +91,37 @@ def setup_korean_spacing(doc) -> None:
         element = OxmlElement(tag)
         element.set(qn("w:val"), "0")
         insert_ordered(properties, element)
+
+
+def setup_korean_language(doc) -> None:
+    """Declare Korean as the document's East Asian language.
+
+    With the East Asian language left at the template's `en-US`, Word breaks a
+    line inside a Korean word after `㈜` or a closing `」` (`가나다㈜⏎는`,
+    `「신탁법」⏎에`). `ko-KR` keeps such words whole; Latin text keeps its own
+    language. The term-sheet profile sets the same value itself.
+
+    Args:
+        doc: Document whose request-scoped styles were created already.
+    """
+    styles = doc.styles.element
+    defaults = styles.find(qn("w:docDefaults"))
+    if defaults is None:
+        defaults = OxmlElement("w:docDefaults")
+        styles.insert(0, defaults)
+    run_defaults = defaults.find(qn("w:rPrDefault"))
+    if run_defaults is None:
+        run_defaults = OxmlElement("w:rPrDefault")
+        defaults.insert(0, run_defaults)
+    properties = run_defaults.find(qn("w:rPr"))
+    if properties is None:
+        properties = OxmlElement("w:rPr")
+        run_defaults.append(properties)
+    language = properties.find(qn("w:lang"))
+    if language is None:
+        language = OxmlElement("w:lang")
+        insert_ordered(properties, language)
+    language.set(qn("w:eastAsia"), "ko-KR")
 
 
 def letter_appendix_index(model: DocumentModel) -> int | None:
