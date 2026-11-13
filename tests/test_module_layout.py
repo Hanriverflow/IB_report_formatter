@@ -12,6 +12,15 @@ callers use today. These checks pin that contract:
 3. A module-level name that tests replace on an original module is read only by
    definitions that stay in that module; a replacement cannot reach a copy of
    the name in another file.
+4. Each moved definition is in its split file and is the same object as the
+   name exported by the original module.
+5. The wheel, sdist and first-party lists in pyproject.toml match the engine
+   files, and the split files on disk are exactly the listed ones.
+6. Split files do not import their original module at module level, and
+   term_sheet.py does not import ib_renderer.
+7. Every split file and both original modules import on their own in a fresh
+   interpreter, so no import order hides a cycle.
+8. A split file's ``logger`` is the original module's logger.
 """
 
 import ast
@@ -19,6 +28,9 @@ import fnmatch
 import importlib
 import os
 import re
+import subprocess
+import sys
+import tomllib
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,6 +46,11 @@ SKIPPED_DIRECTORY_NAMES = frozenset(
 LEGACY_TEMP_DIRECTORY_PATTERN = "Users*AppDataLocalTemp*"
 ORIGINAL_MODULES = ("ib_renderer", "md_parser")
 SPLIT_FILE_PATTERNS = {"ib_renderer": "ib_render_*.py", "md_parser": "md_parse_*.py"}
+
+# Split files, in move order, with their original module and moved definitions.
+SPLIT_LAYOUT: dict[str, tuple[str, tuple[str, ...]]] = {
+    "ib_render_fonts": ("ib_renderer", ("FontStyler", "FontPolicy")),
+}
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # NAMES THAT MUST STAY IMPORTABLE
@@ -365,3 +382,123 @@ def test_replaced_names_are_read_only_by_definitions_in_original_file(
             for file_name, names in sorted(readers.items())
         )
     assert problems == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 4. MOVED DEFINITIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.parametrize("split_module", list(SPLIT_LAYOUT))
+def test_moved_definitions_live_in_split_file_and_are_reexported(split_module: str) -> None:
+    original_module, names = SPLIT_LAYOUT[split_module]
+    split_defined = dict(_top_level_definitions(REPOSITORY_ROOT / f"{split_module}.py"))
+    original_defined = dict(_top_level_definitions(REPOSITORY_ROOT / f"{original_module}.py"))
+    split = importlib.import_module(split_module)
+    original = importlib.import_module(original_module)
+    problems = [
+        f"{name}: not defined in {split_module}.py" for name in names if name not in split_defined
+    ]
+    problems += [
+        f"{name}: still defined in {original_module}.py"
+        for name in names
+        if name in original_defined
+    ]
+    problems += [
+        f"{name}: {original_module}.{name} is not {split_module}.{name}"
+        for name in names
+        if getattr(original, name, None) is not getattr(split, name, None)
+    ]
+    assert problems == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 5. PACKAGING LISTS AND FILES ON DISK
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def test_packaging_lists_match_engine_files() -> None:
+    config = tomllib.loads((REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    targets = config["tool"]["hatch"]["build"]["targets"]
+    wheel = {entry for entry in targets["wheel"]["only-include"] if entry.endswith(".py")}
+    sdist = {entry.lstrip("/") for entry in targets["sdist"]["include"] if entry.endswith(".py")}
+    engine = {path.name for path in REPOSITORY_ROOT.glob("*.py")}
+    assert wheel == sdist == engine
+    first_party = set(config["tool"]["ruff"]["lint"]["isort"]["known-first-party"])
+    assert set(SPLIT_LAYOUT) - first_party == set()
+
+
+def test_split_files_on_disk_are_the_listed_ones() -> None:
+    on_disk = {
+        path.stem
+        for pattern in SPLIT_FILE_PATTERNS.values()
+        for path in REPOSITORY_ROOT.glob(pattern)
+    }
+    assert on_disk == set(SPLIT_LAYOUT)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 6. IMPORT DIRECTION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _imported_modules(tree: ast.AST, module_level_only: bool) -> set[str]:
+    """Collect imported module names, optionally skipping function bodies."""
+    found: set[str] = set()
+    pending: list[ast.AST] = [tree]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, ast.Import):
+            found.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            found.add(node.module)
+        for child in ast.iter_child_nodes(node):
+            if module_level_only and isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            pending.append(child)
+    return found
+
+
+@pytest.mark.parametrize("split_module", list(SPLIT_LAYOUT))
+def test_split_file_does_not_import_its_original_module(split_module: str) -> None:
+    original_module, _ = SPLIT_LAYOUT[split_module]
+    path = REPOSITORY_ROOT / f"{split_module}.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    assert original_module not in _imported_modules(tree, module_level_only=True)
+
+
+def test_term_sheet_does_not_import_ib_renderer() -> None:
+    path = REPOSITORY_ROOT / "term_sheet.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    assert "ib_renderer" not in _imported_modules(tree, module_level_only=False)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 7. EACH MODULE IMPORTS ON ITS OWN
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.parametrize("module_name", [*SPLIT_LAYOUT, *ORIGINAL_MODULES])
+def test_module_imports_alone_in_fresh_interpreter(module_name: str) -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", f"import {module_name}"],
+        cwd=REPOSITORY_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 8. ONE LOGGER PER ORIGINAL MODULE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.parametrize("split_module", list(SPLIT_LAYOUT))
+def test_split_file_logger_is_original_logger(split_module: str) -> None:
+    original_module, _ = SPLIT_LAYOUT[split_module]
+    split = importlib.import_module(split_module)
+    if hasattr(split, "logger"):
+        assert split.logger is importlib.import_module(original_module).logger
