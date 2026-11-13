@@ -81,6 +81,30 @@ def document_version(metadata: DocumentMetadata) -> str:
     return "" if value is None else str(value).strip()
 
 
+DOCUMENT_STATUSES = ("draft", "final")
+
+
+def document_status(metadata: DocumentMetadata) -> str:
+    """Return the frontmatter `status` ("draft" or "final"), or "" when absent.
+
+    Args:
+        metadata: Parsed or hand-built document metadata.
+
+    Returns:
+        The status; "draft" marks every page with a removable DRAFT watermark.
+
+    Raises:
+        ValueError: The status is present but is not exactly draft or final, so
+            a misspelling cannot silently drop the draft marking.
+    """
+    if "status" not in metadata.extra:
+        return ""
+    value = metadata.extra["status"]
+    if not isinstance(value, str) or value not in DOCUMENT_STATUSES:
+        raise ValueError(f"status must be draft or final, not {value!r}")
+    return value
+
+
 def validate_term_sheet_metadata(metadata: DocumentMetadata, check_length: bool = True) -> None:
     """Validate term-sheet display text before generic title inference.
 

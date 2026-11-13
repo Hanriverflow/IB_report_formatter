@@ -154,6 +154,7 @@ from document_model import (
 from document_profiles import (
     apply_table_specs,
     check_schedules,
+    document_status,
     get_profile,
     validate_term_sheet_metadata,
 )
@@ -340,6 +341,7 @@ class MarkdownParser:
                 else None
             )
             validate_xml_strings(metadata)
+            document_status(metadata)
 
         # Detect whether YAML frontmatter was present
         has_frontmatter = len(remaining_lines) < len(lines)

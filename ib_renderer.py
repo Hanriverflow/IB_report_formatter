@@ -90,6 +90,7 @@ from document_model import Chart, ConfirmationBlock
 from document_profiles import (
     RenderOptions,
     default_metadata,
+    document_status,
     document_version,
     load_style,
     resolve_options,
@@ -101,7 +102,7 @@ from ib_render_blocks import HeadingRenderer as HeadingRenderer
 from ib_render_blocks import ListRenderer as ListRenderer
 from ib_render_blocks import ParagraphRenderer as ParagraphRenderer
 from ib_render_blocks import TOCRenderer as TOCRenderer
-from ib_render_document_style import VERSION_PROPERTY
+from ib_render_document_style import VERSION_PROPERTY, add_draft_watermark
 from ib_render_document_style import DocumentStyler as DocumentStyler
 from ib_render_document_style import GeneratorSignatureWriter as GeneratorSignatureWriter
 from ib_render_document_style import TableStyler as TableStyler
@@ -744,6 +745,7 @@ class IBDocumentRenderer:
                     break
         with document_validation():
             appendix_index = letter_appendix_index(model)
+            status = document_status(model.metadata)
         if resolved.strict and model.warnings:
             raise StrictValidationError("Input validation failed: ", model.warnings)
         # Strict mode rejects such a character anywhere in the model. Otherwise the
@@ -885,6 +887,9 @@ class IBDocumentRenderer:
                         # Letters show no version; the property is still written.
                         version="" if letter else document_version(model.metadata),
                     )
+            if status == "draft":
+                # After every header exists, so each section's header carries it.
+                add_draft_watermark(self.doc)
             self.apply_generator_signature(
                 "ib_generated" if resolved.profile.name == "ib-report" else resolved.profile.name
             )

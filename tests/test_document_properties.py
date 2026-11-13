@@ -1,9 +1,10 @@
-"""Document properties written from frontmatter (roadmap E8).
+"""Document properties and the DRAFT watermark written from frontmatter (roadmap E8).
 
 `version` becomes the custom property `Version`, shown through `DOCPROPERTY`
 fields whose stored result is the version text, so the document reads correctly
-before Word updates any field. Every case goes through actual parsing, strict
-rendering and saving, then reads the saved package.
+before Word updates any field. `status: draft` puts Word's own watermark shape
+into every header so Word's Remove Watermark clears all pages. Every case goes
+through actual parsing, strict rendering and saving, then reads the saved package.
 """
 
 import re
@@ -15,14 +16,20 @@ import pytest
 from lxml import etree
 
 from document_profiles import RenderOptions
-from ib_render_document_style import VERSION_PROPERTY, make_property_field
+from ib_render_document_style import (
+    VERSION_PROPERTY,
+    WATERMARK_SHAPE_PREFIX,
+    make_property_field,
+)
 from ib_renderer import IBDocumentRenderer
+from input_safety import StrictValidationError
 from md_parser import MarkdownParser, parse_markdown_file
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 CUSTOM = "http://schemas.openxmlformats.org/officeDocument/2006/custom-properties"
-VT = "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"
+V = "urn:schemas-microsoft-com:vml"
+OFFICE = "urn:schemas-microsoft-com:office:office"
 FIELD_CODE = " DOCPROPERTY Version \\* MERGEFORMAT "
 GENERAL_PROFILES = ["ib-report", "ib-memo", "plain", "business-report", "meeting-minutes"]
 
@@ -237,3 +244,108 @@ def test_property_field_accepts_only_plain_names(name):
     run = Document().add_paragraph().add_run("값")
     with pytest.raises(ValueError, match="Unsupported document property name"):
         make_property_field(run, name)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DRAFT WATERMARK
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _watermarks(part: etree._Element) -> list[tuple[str, str, str]]:
+    """(VML id, o:spid, text) of each text-path shape in a part."""
+    return [
+        (shape.get("id"), shape.get(f"{{{OFFICE}}}spid"), textpath.get("string"))
+        for shape in part.iter(f"{{{V}}}shape")
+        for textpath in shape.iter(f"{{{V}}}textpath")
+    ]
+
+
+def _all_parts(docx: Path) -> dict[str, etree._Element]:
+    """Every header, footer and the body part of the saved package."""
+    parts = {**_story_parts(docx, "header"), **_story_parts(docx, "footer")}
+    with zipfile.ZipFile(docx) as package:
+        parts["word/document.xml"] = etree.fromstring(package.read("word/document.xml"))
+    return parts
+
+
+def test_draft_marks_every_section_header_with_words_shape(tmp_path):
+    extra = "status: draft\ntables:\n  - {type: financial, landscape: true}\n"
+    output = _render(_source("ib-memo", extra, LANDSCAPE_BODY), "ib-memo", tmp_path / "out.docx")
+
+    headers = _story_parts(output, "header")
+    assert len(headers) == 3
+    shapes = [shape for part in headers.values() for shape in _watermarks(part)]
+    assert len(shapes) == 3
+    assert all(len(_watermarks(part)) == 1 for part in headers.values())
+    assert all(shape_id.startswith(WATERMARK_SHAPE_PREFIX) for shape_id, _, _ in shapes)
+    assert {text for _, _, text in shapes} == {"DRAFT"}
+    assert len({shape_id for shape_id, _, _ in shapes}) == 3
+    assert len({spid for _, spid, _ in shapes}) == 3
+    for name in ("word/document.xml", *_story_parts(output, "footer")):
+        assert _watermarks(_all_parts(output)[name]) == []
+
+
+def _letter_source(extra: str) -> str:
+    """The office-letter sample with extra frontmatter lines."""
+    source = (REPOSITORY_ROOT / "samples/profiles/office-letter.md").read_text(encoding="utf-8")
+    return source.replace("---\n", "---\n" + extra, 1)
+
+
+@pytest.mark.parametrize("profile", [*GENERAL_PROFILES, "office-letter"])
+def test_draft_is_marked_in_every_profile(tmp_path, profile):
+    extra = "status: draft\n"
+    source = _letter_source(extra) if profile == "office-letter" else _source(profile, extra)
+    output = _render(source, profile, tmp_path / "out.docx")
+
+    headers = _story_parts(output, "header")
+    assert headers
+    for part in headers.values():
+        assert [text for _, _, text in _watermarks(part)] == ["DRAFT"]
+
+
+def test_draft_term_sheet_is_marked(tmp_path):
+    source = _term_sheet_copy(tmp_path, 'version: "v1.0 / 가상 예시"\nstatus: draft')
+    output = _render_file(source, tmp_path / "out.docx")
+
+    for part in _story_parts(output, "header").values():
+        assert [text for _, _, text in _watermarks(part)] == ["DRAFT"]
+
+
+def test_draft_cover_page_shares_the_marked_header(tmp_path):
+    """The IB cover is on the first page of the only section, so it is marked too."""
+    output = _render(_source("ib-report", "status: draft\n"), "ib-report", tmp_path / "out.docx")
+
+    with zipfile.ZipFile(output) as package:
+        document = package.read("word/document.xml").decode("utf-8")
+    assert "titlePg" not in document
+    headers = _story_parts(output, "header")
+    assert len(headers) == 1
+    assert [text for _, _, text in _watermarks(next(iter(headers.values())))] == ["DRAFT"]
+
+
+@pytest.mark.parametrize("extra", ["status: final\n", ""])
+@pytest.mark.parametrize("profile", [*GENERAL_PROFILES, "office-letter"])
+def test_final_or_absent_status_adds_no_watermark(tmp_path, profile, extra):
+    source = _letter_source(extra) if profile == "office-letter" else _source(profile, extra)
+    output = _render(source, profile, tmp_path / "out.docx")
+
+    for part in _all_parts(output).values():
+        assert _watermarks(part) == []
+        assert part.find(f".//{{{W}}}pict") is None
+
+
+@pytest.mark.parametrize("value", ["Draft", "DRAFT", "초안", "yes", "true", "''", ""])
+@pytest.mark.parametrize("strict", [True, False])
+def test_unknown_status_is_rejected_in_both_modes(value, strict):
+    source = _source("ib-report", f"status: {value}\n")
+    with pytest.raises(StrictValidationError, match="status must be draft or final"):
+        model = MarkdownParser(profile="ib-report").parse(source)
+        IBDocumentRenderer(options=RenderOptions(strict=strict)).render(model)
+
+
+@pytest.mark.parametrize("strict", [True, False])
+def test_unknown_status_in_a_hand_built_model_is_rejected(strict):
+    model = MarkdownParser(profile="plain").parse(_source("plain"))
+    model.metadata.extra["status"] = "DRAFT"
+    with pytest.raises(StrictValidationError, match="status must be draft or final"):
+        IBDocumentRenderer(options=RenderOptions(strict=strict)).render(model)

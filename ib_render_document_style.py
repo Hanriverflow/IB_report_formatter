@@ -238,6 +238,91 @@ def make_property_field(run, name: str) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# DRAFT WATERMARK
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Word's Design > Watermark > Remove Watermark deletes header shapes whose VML id
+# starts with this prefix, in every header of every section (Word 16.0.20527).
+WATERMARK_SHAPE_PREFIX = "PowerPlusWaterMarkObject"
+DRAFT_WATERMARK_TEXT = "DRAFT"
+_VML_NAMESPACES = (
+    'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+    'xmlns:v="urn:schemas-microsoft-com:vml" '
+    'xmlns:o="urn:schemas-microsoft-com:office:office" '
+    'xmlns:w10="urn:schemas-microsoft-com:office:word"'
+)
+# The markup Word itself saves for a custom text watermark: a VML text-path
+# shape behind the text, centred on the margins, silver at 50% opacity.
+_WATERMARK_RUN = (
+    "<w:r {ns}><w:rPr><w:noProof/></w:rPr><w:pict>"
+    '<v:shapetype id="_x0000_t136" coordsize="21600,21600" o:spt="136" adj="10800" '
+    'path="m@7,l@8,m@5,21600l@6,21600e"><v:formulas><v:f eqn="sum #0 0 10800"/>'
+    '<v:f eqn="prod #0 2 1"/><v:f eqn="sum 21600 0 @1"/><v:f eqn="sum 0 0 @2"/>'
+    '<v:f eqn="sum 21600 0 @3"/><v:f eqn="if @0 @3 0"/><v:f eqn="if @0 21600 @1"/>'
+    '<v:f eqn="if @0 0 @2"/><v:f eqn="if @0 @4 21600"/><v:f eqn="mid @5 @6"/>'
+    '<v:f eqn="mid @8 @5"/><v:f eqn="mid @7 @8"/><v:f eqn="mid @6 @7"/>'
+    '<v:f eqn="sum @6 0 @5"/></v:formulas><v:path textpathok="t" o:connecttype="custom" '
+    'o:connectlocs="@9,0;@10,10800;@11,21600;@12,10800" o:connectangles="270,180,90,0"/>'
+    '<v:textpath on="t" fitshape="t"/><v:handles><v:h position="#0,bottomRight" '
+    'xrange="6629,14971"/></v:handles><o:lock v:ext="edit" text="t" shapetype="t"/>'
+    "</v:shapetype>"
+    '<v:shape id="{shape_id}" o:spid="_x0000_s{spid}" type="#_x0000_t136" '
+    'style="position:absolute;margin-left:0;margin-top:0;width:456pt;height:180.25pt;'
+    "rotation:315;z-index:-251653120;mso-position-horizontal:center;"
+    "mso-position-horizontal-relative:margin;mso-position-vertical:center;"
+    'mso-position-vertical-relative:margin" o:allowincell="f" fillcolor="silver" stroked="f">'
+    '<v:fill opacity=".5"/>'
+    '<v:textpath style="font-family:&quot;Malgun Gothic&quot;;font-size:1pt" string="{text}"/>'
+    '<w10:wrap anchorx="margin" anchory="margin"/></v:shape></w:pict></w:r>'
+)
+
+
+def add_draft_watermark(doc: DocxDocument) -> int:
+    """Put Word's own DRAFT watermark into every header of every section.
+
+    Word's watermark gallery fills only the header where the cursor is, so a
+    document with one header per section (landscape tables) would be marked on
+    its first section alone. Each header part gets its own shape with a unique
+    `PowerPlusWaterMarkObject` id, which Word's Remove Watermark recognises.
+
+    Args:
+        doc: Document whose sections and headers are final.
+
+    Returns:
+        Number of header parts that received a watermark.
+    """
+    seen: set[int] = set()
+    count = 0
+    for section in doc.sections:
+        stories = [section.header]
+        if section.different_first_page_header_footer:
+            stories.append(section.first_page_header)
+        if doc.settings.odd_and_even_pages_header_footer:
+            stories.append(section.even_page_header)
+        for story in stories:
+            # A linked header shows the previous section's part, already marked.
+            if story.is_linked_to_previous or id(story.part) in seen:
+                continue
+            seen.add(id(story.part))
+            count += 1
+            paragraph = story.paragraphs[0] if story.paragraphs else story.add_paragraph()
+            run = parse_xml(
+                _WATERMARK_RUN.format(
+                    ns=_VML_NAMESPACES,
+                    shape_id=f"{WATERMARK_SHAPE_PREFIX}{count}",
+                    spid=1024 + count,
+                    text=DRAFT_WATERMARK_TEXT,
+                ).encode("utf-8")
+            )
+            p = paragraph._p
+            if p.pPr is not None:
+                p.pPr.addnext(run)
+            else:
+                p.insert(0, run)
+    return count
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # DOCUMENT STYLER
 # ═══════════════════════════════════════════════════════════════════════════════
 
