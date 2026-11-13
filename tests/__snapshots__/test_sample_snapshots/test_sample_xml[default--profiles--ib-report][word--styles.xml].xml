@@ -11852,7 +11852,7 @@
     <w:pPr>
       <w:widowControl/>
       <w:spacing w:after="160" w:line="276" w:lineRule="auto"/>
-      <w:jc w:val="both"/>
+      <w:jc w:val="left"/>
     </w:pPr>
     <w:rPr>
       <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>

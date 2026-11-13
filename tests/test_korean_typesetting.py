@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from lxml import etree
 
@@ -88,3 +89,41 @@ def test_korean_language_is_added_when_the_template_has_none():
     # Schema order: w:lang follows w:szCs.
     names = [etree.QName(child).localname for child in run_properties]
     assert names.index("lang") > names.index("szCs")
+
+
+def _body_alignment(path: Path) -> list[str | None]:
+    for style in _styles(path).findall("w:style", W):
+        name = style.find("w:name", W)
+        if name is not None and name.get(qn("w:val")) == "IB Body":
+            return [jc.get(qn("w:val")) for jc in style.findall("w:pPr/w:jc", W)]
+    raise AssertionError("IB Body style missing")
+
+
+@pytest.mark.parametrize("profile", ["ib-report", "ib-memo"])
+def test_ib_body_is_left_aligned(converted, profile):
+    # Justified Korean stretched word gaps to up to 4.6 times a space.
+    assert _body_alignment(converted[profile]) == ["left"]
+
+
+def test_ib_theme_can_still_justify_the_body(tmp_path):
+    theme = tmp_path / "justified.yaml"
+    theme.write_text("BODY_JUSTIFY: true\n", encoding="utf-8")
+    output = tmp_path / "justified.docx"
+    source = ROOT / "samples" / "profiles" / "ib-memo.md"
+    IBReportConverter(
+        str(source), str(output), RenderOptions(strict=True, theme=str(theme))
+    ).convert()
+    assert _body_alignment(output) == ["both"]
+
+
+def test_ib_cover_disclaimer_stays_justified(converted):
+    # Only the body style changes; the disclaimer keeps its direct justification.
+    document = Document(str(converted["ib-report"]))
+    justified = [
+        paragraph
+        for table in document.tables
+        for cell in table._cells
+        for paragraph in cell.paragraphs
+        if paragraph.alignment == WD_ALIGN_PARAGRAPH.JUSTIFY
+    ]
+    assert justified

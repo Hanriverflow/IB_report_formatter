@@ -4,6 +4,10 @@ Changelog (raster fonts):
     - Resolve installed image fonts independently of Word font declarations.
     - Cache font inventory/coverage only; collect glyph-loss diagnostics per render.
 
+Changelog (Korean typesetting):
+    - IB body text is left-aligned by default (`BODY_JUSTIFY=False`); a theme
+      can still justify it.
+
 Changelog (term-sheet foundation):
     - Add immutable, theme-configurable term-sheet colors, widths and text sizes.
     - Add the confirmation signature-row fill (TS_SIGNATURE_BG_HEX).
@@ -213,7 +217,9 @@ class IBStyle:
     TABLE_HEADER_BG: str = "003366"
     TABLE_HEADER_COLOR: RGBColor = RGBColor(255, 255, 255)
     TABLE_ZEBRA: bool = True
-    BODY_JUSTIFY: bool = True
+    # Left-aligned: justified Korean stretches word gaps to several spaces wide,
+    # because Korean lines break only between words. A theme may set it true.
+    BODY_JUSTIFY: bool = False
     HEADING_BORDER: bool = True
     NATIVE_NUMBERING: bool = False
     TOC_TITLE: str = "TABLE OF CONTENTS"
