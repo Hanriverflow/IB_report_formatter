@@ -94,6 +94,10 @@ SPLIT_LAYOUT: dict[str, tuple[str, tuple[str, ...]]] = {
         "md_parser",
         ("_HtmlCell", "_html_image", "_HtmlTableReader", "HtmlTableParser"),
     ),
+    "md_parse_blocks": (
+        "md_parser",
+        ("FenceScanner", "FootnoteParser", "LaTeXParser", "Base64ImageParser"),
+    ),
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -479,6 +483,42 @@ def test_split_files_on_disk_are_the_listed_ones() -> None:
         for path in REPOSITORY_ROOT.glob(pattern)
     }
     assert on_disk == set(SPLIT_LAYOUT)
+
+
+def test_split_layout_is_complete() -> None:
+    """Twelve split files hold every moved definition; the rest stays defined in place."""
+    assert len(SPLIT_LAYOUT) == 12
+    defined_names = {
+        "ib_renderer": IB_RENDERER_DEFINED_NAMES,
+        "md_parser": MD_PARSER_DEFINED_NAMES,
+    }
+    staying = {
+        "ib_renderer": {
+            "IBDocumentRenderer",
+            "_metadata_text",
+            "CoverRenderer",
+            "DisclaimerRenderer",
+            "logger",
+        },
+        "md_parser": {
+            "MarkdownParser",
+            "_read_with_encoding",
+            "_decode_bytes",
+            "parse_markdown_file",
+            "logger",
+        },
+    }
+    for module, names in defined_names.items():
+        moved = [
+            name
+            for original, split_names in SPLIT_LAYOUT.values()
+            if original == module
+            for name in split_names
+        ]
+        assert len(moved) == len(set(moved)) == len(names) - len(staying[module])
+        assert set(moved) | staying[module] == set(names)
+        in_place = {name for name, _ in _top_level_definitions(REPOSITORY_ROOT / f"{module}.py")}
+        assert in_place == staying[module]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
