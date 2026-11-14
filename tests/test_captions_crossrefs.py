@@ -1610,3 +1610,126 @@ def test_parsed_descriptions_and_footnotes_are_reported_once(tmp_path: Path) -> 
     _, errors = render(write(tmp_path, body), strict=False)
     assert errors.count("Cross-reference @tbl-missing in the image description stays text") == 1
     assert errors.count("Cross-reference @tbl-missing in the footnote stays text") == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AFTER THE MERGE WITH E6 (TABLE RULES), E7 (OFFICE LETTER), E8 (PROPERTIES)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _saved_parts(document: DocxDocument) -> dict[str, str]:
+    """Every XML part of the saved package, by name."""
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    document.save(buffer)
+    with zipfile.ZipFile(buffer) as archive:
+        return {
+            name: archive.read(name).decode("utf-8")
+            for name in archive.namelist()
+            if name.endswith(".xml")
+        }
+
+
+PL_TABLE = """| 구분 | 2025 | 2026 | 비고 |
+|---|---|---|---|
+| 매출 | 1000 | 1200 | NOTE |
+| 비용 | -800 | (900) | |
+| 이익 | 200 | -1100 | 합계 |
+"""
+PL_SPEC = """    type: financial
+    columns: [text, money, money, text]
+    caption: 가상 손익
+    unit: 백만원
+    total_rows: [3]
+    negative: paren
+"""
+
+
+def test_a_numbered_financial_table_keeps_its_rules_and_restyled_negatives(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "ref").mkdir()
+    (tmp_path / "plain").mkdir()
+    body = "본문은 @tbl-pl에서 본다.\n\n" + PL_TABLE.replace("NOTE", "@tbl-pl 참조")
+    document, errors = render(write(tmp_path / "ref", body, "  - id: tbl-pl\n" + PL_SPEC))
+    control, _ = render(
+        write(tmp_path / "plain", PL_TABLE.replace("NOTE", "참조"), "  - " + PL_SPEC[4:])
+    )
+    assert errors == []
+    assert caption_texts(document) == ["표 1. 가상 손익"]
+    assert references(document) == [(REF_INSTRUCTION.format("tbl_pl"), "표 1")] * 2
+    table, plain = document.tables[0], control.tables[0]
+    texts = [[cell.text for cell in row.cells] for row in table.rows]
+    assert [row[:3] for row in texts] == [[c.text for c in r.cells][:3] for r in plain.rows]
+    assert [row[1:3] for row in texts[2:]] == [["(800)", "(900)"], ["200", "(1,100)"]]
+    assert texts[1][3] == "표 1 참조"
+    total = table.rows[3]._tr.xpath("./w:tc/w:tcPr/w:tcBorders/w:bottom/@w:val")
+    assert total and set(total) == {"double"}
+    assert table.rows[3]._tr.xpath("./w:tc/w:tcPr/w:tcBorders/w:bottom/@w:val") == (
+        plain.rows[3]._tr.xpath("./w:tc/w:tcPr/w:tcBorders/w:bottom/@w:val")
+    )
+
+
+def test_an_office_letter_ends_a_partial_numbered_table_and_refers_to_it(
+    tmp_path: Path,
+) -> None:
+    source = (
+        Path(__file__).resolve().parent.parent / "samples/qa/office-letter-partial-table.md"
+    ).read_text(encoding="utf-8")
+    source = source.replace(
+        "letter:\n  table_end: partial\n",
+        "letter:\n  table_end: partial\ntables:\n  - id: tbl-plan\n    caption: 회신 일정\n",
+    ).replace("아래 표와 같으며", "@tbl-plan과 같으며")
+    path = tmp_path / "letter.md"
+    path.write_text(source, encoding="utf-8")
+    document, errors = render(path)
+    assert errors == []
+    assert caption_texts(document) == ["표 1. 회신 일정"]
+    assert references(document) == [(REF_INSTRUCTION.format("tbl_plan"), "표 1")]
+    rows = [[cell.text for cell in row.cells] for row in document.tables[-1].rows]
+    assert ["이하 빈칸", "", ""] in rows
+    assert sum(row.count("이하 빈칸") for row in rows) == 1
+
+
+def test_a_draft_with_a_version_keeps_its_watermark_property_and_numbers(
+    tmp_path: Path,
+) -> None:
+    path = write_front(tmp_path, "@tbl-a를 본다.", 'version: "v0.3"\nstatus: draft\n')
+    document, errors = render(path)
+    assert errors == []
+    assert caption_texts(document) == ["표 1. A"]
+    assert references(document) == [(REF_INSTRUCTION.format("tbl_a"), "표 1")]
+    parts = _saved_parts(document)
+    headers = [text for name, text in parts.items() if name.startswith("word/header")]
+    assert any('string="DRAFT"' in header for header in headers)
+    assert any("DOCPROPERTY" in header and "Version" in header for header in headers)
+    assert re.search(
+        r'name="Version"[^>]*>\s*<vt:lpwstr>v0\.3</vt:lpwstr>', parts["docProps/custom.xml"]
+    )
+
+
+@pytest.mark.parametrize("written", [True, False])
+def test_a_written_document_title_stays_and_is_the_one_judged(
+    tmp_path: Path, written: bool
+) -> None:
+    from md_parser import parse_markdown_file
+
+    front = "---\nprofile: business-report\n" + ("title: Document\n" if written else "")
+    front += "tables:\n" + DEFINED_A + "---\n\n"
+    path = tmp_path / "doc.md"
+    path.write_text(front + "# 개요 @tbl-a\n\n본문" + TABLE_ONLY, encoding="utf-8")
+    model = parse_markdown_file(str(path))
+    if written:
+        # E8: a written stand-in title is kept; the heading is body text and its reference resolves.
+        assert model.metadata.title == "Document"
+        document, errors = render(path)
+        assert errors == []
+        assert references(document) == [(REF_INSTRUCTION.format("tbl_a"), "표 1")]
+        assert "<dc:title>Document</dc:title>" in _saved_parts(document)["docProps/core.xml"]
+    else:
+        # The first H1 becomes the title, which cannot hold a field.
+        assert model.metadata.title == "개요 @tbl-a"
+        with pytest.raises(StrictValidationError, match="@tbl-a in the document title stays text"):
+            render(path)
