@@ -2,6 +2,10 @@
 
 Changelog (captions):
     - A figure with an ID gets its caption number before the description.
+
+Changelog (alt text):
+    - An inserted author image without a description adds a rendering warning
+      (`IBDocumentRenderer.warnings`) that never rejects; the document is unchanged.
 """
 
 import logging
@@ -9,7 +13,7 @@ import os
 import re
 from collections.abc import Sequence
 from io import BytesIO
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from docx.document import Document as DocxDocument
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -180,7 +184,7 @@ class ImageRenderer:
                     temp_file_path = f.name
 
                 # Insert into document
-                self._insert_image(temp_file_path, image.alt_text, caption_prefix)
+                self._insert_image(temp_file_path, image, caption_prefix, loaded=None)
                 inserted = True
                 logger.debug("Inserted Base64 image: %s", image.alt_text)
 
@@ -199,7 +203,7 @@ class ImageRenderer:
                         image.path,
                     )
                 else:
-                    self._insert_image(source, image.alt_text, caption_prefix)
+                    self._insert_image(source, image, caption_prefix, loaded=source)
                     inserted = True
                     logger.debug("Inserted file image: %s", image.path[:80])
 
@@ -232,22 +236,30 @@ class ImageRenderer:
         return inserted
 
     def _insert_image(
-        self, file_path: str | BytesIO, alt_text: str, caption_prefix: Sequence[TextRun] = ()
+        self,
+        file_path: str | BytesIO,
+        image: Image,
+        caption_prefix: Sequence[TextRun] = (),
+        *,
+        loaded: str | BytesIO | None,
     ):
         """
         Insert image file into document with proper sizing.
 
         Args:
             file_path: Path to image file, or its bytes
-            alt_text: Alt text for caption
+            image: The parsed image; its alt text is the description and caption
             caption_prefix: Caption number runs written before the alt text.
+            loaded: The file the image was loaded from; None for embedded data.
         """
+        alt_text = image.alt_text
         # Add image with max width constraint
         paragraph = self.doc.add_paragraph()
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = paragraph.add_run()
         inline_shape = run.add_picture(file_path, width=Inches(self.MAX_WIDTH_INCHES))
         self._apply_alt_text(inline_shape, alt_text)
+        self.warn_missing_description(self.doc.part, inline_shape, image, loaded)
 
         # Add caption below image
         if alt_text and caption_prefix:
@@ -289,6 +301,42 @@ class ImageRenderer:
         doc_pr = inline_shape._inline.docPr
         doc_pr.set("descr", alt_text)
         doc_pr.set("title", alt_text)
+
+    @staticmethod
+    def warn_missing_description(
+        part: object, inline_shape, image: Image, loaded: str | BytesIO | None
+    ) -> None:
+        """Warn once for an inserted author image whose description is empty or blank.
+
+        A warning only: it goes to the renderer's `warnings` and the log, never to
+        the errors that strict mode rejects, and it writes nothing to the document.
+        Pictures the engine makes itself (equations, diagrams, logos) have no
+        description the author could write, so their renderers do not call this.
+
+        Args:
+            part: Document part carrying the render-scoped warning list.
+            inline_shape: The picture just inserted.
+            image: The parsed image; its description is checked.
+            loaded: The file actually loaded, or None/bytes for embedded data. Only
+                its last name is shown, never the destination as written: that can
+                hold a percent-encoded folder path.
+        """
+        if image.alt_text.strip():
+            return
+        if isinstance(loaded, str):
+            # Windows rules split on both separators and a drive, on every system.
+            source = f"'{PureWindowsPath(loaded).name}'"
+        else:
+            source = "embedded image"
+        name = inline_shape._inline.docPr.get("name")
+        message = (
+            f"Image without a description (alt text): {source}, Word name '{name}'. "
+            'Write one as ![description](...) or <img alt="...">.'
+        )
+        logger.warning("%s", message)
+        warnings = getattr(part, "_ib_render_warnings", None)
+        if warnings is not None:
+            warnings.append(message)
 
     def _render_placeholder(self, alt_text: str):
         """Render a placeholder when image cannot be loaded."""

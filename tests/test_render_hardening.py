@@ -70,8 +70,10 @@ def test_numeric_runs_keep_hyperlinks_spacing_and_explicit_value_scale(tmp_path:
     doc = render(
         "---\ntables:\n  - type: financial\n    columns: [text, money, percent, bps, multiple]\n---\n"
         "| Metric | Amount | Rate | Spread | Multiple |\n|---|---|---|---|---|\n"
-        "| Revenue | 1234 [source](https://example.com)[^1] | **12.50**[^1] | 100.00[^1] | 2.50[^1] |\n\n"
-        "[^1]: Audited amount.",
+        # One note per cell: a note referenced again is a NOTEREF field
+        # (tests/test_footnote_rereference.py), whose cached number is cell text.
+        "| Revenue | 1234 [source](https://example.com)[^1] | **12.50**[^2] | 100.00[^3] | 2.50[^4] |\n\n"
+        "[^1]: Audited amount.\n[^2]: Note two.\n[^3]: Note three.\n[^4]: Note four.",
         profile="ib-report",
     )
     output = tmp_path / "semantic-numbers.docx"
