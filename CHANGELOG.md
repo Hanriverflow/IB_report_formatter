@@ -6,6 +6,13 @@ All notable changes to this project are documented in this file.
 
 Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Beta)** and the plugin stays **0.1.0**; nothing here has been tagged or published. Verification: `docs/verification-20261110.md`.
 
+### Office letters: attachments, tables at the end and item symbols (roadmap E7)
+Existing office letters change appearance where they have attachments or items nested three or more levels deep. Verification: `docs/verification-office-letter-20261114.md`.
+- A letter body that ends with a full table keeps `끝.` below the table; this is now pinned by tests (no output change).
+- New `letter.table_end: partial`: when the table ending the letter body is filled only partway, `이하 빈칸` goes in the first cell of the first blank row after the last written row and `끝.` is omitted (it still follows attachments). Never inferred from blank rows; an invalid value, a body that does not end with a table, or a table without a blank row after its last written row is rejected before saving. Letters without the setting are unchanged.
+- **Changed appearance:** attachments follow the administrative handbook. The separate `붙임` line is gone: one attachment is one unnumbered line (`붙임  항목.  끝.`), several start on the `붙임  1.` line with later numbers aligned under `1.`, still as native Word numbering.
+- **Changed appearance:** office-letter numbered items use `1.` `가.` `1)` `가)` `(1)` `(가)` `①` for levels one to seven (levels one and two are as before), with wider hanging indents for `(1)` and `(가)`. Word has no number format for `㉮`, so an eighth level is rejected in strict mode and rendered with `가` and a warning otherwise. Other profiles keep `1.` `가.` `(1)`.
+
 ### Breaking: image and logo paths are limited to allowed folders
 - Images and logos that a document names by path load only from the Markdown file's folder (subfolders included) and from folders the operator adds. A path that resolves outside them (`../`, an absolute path, a UNC path, or a symlink or junction leading out) is reported as `[asset_outside_root]`: strict mode stops before saving, and non-strict mode keeps the image placeholder and a warning. Earlier versions loaded any readable local path, so a document that relied on that now needs one of the remedies below.
 - Remedies: add the folder with `--asset-root FOLDER` (repeatable) or the API argument `asset_roots`, or copy the files into the Markdown file's folder and use relative paths. Text input, stream input and hand-built models have no default folder; pass `asset_roots` when they use path images.

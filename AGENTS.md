@@ -20,6 +20,7 @@ Next-step research roadmap (owner decisions D1–D5 and candidate work E1–E17;
 Input-loss, save-safety and performance hardening: `docs/verification-20260929.md`.
 Term-sheet profile and term variables: design `docs/term-sheet-design-20260929.md`, plan `docs/term-sheet-plan-20260929.md` (§2 decisions override the design), verification `docs/verification-term-sheet-20260929.md`.
 Asset path restriction, input limits, Word schema gate, snapshot and property tests (roadmap E1–E3): verification `docs/verification-20261110.md`.
+Office-letter precision (roadmap E7: attachments, `이하 빈칸`, item symbols): verification `docs/verification-office-letter-20261114.md`.
 
 ## Quick reference
 
@@ -95,6 +96,7 @@ The `md_parse_*.py` and `ib_render_*.py` files are internal. Import from `md_par
 - Strict mode rejects known input loss or rendering failures before saving. Diagnostics do not establish visual or financial correctness.
 - Changes to output must have regression tests through actual parsing/rendering and, for layout changes, representative page inspection.
 - Office letters close before the explicitly named unique H1 in `letter.appendix_heading`; no implicit appendix inference or second assembler. Optional `appendix_label` requires that boundary. Preserve native attachment numbers.
+- Office-letter attachments: one is an unnumbered `붙임⇥item.  끝.` line; several are one native list whose first item carries `붙임⇥%1.` through a second list instance on the same abstract definition. `letter.table_end: partial` is the only way to get `이하 빈칸` (first cell of the first blank row after the last written row of the body's final table); never infer it from blank rows. Office-letter numbered lists use `1. 가. 1) 가) (1) (가) ①`; Word has no format for `㉮`, so level eight and deeper is a strict rejection and a 가 stand-in otherwise. Other profiles keep their numbering. Record: `docs/verification-office-letter-20261114.md`.
 - Inline HTML breaks must reach Word paragraphs, emphasis, headings, lists and cells without changing code/escaped literals or link URLs.
 - Word's nonprinting pagination squares are not list bullets. Do not globally add or remove keep-lines/keep-next; retain necessary heading controls. Audit warnings and visual-review status are distinct from structural issues.
 - Word QA requires a new/empty output directory. Record source/output hashes, actual/expected pages and Word version; `visualReview: pending` is not a visual pass. Inspect every page and record review against the manifest hash.
