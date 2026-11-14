@@ -1209,23 +1209,34 @@ class TableRenderer:
             or run.image is not None
         )
 
+    @classmethod
+    def _is_outer_piece(cls, run: TextRun) -> bool:
+        """A footnote marker or a run of spaces only (NBSP and line breaks included).
+
+        Such runs before or after an amount are not part of it, in any order.
+        """
+        return run.footnote_id is not None or (
+            not cls._is_protected_run(run) and not run.text.strip()
+        )
+
     def _restyle_negative(
         self, cell_data: TableCell, role: str | None, style: str
     ) -> tuple[str, list[TextRun]] | None:
         """Rewrite a cell that is exactly one negative amount in a `negative` style.
 
-        The sign, digits and unit are read once from the cell's whole visible
-        text, never run by run, so every written form gives the same result.
-        Footnote markers after the amount stay where they are. A cell holding
-        anything else (a range, several numbers, words, a code span) returns
-        None and is formatted as in a table without the setting. So does an
-        amount split across differently formatted runs (bold, italic,
-        superscript or subscript pieces), which also records a rendering
-        warning; that warning never rejects the document. Runs holding only
-        spaces before or after the amount (`&nbsp;`, line breaks) are not part
-        of it: they never split it and keep their own text and format. An amount written
-        wholly in superscript or subscript keeps its written form, as without
-        the setting.
+        The sign, digits and unit are read once from the cell's visible text,
+        never run by run, so every written form gives the same result. Runs
+        before and after the amount that hold only spaces (`&nbsp;`, line
+        breaks) or a footnote marker, in any order and number, are not part of
+        it: they never split it and keep their own text, format and order. A
+        cell holding anything else (a range, several numbers, words, a code
+        span) returns None and is formatted as in a table without the setting.
+        So does an amount split across differently formatted runs (bold,
+        italic, superscript or subscript pieces), which also records a
+        rendering warning; that warning never rejects the document. An amount
+        after a footnote marker, or written wholly in superscript or
+        subscript, keeps its written form as without the setting; a split one
+        still warns.
 
         Args:
             cell_data: One body cell of a table that sets `negative`.
@@ -1239,51 +1250,54 @@ class TableRenderer:
         if not runs:
             amount = self._negative_amount(cell_data.content, role, style)
             return None if amount is None else (amount, [])
-        end = len(runs)
-        while end and runs[end - 1].footnote_id is not None:
-            end -= 1
-        if any(self._is_protected_run(run) for run in runs[:end]):
+        inner = [i for i, run in enumerate(runs) if not self._is_outer_piece(run)]
+        if not inner:
             return None
-        body = [run for run in runs[:end] if run.text]
+        first, last = inner[0], inner[-1]
+        core = runs[first : last + 1]
+        if any(self._is_protected_run(run) for run in core):
+            return None
+        body = [run for run in core if run.text]
         text = "".join(run.text for run in body)
         # Whether the text is an amount is decided apart from whether it can be
-        # restyled, so a split amount warns even when a leading zero keeps it.
+        # restyled, so a split amount warns even when it is not restyled.
         if self._read_negative_amount(text) is None:
             return None
-        # Runs holding only spaces (NBSP and line breaks included) before or after
-        # the amount are not part of it: their formatting never splits it.
-        first = next(i for i, run in enumerate(body) if run.text.strip())
-        last = max(i for i, run in enumerate(body) if run.text.strip())
-        core = body[first : last + 1]
-        if any(replace(run, text="") != replace(core[0], text="") for run in core[1:]):
+        if any(replace(run, text="") != replace(body[0], text="") for run in body[1:]):
             self._warn(
                 f"Table negative style not applied to {text.strip()!r}: the amount is split "
                 "across differently formatted text, so it keeps its written form"
             )
             return None
-        if core[0].superscript or core[0].subscript:
+        if any(run.footnote_id is not None for run in runs[:first]):
+            return None
+        if body[0].superscript or body[0].subscript:
             return None
         amount = self._negative_amount(text, role, style)
         if amount is None:
             return None
-        leading = text[: len(text) - len(text.lstrip())]
-        trailing = text[len(text.rstrip()) :]
-        shown = leading + amount + trailing
-        if all(replace(run, text="") == replace(core[0], text="") for run in body):
-            return shown, [replace(body[0], text=shown), *runs[end:]]
-        # Space runs formatted apart from the amount keep their own text and format.
-        core_text = "".join(run.text for run in core)
-        core_shown = (
-            core_text[: len(core_text) - len(core_text.lstrip())]
-            + amount
-            + core_text[len(core_text.rstrip()) :]
-        )
-        return shown, [
-            *body[:first],
-            replace(core[0], text=core_shown),
-            *body[last + 1 :],
-            *runs[end:],
-        ]
+        amount_text = text[: len(text) - len(text.lstrip())] + amount + text[len(text.rstrip()) :]
+        texts = [i for i, run in enumerate(runs) if run.text and run.footnote_id is None]
+        merge = all(
+            replace(runs[i], text="") == replace(body[0], text="") for i in texts
+        ) and not any(runs[i].footnote_id is not None for i in range(texts[0], texts[-1]))
+        shown_runs: list[TextRun] = []
+        if merge:
+            # One format throughout and no marker in between: one run, as written.
+            whole = "".join(runs[i].text for i in texts)
+            lead = whole[: len(whole) - len(whole.lstrip())]
+            trail = whole[len(whole.rstrip()) :]
+            shown_runs.append(replace(runs[texts[0]], text=lead + amount + trail))
+            shown_runs.extend(run for run in runs[texts[-1] + 1 :] if run.footnote_id is not None)
+        else:
+            for index, run in enumerate(runs):
+                if first <= index <= last:
+                    if index == first:
+                        shown_runs.append(replace(body[0], text=amount_text))
+                elif run.text or run.footnote_id is not None:
+                    shown_runs.append(run)
+        shown = "".join(run.text for run in shown_runs if run.footnote_id is None)
+        return shown, shown_runs
 
     @classmethod
     def _read_negative_amount(cls, text: str) -> tuple[str, str] | None:

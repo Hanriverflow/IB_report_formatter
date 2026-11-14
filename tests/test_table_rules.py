@@ -995,3 +995,134 @@ def test_a_space_run_inside_digits_is_not_an_amount(style: str) -> None:
     table, plain, renderer = option_and_plain_doc(html_value_table(["-1<b>&nbsp;</b>200"]), style)
     assert cell_texts(table) == cell_texts(plain)
     assert renderer.warnings == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NEGATIVE STYLE: PIECES AROUND AN AMOUNT, EVERY COMBINATION (fifth check)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Pieces that may stand before or after an amount and are never part of it: a plain
+# space, an NBSP, a line break and a footnote marker. Front: every ordered choice of
+# 0-2 distinct pieces (17); back: of 0-3 (41); 697 cells per amount kind.
+PIECES = {"SP": " ", "NB": " ", "BR": "<br>", "FN": "[^1]"}
+
+
+def _orderings(limit: int) -> list[tuple[str, ...]]:
+    from itertools import permutations
+
+    return [combo for size in range(limit + 1) for combo in permutations(PIECES, size)]
+
+
+PIECE_CELLS = [(front, back) for front in _orderings(2) for back in _orderings(3)]
+# Amount kinds, each with a magnitude unique to its row so every warning is its own.
+AMOUNT_KINDS = {
+    "whole": lambda n: f"**-{n}**",
+    "bold-split": lambda n: f"-{n}**.50**",
+    "leading-zero": lambda n: f"**-000{n}**",
+    "superscript-split": lambda n: f"-{n}^.50^",
+}
+
+
+def pieces_document(kind: str, style: str | None) -> str:
+    rows_md = "".join(
+        "| 조각{} | {}{}{} |\n".format(
+            index,
+            "".join(PIECES[p] for p in front),
+            AMOUNT_KINDS[kind](1000 + index),
+            "".join(PIECES[p] for p in back),
+        )
+        for index, (front, back) in enumerate(PIECE_CELLS)
+    )
+    spec = {"type": "financial", "columns": ["text", "money"]}
+    if style:
+        spec["negative"] = style
+    body = "| 구분 | 값 |\n|---|---|\n" + rows_md + "\n[^1]: 가상 주석입니다.\n"
+    return markdown(body, "ib-memo", tables=[spec])
+
+
+def run_pieces(tc) -> list[tuple]:
+    """(text, bold, superscript, line break, footnote, colour) of each run; red ignored."""
+    pieces = []
+    for run in tc.iter(qn("w:r")):
+        colour = run.xpath("./w:rPr/w:color/@w:val")
+        pieces.append(
+            (
+                "".join(run.xpath("./w:t/text()")),
+                any(
+                    b.get(qn("w:val"), "1") not in ("0", "false") for b in run.xpath("./w:rPr/w:b")
+                ),
+                run.xpath("./w:rPr/w:vertAlign/@w:val") == ["superscript"],
+                bool(run.xpath("./w:br")),
+                bool(run.xpath("./w:footnoteReference")),
+                None if colour in ([], [RED]) else colour[0],
+            )
+        )
+    return pieces
+
+
+_PLAIN_PIECES: dict[str, object] = {}
+
+
+def plain_pieces(kind: str):
+    if kind not in _PLAIN_PIECES:
+        _PLAIN_PIECES[kind] = body_table(render(pieces_document(kind, None)), "조각0")
+    return _PLAIN_PIECES[kind]
+
+
+@pytest.mark.parametrize("style", STYLES)
+@pytest.mark.parametrize("kind", list(AMOUNT_KINDS))
+def test_pieces_around_an_amount_in_every_order(kind: str, style: str) -> None:
+    doc, renderer = render_noting(pieces_document(kind, style))
+    table, plain = body_table(doc, "조각0"), plain_pieces(kind)
+    assert layout(table) == layout(plain)
+    assert not any(RED in colors(tc) for row in rows(table) for tc in cells(row))
+    restyled = 0
+    for index, ((front, _), row, plain_row) in enumerate(
+        zip(PIECE_CELLS, rows(table)[1:], rows(plain)[1:], strict=True)
+    ):
+        n = 1000 + index
+        got, expected = run_pieces(cells(row)[1]), run_pieces(cells(plain_row)[1])
+        if kind == "whole" and "FN" not in front:
+            # Restyled: only the amount's text changes; every piece around it keeps
+            # its text, format and place.
+            written = f"-{n:,}"
+            assert [p[0] for p in expected].count(written) == 1, (front, index)
+            expected = [
+                (shown(style, f"{n:,}"), *p[1:]) if p[0] == written else p for p in expected
+            ]
+            restyled += 1
+        assert got == expected, (kind, index, PIECE_CELLS[index])
+    split = kind in {"bold-split", "superscript-split"}
+    assert restyled == (
+        sum("FN" not in front for front, _ in PIECE_CELLS) if kind == "whole" else 0
+    )
+    # A split amount warns exactly once per cell, whatever stands around it.
+    assert sorted(renderer.warnings) == sorted(
+        f"Table negative style not applied to '-{1000 + i}.50': the amount is split "
+        "across differently formatted text, so it keeps its written form"
+        for i in range(len(PIECE_CELLS) if split else 0)
+    )
+
+
+@pytest.mark.parametrize("style", STYLES)
+def test_review_five_footnote_then_line_break(style: str) -> None:
+    # Fifth check: a line break after a footnote marker hid the split warning and
+    # stopped an unsplit amount from being restyled.
+    body = one_column_table("다섯", ["-1200**.50**[^1]<br>", "**-1300** [^1]<br>"]) + (
+        "\n[^1]: 가상 주석입니다.\n"
+    )
+    spec = {"type": "financial", "columns": ["text", "money"], "negative": style}
+    doc, renderer = render_noting(markdown(body, "ib-memo", tables=[spec]))
+    table = body_table(doc, "다섯0")
+    split, whole = cells(rows(table)[1])[1], cells(rows(table)[2])[1]
+    assert [p[0] for p in run_pieces(split)] == ["-1,200", ".50", "", ""]
+    assert renderer.warnings == [
+        "Table negative style not applied to '-1200.50': the amount is split across "
+        "differently formatted text, so it keeps its written form"
+    ]
+    assert run_pieces(whole) == [
+        (shown(style, "1,300"), True, False, False, False, None),
+        (" ", False, False, False, False, None),
+        ("", False, True, False, True, None),
+        ("", False, False, True, False, None),
+    ]
