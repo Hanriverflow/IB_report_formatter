@@ -30,6 +30,11 @@ Changelog (alt text):
       unless Word marks it as decorative. It is never an issue.
     - Review fix: of each `mc:AlternateContent` only the first Choice (or the
       Fallback without one) is checked, so a picture is reported once.
+
+Changelog (repeated footnote references):
+    - A NOTEREF field whose bookmark is missing is an issue, as for REF; a
+      NOTEREF result that is not the shown number of the footnote its bookmark
+      marks is a warning (default footnote numbering only).
 """
 
 import argparse
@@ -532,8 +537,10 @@ def inspect_document_issues(doc: DocxDocument) -> list[str]:
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 # The bookmark argument may be quoted (`REF "_Ref123" \h`).
 _REFERENCE_FIELD_RE = re.compile(
-    r'^(REF|PAGEREF)\s+(?:"([^"]*)"|(\S+))(.*)$', re.IGNORECASE | re.DOTALL
+    r'^(REF|PAGEREF|NOTEREF)\s+(?:"([^"]*)"|(\S+))(.*)$', re.IGNORECASE | re.DOTALL
 )
+# A NOTEREF switch that adds text to the number (`above`/`below`).
+_NOTEREF_SHOWN_SWITCH_RE = re.compile(r"\\p\b", re.IGNORECASE)
 _SEQ_FIELD_RE = re.compile(r'^SEQ\s+(?:"([^"]*)"|(\S+))(.*)$', re.IGNORECASE | re.DOTALL)
 # A REF switch that changes what is shown (paragraph number, position, ...).
 _REF_SHOWN_SWITCH_RE = re.compile(r"\\[nprwtfd]\b", re.IGNORECASE)
@@ -543,7 +550,9 @@ _REF_SHOWN_SWITCH_RE = re.compile(r"\\[nprwtfd]\b", re.IGNORECASE)
 _SEQ_CHECKED_SWITCHES = frozenset({"", "\\* arabic"})
 
 
-def _body_fields(doc: DocxDocument) -> tuple[dict[str, str], list[tuple[str, str]]]:
+def _body_fields(
+    doc: DocxDocument,
+) -> tuple[dict[str, str], list[tuple[str, str]], dict[str, int]]:
     """Read bookmarks and fields of the main document in order.
 
     Text counts as visible unless it is a field instruction, so a bookmark
@@ -554,16 +563,26 @@ def _body_fields(doc: DocxDocument) -> tuple[dict[str, str], list[tuple[str, str
         doc: Open document.
 
     Returns:
-        Visible text of each bookmark by casefolded name, and each field's
-        instruction and cached result in document order.
+        Visible text of each bookmark by casefolded name, each field's
+        instruction and cached result in document order, and the shown number
+        of the first footnote reference inside each bookmark that holds one.
     """
     marks: dict[str, list[str]] = {}
     open_marks: dict[str, str] = {}
     stack: list[dict[str, Any]] = []
     found: list[tuple[str, str]] = []
+    notes: dict[str, int] = {}
+    note_number = 0
     for node in doc.element.body.iter():
         tag = node.tag
-        if tag == _W + "bookmarkStart":
+        if tag == _W + "footnoteReference":
+            # Word numbers notes by the order of their references; a custom
+            # mark takes no number.
+            if node.get(qn("w:customMarkFollows")) not in ("1", "true", "on"):
+                note_number += 1
+                for name in open_marks.values():
+                    notes.setdefault(name, note_number)
+        elif tag == _W + "bookmarkStart":
             name = (node.get(qn("w:name")) or "").casefold()
             open_marks[node.get(qn("w:id")) or ""] = name
             marks.setdefault(name, [])
@@ -592,7 +611,7 @@ def _body_fields(doc: DocxDocument) -> tuple[dict[str, str], list[tuple[str, str
             if all(state["shown"] for state in stack):
                 for name in open_marks.values():
                     marks[name].append(node.text or "")
-    return {name: "".join(parts) for name, parts in marks.items()}, found
+    return {name: "".join(parts) for name, parts in marks.items()}, found, notes
 
 
 def _simple_field_result(field: Any) -> str:
@@ -625,11 +644,13 @@ def _simple_field_result(field: Any) -> str:
 
 
 def _cross_reference_findings(doc: DocxDocument) -> tuple[list[str], list[str]]:
-    """Check REF/PAGEREF targets and cached results, and SEQ numbering order.
+    """Check REF/PAGEREF/NOTEREF targets and cached results, and SEQ numbering order.
 
-    A reference whose bookmark is missing (its caption was deleted in Word) is
-    an issue. A reference or caption number whose cached result no longer
-    matches (fields not updated after an edit) is a warning.
+    A reference whose bookmark is missing (its caption or footnote was deleted
+    in Word) is an issue. A reference or caption number whose cached result no
+    longer matches (fields not updated after an edit) is a warning. A NOTEREF
+    result is judged only under Word's default footnote numbering (no
+    `w:footnotePr` in the body or settings).
 
     Args:
         doc: Open document.
@@ -637,7 +658,11 @@ def _cross_reference_findings(doc: DocxDocument) -> tuple[list[str], list[str]]:
     Returns:
         Issues and warnings.
     """
-    marks, found = _body_fields(doc)
+    marks, found, notes = _body_fields(doc)
+    settings = doc.settings.element
+    default_note_numbers = (
+        not doc.element.body.xpath(".//w:footnotePr") and settings.find(qn("w:footnotePr")) is None
+    )
     issues: list[str] = []
     warnings: list[str] = []
     sequences: dict[str, list[tuple[str, str]]] = {}
@@ -659,6 +684,18 @@ def _cross_reference_findings(doc: DocxDocument) -> tuple[list[str], list[str]]:
                 warnings.append(
                     f"Cross-reference REF {name} shows {result.strip()!r} but its target reads "
                     f"{target.strip()!r}; update fields in Word (select all, F9)"
+                )
+            elif (
+                kind.upper() == "NOTEREF"
+                and default_note_numbers
+                and name.casefold() in notes
+                and not _NOTEREF_SHOWN_SWITCH_RE.search(switches)
+                and result.strip() != str(notes[name.casefold()])
+            ):
+                warnings.append(
+                    f"Footnote cross-reference NOTEREF {name} shows {result.strip()!r} but its "
+                    f"footnote is number {notes[name.casefold()]}; update fields in Word "
+                    "(select all, F9)"
                 )
             continue
         sequence = _SEQ_FIELD_RE.match(code)

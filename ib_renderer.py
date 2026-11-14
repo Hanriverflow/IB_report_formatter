@@ -669,7 +669,7 @@ class IBDocumentRenderer:
         )
         self.callout_renderer = CalloutRenderer(self.doc)
         self.image_renderer = ImageRenderer(self.doc)
-        self.footnote_renderer = FootnoteRenderer(self.doc)
+        self.footnote_renderer = FootnoteRenderer(self.doc, next_bookmark_id=self._next_bookmark_id)
         self.disclaimer_renderer = DisclaimerRenderer(self.doc)
         self.chart_renderer = ChartRenderer(self.doc)
 

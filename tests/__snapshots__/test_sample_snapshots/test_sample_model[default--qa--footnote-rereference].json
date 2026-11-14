@@ -1,0 +1,875 @@
+{
+  "metadata": {
+    "title": "각주 재참조 검증",
+    "subtitle": "",
+    "company": "",
+    "ticker": "",
+    "sector": "",
+    "analyst": "홍길동",
+    "extra": {
+      "date": "2026-11-14",
+      "sender": {
+        "organization": "주식회사 예시",
+        "department": "문서표준화 TF"
+      },
+      "tables": [
+        {
+          "id": "tbl-income",
+          "caption": "가상 손익 요약",
+          "unit": "억원",
+          "type": "financial",
+          "columns": [
+            "text",
+            "money",
+            "money"
+          ],
+          "negative": "paren"
+        }
+      ]
+    },
+    "profile": "business-report",
+    "display_runs": {}
+  },
+  "sections": [],
+  "elements": [
+    {
+      "element_type": "HEADING_1",
+      "content": {
+        "level": 1,
+        "text": "각주 재참조 검증",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "# 각주 재참조 검증",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "1. 개요[^1]",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 1. 개요[^1]",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "이 문서는 같은 각주를 여러 곳에서 다시 가리키는 가상 예시다. 기준 금리는 가상의 고시 금리를 쓴다[^1]. 손익은 @tbl-income에서 볼 수 있다[^2].",
+        "runs": [
+          {
+            "text": "이 문서는 같은 각주를 여러 곳에서 다시 가리키는 가상 예시다. 기준 금리는 가상의 고시 금리를 쓴다",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "1",
+            "bold": false,
+            "italic": false,
+            "superscript": true,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": 1,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": ". 손익은 ",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "@tbl-income",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null,
+            "target": "tbl-income",
+            "joined_before": true,
+            "joined_after": true
+          },
+          {
+            "text": "에서 볼 수 있다",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "2",
+            "bold": false,
+            "italic": false,
+            "superscript": true,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": 2,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": ".",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "이 문서는 같은 각주를 여러 곳에서 다시 가리키는 가상 예시다. 기준 금리는 가상의 고시 금리를 쓴다[^1]. 손익은 @tbl-income에서 볼 수 있다[^2].",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "TABLE",
+      "content": {
+        "rows": [
+          {
+            "cells": [
+              {
+                "content": "구분",
+                "runs": [
+                  {
+                    "text": "구분",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2025",
+                "runs": [
+                  {
+                    "text": "2025",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2026",
+                "runs": [
+                  {
+                    "text": "2026",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": true
+          },
+          {
+            "cells": [
+              {
+                "content": "영업이익[^2]",
+                "runs": [
+                  {
+                    "text": "영업이익",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  },
+                  {
+                    "text": "2",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": true,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": 2,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "1,200",
+                "runs": [
+                  {
+                    "text": "1,200",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "1,350",
+                "runs": [
+                  {
+                    "text": "1,350",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "금융손익",
+                "runs": [
+                  {
+                    "text": "금융손익",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "-300[^1]",
+                "runs": [
+                  {
+                    "text": "-300",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  },
+                  {
+                    "text": "1",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": true,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": 1,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "-250",
+                "runs": [
+                  {
+                    "text": "-250",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "순이익[^3]",
+                "runs": [
+                  {
+                    "text": "순이익",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  },
+                  {
+                    "text": "3",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": true,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": 3,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "900",
+                "runs": [
+                  {
+                    "text": "900",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "1,100",
+                "runs": [
+                  {
+                    "text": "1,100",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          }
+        ],
+        "table_type": "FINANCIAL",
+        "col_count": 3,
+        "alignments": [
+          "left",
+          "right",
+          "right"
+        ],
+        "column_types": [
+          "text",
+          "money",
+          "money"
+        ],
+        "caption": "가상 손익 요약",
+        "unit": "억원",
+        "source": "",
+        "as_of": "",
+        "landscape": false,
+        "warnings": [],
+        "spans": null,
+        "label_columns": null,
+        "note": "",
+        "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": "paren",
+        "schedule": null,
+        "ref_id": "tbl-income"
+      },
+      "raw_text": "| 구분 | 2025 | 2026 |\n|---|---:|---:|\n| 영업이익[^2] | 1,200 | 1,350 |\n| 금융손익 | -300[^1] | -250 |\n| 순이익[^3] | 900 | 1,100 |",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "2. 목록과 상자",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 2. 목록과 상자",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "BULLET_LIST",
+      "content": {
+        "text": "첫째 조건은 가상 약정의 기한이익 상실 사유다[^3].",
+        "runs": [
+          {
+            "text": "첫째 조건은 가상 약정의 기한이익 상실 사유다",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "3",
+            "bold": false,
+            "italic": false,
+            "superscript": true,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": 3,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": ".",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "indent_level": 0
+      },
+      "raw_text": "- 첫째 조건은 가상 약정의 기한이익 상실 사유다[^3].",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "BULLET_LIST",
+      "content": {
+        "text": "둘째 조건은 담보 비율이다[^1].",
+        "runs": [
+          {
+            "text": "둘째 조건은 담보 비율이다",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "1",
+            "bold": false,
+            "italic": false,
+            "superscript": true,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": 1,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": ".",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "indent_level": 0
+      },
+      "raw_text": "- 둘째 조건은 담보 비율이다[^1].",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "NUMBERED_LIST",
+      "content": [
+        "1",
+        {
+          "text": "번호 목록 안의 참조[^2]",
+          "runs": [
+            {
+              "text": "번호 목록 안의 참조",
+              "bold": false,
+              "italic": false,
+              "superscript": false,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": null,
+              "term_key": null,
+              "code": false,
+              "image": null
+            },
+            {
+              "text": "2",
+              "bold": false,
+              "italic": false,
+              "superscript": true,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": 2,
+              "term_key": null,
+              "code": false,
+              "image": null
+            }
+          ],
+          "indent_level": 0
+        }
+      ],
+      "raw_text": "1. 번호 목록 안의 참조[^2]",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "NUMBERED_LIST",
+      "content": [
+        "2",
+        {
+          "text": "번호 목록 안의 새 각주[^4]",
+          "runs": [
+            {
+              "text": "번호 목록 안의 새 각주",
+              "bold": false,
+              "italic": false,
+              "superscript": false,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": null,
+              "term_key": null,
+              "code": false,
+              "image": null
+            },
+            {
+              "text": "4",
+              "bold": false,
+              "italic": false,
+              "superscript": true,
+              "subscript": false,
+              "color_hex": null,
+              "is_latex": false,
+              "hyperlink": null,
+              "footnote_id": 4,
+              "term_key": null,
+              "code": false,
+              "image": null
+            }
+          ],
+          "indent_level": 0
+        }
+      ],
+      "raw_text": "2. 번호 목록 안의 새 각주[^4]",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "BLOCKQUOTE",
+      "content": {
+        "text": "**참고:** 상자 안에서도 같은 각주를 가리킨다[^4].",
+        "title": "KEY INSIGHT",
+        "runs": []
+      },
+      "raw_text": "**참고:** 상자 안에서도 같은 각주를 가리킨다[^4].",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "다시 첫 각주를 가리킨다[^1].",
+        "runs": [
+          {
+            "text": "다시 첫 각주를 가리킨다",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "1",
+            "bold": false,
+            "italic": false,
+            "superscript": true,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": 1,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": ".",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "다시 첫 각주를 가리킨다[^1].",
+      "inferred_subtitle": false
+    }
+  ],
+  "footnotes": {
+    "1": "가상 고시 금리 기준이며 실제 금리가 아니다.",
+    "2": "가상 회사의 내부 관리 자료 기준이다.",
+    "3": "가상 약정서 제10조 기준이다.",
+    "4": "번호 목록과 상자에서 함께 가리키는 각주다."
+  },
+  "warnings": [],
+  "parsed_profile": "business-report",
+  "source_dir": ".",
+  "asset_roots": [
+    "."
+  ],
+  "limits": {
+    "max_input_bytes": 16777216,
+    "max_table_cells": 50000,
+    "max_list_depth": 32,
+    "max_image_bytes": 20971520,
+    "max_image_pixels": 50000000
+  }
+}
