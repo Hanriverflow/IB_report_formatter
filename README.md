@@ -383,6 +383,10 @@ tables:
     landscape: false
   - type: sensitivity
     base_case: {row: 2, column: 3}
+  - type: financial
+    subtotal_rows: [3, 5]   # body rows: the first row after the header rows is 1
+    total_rows: [8]
+    negative: paren         # paren (1,234), minus -1,234 or triangle △1,234
 ```
 
 Specifications correspond to body tables in order; use `{}` to skip one. `header_rows` (default 1) sets how many leading rows form the repeating header in every profile. Supported types: `generic`, `financial`, `sensitivity`, `risk`. Supported column roles: `text`, `code`, `date`, `number`, `money`, `percent`, `bps`, `multiple`. If supplied, roles must cover every column.
@@ -390,6 +394,10 @@ Specifications correspond to body tables in order; use `{}` to skip one. `header
 Without roles, a column is numeric (right-aligned) when most of its first body values are numbers; empty cells and dash placeholders (`-`, `–`) are skipped. Number/money add thousands separators. Percent/bps/multiple append display suffixes to plain numbers; **they do not rescale values** (`12.5` becomes `12.5%`, not `1250%`). Code/date/text roles preserve values such as `001234`. Blank cells and escaped pipes `A\|B` retain their positions. Headers repeat across pages; rows are kept together when Word permits. `landscape: true` places that table in a separate landscape section, then restores portrait geometry.
 
 Sensitivity highlighting is **explicit only**: row 1 is the first data row; columns are one-based and include the label column. The old guessed centre-cell highlight is removed. Risk highlighting recognises supported risk headers and levels such as high/medium/low or 높음/중간/낮음.
+
+Totals and subtotals are **explicit only**, in every profile. `subtotal_rows` lists body rows that get a single rule above and bold text; `total_rows` lists body rows that also get a double rule below. Row 1 is the first row after the header rows, so with `header_rows: 2` the third Markdown row is row 1. Rules use the profile's table accent colour (navy in the IB profiles, dark grey in the general profiles, the term-sheet navy); when a totals row is the last row its double rule takes the place of the table's bottom border. A row reading `합계` or `Total` gets nothing unless it is listed, and `schedule.total` only checks. A merged cell crossing a listed row stays one cell: Word draws no rule inside it. Lists that are not integers, are out of range, repeat a row, or name one row in both lists are rejected in strict and non-strict mode.
+
+By default a financial table keeps each negative amount as written (`(1,234)` or `-1,234`) and shows it in red. A `type: financial` spec can set `negative: paren`, `minus` or `triangle` instead: that table's negative amounts become `(1,234)`, `-1,234` or `△1,234` in black. It restyles whole amounts written `(…)`, `-…` or `△…` in numeric columns, keeps the digits and the unit (a suffix goes inside parentheses: `(3.5%)`), and leaves text, code and date columns, `▲`/`▼` and tokens such as `NM` alone. Without `negative`, a written `△…` is left exactly as written. Any other value, or `negative` without `type: financial` in the same spec, is rejected.
 
 ## Allowed asset folders, input limits and rejections
 
