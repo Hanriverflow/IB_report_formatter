@@ -382,3 +382,299 @@ def test_invalid_negative_settings_are_rejected_in_both_modes(spec, message, str
     # The ib-memo header row reads as financial, but the option needs the spec to say so.
     with pytest.raises(ValueError, match=message):
         render(markdown(MIXED, "ib-memo", tables=[spec]), strict=strict)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NEGATIVE STYLE: ONE AMOUNT PER CELL (independent review, 2026-11-14)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+STYLES = ["paren", "minus", "triangle"]
+THREE = ["ib-memo", "business-report", "term-sheet"]
+
+# (row label, column role, written forms, magnitude as shown). Every written form of
+# one row is the same negative amount, so every form must give the same text.
+FORMS = [
+    ("금액형", "money", ["-1200", "−1200", "(1200)", "△1200", "-1,200", "(1,200)"], "1,200"),
+    (
+        "억원형",
+        "money",
+        ["-1200억원", "−1200억원", "(1200억원)", "(1200)억원", "△1200억원"],
+        "1,200억원",
+    ),
+    (
+        "비율형",
+        "percent",
+        ["-3.5", "−3.5", "(3.5)", "△3.5", "-3.5%", "(3.5%)", "(3.5)%", "△3.5%"],
+        "3.5%",
+    ),
+    (
+        "베이시스형",
+        "bps",
+        ["-120", "−120", "(120)", "△120", "-120 bps", "(120 bps)", "(120) bps", "△120 bps"],
+        "120 bps",
+    ),
+    (
+        "배수형",
+        "multiple",
+        ["-1.5", "−1.5", "(1.5)", "△1.5", "-1.5x", "(1.5x)", "(1.5)x", "△1.5x"],
+        "1.5x",
+    ),
+]
+
+
+def shown(style: str, magnitude: str) -> str:
+    return {"paren": f"({magnitude})", "minus": f"-{magnitude}", "triangle": f"△{magnitude}"}[style]
+
+
+def one_column_table(label: str, values: list[str]) -> str:
+    rows_md = "".join(f"| {label}{index} | {value} |\n" for index, value in enumerate(values))
+    return f"| 구분 | 값 |\n|---|---|\n{rows_md}\n"
+
+
+def forms_document(profile: str, style: str | None, inputs=None) -> str:
+    body, specs = "", []
+    for (label, role, _, _), values in zip(FORMS, inputs or [f[2] for f in FORMS], strict=True):
+        body += one_column_table(label, values)
+        spec = {"type": "financial", "columns": ["text", role]}
+        if style:
+            spec["negative"] = style
+        specs.append(spec)
+    return markdown(body, profile, tables=specs)
+
+
+def render_noting(content: str, strict: bool = True):
+    """Render and also return the renderer, whose `warnings` never reject a document."""
+    renderer = IBDocumentRenderer(options=RenderOptions(strict=strict))
+    doc = renderer.render(MarkdownParser().parse(content))
+    buffer = BytesIO()
+    doc.save(buffer)
+    return Document(buffer), renderer
+
+
+def value_column(doc, label: str) -> list[str]:
+    return [row[1] for row in cell_texts(body_table(doc, label + "0"))[1:]]
+
+
+@pytest.mark.parametrize("profile", THREE)
+@pytest.mark.parametrize("style", STYLES)
+def test_every_written_form_of_one_amount_gives_the_same_text(profile: str, style: str) -> None:
+    # Findings [3] and [4]: a unit inside the parentheses and a △ amount are read like
+    # `-…`; a bare number in a percent, bps or multiple column gets the column's unit.
+    doc = render(forms_document(profile, style))
+    for label, _, written, magnitude in FORMS:
+        assert value_column(doc, label) == [shown(style, magnitude)] * len(written), label
+
+
+@pytest.mark.parametrize("source", STYLES)
+@pytest.mark.parametrize("target", STYLES)
+def test_each_style_reads_back_the_text_of_every_other_style(source: str, target: str) -> None:
+    first = render(forms_document("ib-memo", source))
+    written_back = [value_column(first, label) for label, *_ in FORMS]
+    again = render(forms_document("ib-memo", target, inputs=written_back))
+    for label, _, written, magnitude in FORMS:
+        assert value_column(again, label) == [shown(target, magnitude)] * len(written), label
+
+
+def test_without_the_option_a_triangle_is_still_not_read_as_negative() -> None:
+    doc = render(forms_document("ib-memo", None))
+    assert value_column(doc, "비율형")[3] == "△3.5"  # no % added, unlike -3.5
+    assert value_column(doc, "비율형")[0] == "-3.5%"
+    assert value_column(doc, "금액형")[3] == "△1200"
+    table = body_table(doc, "금액형0")
+    assert RED not in colors(cells(rows(table)[4])[1]) and RED in colors(cells(rows(table)[1])[1])
+
+
+UNCHANGED = [
+    "1-2",
+    "2026-11-14",
+    "NM",
+    "-",
+    "▲1200",
+    "▼1200",
+    "-0",
+    "(0)",
+    "−0.0",
+    "△0",
+    "-1200 / -300",
+    "약 -1200",
+    "+1200",
+    "(3.5%)%",
+    "-1,2",
+    "`-1200`",
+]
+
+
+@pytest.mark.parametrize("profile", THREE)
+@pytest.mark.parametrize("style", STYLES)
+def test_a_cell_that_is_not_exactly_one_negative_amount_is_as_without_the_option(
+    profile: str, style: str
+) -> None:
+    body = one_column_table("불변", UNCHANGED) + (
+        "| 문자 | 코드 | 일자 | 금액 |\n|---|---|---|---|\n"
+        "| -1200 | (1200) | △1200 | 1 |\n| (1200) | △1200 | -1200 | 2 |\n"
+        "| △1200 | -1200 | (1200) | 3 |\n"
+    )
+    columns = [
+        {"type": "financial", "columns": ["text", "money"]},
+        {"type": "financial", "columns": ["text", "code", "date", "money"]},
+    ]
+    with_option = render(
+        markdown(body, profile, tables=[{**spec, "negative": style} for spec in columns])
+    )
+    without = render(markdown(body, profile, tables=columns))
+    for marker in ("불변0", "코드"):
+        assert cell_texts(body_table(with_option, marker)) == cell_texts(
+            body_table(without, marker)
+        ), marker
+    assert value_column(with_option, "불변") == [
+        "1-2",
+        "2026-11-14",
+        "NM",
+        "-",
+        "▲1200",
+        "▼1200",
+        "-0",
+        "(0)",
+        "−0.0",
+        "△0",
+        "-1200 / -300",
+        "약 -1200",
+        "+1200",
+        "(3.5%)%",
+        "-1,2",
+        "-1200",
+    ]
+
+
+SPLIT = [
+    # (cell, text as without the option, warns)
+    ("-1200**.50**", "-1,200.50", True),
+    ("-**1200**", "-1,200", True),
+    ("1**-2**", "1-2", False),
+]
+
+
+@pytest.mark.parametrize("profile", THREE)
+@pytest.mark.parametrize("style", STYLES)
+def test_an_amount_split_across_formatting_keeps_its_text_and_warns(
+    profile: str, style: str
+) -> None:
+    # Finding [1]: never rewrite one formatted piece of an amount. A split amount keeps
+    # its written form (as without the option) and leaves a warning that strict mode
+    # does not reject; a range such as 1-2 is not an amount and gives no warning.
+    body = one_column_table("분할", [cell for cell, _, _ in SPLIT])
+    spec = {"type": "financial", "columns": ["text", "money"]}
+    doc, renderer = render_noting(markdown(body, profile, tables=[{**spec, "negative": style}]))
+    without = render(markdown(body, profile, tables=[spec]))
+    assert value_column(doc, "분할") == value_column(without, "분할")
+    assert value_column(doc, "분할") == [text for _, text, _ in SPLIT]
+    table = body_table(doc, "분할0")
+    assert not any(RED in colors(tc) for row in rows(table) for tc in cells(row))
+    assert len(renderer.warnings) == 2
+    assert all("split across differently formatted text" in w for w in renderer.warnings)
+    assert "'-1200.50'" in renderer.warnings[0] and "'-1200'" in renderer.warnings[1]
+    assert not any("split" in error for error in renderer.errors)
+    # Formatting is kept: the bold piece stays bold, the rest does not.
+    assert bold_runs(cells(rows(table)[1])[1]) == [False, True]
+
+
+def test_a_split_amount_does_not_warn_in_a_table_without_the_option() -> None:
+    body = one_column_table("분할", [cell for cell, _, _ in SPLIT])
+    spec = {"type": "financial", "columns": ["text", "money"]}
+    _, renderer = render_noting(markdown(body, "ib-memo", tables=[spec]))
+    assert renderer.warnings == []
+
+
+@pytest.mark.parametrize("style", STYLES)
+def test_a_repayment_schedule_reads_the_shown_amounts_as_the_same_numbers(style: str) -> None:
+    from numeric_checks import read_cell_number
+
+    body = (
+        "| 회차 | 원금상환액 | 잔액 | 이자 |\n|---|---|---|---|\n"
+        "| 1 | 50 | 50 | -20**.50** |\n| 2 | 50 | 0 | (30) |\n"
+        "| 합계 | 100 | 0 | △40 |\n"
+    )
+    spec = {
+        "type": "financial",
+        "columns": ["text", "number", "number", "number"],
+        "unit": "억원",
+        "schedule": {"repayment": 2, "balance": 3, "principal": "100억원", "total": True},
+    }
+    with_option = cell_texts(
+        body_table(
+            render(markdown(body, "term-sheet", tables=[{**spec, "negative": style}])), "이자"
+        )
+    )
+    without = cell_texts(body_table(render(markdown(body, "term-sheet", tables=[spec])), "이자"))
+    assert [row[3] for row in with_option[1:]] == ["-20.50", shown(style, "30"), shown(style, "40")]
+    for shown_row, plain_row in zip(with_option[1:], without[1:], strict=True):
+        for shown_text, plain_text in zip(shown_row[1:], plain_row[1:], strict=True):
+            assert read_cell_number(shown_text) == read_cell_number(plain_text)
+
+
+COLORED = (
+    "| 구분 | 값 |\n|---|---|\n"
+    '| 색0 | <span style="color:#C00000">-1200</span> |\n'
+    "| 색1 | [-1300](https://example.invalid) |\n"
+    "| 색2 | -1400 |\n"
+)
+
+
+@pytest.mark.parametrize("profile", THREE)
+@pytest.mark.parametrize("style", STYLES)
+def test_the_option_turns_off_only_the_automatic_red(profile: str, style: str) -> None:
+    # Finding [2], kept by decision: a colour the author wrote and a link's colour stay;
+    # only the engine's automatic red is turned off.
+    spec = {"type": "financial", "columns": ["text", "money"]}
+    doc = render(markdown(COLORED, profile, tables=[{**spec, "negative": style}]))
+    without = render(markdown(COLORED, profile, tables=[spec]))
+    table, plain = body_table(doc, "색0"), body_table(without, "색0")
+    assert value_column(doc, "색") == [shown(style, n) for n in ("1,200", "1,300", "1,400")]
+    span, link, ordinary = (
+        cells(rows(table)[1])[1],
+        cells(rows(table)[2])[1],
+        cells(rows(table)[3])[1],
+    )
+    assert RED in colors(span)
+    assert colors(link) == colors(cells(rows(plain)[2])[1]) and colors(link)
+    assert table.xpath(".//w:hyperlink") and RED not in colors(link)
+    assert colors(ordinary) <= {"auto"}
+    assert RED in colors(cells(rows(plain)[3])[1])
+
+
+def layout(table) -> tuple:
+    grid = tuple(table.xpath("./w:tblGrid/w:gridCol/@w:w"))
+    widths = tuple(tuple(row.xpath("./w:tc/w:tcPr/w:tcW/@w:w")) for row in rows(table))
+    aligns = tuple(tuple(row.xpath("./w:tc/w:p[1]/w:pPr/w:jc/@w:val")) for row in rows(table))
+    return grid, widths, aligns
+
+
+@pytest.mark.parametrize("profile", THREE)
+@pytest.mark.parametrize("style", STYLES)
+def test_the_option_keeps_alignment_and_widths(profile: str, style: str) -> None:
+    # Finding [5]: alignment, column kinds and widths are judged on the written text.
+    body = (
+        "| 구분 | 금액 | 비율 |\n|---|---|---|\n"
+        "| 정렬가 | -1200 | -3.5% |\n| 정렬나 | -1300 | -4.2% |\n"
+    )
+    doc = render(markdown(body, profile, tables=[{"type": "financial", "negative": style}]))
+    without = render(markdown(body, profile, tables=[{"type": "financial"}]))
+    table = body_table(doc, "정렬가")
+    assert layout(table) == layout(body_table(without, "정렬가"))
+    assert [row[1:] for row in layout(table)[2][1:]] == [("right", "right")] * 2
+    assert [row[1:] for row in cell_texts(table)[1:]] == [
+        [shown(style, "1,200"), shown(style, "3.5%")],
+        [shown(style, "1,300"), shown(style, "4.2%")],
+    ]
+
+
+@pytest.mark.parametrize("style", STYLES)
+def test_a_footnote_marker_after_the_amount_stays_after_it(style: str) -> None:
+    body = "| 구분 | 값 |\n|---|---|\n| 각주0 | -1200[^1] |\n\n[^1]: 가상 주석입니다.\n"
+    spec = {"type": "financial", "columns": ["text", "money"], "negative": style}
+    table = body_table(render(markdown(body, "ib-memo", tables=[spec])), "각주0")
+    cell = cells(rows(table)[1])[1]
+    assert "".join(cell.xpath(".//w:r[not(w:footnoteReference)]/w:t/text()")) == shown(
+        style, "1,200"
+    )
+    assert cell.xpath(".//w:r[last()]/w:footnoteReference")

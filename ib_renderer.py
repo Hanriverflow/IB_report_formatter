@@ -601,6 +601,8 @@ class IBDocumentRenderer:
         )
         self.separator_mode = separator_mode
         self.errors: list[str] = []
+        # Rendering notes that never reject a document, strict or not.
+        self.warnings: list[str] = []
         self.charts = False
         self.term_sheet_texts: TermSheetTexts | None = None
         self._term_sheet = False
@@ -609,6 +611,7 @@ class IBDocumentRenderer:
     def _reset_document(self) -> None:
         self.doc: DocxDocument = Document()
         cast(Any, self.doc.part)._ib_render_errors = self.errors
+        cast(Any, self.doc.part)._ib_render_warnings = self.warnings
         self._bookmark_id = 0
         self.styler = DocumentStyler(self.doc)
         self.cover_renderer = CoverRenderer(self.doc)
@@ -749,6 +752,7 @@ class IBDocumentRenderer:
         with document_validation():
             validate_xml_strings(model if resolved.strict else model.metadata)
         self.errors = list(model.warnings)
+        self.warnings = []
         self._term_sheet = term_sheet
         self._reset_document()
         # Inline images (table cells, text) resolve relative paths against the source.
