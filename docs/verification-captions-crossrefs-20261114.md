@@ -248,6 +248,47 @@ Codex CLI(읽기 전용)가 재검토 수정 뒤 상태(`82c9d7b`)를 검토했�
 | Word 스키마 검증(v2.1.6, Microsoft365, 고정 해시 아카이브) | 종료 코드 0, 문서 14개, 오류 0, 예외 0 |
 | Word에서 새 샘플(16.0.20527) | strict로 다시 변환해 열고 Ctrl+A F9, 인쇄 미리보기, 저장 후 다시 열기를 거쳐도 `SEQ` 3개(표 1, 그림 1, 표 2)와 `REF` 5개(표 1, 표 2, 그림 1, 표 2, 표 1)가 처음과 같음. 상호 참조 목록에 `표` 2개, `그림` 1개. 앞쪽에 표와 캡션(기본 레이블 `표`)을 넣고 F9를 누르면 표 2·3으로 따라감. 대상 캡션을 지우고 F9를 누르면 `오류! 참조 원본을 찾을 수 없습니다.` 띄운 Word만 닫았고, 레이블은 추가하지 않음 |
 
+## main 병합 뒤 검증 (2026-11-14)
+
+`origin/main`(`a1c2c90`: E7 공문 정밀도 PR #28, E8 문서 속성 PR #27, E6 표 규칙 PR #29)을 `git merge --no-ff`로 병합했다. 병합 커밋은 `f982825`다(부모 `72d1348`, `a1c2c90`). rebase·force-push는 하지 않았다.
+
+**충돌과 해결.** 모두 양쪽 내용을 살렸다. 한쪽을 버린 곳은 없다.
+
+| 파일 | 해결 |
+|---|---|
+| `document_model.py` | 모듈 변경 기록 둘 다 |
+| `document_profiles.py` | 변경 기록 둘 다, import에 `DefaultTitle`과 `NumberedTable`·`reference_id_problem`, 표 사양 키 `id`·`total_rows`·`subtotal_rows`·`negative` |
+| `ib_renderer.py`, `term_sheet.py` | import 목록 둘 다 |
+| `AGENTS.md`, `CHANGELOG.md`, `README.md` | 네 항목의 줄 모두(E6·E7·E8 다음에 E5) |
+| `docs/improvement-roadmap-20260929.md` | "목표와 순서"의 2번(E8)과 4번(E6)은 main, 3번(E5) 결과는 이 브랜치 |
+
+`md_parser.py`, `ib_render_tables.py`, `ib_render_blocks.py`, `README.ko.md`는 충돌 없이 합쳐졌다. 제목 추론은 E8의 `DefaultTitle` 판정(적은 제목은 H1로 바뀌지 않음)이 먼저 정하고, H1이 제목이 될 때 E5 검사가 그 제목을 원문(조건 변수는 토큰)으로 판정한다.
+
+**병합 때문에 고친 것.** E8은 머리글의 회사명 뒤에 `version`을 보여 준다. 기존 테스트 `test_metadata_references_are_reported_exactly_where_they_are_shown`이 이 값이 검사 목록에 없다는 것을 5개 프로필에서 잡았다. 렌더러가 머리글에 나오는 `version`도 검사하게 했다(공문은 머리글에 버전이 없으므로 제외, 텀싯 바닥글은 이미 검사). 병합 커밋에 넣었다.
+
+**다시 만든 스냅숏.** E5 새 샘플 `qa/captions`의 둘뿐이다. `docProps/core.xml`(+3/−3)은 E8의 파일 정보 정리로 제목이 들어가고 만든 이·설명이 비었다. 모델 스냅숏(+9/−0)에는 E6의 `Table` 기본값 줄(`total_rows`, `subtotal_rows`, `negative`)이 표 3개에 더해졌다. 그 밖의 파트는 바뀌지 않았다. main에서 온 스냅숏 346개는 하나도 바뀌지 않았다(`git diff a1c2c90 HEAD -- tests/__snapshots__`는 `qa/captions` 파일 21개 추가뿐). 스냅숏 테스트는 367개(346 + 21) 통과다.
+
+**상호작용 테스트**(모두 strict 변환, 실제 XML 확인, `tests/test_captions_crossrefs.py`, 211개가 됨).
+
+| # | 문서 | 확인한 것 |
+|---|---|---|
+| ① | `type: financial`, `negative: paren`, `total_rows: [3]`, `id: tbl-pl` 표를 본문과 그 표의 칸에서 참조 | 캡션 `표 1. 가상 손익`, REF 2개(`표 1`), 합계 행 아래 이중선, 음수 칸 `(800)`·`(900)`·`(1,100)`. 금액 열의 글자와 합계선은 `id`·참조가 없는 같은 표와 같음 |
+| ② | 공문, `letter.table_end: partial`, `id` 있는 표, 본문 참조 | `이하 빈칸` 1번, 캡션 `표 1. 회신 일정`, REF `표 1` |
+| ③ | `status: draft`, `version: "v0.3"`, 캡션·참조 | 머리글의 DRAFT 워터마크와 `DOCPROPERTY Version`, 사용자 지정 속성 `Version` = `v0.3`, 캡션 `표 1. A`, REF `표 1` |
+| ④ | `title: Document`를 적고 본문에 `# 개요 @tbl-a` | 제목은 `Document` 그대로(파일 정보 제목도 `Document`), 제목 줄은 본문으로 남고 참조가 풀림. 제목을 적지 않으면 그 H1이 제목이 되고 strict가 `@tbl-a in the document title stays text`로 거부 |
+| ⑤ | 번호 붙는 대상이 없는 54가지 사례 | 기본 모드 `word/document.xml`이 `a1c2c90`(main)과 54가지 모두 같음. strict로는 41가지 거부, 13가지 저장. 임의 P1 테스트(범위 켬·끔·문자 바꿔 넣기)도 병합 뒤 통과 |
+
+**명령과 결과.**
+
+| 명령 | 결과 |
+|---|---|
+| `ruff check .`, `ruff format --check .`, `mypy .` | 종료 코드 0 |
+| `pytest tests/`(새 basetemp, 전체) | 병합 커밋 `f982825`(`git archive` 사본): 3281 passed, 5 skipped, 1 xfailed, 종료 코드 0. 상호작용 테스트 커밋 `d075658`과 문서 커밋을 더한 최종 HEAD에서 다시 돌린 결과는 PR 본문과 보고서에 적는다 |
+| Word 스키마 검증(v2.1.6, Microsoft365, 고정 해시 아카이브) | 종료 코드 0, 문서 17개, 오류 0, 예외 0 |
+| `uv build` | 성공. 휠 최상위 모듈 33개 = `pyproject.toml`의 `only-include` 33개 |
+
+**Word 확인(16.0.20527).** 병합 뒤 코드로 `samples/qa/captions.md`를 strict 변환해 열고, Ctrl+A F9, 인쇄 미리보기, 저장 후 다시 열기를 거쳐도 `SEQ` 3개(표 1, 그림 1, 표 2)와 `REF` 5개가 처음과 같았다. 앞쪽에 표와 캡션을 넣고 F9를 누르면 표 2·3으로 따라가고, 대상 캡션을 지우면 `오류! 참조 원본을 찾을 수 없습니다.`가 됐다. ①과 같은 표 문서(소계 행 포함)도 열어 F9·인쇄 미리보기·저장 후 다시 열기에서 캡션 1개와 REF 3개가 `표 1` 그대로였다. 두 문서의 쪽 이미지 3장을 새 빈 폴더에 `scripts/word_visual_qa.ps1`로 만들어 모두 봤다. 캡션·참조 글자, 소계·합계 굵게와 선, 검정 괄호 음수, 칸 안의 `표 1 참조`가 보인다. 띄운 Word만 닫았고 레이블은 추가하지 않았다.
+
 ## 하지 않은 검증
 
 - **Word 상호 참조 대화상자의 화면.** 화면 조작을 하지 않았다. 대화상자가 쓰는 목록(`GetCrossReferenceItems`)으로 `표`, `그림` 목록에 엔진 캡션이 나오는 것만 확인했다.
