@@ -161,7 +161,7 @@ Windows 11(10.0.26300), Python 3.12.12, uv 0.11.28, ruff 0.15.0, mypy 1.14.1, py
 - 첫 쪽·짝수 머리글을 쓰는 문서: 엔진은 이런 머리글을 만들지 않는다. 코드는 그런 머리글도 처리하지만 Word로 확인하지 않았다.
 - 첫 쪽·짝수 머리글 설정을 켰지만 그 머리글 파트가 없는(앞 구역에 연결된) 경우에는 워터마크가 들어가지 않는다(12절 [3]). 엔진은 이 설정을 만들지 않으므로 지금 출력에는 영향이 없다. 엔진이 이 설정을 만들게 되면 그 머리글에도 워터마크를 넣어야 한다.
 - Mac·웹·모바일 Word, 한컴오피스.
-- 대체 제목 표시(`DefaultTitle`)는 문자열 처리를 거치면 사라진다(12절 2차 [2]). API 사용자가 메타데이터의 대체 제목에 `.strip()`·f-string 등을 적용한 결과를 다시 제목에 넣으면, 그 글자(`Document`·`IB Report`)가 파일 속성 제목에 들어간다. `yaml.safe_dump(asdict(metadata))`는 대체 제목에서 `RepresenterError`를 낸다(`84cde43`에서는 되던 일이다). 제목을 `str()`로 감싸 내보내면 된다. 저장소 안에는 메타데이터를 YAML로 내보내는 코드가 없다.
+- 대체 제목 표시(`DefaultTitle`)는 문자열 처리를 거치면 사라진다(12절 2차 [2]). API 사용자가 메타데이터의 대체 제목에 `.strip()`·f-string 등을 적용한 결과를 다시 제목에 넣으면, 그 글자(`Document`·`IB Report`)가 파일 속성 제목에 들어간다. `yaml.safe_dump(asdict(metadata))`는 대체 제목에서 `RepresenterError`를 낸다(`84cde43`에서는 되던 일이다). 제목을 `str()`로 감싸 내보내면 된다. 저장소 안에는 `DocumentMetadata` 모델을 YAML로 내보내거나 YAML에서 되살리는 경로가 없다(12절 2차 [2]의 "확인한 것").
 
 ## 11. 되돌리는 방법
 
@@ -205,17 +205,30 @@ Windows 11(10.0.26300), Python 3.12.12, uv 0.11.28, ruff 0.15.0, mypy 1.14.1, py
 
 | | 등급 | 지적 | 처리 | 커밋 |
 |---|---|---|---|---|
-| 2차 [1] | 병합 차단 | 대체 제목을 글자로 가리는 곳이 세 군데 남아 있었다. (a) 프로필 재지정(`ib_renderer.py`): API로 만든 `DocumentMetadata(title="Document", profile="plain")`를 `ib-memo`로 렌더링하면 제목이 `IB Report`로 바뀌고 파일 제목은 빈칸이 됐다. (b) `parse_markdown_file`의 H1 추론(`md_parse_frontmatter.py`): `profile: ib-memo`, `title: IB Report`, 본문 `# Chapter`이면 제목이 `Chapter`가 됐다. (c) 텍스트 파서의 H1 추론(`md_parser.py`): `profile: plain`, `title: Document`, 본문 `# Chapter`이면 두 경로 모두 제목이 `Chapter`가 됐다. 세 비교는 `84cde43`에도 있었다. 다만 파일 제목이 비는 것은 E8에서 생긴 결과다 | 세 곳 모두 `isinstance(..., DefaultTitle)`로 판정한다. 입력에 적은 제목은 대체 제목과 글자가 같아도 H1이나 다른 프로필의 대체 제목으로 바뀌지 않는다. 회사·업종·작성자의 프로필 재지정은 그대로 둔다. 빈 제목(`title: ""`)은 전처럼 첫 H1을 따른다 | `65e6131` |
+| 2차 [1] | 병합 차단 | 대체 제목을 글자로 가리는 곳이 세 군데 남아 있었다. (a) 프로필 재지정(`ib_renderer.py`): API로 만든 `DocumentMetadata(title="Document", profile="plain")`를 `ib-memo`로 렌더링하면 제목이 `IB Report`로 바뀌고 파일 제목은 빈칸이 됐다. (b) `parse_markdown_file`의 H1 추론(`md_parse_frontmatter.py`): `profile: ib-memo`, `title: IB Report`, 본문 `# Chapter`이면 제목이 `Chapter`가 됐다. (c) 텍스트 파서의 H1 추론(`md_parser.py`): `profile: plain`, `title: Document`, 본문 `# Chapter`이면 두 경로 모두 제목이 `Chapter`가 됐다. 세 비교는 `84cde43`에도 있었다. 다만 파일 제목이 비는 것은 E8에서 생긴 결과다 | 세 곳 모두 `isinstance(..., DefaultTitle)`로 판정한다. 입력에 적은 제목은 대체 제목과 글자가 같아도 H1이나 다른 프로필의 대체 제목으로 바뀌지 않는다. 회사·업종·작성자의 프로필 재지정은 그대로 둔다. 제목을 적지 않은 문서의 제목 결정은 바뀌지 않았다(아래 "바꾸지 않은 동작"의 표) | `65e6131` |
 | 2차 [2] | 참고 | `DefaultTitle` 표시는 `str()`·`.strip()`·`.replace()`·f-string·슬라이스·JSON을 거치면 사라진다. `yaml.safe_dump(asdict(metadata))`는 `RepresenterError`를 낸다 | 코드는 바꾸지 않았다. 10절에 한계로 적었다. 아래 "확인한 것" 참고 | — |
 
-**2차 [1]의 동작 변화.** 제목을 `Document`나 `IB Report`로 직접 적고 본문에 다른 H1이 있는 문서는, 이제 본문 제목도 적은 글자 그대로다. 전에는 첫 H1의 글자로 바뀌었다. CHANGELOG에 적었다.
+**2차 [1]의 동작 변화.** 제목을 `Document`나 `IB Report`로 직접 적고 본문에 다른 H1이 있는 문서는, 이제 본문 제목도 적은 글자 그대로다. 전에 첫 H1의 글자로 바뀐 경우는 두 가지였다. 일반 프로필에서는 두 글자 모두, 두 파싱 경로 모두에서 바뀌었다. IB 프로필에서는 `IB Report`만, `parse_markdown_file`(CLI와 변환기 등록부가 쓰는 경로)로 읽을 때만 바뀌었다. IB 프로필의 `Document`와, `parse()`로 읽은 IB 문서는 전에도 적은 제목을 유지했다. 이 결과는 `84cde43`과 HEAD에서 직접 확인했다. CHANGELOG에 적었다.
 
 **바꾸지 않은 동작.**
-- 제목을 적지 않은 문서는 전과 같다. 일반 프로필은 두 파서 모두 첫 H1을 제목으로 쓴다. IB 프로필은 `parse_markdown_file`가 첫 H1을 쓰고, `MarkdownParser(...).parse()`는 대체 제목을 그대로 둔다. 이 두 파서의 차이는 원래 있던 것이며, 지시에 따라 그대로 두고 테스트로 고정했다.
+- 제목을 적지 않은 문서의 제목 결정은 전과 같다. 아래 표는 본문 첫 줄이 `# Chapter`인 문서에서 모델 제목을 정리한 것이다. HEAD의 값은 이 기기에서 확인했고, `84cde43`과 글자가 같다는 것은 3차 확인의 재현 결과다. HEAD에서 달라진 것은 `profile`만 있는 IB 문서를 `parse()`로 읽은 결과의 형식뿐이다(`DefaultTitle`). 텀싯은 제목이 필수라 표에서 뺐다.
+
+  | 제목 입력 | IB 프로필(ib-report·ib-memo) `parse()` | IB 프로필 `parse_markdown_file` | 일반 프로필(plain·business-report·meeting-minutes·office-letter), 두 경로 |
+  |---|---|---|---|
+  | frontmatter 없음 | `Chapter` | `Chapter` | `Chapter` |
+  | frontmatter에 `profile`만 있음(`title` 키 없음) | 대체 제목 `IB Report` | `Chapter` | `Chapter` |
+  | `title: ""` | `""`(빈 제목, H1을 따르지 않음) | `""` | `Chapter` |
+  | `title:`(YAML null) | 글자 `None` | 글자 `None` | 글자 `None` |
+  | `title: "   "`(공백만) | 그 공백 | 그 공백 | 그 공백 |
+
+  두 IB 파서의 결과가 다른 칸은 "`profile`만 있음" 하나다. 이 차이는 원래 있던 것이며, 지시에 따라 그대로 두고 테스트로 고정했다. `title:`(null)이 글자 `None`이 되는 것도 `84cde43`부터 있던 동작이다. 빈 `version:`과 달리 이번 범위에서는 바꾸지 않았다.
 - 텀싯 제목 검증(`validate_term_sheet_metadata`)은 `Document`·`IB Report`라는 글자의 제목을 "명시하지 않은 제목"으로 거부한다. 이것은 대체 제목을 판별하는 곳이 아니라 거부 규칙이라 바꾸지 않았다.
 
 **2차 [2]에서 확인한 것.**
-- 저장소 안(엔진, `scripts/`, `tools/`, 플러그인 런타임, `agent_render.py`, 테스트 도우미)에 메타데이터를 YAML로 내보내는 코드는 없다. `yaml.dump`는 `converted_md_cleaner.py`에만 있는데, 이것은 입력 frontmatter의 dict를 내보낸다. JSON 직렬화는 str 하위 형식을 보통 문자열로 쓰므로 오류가 나지 않는다.
+- 찾은 범위는 엔진, `scripts/`, `tools/`, 플러그인 런타임, `agent_render.py`, 테스트 도우미다. 이 안에 `DocumentMetadata` 모델을 YAML로 내보내거나 YAML에서 되살리는 경로는 없다.
+- 모델을 거치지 않고 원시 dict를 frontmatter로 쓰는 곳은 있다. `md_formatter.py`의 `MetadataExtractor.to_frontmatter`와 `converted_md_cleaner.py`의 `_dump`다. 테스트 `tests/test_config_properties.py`에도 `yaml.dump`가 있다. 이 셋은 `DefaultTitle`이 든 모델 메타데이터를 내보내지 않는다.
+- `yaml.safe_dump(asdict(metadata))`는 `84cde43`에서는 되고, 지금은 대체 제목에서 `RepresenterError`가 난다(10절의 한계). 제목을 `str()`로 감싸면 된다.
+- JSON 직렬화는 str 하위 형식을 보통 문자열로 쓰므로 오류가 나지 않는다.
 - 엔진 안에서 제목에 문자열 처리를 한 뒤 다시 `metadata.title`에 넣는 경로: 확인했고, 없다. 제목을 다시 넣는 곳은 frontmatter의 `title`, 첫 H1, 용어 치환 결과뿐이다. 이 셋은 모두 문서가 정한 제목이다. 표지의 `.strip()`은 지역 변수에만 쓴다. 본문의 라벨 줄(`**작성자:** …`)로 메타데이터를 채우는 곳의 매핑에는 제목이 없다.
 - 표시를 지키면서 `asdict` 결과만 보통 `str`로 만드는 작은 방법은 찾지 못했다. `asdict`는 값을 `copy.deepcopy`로 복사한다. 렌더러도 렌더링을 시작할 때 모델을 `deepcopy`한다. 그래서 `__deepcopy__`나 `__reduce__`로 복사 결과를 `str`로 바꾸면 렌더러 안에서도 표시가 사라진다. 전역 YAML 표현기를 등록하는 방법은 지시에 따라 쓰지 않았다.
 
@@ -236,3 +249,14 @@ Windows 11(10.0.26300), Python 3.12.12, uv 0.11.28, ruff 0.15.0, mypy 1.14.1, py
 | `uv build --out-dir <임시 폴더>` | wheel 최상위 모듈 33개 |
 
 **스냅숏.** `65e6131`은 스냅숏을 바꾸지 않았다. 샘플 중에 제목을 `Document`·`IB Report`로 적은 것이 없기 때문이다.
+
+### 3차 확인
+
+`3477b70..129d224`를 같은 조건(Codex `gpt-6.1-sol`, `xhigh`, 읽기 전용)으로 확인했다. 작업 사본은 확인 전후로 같았다(HEAD `129d224`). 2차 [1]의 코드 수정은 받아들여져 닫혔고, 2차 [2]는 기록만 한 채로 남았다. 새 엔진 회귀는 나오지 않았다. 지적 2건은 모두 문서 문구에 관한 것이며 재현해 사실로 확인했다. 문서만 고쳤고 코드와 테스트는 바꾸지 않았다.
+
+| | 등급 | 지적 | 처리 |
+|---|---|---|---|
+| 3차 [1] | 병합 차단 | 제목을 적지 않은 문서의 H1 추론을 실제보다 넓게 썼다. 세 곳이었다. CHANGELOG의 "An empty or missing title still takes the first H1 as before.", 2차 [1] 처리 칸의 "빈 제목(`title: ""`)은 전처럼 첫 H1을 따른다", "바꾸지 않은 동작"의 "IB 프로필은 `parse_markdown_file`가 첫 H1을 쓰고, `MarkdownParser(...).parse()`는 대체 제목을 그대로 둔다"이다. 실제로는 IB 프로필의 `title: ""`가 H1을 따르지 않고, frontmatter가 없는 IB 문서는 `parse()`도 H1을 쓴다 | 문서를 고쳤다. "바꾸지 않은 동작"에 조건별 표를 넣었다(frontmatter 없음, `profile`만, `title: ""`, `title:`, 공백만). CHANGELOG는 "제목을 적지 않은 문서의 제목 결정은 바뀌지 않았다"로 줄였다. 함께 "2차 [1]의 동작 변화"와 CHANGELOG의 "전에는 첫 H1로 바뀌었다"도 사실 범위로 좁혔다. 전에 바뀐 경우는 일반 프로필의 두 경로, 그리고 IB 프로필에서 `IB Report`를 `parse_markdown_file`로 읽은 경우뿐이었다. 표의 값은 HEAD에서 여섯 프로필로, 동작 변화의 범위는 `84cde43`과 HEAD에서 직접 다시 확인했다 |
+| 3차 [2] | 참고 | "저장소 안에는 메타데이터를 YAML로 내보내는 코드가 없다"와 "`yaml.dump`는 `converted_md_cleaner.py`에만 있다"는 범위가 넓다 | 10절과 2차 [2]의 "확인한 것"을 좁혔다. `DocumentMetadata` 모델을 YAML로 내보내거나 되살리는 경로는 없다. 원시 dict를 frontmatter로 쓰는 곳은 `md_formatter.py`의 `to_frontmatter`와 `converted_md_cleaner.py`의 `_dump`다. 테스트 `tests/test_config_properties.py`에도 `yaml.dump`가 있다. `yaml.safe_dump(asdict(metadata))`는 `84cde43`에서는 되고 지금은 `RepresenterError`가 난다(한계, `str()`로 감싸면 됨) |
+
+**실행한 명령.** 이 커밋은 Markdown 문서 두 개(`CHANGELOG.md`, 이 기록)만 바꾼다. 그래서 전체 pytest 대신 문서를 읽거나 묶는 테스트 파일 여섯 개만 다시 돌렸다. 대상은 `test_codex_bundle`, `test_plugin_bundle`, `test_korean_typesetting`, `test_markdown_properties`, `test_memo_rendering`, `test_module_layout`이다. 결과는 종료 코드 0, 409 통과 / 3 생략 / 1 예상 실패였다. `ruff check .`와 `ruff format --check .`도 종료 코드 0이었다. 코드 게이트의 마지막 전체 실행은 `65e6131`의 결과다(2,777 통과 / 5 생략 / 1 예상 실패, 스냅숏 304개, 스키마 오류 0건, wheel 모듈 33개).
