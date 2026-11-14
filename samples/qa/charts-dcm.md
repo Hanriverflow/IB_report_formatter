@@ -17,6 +17,7 @@ layout:
 
 ```chart
 chart_type: stacked_bar
+id: fig-maturity
 title: 2027~2028년에 만기가 몰리며, 2028년 차환 부담이 4,700억원으로 가장 크다
 subtitle: "연도별 만기 도래액, 단위: 억원"
 labels: ["2026", "2027", "2028", "2029", "2030", 2031 이후]
@@ -33,12 +34,13 @@ note: 2026년 9월 말 잔액 기준
 source: 회사 제시 자료(가상)
 ```
 
-만기는 2028년에 가장 크다.
+@fig-maturity에서 보듯 2028년 만기가 가장 크다.
 
 ## 차입 부담
 
 ```chart
 chart_type: bar_line
+id: fig-leverage
 title: 순차입금이 줄면서 순차입금/EBITDA는 3.4배에서 2.1배로 낮아졌다
 subtitle: "막대: 순차입금(억원)  선: 순차입금/EBITDA(배)"
 labels: ["2022", "2023", "2024", "2025", 2026.9 LTM]
@@ -90,6 +92,7 @@ source: 가상 수치
 
 ```chart
 chart_type: bar
+id: fig-book
 title: 수요예측 참여 5,800억원 중 -15bp 이하에 3,700억원이 몰렸다
 subtitle: "개별민평 대비 가산금리 구간별 참여금액(3년물, 모집 1,000억원), 단위: 억원"
 labels: [-30bp, -25bp, -20bp, -15bp, -10bp, -5bp, 0bp, +5bp, +10bp]
@@ -102,7 +105,7 @@ note: 강조한 구간이 확정 가산금리(-15bp)
 source: 가상 수치
 ```
 
-확정 가산금리 구간에 참여가 가장 많았다.
+수요예측 결과는 @fig-book과 같다.
 
 ## 밸류에이션 범위
 

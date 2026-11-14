@@ -486,7 +486,7 @@ tables:
 @tbl-results에서 보듯 매출이 늘었다. 구조는 @fig-structure 참조.
 ```
 
-- Tables take `id: tbl-…` in their table spec and need a `caption`. Figures take `{#fig-…}` at the end of an image file line of its own and need a description. A `{#…}` after an image inside a paragraph, list or table cell, or on an embedded Base64 image, numbers nothing and is reported. Charts and diagrams are not numbered.
+- Tables take `id: tbl-…` in their table spec and need a `caption`. Figures take `{#fig-…}` at the end of an image file line of its own and need a description. A `{#…}` after an image inside a paragraph, list or table cell, or on an embedded Base64 image, numbers nothing and is reported. A chart takes `id: fig-…` in its chart block and needs a `title`: the title line becomes `그림 2. …` and charts share the figure count with images. A chart that is not drawn (charts off) gets no number and references to it are reported. Diagrams are not numbered.
 - Tables and figures are counted separately from the start of the document, and only those actually drawn; there are no chapter numbers (`표 2-1`). The labels are `표` and `그림` in every profile.
 - `@tbl-…` and `@fig-…` become cross-references in paragraphs, lists, quotes, headings, table cells (HTML tables included) and table caption/unit/source/note text.
 - Reference grammar:

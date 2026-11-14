@@ -26,6 +26,7 @@ Changelog (charts, E10):
     - Chart specifications carry the IB/consulting style keys (subtitle, note,
       highlight, accent series, reference lines, totals, start total, range
       bounds, right-axis format, overlap) and a series axis for bar_line.
+    - `NumberedChart` (`id: fig-…`) is numbered as a figure by `numbered_items`.
 """
 
 import re
@@ -278,6 +279,16 @@ class Chart:
 
 
 @dataclass
+class NumberedChart(Chart):
+    """A chart whose spec has `id: fig-…`; numbered as a figure in its title line.
+
+    Only a valid specification makes one; the chart's title is the caption.
+    """
+
+    ref_id: str = ""
+
+
+@dataclass
 class DiagramArrow:
     """An arrow connecting two boxes in a flow diagram."""
 
@@ -511,18 +522,24 @@ def table_is_drawn(table: "Table") -> bool:
 
 def numbered_items(
     elements: Sequence["Element"],
-) -> Iterator[tuple["NumberedTable | Figure", str, str | None]]:
-    """Each table and figure with a reference ID, in document order.
+    charts_drawn: bool = True,
+) -> Iterator[tuple["NumberedTable | Figure | NumberedChart", str, str | None]]:
+    """Each table, figure and chart with a reference ID, in document order.
 
     The parser takes the IDs that resolve from here and the renderer numbers
-    the same items, so both agree on what a reference can point to.
+    the same items, so both agree on what a reference can point to. A chart
+    is a figure (`SEQ 그림`) captioned by its title. Whether charts are drawn
+    is a render option, so the parser counts them as drawn and the renderer
+    passes its own setting; a chart that is not drawn gets no number and
+    references to it have no target (reported).
 
     Args:
         elements: Document elements.
+        charts_drawn: Charts are rendered as pictures (not code panels).
 
     Yields:
-        The table or figure, its kind (`tbl` or `fig`) and why it gets no
-        number (None when it is numbered).
+        The table, figure or chart, its kind (`tbl` or `fig`) and why it gets
+        no number (None when it is numbered).
     """
     for element in elements:
         content = element.content
@@ -530,6 +547,9 @@ def numbered_items(
             kind, caption = "tbl", content.caption
         elif element.element_type == ElementType.IMAGE and isinstance(content, Figure):
             kind, caption = "fig", content.alt_text
+        elif element.element_type == ElementType.CHART and isinstance(content, NumberedChart):
+            kind = "fig"
+            caption = (content.spec.title or "") if content.spec is not None else ""
         else:
             continue
         problem = reference_id_problem(content.ref_id, kind)
@@ -539,6 +559,8 @@ def numbered_items(
             # The renderer skips a table without rows or columns, so it gets
             # no number and references to it have no target.
             problem = f"{content.ref_id!r} is on a table with no columns, which is not drawn"
+        if problem is None and isinstance(content, NumberedChart) and not charts_drawn:
+            problem = f"{content.ref_id!r} is on a chart, and charts are off, so it is not drawn"
         yield content, kind, problem
 
 

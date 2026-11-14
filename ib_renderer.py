@@ -1124,7 +1124,7 @@ class IBDocumentRenderer:
         numbers = CaptionNumbers(next_bookmark_id=self._next_bookmark_id, errors=self.errors)
         counts = dict.fromkeys(CAPTION_LABELS, 0)
         reported = set(self.errors)  # the parser may have said so
-        for content, kind, problem in numbered_items(model.elements):
+        for content, kind, problem in numbered_items(model.elements, self.charts):
             if problem is not None:
                 if "Reference id " + problem not in reported:
                     reported.add("Reference id " + problem)
@@ -1381,7 +1381,9 @@ class IBDocumentRenderer:
             chart = cast(Chart, element.content)
             if self.charts:
                 try:
-                    picture = self.chart_renderer.render(chart, self.chart_style)
+                    picture = self.chart_renderer.render(
+                        chart, self.chart_style, caption_prefix(chart)
+                    )
                     self._add_semantic_bookmark(picture, ElementType.CHART.name)
                     return
                 except Exception as exc:

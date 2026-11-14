@@ -66,6 +66,71 @@
         <w:spacing w:after="0" w:before="120"/>
         <w:jc w:val="left"/>
       </w:pPr>
+      <w:bookmarkStart w:id="1" w:name="_Ref_fig_maturity"/>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t xml:space="preserve">그림 </w:t>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:fldChar w:fldCharType="begin"/>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:instrText xml:space="preserve"> SEQ 그림 \* ARABIC </w:instrText>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:fldChar w:fldCharType="separate"/>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>1</w:t>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:fldChar w:fldCharType="end"/>
+      </w:r>
+      <w:bookmarkEnd w:id="1"/>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t xml:space="preserve">. </w:t>
+      </w:r>
       <w:r>
         <w:rPr>
           <w:rFonts w:eastAsia="Malgun Gothic"/>
@@ -98,7 +163,7 @@
         <w:spacing w:after="40"/>
         <w:jc w:val="left"/>
       </w:pPr>
-      <w:bookmarkStart w:id="1" w:name="_ibrep_CHART_RANDOM"/>
+      <w:bookmarkStart w:id="2" w:name="_ibrep_CHART_RANDOM"/>
       <w:r>
         <w:drawing>
           <wp:inline xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
@@ -133,7 +198,7 @@
           </wp:inline>
         </w:drawing>
       </w:r>
-      <w:bookmarkEnd w:id="1"/>
+      <w:bookmarkEnd w:id="2"/>
     </w:p>
     <w:p>
       <w:pPr>
@@ -177,7 +242,52 @@
           <w:i w:val="0"/>
           <w:sz w:val="21"/>
         </w:rPr>
-        <w:t>만기는 2028년에 가장 크다.</w:t>
+        <w:fldChar w:fldCharType="begin"/>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:instrText xml:space="preserve"> REF _Ref_fig_maturity \h \* CHARFORMAT </w:instrText>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:fldChar w:fldCharType="separate"/>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>그림 1</w:t>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:fldChar w:fldCharType="end"/>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>에서 보듯 2028년 만기가 가장 크다.</w:t>
       </w:r>
     </w:p>
     <w:p>
@@ -202,6 +312,71 @@
         <w:spacing w:after="0" w:before="120"/>
         <w:jc w:val="left"/>
       </w:pPr>
+      <w:bookmarkStart w:id="3" w:name="_Ref_fig_leverage"/>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t xml:space="preserve">그림 </w:t>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:fldChar w:fldCharType="begin"/>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:instrText xml:space="preserve"> SEQ 그림 \* ARABIC </w:instrText>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:fldChar w:fldCharType="separate"/>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>2</w:t>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:fldChar w:fldCharType="end"/>
+      </w:r>
+      <w:bookmarkEnd w:id="3"/>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t xml:space="preserve">. </w:t>
+      </w:r>
       <w:r>
         <w:rPr>
           <w:rFonts w:eastAsia="Malgun Gothic"/>
@@ -234,7 +409,7 @@
         <w:spacing w:after="40"/>
         <w:jc w:val="left"/>
       </w:pPr>
-      <w:bookmarkStart w:id="2" w:name="_ibrep_CHART_RANDOM"/>
+      <w:bookmarkStart w:id="4" w:name="_ibrep_CHART_RANDOM"/>
       <w:r>
         <w:drawing>
           <wp:inline xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
@@ -269,7 +444,7 @@
           </wp:inline>
         </w:drawing>
       </w:r>
-      <w:bookmarkEnd w:id="2"/>
+      <w:bookmarkEnd w:id="4"/>
     </w:p>
     <w:p>
       <w:pPr>
@@ -340,7 +515,7 @@
         <w:spacing w:after="40"/>
         <w:jc w:val="left"/>
       </w:pPr>
-      <w:bookmarkStart w:id="3" w:name="_ibrep_CHART_RANDOM"/>
+      <w:bookmarkStart w:id="5" w:name="_ibrep_CHART_RANDOM"/>
       <w:r>
         <w:drawing>
           <wp:inline xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
@@ -375,7 +550,7 @@
           </wp:inline>
         </w:drawing>
       </w:r>
-      <w:bookmarkEnd w:id="3"/>
+      <w:bookmarkEnd w:id="5"/>
     </w:p>
     <w:p>
       <w:pPr>
@@ -446,7 +621,7 @@
         <w:spacing w:after="40"/>
         <w:jc w:val="left"/>
       </w:pPr>
-      <w:bookmarkStart w:id="4" w:name="_ibrep_CHART_RANDOM"/>
+      <w:bookmarkStart w:id="6" w:name="_ibrep_CHART_RANDOM"/>
       <w:r>
         <w:drawing>
           <wp:inline xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
@@ -481,7 +656,7 @@
           </wp:inline>
         </w:drawing>
       </w:r>
-      <w:bookmarkEnd w:id="4"/>
+      <w:bookmarkEnd w:id="6"/>
     </w:p>
     <w:p>
       <w:pPr>
@@ -520,6 +695,71 @@
         <w:spacing w:after="0" w:before="120"/>
         <w:jc w:val="left"/>
       </w:pPr>
+      <w:bookmarkStart w:id="7" w:name="_Ref_fig_book"/>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t xml:space="preserve">그림 </w:t>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:fldChar w:fldCharType="begin"/>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:instrText xml:space="preserve"> SEQ 그림 \* ARABIC </w:instrText>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:fldChar w:fldCharType="separate"/>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>3</w:t>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:fldChar w:fldCharType="end"/>
+      </w:r>
+      <w:bookmarkEnd w:id="7"/>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t xml:space="preserve">. </w:t>
+      </w:r>
       <w:r>
         <w:rPr>
           <w:rFonts w:eastAsia="Malgun Gothic"/>
@@ -552,7 +792,7 @@
         <w:spacing w:after="40"/>
         <w:jc w:val="left"/>
       </w:pPr>
-      <w:bookmarkStart w:id="5" w:name="_ibrep_CHART_RANDOM"/>
+      <w:bookmarkStart w:id="8" w:name="_ibrep_CHART_RANDOM"/>
       <w:r>
         <w:drawing>
           <wp:inline xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
@@ -587,7 +827,7 @@
           </wp:inline>
         </w:drawing>
       </w:r>
-      <w:bookmarkEnd w:id="5"/>
+      <w:bookmarkEnd w:id="8"/>
     </w:p>
     <w:p>
       <w:pPr>
@@ -631,7 +871,61 @@
           <w:i w:val="0"/>
           <w:sz w:val="21"/>
         </w:rPr>
-        <w:t>확정 가산금리 구간에 참여가 가장 많았다.</w:t>
+        <w:t xml:space="preserve">수요예측 결과는 </w:t>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:fldChar w:fldCharType="begin"/>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:instrText xml:space="preserve"> REF _Ref_fig_book \h \* CHARFORMAT </w:instrText>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:fldChar w:fldCharType="separate"/>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>그림 3</w:t>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:fldChar w:fldCharType="end"/>
+      </w:r>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>과 같다.</w:t>
       </w:r>
     </w:p>
     <w:p>
@@ -688,7 +982,7 @@
         <w:spacing w:after="40"/>
         <w:jc w:val="left"/>
       </w:pPr>
-      <w:bookmarkStart w:id="6" w:name="_ibrep_CHART_RANDOM"/>
+      <w:bookmarkStart w:id="9" w:name="_ibrep_CHART_RANDOM"/>
       <w:r>
         <w:drawing>
           <wp:inline xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
@@ -723,7 +1017,7 @@
           </wp:inline>
         </w:drawing>
       </w:r>
-      <w:bookmarkEnd w:id="6"/>
+      <w:bookmarkEnd w:id="9"/>
     </w:p>
     <w:p>
       <w:pPr>
@@ -794,7 +1088,7 @@
         <w:spacing w:after="40"/>
         <w:jc w:val="left"/>
       </w:pPr>
-      <w:bookmarkStart w:id="7" w:name="_ibrep_CHART_RANDOM"/>
+      <w:bookmarkStart w:id="10" w:name="_ibrep_CHART_RANDOM"/>
       <w:r>
         <w:drawing>
           <wp:inline xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
@@ -829,7 +1123,7 @@
           </wp:inline>
         </w:drawing>
       </w:r>
-      <w:bookmarkEnd w:id="7"/>
+      <w:bookmarkEnd w:id="10"/>
     </w:p>
     <w:p>
       <w:pPr>

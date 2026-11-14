@@ -69,7 +69,7 @@
     {
       "element_type": "CHART",
       "content": {
-        "code": "chart_type: stacked_bar\ntitle: 2027~2028년에 만기가 몰리며, 2028년 차환 부담이 4,700억원으로 가장 크다\nsubtitle: \"연도별 만기 도래액, 단위: 억원\"\nlabels: [\"2026\", \"2027\", \"2028\", \"2029\", \"2030\", 2031 이후]\nseries:\n  - name: 공모 회사채\n    values: [1200, 2500, 3100, 900, 1500, 800]\n  - name: 사모사채·CP\n    values: [600, 400, 700, 300, 0, 0]\n  - name: 은행 차입\n    values: [300, 500, 900, 200, 400, 0]\ntotals: true\nnumber_format: ',.0f'\nnote: 2026년 9월 말 잔액 기준\nsource: 회사 제시 자료(가상)",
+        "code": "chart_type: stacked_bar\nid: fig-maturity\ntitle: 2027~2028년에 만기가 몰리며, 2028년 차환 부담이 4,700억원으로 가장 크다\nsubtitle: \"연도별 만기 도래액, 단위: 억원\"\nlabels: [\"2026\", \"2027\", \"2028\", \"2029\", \"2030\", 2031 이후]\nseries:\n  - name: 공모 회사채\n    values: [1200, 2500, 3100, 900, 1500, 800]\n  - name: 사모사채·CP\n    values: [600, 400, 700, 300, 0, 0]\n  - name: 은행 차입\n    values: [300, 500, 900, 200, 400, 0]\ntotals: true\nnumber_format: ',.0f'\nnote: 2026년 9월 말 잔액 기준\nsource: 회사 제시 자료(가상)",
         "spec": {
           "chart_type": "stacked_bar",
           "title": "2027~2028년에 만기가 몰리며, 2028년 차환 부담이 4,700억원으로 가장 크다",
@@ -137,7 +137,8 @@
           "show_overlap": false
         },
         "error": null,
-        "label": "Chart 1 (2027~2028년에 만기가 몰리며, 2028년 차환 부담이 4,700억원으로 가장 크다)"
+        "label": "Chart 1 (2027~2028년에 만기가 몰리며, 2028년 차환 부담이 4,700억원으로 가장 크다)",
+        "ref_id": "fig-maturity"
       },
       "raw_text": "```chart",
       "inferred_subtitle": false
@@ -145,10 +146,27 @@
     {
       "element_type": "PARAGRAPH",
       "content": {
-        "text": "만기는 2028년에 가장 크다.",
+        "text": "@fig-maturity에서 보듯 2028년 만기가 가장 크다.",
         "runs": [
           {
-            "text": "만기는 2028년에 가장 크다.",
+            "text": "@fig-maturity",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null,
+            "target": "fig-maturity",
+            "joined_before": false,
+            "joined_after": true
+          },
+          {
+            "text": "에서 보듯 2028년 만기가 가장 크다.",
             "bold": false,
             "italic": false,
             "superscript": false,
@@ -164,7 +182,7 @@
         ],
         "has_inline_latex": false
       },
-      "raw_text": "만기는 2028년에 가장 크다.",
+      "raw_text": "@fig-maturity에서 보듯 2028년 만기가 가장 크다.",
       "inferred_subtitle": false
     },
     {
@@ -181,7 +199,7 @@
     {
       "element_type": "CHART",
       "content": {
-        "code": "chart_type: bar_line\ntitle: 순차입금이 줄면서 순차입금/EBITDA는 3.4배에서 2.1배로 낮아졌다\nsubtitle: \"막대: 순차입금(억원)  선: 순차입금/EBITDA(배)\"\nlabels: [\"2022\", \"2023\", \"2024\", \"2025\", 2026.9 LTM]\nseries:\n  - name: 순차입금\n    values: [4500, 4200, 3900, 3500, 3300]\n  - name: 순차입금/EBITDA\n    values: [3.4, 3.1, 2.8, 2.4, 2.1]\n    axis: right\nnumber_format: ',.0f'\nright_number_format: multiple\nsource: 회사 제시 자료(가상)",
+        "code": "chart_type: bar_line\nid: fig-leverage\ntitle: 순차입금이 줄면서 순차입금/EBITDA는 3.4배에서 2.1배로 낮아졌다\nsubtitle: \"막대: 순차입금(억원)  선: 순차입금/EBITDA(배)\"\nlabels: [\"2022\", \"2023\", \"2024\", \"2025\", 2026.9 LTM]\nseries:\n  - name: 순차입금\n    values: [4500, 4200, 3900, 3500, 3300]\n  - name: 순차입금/EBITDA\n    values: [3.4, 3.1, 2.8, 2.4, 2.1]\n    axis: right\nnumber_format: ',.0f'\nright_number_format: multiple\nsource: 회사 제시 자료(가상)",
         "spec": {
           "chart_type": "bar_line",
           "title": "순차입금이 줄면서 순차입금/EBITDA는 3.4배에서 2.1배로 낮아졌다",
@@ -234,7 +252,8 @@
           "show_overlap": false
         },
         "error": null,
-        "label": "Chart 2 (순차입금이 줄면서 순차입금/EBITDA는 3.4배에서 2.1배로 낮아졌다)"
+        "label": "Chart 2 (순차입금이 줄면서 순차입금/EBITDA는 3.4배에서 2.1배로 낮아졌다)",
+        "ref_id": "fig-leverage"
       },
       "raw_text": "```chart",
       "inferred_subtitle": false
@@ -450,7 +469,7 @@
     {
       "element_type": "CHART",
       "content": {
-        "code": "chart_type: bar\ntitle: 수요예측 참여 5,800억원 중 -15bp 이하에 3,700억원이 몰렸다\nsubtitle: \"개별민평 대비 가산금리 구간별 참여금액(3년물, 모집 1,000억원), 단위: 억원\"\nlabels: [-30bp, -25bp, -20bp, -15bp, -10bp, -5bp, 0bp, +5bp, +10bp]\nseries:\n  - name: 참여금액\n    values: [300, 600, 1100, 1700, 900, 500, 400, 200, 100]\nhighlight: [-15bp]\nnumber_format: ',.0f'\nnote: 강조한 구간이 확정 가산금리(-15bp)\nsource: 가상 수치",
+        "code": "chart_type: bar\nid: fig-book\ntitle: 수요예측 참여 5,800억원 중 -15bp 이하에 3,700억원이 몰렸다\nsubtitle: \"개별민평 대비 가산금리 구간별 참여금액(3년물, 모집 1,000억원), 단위: 억원\"\nlabels: [-30bp, -25bp, -20bp, -15bp, -10bp, -5bp, 0bp, +5bp, +10bp]\nseries:\n  - name: 참여금액\n    values: [300, 600, 1100, 1700, 900, 500, 400, 200, 100]\nhighlight: [-15bp]\nnumber_format: ',.0f'\nnote: 강조한 구간이 확정 가산금리(-15bp)\nsource: 가상 수치",
         "spec": {
           "chart_type": "bar",
           "title": "수요예측 참여 5,800억원 중 -15bp 이하에 3,700억원이 몰렸다",
@@ -502,7 +521,8 @@
           "show_overlap": false
         },
         "error": null,
-        "label": "Chart 5 (수요예측 참여 5,800억원 중 -15bp 이하에 3,700억원이 몰렸다)"
+        "label": "Chart 5 (수요예측 참여 5,800억원 중 -15bp 이하에 3,700억원이 몰렸다)",
+        "ref_id": "fig-book"
       },
       "raw_text": "```chart",
       "inferred_subtitle": false
@@ -510,10 +530,41 @@
     {
       "element_type": "PARAGRAPH",
       "content": {
-        "text": "확정 가산금리 구간에 참여가 가장 많았다.",
+        "text": "수요예측 결과는 @fig-book과 같다.",
         "runs": [
           {
-            "text": "확정 가산금리 구간에 참여가 가장 많았다.",
+            "text": "수요예측 결과는 ",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "@fig-book",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null,
+            "target": "fig-book",
+            "joined_before": true,
+            "joined_after": true
+          },
+          {
+            "text": "과 같다.",
             "bold": false,
             "italic": false,
             "superscript": false,
@@ -529,7 +580,7 @@
         ],
         "has_inline_latex": false
       },
-      "raw_text": "확정 가산금리 구간에 참여가 가장 많았다.",
+      "raw_text": "수요예측 결과는 @fig-book과 같다.",
       "inferred_subtitle": false
     },
     {

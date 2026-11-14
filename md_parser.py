@@ -81,7 +81,8 @@ from typing import (
     cast,
 )
 
-from chart_renderer import ChartSpecError, parse_chart_spec
+from chart_renderer import ChartSpecError, parse_chart
+from chart_renderer import parse_chart_spec as parse_chart_spec
 from document_model import (
     Blockquote as Blockquote,
 )
@@ -146,6 +147,7 @@ from document_model import (
 from document_model import (
     ListItem as ListItem,
 )
+from document_model import NumberedChart as NumberedChart
 from document_model import (
     NumberedList as NumberedList,
 )
@@ -872,7 +874,10 @@ class MarkdownParser:
                     chart_number += 1
                     chart = Chart(code=code_text, label=f"Chart {chart_number}")
                     try:
-                        chart.spec = parse_chart_spec(code_text)
+                        spec, ref_id = parse_chart(code_text)
+                        if ref_id is not None:
+                            chart = NumberedChart(code=code_text, label=chart.label, ref_id=ref_id)
+                        chart.spec = spec
                         if chart.spec.title:
                             chart.label += f" ({chart.spec.title})"
                     except ChartSpecError as exc:

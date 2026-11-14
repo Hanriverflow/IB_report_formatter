@@ -22,7 +22,7 @@ from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 from docx.text.paragraph import Paragraph
 
-from document_model import CaptionNumber, Chart, ChartSpec, TextRun
+from document_model import CaptionNumber, Chart, ChartSpec, NumberedChart, TextRun
 from ib_render_fonts import FontStyler
 from input_safety import (
     DEFAULT_LIMITS,
@@ -324,7 +324,9 @@ class ChartRenderer:
     def __init__(self, doc: DocxDocument) -> None:
         self.doc = doc
 
-    def render(self, chart: Chart, style: str = "standard") -> Paragraph:
+    def render(
+        self, chart: Chart, style: str = "standard", caption_prefix: Sequence[TextRun] = ()
+    ) -> Paragraph:
         """Render an enabled chart; the orchestrator handles diagnostic fallbacks.
 
         `classic` draws a chart that uses only the keys and types the engine
@@ -334,6 +336,9 @@ class ChartRenderer:
         Args:
             chart: Parsed specification and original fence source.
             style: The document's chart style, `standard` or `classic`.
+            caption_prefix: The caption number of a chart with an ID (`그림 1`
+                and `. `), written before its title. A chart with an ID is
+                always drawn in the standard style.
 
         Returns:
             The paragraph holding the picture.
@@ -353,8 +358,9 @@ class ChartRenderer:
         width = min(6.0, (page_width - left_margin - right_margin) / 914400)
         if width <= 0:
             raise ValueError("chart requires a positive content width")
-        if style != "classic" or not is_classic_spec(chart.spec):
-            return self._render_standard(chart, width)
+        numbered = isinstance(chart, NumberedChart)
+        if style != "classic" or not is_classic_spec(chart.spec) or numbered:
+            return self._render_standard(chart, width, caption_prefix)
         png = render_chart_png(chart.spec, width_inches=width)
         paragraph = self.doc.add_paragraph()
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -367,7 +373,9 @@ class ChartRenderer:
             raise
         return paragraph
 
-    def _render_standard(self, chart: Chart, width: float) -> Paragraph:
+    def _render_standard(
+        self, chart: Chart, width: float, caption_prefix: Sequence[TextRun] = ()
+    ) -> Paragraph:
         """Insert a chart drawn in the IB/consulting style with its Word text.
 
         The title and the subtitle (or, without one, `y_label`/`unit`) go
@@ -385,6 +393,7 @@ class ChartRenderer:
             The picture paragraph.
         """
         from chart_render_standard import render_standard_chart_png
+        from ib_render_text import TextRenderer
         from md_parse_text import TextParser
 
         spec = cast(ChartSpec, chart.spec)
@@ -411,7 +420,12 @@ class ChartRenderer:
         try:
             if spec.title:
                 title = self._chart_text_paragraph(added, Pt(6), Pt(0), keep_next=True)
-                self._chart_run(title, spec.title, STYLE.BODY_SIZE, STYLE.NAVY, bold=True)
+                for piece in caption_prefix:
+                    if isinstance(piece, CaptionNumber):
+                        TextRenderer.write_caption_number(title, piece, self._title_style)
+                    else:
+                        self._title_style(title.add_run(piece.text))
+                self._title_style(title.add_run(spec.title))
             if subtitle:
                 line = self._chart_text_paragraph(added, Pt(0), Pt(2), keep_next=True)
                 self._chart_run(line, subtitle, STYLE.SMALL_SIZE, STYLE.MEDIUM_GRAY)
@@ -447,6 +461,10 @@ class ChartRenderer:
         if keep_next:
             layout.keep_with_next = True
         return paragraph
+
+    @staticmethod
+    def _title_style(run) -> None:
+        FontStyler.apply_run_style(run, font_size=STYLE.BODY_SIZE, bold=True, color=STYLE.NAVY)
 
     @staticmethod
     def _chart_run(

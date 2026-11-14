@@ -14,6 +14,7 @@ Existing documents with `charts: true` change appearance. Owner decisions 2026-1
 - New types `stacked_bar` (up to four series, no negatives), `bar_line` (bars and `axis: right` lines), `range` (`low`/`high`, football field or rate band) and `hbar` (written order). New keys `subtitle`, `note`, `highlight`, `accent_series`, `reference`, `totals`, `start_total`, `show_overlap`, `right_number_format`, each only on the types it applies to; anything else is a chart specification error (strict rejects, non-strict keeps the code panel). Stack totals are written only with `totals: true` and are added before rounding. Values are never rescaled.
 - More than four compared series draw with a rendering warning (`IBDocumentRenderer.warnings`), not a rejection.
 - A `@tbl-…`/`@fig-…` in a chart's title, subtitle, note or source stays text and is reported; strict mode rejects. Chart texts are plain text, not Markdown.
+- Chart numbers: `id: fig-…` in a chart block (with a `title`) numbers the chart as a figure in its title line (`그림 2. …`), shared with numbered images, and `@fig-…` references it. A chart that is not drawn gets no number and its references are reported. Charts without an ID are unchanged.
 - New sample `samples/qa/charts-dcm.md`; the snapshot corpus adds it and a `chart_style: classic` run of `samples/qa/charts.md`.
 
 ### Office letters: attachments, tables at the end and item symbols (roadmap E7)

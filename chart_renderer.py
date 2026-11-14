@@ -60,7 +60,7 @@ class _ChartSchema:
         "show_overlap": {"range"},
         "right_number_format": {"bar_line"},
     }
-    FIELDS = CLASSIC_FIELDS | {"subtitle", "note"} | set(APPLIES)
+    FIELDS = CLASSIC_FIELDS | {"subtitle", "note", "id"} | set(APPLIES)
     FORMATS = {"number", "percent", "bps", "multiple"}
     # More stacked series cannot be told apart in black and white.
     MAX_STACKED_SERIES = 4
@@ -107,13 +107,22 @@ def _check_number_format(value: str | None, key: str) -> None:
 
 
 def parse_chart_spec(text: str) -> ChartSpec:
+    """Validate the schema and return the chart data (see `parse_chart`)."""
+    return parse_chart(text)[0]
+
+
+def parse_chart(text: str) -> tuple[ChartSpec, str | None]:
     """Validate the schema and its documented aliases without rescaling.
+
+    The `id` (a figure reference ID, E5) is returned beside the data; its
+    shape is judged where charts are numbered (`numbered_items`), so a bad
+    ID leaves the chart drawn without a number.
 
     Args:
         text: YAML from a chart fence.
 
     Returns:
-        Chart data in the original units.
+        Chart data in the original units, and the `id` as written (or None).
 
     Raises:
         ChartSpecError: Invalid YAML, fields or values, including the title if known.
@@ -125,7 +134,8 @@ def parse_chart_spec(text: str) -> ChartSpec:
     if not isinstance(data, dict):
         raise ChartSpecError("spec must be a YAML mapping")
     try:
-        return _validate_spec(data)
+        ref_id = _optional_string(data, "id")
+        return _validate_spec(data), ref_id
     except (ValueError, OverflowError) as exc:
         title = data.get("title")
         name = f" {title!r}:" if isinstance(title, str) and title else ""
