@@ -6,6 +6,11 @@ All notable changes to this project are documented in this file.
 
 Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Beta)** and the plugin stays **0.1.0**; nothing here has been tagged or published. Verification: `docs/verification-20261110.md`.
 
+### Fixed: documents that never finished parsing
+- A list marker followed only by whitespace (two or more spaces, tabs, U+3000 or other Unicode spaces: `1.   `, `-  `, `*\t\t`) or only by HTML anchors (`- <a id="x"></a>`) kept the conversion from ever finishing, in every profile. Such a line now reads as text, the marker itself, exactly as `1. ` and `- ` already did: a paragraph on its own, or the soft-wrapped end of the item or paragraph before it.
+- A table or quote line led by HTML anchors (`<a id="x"></a>| a |`, `<a id="x"></a>> 인용`, also `><a id="x"></a> 인용`) had the same effect. It now reads as the same line without the leading anchors: they are dropped, as before a paragraph, and everything after the `|` or `>` stays as written, code included. Right after a table or quote, such a line continues it, as the line without the anchors does.
+- Documents that finished before are unchanged; no sample output changed. If a parsing pass ever consumes no line again, the conversion stops with an error naming the line instead of running forever. Verification: `docs/verification-list-marker-hang-20261114.md`.
+
 ### Images without alt text are reported (roadmap E9, alt text only)
 Output documents are unchanged. Verification: `docs/verification-alt-text-warning-20261114.md`.
 - An author image inserted without a description (`![](a.png)`, `<img>` without `alt`, a blank description, Base64 and `data:` images, block or inside a paragraph, list or table cell) adds one rendering warning per picture: `IBDocumentRenderer.warnings` and the log. It names the file actually loaded (or `embedded image`) and the picture's Word name (`Picture 3`), never a folder path (percent-encoded or not) or the image data. It never rejects, in strict mode either.
