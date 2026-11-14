@@ -7,6 +7,7 @@ into every header so Word's Remove Watermark clears all pages. Every case goes
 through actual parsing, strict rendering and saving, then reads the saved package.
 """
 
+import io
 import re
 import shutil
 import zipfile
@@ -16,7 +17,8 @@ from pathlib import Path
 import pytest
 from lxml import etree
 
-from document_profiles import RenderOptions
+from document_model import DefaultTitle, DocumentMetadata, DocumentModel
+from document_profiles import RenderOptions, default_metadata
 from ib_render_document_style import (
     VERSION_PROPERTY,
     WATERMARK_SHAPE_PREFIX,
@@ -479,3 +481,101 @@ def test_quoted_none_version_is_kept_as_written(tmp_path):
     output = _render(_source("ib-report", 'version: "None"\n'), "ib-report", tmp_path / "out.docx")
 
     assert _custom_properties(output)[VERSION_PROPERTY] == "None"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECOND REVIEW: A STAND-IN IS KNOWN BY ITS MARK, NEVER BY ITS TEXT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _parse_both(source: str, profile: str) -> dict[str, DocumentModel]:
+    """The same Markdown through the text parser and the file (stream) parser."""
+    return {
+        "parse": MarkdownParser(profile=profile).parse(source),
+        "parse_markdown_file": parse_markdown_file(
+            io.BytesIO(source.encode("utf-8")), profile=profile
+        ),
+    }
+
+
+def _save(model: DocumentModel, output: Path, profile: str | None = None) -> Path:
+    options = RenderOptions(profile=profile, strict=True)
+    IBDocumentRenderer(options=options).render(model).save(str(output))
+    return output
+
+
+@pytest.mark.parametrize(
+    ("title", "built_profile", "render_profile"),
+    [
+        ("Document", "plain", "ib-memo"),
+        ("IB Report", "ib-report", "plain"),
+        ("IB Report", "ib-memo", "business-report"),
+    ],
+)
+def test_api_title_equal_to_a_stand_in_survives_a_profile_override(
+    tmp_path, title, built_profile, render_profile
+):
+    """A hand-built model's title is written text, even when it reads like a stand-in."""
+    model = DocumentModel(metadata=DocumentMetadata(title=title, profile=built_profile))
+    output = _save(model, tmp_path / "out.docx", render_profile)
+
+    assert _core(output).title == title
+    if render_profile.startswith("ib-"):  # general profiles show no frontmatter title
+        assert title in _document_text(output)
+
+
+def test_api_stand_in_title_still_follows_the_profile_override(tmp_path):
+    """Unchanged: a hand-built model without a title takes the new profile's stand-in."""
+    output = _save(
+        DocumentModel(metadata=default_metadata("plain")), tmp_path / "out.docx", "ib-memo"
+    )
+
+    assert _core(output).title == ""
+    assert "IB Report" in _document_text(output)
+
+
+@pytest.mark.parametrize(
+    ("profile", "title"),
+    [
+        ("ib-memo", "IB Report"),
+        ("ib-report", "IB Report"),
+        ("plain", "Document"),
+        ("business-report", "Document"),
+        ("plain", "IB Report"),
+    ],
+)
+def test_written_title_equal_to_a_stand_in_is_not_replaced_by_the_first_heading(
+    tmp_path, profile, title
+):
+    source = f"---\nprofile: {profile}\ntitle: {title}\n---\n# Chapter\n\n가상 본문입니다.\n"
+    for path, model in _parse_both(source, profile).items():
+        assert model.metadata.title == title, path
+        assert not isinstance(model.metadata.title, DefaultTitle), path
+        output = _save(model, tmp_path / f"{path}.docx")
+        assert _core(output).title == title, path
+
+
+@pytest.mark.parametrize("profile", ["plain", "business-report"])
+@pytest.mark.parametrize(
+    "frontmatter", ["", "---\nprofile: {profile}\n---\n", '---\ntitle: ""\n---\n']
+)
+def test_untitled_general_document_still_takes_its_first_heading(tmp_path, profile, frontmatter):
+    """Unchanged: without a written title, a general profile's title is the first H1."""
+    source = frontmatter.format(profile=profile) + "# Chapter\n\n가상 본문입니다.\n"
+    for path, model in _parse_both(source, profile).items():
+        assert model.metadata.title == "Chapter", path
+        assert _core(_save(model, tmp_path / f"{path}.docx")).title == "Chapter", path
+
+
+@pytest.mark.parametrize("profile", ["ib-report", "ib-memo"])
+def test_untitled_ib_document_keeps_each_parsers_existing_title(tmp_path, profile):
+    """Unchanged: the file parser takes the first H1; the text parser keeps the stand-in."""
+    source = f"---\nprofile: {profile}\n---\n# Chapter\n\n가상 본문입니다.\n"
+    models = _parse_both(source, profile)
+
+    assert models["parse_markdown_file"].metadata.title == "Chapter"
+    assert _core(_save(models["parse_markdown_file"], tmp_path / "file.docx")).title == "Chapter"
+    stand_in = models["parse"].metadata.title
+    assert isinstance(stand_in, DefaultTitle)
+    assert stand_in == "IB Report"
+    assert _core(_save(models["parse"], tmp_path / "text.docx")).title == ""

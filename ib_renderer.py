@@ -702,7 +702,11 @@ class IBDocumentRenderer:
         if model.metadata.profile != resolved.profile.name:
             old_defaults = default_metadata(model.metadata.profile)
             new_defaults = default_metadata(resolved.profile.name)
-            for field_name in ("title", "company", "sector", "analyst"):
+            # A title is a stand-in by its mark, never by its text: "Document" given
+            # through the API stays the title under another profile.
+            if isinstance(model.metadata.title, DefaultTitle):
+                model.metadata.title = new_defaults.title
+            for field_name in ("company", "sector", "analyst"):
                 if getattr(model.metadata, field_name) == getattr(old_defaults, field_name):
                     setattr(model.metadata, field_name, getattr(new_defaults, field_name))
             model.metadata.profile = resolved.profile.name

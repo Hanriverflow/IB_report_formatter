@@ -5,7 +5,14 @@ import re
 
 import yaml
 
-from document_model import DocumentMetadata, DocumentModel, ElementType, Heading, Paragraph
+from document_model import (
+    DefaultTitle,
+    DocumentMetadata,
+    DocumentModel,
+    ElementType,
+    Heading,
+    Paragraph,
+)
 from document_profiles import default_metadata
 from input_safety import StrictValidationError, document_validation, load_yaml
 
@@ -214,9 +221,9 @@ def _infer_metadata_from_elements(
     """Backfill metadata from document content when frontmatter is absent or partial."""
     metadata = model.metadata
 
-    # Display runs exist only for a title written with a term reference; such a
-    # title is explicit even when its value equals the default.
-    if metadata.title == "IB Report" and "title" not in metadata.display_runs:
+    # Only the profile's stand-in gives way to the first H1. A written title, even
+    # "IB Report" or one made by a term reference, is a plain string and stays.
+    if isinstance(metadata.title, DefaultTitle):
         first_heading = next(
             (
                 element.content.text.strip()
