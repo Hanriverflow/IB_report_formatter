@@ -43,6 +43,7 @@ Add `checks:` only for relationships actually specified by the source or clearly
 - Keep every row's cell count equal to its header. Use `<br>` for multiple lines inside a cell and escape literal pipes. Preserve blanks.
 - `| 구 분 | << | 내 용 |` creates two label columns. `<<` merges left and `^^` merges upward; only rectangular groups within the header or body are allowed. Do not merge across that boundary. Escape literal markers with backslash.
 - `header_rows` repeats the declared leading rows. Set `columns` roles explicitly for codes, dates or numeric schedules; do not rely on financial meaning inference.
+- Rule and embolden a totals or subtotal row only when the source table has one: list its one-based body row (the first row after the header rows is 1) in `total_rows` or `subtotal_rows`. A row is never styled because it reads `합 계`, and `schedule.total` only checks. In a `type: financial` table, `negative: paren|minus|triangle` restyles each cell that is one negative amount and turns off the automatic red; keep the source's notation unless the user asks for one.
 - A `schedule` uses one-based column indexes and the stated table unit. Author only source-supported dates and repayment amounts; holiday adjustment and repayment terms are not inferred from the sample.
 - A customer-confirmation box uses an empty closed `confirmation` fence only when the house/frontmatter contains its wording. Omit the box if not requested; never invent a signature, consent or approval.
 

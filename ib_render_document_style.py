@@ -734,6 +734,29 @@ class TableStyler:
         insert_ordered(tcPr, shd)
 
     @staticmethod
+    def set_cell_border(tc, edge: str, value: str, size: int, hex_color: str) -> None:
+        """Set one edge of one `w:tc`, replacing that edge, in schema order.
+
+        Args:
+            tc: The cell element; a covered merge cell is its own `w:tc`.
+            edge: `top` or `bottom`.
+            value: Border style, for example `single` or `double`.
+            size: Width in eighths of a point.
+            hex_color: Six-digit RGB colour without a leading `#`.
+        """
+        tc_pr = tc.get_or_add_tcPr()
+        borders = tc_pr.find(qn("w:tcBorders"))
+        if borders is None:
+            borders = OxmlElement("w:tcBorders")
+            insert_ordered(tc_pr, borders)
+        border = OxmlElement(f"w:{edge}")
+        border.set(qn("w:val"), value)
+        border.set(qn("w:sz"), str(size))
+        border.set(qn("w:space"), "0")
+        border.set(qn("w:color"), hex_color)
+        insert_ordered(borders, border)
+
+    @staticmethod
     def set_table_borders(table):
         """Apply IB-style borders to table"""
         tbl = table._tbl

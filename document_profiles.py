@@ -7,6 +7,10 @@ Changelog (feature port):
 Changelog (term-sheet foundation):
     - Register term-sheet metadata/style contracts and explicit table span options.
     - Accept a text-only table `note` in every profile.
+
+Changelog (IB table rules):
+    - NEW: explicit `total_rows` / `subtotal_rows` body-row lists in every profile.
+    - NEW: per-table `negative` style (paren, minus, triangle) for `type: financial` tables.
 """
 
 import math
@@ -580,6 +584,10 @@ def header_labels(rows: Sequence[Sequence[str]]) -> list[str]:
     return labels
 
 
+# Table spec `negative`: (1,234), -1,234 or △1,234 in place of the written form and red.
+NEGATIVE_STYLES = ("paren", "minus", "triangle")
+
+
 def apply_table_specs(model: DocumentModel) -> None:
     """Apply explicit table semantics in document order, never infer a base case."""
     tables = [
@@ -618,6 +626,9 @@ def apply_table_specs(model: DocumentModel) -> None:
             "note",
             "header_rows",
             "schedule",
+            "total_rows",
+            "subtotal_rows",
+            "negative",
         }
         if unknown:
             raise ValueError("Unknown table settings: {}".format(", ".join(sorted(unknown))))
@@ -635,6 +646,20 @@ def apply_table_specs(model: DocumentModel) -> None:
                     cell.is_header = row.is_header
         if "schedule" in spec:
             table.schedule = _schedule_spec(spec["schedule"], table.col_count)
+        body_rows = len(table.rows) - table.header_rows
+        for key in ("total_rows", "subtotal_rows"):
+            if key in spec:
+                setattr(table, key, _body_row_list(spec[key], key, body_rows))
+        shared = sorted(set(table.total_rows) & set(table.subtotal_rows))
+        if shared:
+            raise ValueError(f"Table body row {shared[0]} is in both total_rows and subtotal_rows")
+        if "negative" in spec:
+            # Display only: the amount is unchanged and red is dropped (owner decision D4).
+            if not isinstance(spec["negative"], str) or spec["negative"] not in NEGATIVE_STYLES:
+                raise ValueError("Table negative must be paren, minus or triangle")
+            if spec.get("type") != "financial":
+                raise ValueError("Table negative requires type: financial in the same spec")
+            table.negative = spec["negative"]
         if "spans" in spec:
             if not isinstance(spec["spans"], bool):
                 raise ValueError("Table spans must be true or false")
@@ -713,6 +738,31 @@ def apply_table_specs(model: DocumentModel) -> None:
             if table.table_type != TableType.BEP_SENSITIVITY:
                 raise ValueError("base_case requires a sensitivity table")
             table.rows[table.header_rows - 1 + row].cells[column - 1].is_base_case = True
+
+
+def _body_row_list(raw: Any, key: str, body_rows: int) -> list[int]:
+    """Validate an explicit list of one-based body rows (`total_rows`, `subtotal_rows`).
+
+    Args:
+        raw: The YAML value; integers only, never inferred from cell text.
+        key: Specification key, for the message.
+        body_rows: Number of rows after the header rows.
+
+    Returns:
+        The rows in the order written.
+
+    Raises:
+        ValueError: Not a list, a value that is not an integer from 1 to `body_rows`,
+            or a row listed twice.
+    """
+    if not isinstance(raw, list) or any(
+        type(row) is not int or not 1 <= row <= body_rows for row in raw
+    ):
+        raise ValueError(f"Table {key} must be a list of body row numbers from 1 to {body_rows}")
+    for index, row in enumerate(raw):
+        if row in raw[:index]:
+            raise ValueError(f"Table {key} lists body row {row} twice")
+    return list(raw)
 
 
 _SCHEDULE_KEYS = {

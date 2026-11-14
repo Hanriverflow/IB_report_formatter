@@ -459,6 +459,9 @@
         "label_columns": null,
         "note": "",
         "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
         "schedule": null
       },
       "raw_text": "| 문서 유형 | 작성 건수 | 확인 사항 |\n|---|---|---|\n| 대외공문 | 12 | 수신·붙임 정보 확인 |\n| 업무보고 | 8 | 표 단위·출처 명시 |\n| 회의록 | 5 | 결정사항·담당자 구분 |",
@@ -808,6 +811,9 @@
         "label_columns": null,
         "note": "",
         "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
         "schedule": null
       },
       "raw_text": "| 업무 | 담당자 | 기한 |\n|---|---|---|\n| 부서 의견 수렴 | 경영기획팀 | 2026-09-21 |\n| 표준 양식 확정 | | 2026-09-28 |",

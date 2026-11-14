@@ -149,6 +149,7 @@ from office_layout import (
     add_text,
     letter_appendix_index,
     letter_numbering_warnings,
+    letter_partial_table_bold,
     letter_partial_table_row,
     render_office_closing,
     render_office_opening,
@@ -610,6 +611,8 @@ class IBDocumentRenderer:
         )
         self.separator_mode = separator_mode
         self.errors: list[str] = []
+        # Rendering notes that never reject a document, strict or not.
+        self.warnings: list[str] = []
         self.charts = False
         self.term_sheet_texts: TermSheetTexts | None = None
         self._term_sheet = False
@@ -618,6 +621,7 @@ class IBDocumentRenderer:
     def _reset_document(self) -> None:
         self.doc: DocxDocument = Document()
         cast(Any, self.doc.part)._ib_render_errors = self.errors
+        cast(Any, self.doc.part)._ib_render_warnings = self.warnings
         self._bookmark_id = 0
         self.styler = DocumentStyler(self.doc)
         self.cover_renderer = CoverRenderer(self.doc)
@@ -654,6 +658,9 @@ class IBDocumentRenderer:
             The rendered document; strict rejections occur before callers can save it.
         """
         self._composing = False
+        # A fresh list on entry: a render rejected before composition must not
+        # leave the previous document's warnings behind.
+        self.warnings = []
         try:
             return self._render_model(model, asset_roots=asset_roots, limits=limits)
         except ConversionRejection:
@@ -757,6 +764,7 @@ class IBDocumentRenderer:
             appendix_index = letter_appendix_index(model)
             status = document_status(model.metadata)
             partial_table_row = letter_partial_table_row(model, appendix_index)
+            partial_table_bold = letter_partial_table_bold(model, appendix_index, partial_table_row)
         model.warnings.extend(letter_numbering_warnings(model))
         if resolved.strict and model.warnings:
             raise StrictValidationError("Input validation failed: ", model.warnings)
@@ -836,7 +844,9 @@ class IBDocumentRenderer:
             for idx, element in enumerate(model.elements):
                 if idx == appendix_index:
                     with _metadata_text("closing"):
-                        render_office_closing(self.doc, model.metadata, partial_table_row)
+                        render_office_closing(
+                            self.doc, model.metadata, partial_table_row, partial_table_bold
+                        )
                     office_closed = True
                     self.doc.add_page_break()
                     label = model.metadata.extra["letter"].get("appendix_label")
@@ -869,7 +879,9 @@ class IBDocumentRenderer:
                     )
             if not office_closed:
                 with _metadata_text("closing"):
-                    render_office_closing(self.doc, model.metadata, partial_table_row)
+                    render_office_closing(
+                        self.doc, model.metadata, partial_table_row, partial_table_bold
+                    )
             if model.footnotes:
                 self.footnote_renderer.render(
                     model.footnotes, allow_legacy_refs=resolved.profile.is_ib

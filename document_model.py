@@ -5,6 +5,7 @@ Changelog (quality hardening):
     - Add chart specifications with retained source for opt-in rendering.
     - Retain original confirmation fences for lossless term-sheet fallback.
     - Carry an optional table note rendered below the table in every profile.
+    - Carry explicit totals/subtotal body rows and a per-table negative-number style.
 """
 
 from dataclasses import dataclass, field
@@ -217,6 +218,10 @@ class Table:
     label_columns: int | None = None  # shaded leading label columns (term-sheet layout)
     note: str = ""  # table spec `note`: short right-aligned text below the table
     header_rows: int = 1  # leading rows drawn and repeated as the header (spec `header_rows`)
+    # One-based body rows from table specs `total_rows` / `subtotal_rows`; never inferred.
+    total_rows: list[int] = field(default_factory=list)
+    subtotal_rows: list[int] = field(default_factory=list)
+    negative: str | None = None  # table spec `negative`: paren, minus or triangle; None keeps red
     schedule: dict[str, Any] | None = None  # validated table spec `schedule` (repayment checks)
 
 

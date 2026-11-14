@@ -20,6 +20,7 @@ Next-step research roadmap (owner decisions D1–D5 and candidate work E1–E17;
 Input-loss, save-safety and performance hardening: `docs/verification-20260929.md`.
 Term-sheet profile and term variables: design `docs/term-sheet-design-20260929.md`, plan `docs/term-sheet-plan-20260929.md` (§2 decisions override the design), verification `docs/verification-term-sheet-20260929.md`.
 Asset path restriction, input limits, Word schema gate, snapshot and property tests (roadmap E1–E3): verification `docs/verification-20261110.md`.
+IB table rules (roadmap E6: totals/subtotal rows, per-table negative style, owner decision D4): verification `docs/verification-ib-table-rules-20261114.md`.
 Document properties and DRAFT watermark (roadmap E8): verification `docs/verification-document-properties-20261114.md`.
 Office-letter precision (roadmap E7: attachments, `이하 빈칸`, item symbols): verification `docs/verification-office-letter-20261114.md`.
 
@@ -93,6 +94,7 @@ The `md_parse_*.py` and `ib_render_*.py` files are internal. Import from `md_par
 - Keep styles immutable and scoped. Do not replace a process-global style instance, capture theme-dependent values in default arguments, or cache styles across requests.
 - Use one renderer per concurrent job. CLI/API/registry must share `IBDocumentRenderer.render`; do not reintroduce a second document assembler.
 - Tables use ordered YAML specifications. Never guess a sensitivity table's base case: use explicit one-based body-row/column coordinates.
+- Totals and subtotal rules (`total_rows`, `subtotal_rows`) apply only to the one-based body rows a spec lists, in every profile; never infer them from text such as `합계` or from `schedule.total`. A spec's `negative` style (`paren`, `minus`, `triangle`, `type: financial` only) changes how negative amounts look, never their digits or units; without it negatives keep their written form and red (owner decision D4, 2026-11-14). It reads a cell's whole text once and restyles only a cell that is exactly one negative amount; an amount split across differently formatted runs (bold, italic, superscript or subscript pieces; space-only runs and footnote markers before or after the amount, in any order and number, are not part of it and keep their own text, format and place) keeps its text and gets a rendering warning (`IBDocumentRenderer.warnings`, reset on every `render` call) that never rejects. An amount whose integer part has a leading zero is not restyled: it keeps the existing number formatting and the text of a table without the option, which drops those zeros in some forms (`-0001200`, `(0001.20)%`, `-00.5`); a split amount still warns; full-width digits are read as the formatting without the option reads them. Currency signs, a space after the sign or inside the parentheses, `-.5`, exponents, full-width parentheses, `USD`/`%p` suffixes, a footnote marker before the amount (a split amount after one still warns) and a wholly superscript amount are not restyled (`백만원`, `천원`, `bp` are). It turns off only the automatic red, which without the option covers an author-written colour (existing behaviour); with it author-written colours show, and link colours stay in both cases. Alignment, column kinds and widths are judged on the written text. Hand-built cell borders go through `TableStyler.set_cell_border` (schema-ordered `w:tcBorders`).
 - Preserve blank cells, escapes, codes, dates and numeric presentation. Percent/bps/multiple roles do not rescale numeric values.
 - Strict mode rejects known input loss or rendering failures before saving. Diagnostics do not establish visual or financial correctness.
 - Changes to output must have regression tests through actual parsing/rendering and, for layout changes, representative page inspection.
@@ -452,6 +454,8 @@ Claude settings are in `.claude/settings.local.json` for allowed permissions.
 - **Financial tables**: Automatic thousand separator formatting
 - **Negative numbers**: Red color, parentheses support
 - **Sensitivity tables**: Explicit-coordinate base case highlighting only
+- **Totals and subtotals**: rules and bold on listed body rows only (`total_rows`, `subtotal_rows`)
+- **Negative style**: optional per financial table (`negative: paren|minus|triangle`; turns off only the automatic red); default red as written
 - **Risk matrices**: Color-coded risk levels
 - **HTML tables** (converter output): `colspan`/`rowspan` become span markers; rows the header spans cover stay header rows
 - **Header rows**: table spec `header_rows` draws, merges and repeats several header rows in every profile
