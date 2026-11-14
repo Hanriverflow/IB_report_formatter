@@ -20,6 +20,7 @@ Next-step research roadmap (owner decisions D1–D5 and candidate work E1–E17;
 Input-loss, save-safety and performance hardening: `docs/verification-20260929.md`.
 Term-sheet profile and term variables: design `docs/term-sheet-design-20260929.md`, plan `docs/term-sheet-plan-20260929.md` (§2 decisions override the design), verification `docs/verification-term-sheet-20260929.md`.
 Asset path restriction, input limits, Word schema gate, snapshot and property tests (roadmap E1–E3): verification `docs/verification-20261110.md`.
+Table and figure numbers and cross-references (roadmap E5): verification `docs/verification-captions-crossrefs-20261114.md`.
 
 ## Quick reference
 
@@ -153,6 +154,17 @@ Regression coverage is in `tests/test_md_parser.py` (soft wrap merge, hard-break
 - A backslash escapes any ASCII punctuation character (`TextParser._ESCAPE_RE`). Inside code spans, link destinations and text between dollar signs only the earlier set applies (`_LEGACY_ESCAPE_RE`), so LaTeX commands such as `\%` and `\,` survive in every context. Keep both rules together when adding a path that resolves escapes.
 - The table row splitter resolves only an escaped pipe; the cell's inline parse resolves every other escape once.
 - Edge cases are pinned in `tests/test_markdown_proposals.py`.
+
+### Table and figure numbers and cross-references (2026-11)
+
+- Only a table whose spec has `id: tbl-…` and a caption, or an image-file line ending in `{#fig-…}` with a description, gets a number. Without an ID the output is unchanged; existing sample snapshots must not change.
+- An ID is `tbl-` or `fig-` followed by lowercase letters and digits, words joined by hyphens, at most 35 characters. Underscores are refused because the hidden bookmark is `_Ref_` plus the ID with hyphens turned into underscores.
+- A caption is the label run, a `SEQ 표 \* ARABIC` (or `SEQ 그림`) field and `. ` before the title, with the bookmark around label and number. A reference `@tbl-…` / `@fig-…` is `REF _Ref_… \h \* CHARFORMAT`. Word does not recompute fields when it opens or prints a document, so every field carries the correct cached result; keep the format switch, or Word copies the caption's formatting into the body after F9.
+- Labels are `표` and `그림` in every profile. No chapter numbers, lists of tables or figures, page references or automatic numbering of tables without an ID (owner decisions, 2026-11-14).
+- The new model types are subclasses (`NumberedTable`, `Figure`, `CaptionNumber`, `CrossReference`) so documents without the feature keep their model snapshot; do not add fields to existing dataclasses for this. Numbers are assigned once per render in `IBDocumentRenderer._caption_numbers`; element renderers take the caption prefix from `caption_prefix`.
+- A reference where no field can go (title, subtitle, image description, footnote, link text), to an unknown ID, or malformed stays text with a diagnostic and is rejected in strict mode. Table spec `id` errors reject in both modes like other table spec errors.
+- `docx-audit` reports a REF/PAGEREF field without its bookmark as an issue and a stale cached reference or caption number as a warning.
+- Tests: `tests/test_captions_crossrefs.py`; sample `samples/qa/captions.md`.
 
 ## Dependencies
 

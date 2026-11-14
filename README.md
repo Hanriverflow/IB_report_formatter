@@ -391,6 +391,31 @@ Without roles, a column is numeric (right-aligned) when most of its first body v
 
 Sensitivity highlighting is **explicit only**: row 1 is the first data row; columns are one-based and include the label column. The old guessed centre-cell highlight is removed. Risk highlighting recognises supported risk headers and levels such as high/medium/low or 높음/중간/낮음.
 
+## Table and figure numbers and cross-references
+
+Give a table or figure an ID and the engine writes its caption as Word's Insert Caption command does: `표 1. Title`, `그림 1. Description`. The number is a Word `SEQ` field holding the number the engine worked out, and a body reference is a Word cross-reference (`REF` field) holding `표 1`. After someone inserts another table in Word and updates fields, later numbers and references follow. Tables and figures without an ID render exactly as before.
+
+```yaml
+tables:
+  - id: tbl-results        # tbl-, then lowercase letters and digits; words joined by hyphens
+    caption: 연도별 실적
+    unit: 억원
+```
+
+```markdown
+![거래 구조도](structure.png){#fig-structure}
+
+@tbl-results에서 보듯 매출이 늘었다. 구조는 @fig-structure 참조.
+```
+
+- Tables take `id: tbl-…` in their table spec and need a `caption`. Figures take `{#fig-…}` at the end of an image file line and need a description. Embedded Base64 images, images inside table cells, charts and diagrams are not numbered.
+- Tables and figures are counted separately from the start of the document; there are no chapter numbers (`표 2-1`). The labels are `표` and `그림` in every profile.
+- `@tbl-…` and `@fig-…` become cross-references in paragraphs, lists, quotes, headings, table cells and table caption/unit/source/note text. A Korean particle may follow the ID directly. Code, math, link destinations, an `@` with a letter before it (an e-mail address) and an escaped `\@` stay literal.
+- Word does not update these fields on opening or print preview (checked with Word 16 on Windows); select all and press F9 after editing. The cached values are correct until then.
+- Korean Word has no built-in `그림` caption label. To continue figure numbers with Word's Insert Caption, create the label `그림` once (References › Insert Caption › New Label).
+- Strict mode rejects a reference to an unknown ID, a repeated figure ID, a malformed reference, a reference inside link text, and a reference in a figure description, the document title, the subtitle or a footnote, where no Word field can go; the default mode keeps such text literal and reports it. A malformed figure ID keeps the line as text and is rejected in strict mode. Table spec `id` errors (shape, repetition, missing caption) reject the document in both modes, like other table spec errors.
+- `docx-audit` reports a reference whose target bookmark is missing as an issue and a stale reference or caption number (fields not yet updated) as a warning.
+
 ## Allowed asset folders, input limits and rejections
 
 **The image/logo path restriction changes earlier behaviour:** a local image that previously loaded can now be rejected if it is outside the allowed folders. For a Markdown file, its own folder and subfolders are allowed by default. Markdown text or a stream without a source file, and a directly constructed document model, have no default allowed folder; the current working directory is not implicitly allowed.
