@@ -13,6 +13,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Emu, Inches, Pt, RGBColor
+from docx.text.font import Font
 
 from ib_render_document_style import TableStyler
 from ib_render_fonts import FontStyler
@@ -147,6 +148,7 @@ class TableRenderer:
             word_row._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
         # Apply borders
         TableStyler.set_table_borders(word_table)
+        self._apply_row_rules(word_table, table)
 
         if table.source:
             paragraph = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
@@ -296,6 +298,7 @@ class TableRenderer:
                     )
                     line_counts[row_index] = max(line_counts[row_index], lines)
         self._mirror_vertical_fills(word_table, rectangles)
+        self._apply_row_rules(word_table, table)
         for row_index, word_row in enumerate(word_table.rows):
             header = row_index < table.header_rows
             set_row_pagination(
@@ -505,6 +508,45 @@ class TableRenderer:
                 word_cell, cell_data, row_index, table.table_type, fill=self._ordered_fill
             )
         return texts, size
+
+    # Rule widths in eighths of a point: 0.75pt single above, 0.5pt double below.
+    _RULE_SIZE = 6
+    _DOUBLE_RULE_SIZE = 4
+
+    @classmethod
+    def _apply_row_rules(cls, word_table, table: Table) -> None:
+        """Rule and embolden only the body rows named by `subtotal_rows` / `total_rows`.
+
+        Each named row gets a single rule above it, drawn on its own top edge and on
+        the bottom edge of the row above so neither cell's lighter grid line wins;
+        a totals row also gets a double rule below. Every `w:tc` of the row is
+        ruled, including covered merge cells, and every run is bold. The colour is
+        the profile's table accent (`STYLE.NAVY_HEX`). Rows are never inferred from
+        their text; a table without either list is left exactly as it was.
+
+        Args:
+            word_table: Rendered table whose cells are already filled.
+            table: Parsed table with one-based body-row lists.
+        """
+        marked = [*table.subtotal_rows, *table.total_rows]
+        if not marked:
+            return
+        rows = word_table.rows
+        color = STYLE.NAVY_HEX
+        for body_row in marked:
+            index = table.header_rows + body_row - 1
+            for tc in rows[index]._tr.tc_lst:
+                TableStyler.set_cell_border(tc, "top", "single", cls._RULE_SIZE, color)
+                for run in tc.iter(qn("w:r")):
+                    Font(run).bold = True
+            if index > 0:
+                for tc in rows[index - 1]._tr.tc_lst:
+                    TableStyler.set_cell_border(tc, "bottom", "single", cls._RULE_SIZE, color)
+        # Totals last, so a double rule below is never replaced by the single
+        # rule above a following named row.
+        for body_row in table.total_rows:
+            for tc in rows[table.header_rows + body_row - 1]._tr.tc_lst:
+                TableStyler.set_cell_border(tc, "bottom", "double", cls._DOUBLE_RULE_SIZE, color)
 
     @staticmethod
     def _ordered_fill(cell, hex_color: str) -> None:

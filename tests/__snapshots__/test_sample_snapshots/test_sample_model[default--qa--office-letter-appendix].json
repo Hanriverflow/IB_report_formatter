@@ -585,6 +585,9 @@
         "label_columns": null,
         "note": "",
         "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
         "schedule": null
       },
       "raw_text": "| 관리번호 | 확인 항목 | 요청 사항 |\n|---|---|---|\n| 001234 | 운영실적 집계 | 담당 부서 확인 |\n| 005678 | 설비 운영계획 | 변경 사유 기재 |\n| 009012 | 인력 운영계획 | 제출 예정일 확인 |",
@@ -884,6 +887,9 @@
         "label_columns": null,
         "note": "",
         "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
         "schedule": null
       },
       "raw_text": "| 구분 | 내용 |\n|---|---|\n| 회신 기한 | 2026년 9월 25일 |\n| 회신처 | 업무지원팀 담당자<br>office@example.com |\n| 파일명 | 회사명_자료보완_작성일 |",

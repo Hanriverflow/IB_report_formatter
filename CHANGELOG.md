@@ -33,6 +33,9 @@ Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Bet
 - Every profile declares Korean (`ko-KR`) as the East Asian language in the document defaults; term-sheet already did. Word no longer breaks a line inside a Korean word after `㈜` or a closing `」` (`가나다㈜⏎는`, `「신탁법」⏎에`). Latin text keeps `en-US`, and term-sheet output is unchanged. Verification: `docs/verification-korean-typesetting-20261114.md`.
 - `ib-report` and `ib-memo` turn off Word's automatic spacing between Korean and Latin text or digits, as the other five profiles already did: `2025 년`, `300 억원`, `SPC 는` now print as `2025년`, `300억원`, `SPC는`. Page counts of the samples are unchanged.
 
+### IB table rules (opt-in, no change to existing output)
+- Table specs take `total_rows` and `subtotal_rows`: lists of one-based body rows (the first row after the header rows is 1). A subtotal row gets a single rule above and bold text; a totals row also gets a double rule below. Rules use the profile's table accent colour and work in every profile. Rows are never inferred from text such as `합계`; `schedule.total` still only checks. Row numbers that are not integers, are out of range, repeat, or appear in both lists are rejected in strict and non-strict mode.
+
 ### Fixes
 - `w:updateFields` is inserted at its schema position in `settings.xml` in every profile. Output changes only in element order.
 - Logo paths written with percent-encoding are resolved and judged candidate by candidate, like body images. A relative logo path is made absolute without following links, so a Windows drive-relative path (`Z:logo.png`) keeps working.

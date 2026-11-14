@@ -791,6 +791,9 @@
         "label_columns": 2,
         "note": "",
         "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
         "schedule": null
       },
       "raw_text": "| 구 분 | << | 내 용 |\n|---|---|---|\n| 차주 | << | {{company}} |\n| 대출 | 약정금액 | {{amount}} |\n| ^^ | 적용금리 | 연 {{rate}} (가상 고정금리) |\n| ^^ | 실행·만기 | • 실행예정일: {{first_draw}}<br>• 최종만기일: {{maturity}} |\n| 자금용도 | << | • 원재료 구매 및 운전자금<br>• 실제 사용범위는 최종 약정에서 확정 |\n| 선행조건 | << | • 내부 승인 및 최종 계약 체결<br>• 필요한 서류 제출과 선행조건 충족 |",
@@ -1298,6 +1301,9 @@
         "label_columns": 0,
         "note": "※ 이자·수수료 및 실제 영업일 조정은 포함하지 않은 가상 예시",
         "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
         "schedule": {
           "repayment": 2,
           "balance": 3,

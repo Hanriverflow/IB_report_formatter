@@ -409,6 +409,9 @@
         "label_columns": null,
         "note": "",
         "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
         "schedule": null
       },
       "raw_text": "| 항목 | 코드 | 참고 |\n|---|---|---|\n| 첫 항목 | 001234 | 빈칸과 코드를 보존 |\n| 둘째 항목 | | A\\|B |",
