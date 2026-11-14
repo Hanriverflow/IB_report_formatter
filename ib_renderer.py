@@ -2,6 +2,10 @@
 IB Renderer Module for Word Report Generation
 Handles styling and rendering of document elements in IB Bank style.
 
+Changelog (captions):
+    - Tables and figures with IDs are numbered in document order before
+      composition; their captions open with `표 1. ` / `그림 1. `.
+
 Changelog (property-test regressions):
     - Heading bold-marker removal skips code spans and escaped characters, and
       escapes are resolved once; other headings render as before.
@@ -86,7 +90,16 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Mm, Pt
 
-from document_model import Chart, ConfirmationBlock
+from document_model import (
+    CAPTION_LABELS,
+    CaptionNumber,
+    Chart,
+    ConfirmationBlock,
+    Figure,
+    NumberedTable,
+    caption_bookmark_name,
+    reference_id_problem,
+)
 from document_profiles import (
     RenderOptions,
     default_metadata,
@@ -113,6 +126,7 @@ from ib_render_media import ImageRenderer as ImageRenderer
 from ib_render_media import LaTeXRenderer as LaTeXRenderer
 from ib_render_tables import _BLACK as _BLACK
 from ib_render_tables import TableRenderer as TableRenderer
+from ib_render_text import CaptionNumbers, caption_prefix, use_caption_numbers
 from ib_render_text import TextRenderer as TextRenderer
 from input_safety import (
     ConversionRejection,
@@ -772,6 +786,7 @@ class IBDocumentRenderer:
             use_style(style_values),
             collect_raster_font_diagnostics() as font_warnings,
             collect_term_runs(resolved.term_tags) as term_runs,
+            use_caption_numbers(self._caption_numbers(model)),
         ):
             self.styler.setup_document()
             self.styler.create_styles()
@@ -1008,6 +1023,54 @@ class IBDocumentRenderer:
         normalized = cls._SEMANTIC_BOOKMARK_EXTRA_RE.sub("_", (extra or "").strip().lower())
         return normalized.strip("_")
 
+    def _caption_numbers(self, model: DocumentModel) -> CaptionNumbers:
+        """Number tables and figures with IDs in document order, before composition.
+
+        Tables and figures are counted separately, as Word's `SEQ 표` and
+        `SEQ 그림` fields count them. A repeated ID is a diagnostic: the later
+        caption keeps its number (so Word's count still matches) but gets no
+        bookmark, and references resolve to the first.
+
+        Args:
+            model: The render's own copy of the model, after title filtering.
+
+        Returns:
+            The numbers by model object and by ID, with this render's bookmark
+            allocator and diagnostic sink.
+        """
+        numbers = CaptionNumbers(next_bookmark_id=self._next_bookmark_id, errors=self.errors)
+        counts = dict.fromkeys(CAPTION_LABELS, 0)
+        for element in model.elements:
+            content = element.content
+            if element.element_type == ElementType.TABLE and isinstance(content, NumberedTable):
+                kind, caption = "tbl", content.caption
+            elif element.element_type == ElementType.IMAGE and isinstance(content, Figure):
+                kind, caption = "fig", content.alt_text
+            else:
+                continue
+            problem = reference_id_problem(content.ref_id, kind)
+            if problem is None and not caption.strip():
+                problem = f"{content.ref_id!r} has no caption to number"
+            if problem is not None:
+                self.errors.append("Reference id " + problem)
+                continue
+            counts[kind] += 1
+            label = CAPTION_LABELS[kind]
+            repeated = content.ref_id in numbers.by_id
+            if repeated:
+                self.errors.append(
+                    f"Reference id {content.ref_id!r} is used by more than one table or figure"
+                )
+            number = CaptionNumber(
+                text=f"{label} {counts[kind]}",
+                label=label,
+                number=counts[kind],
+                bookmark="" if repeated else caption_bookmark_name(content.ref_id),
+            )
+            numbers.by_object[id(content)] = number
+            numbers.by_id.setdefault(content.ref_id, number)
+        return numbers
+
     def _next_bookmark_id(self) -> int:
         """Return the next bookmark ID for the current document."""
         self._bookmark_id += 1
@@ -1055,7 +1118,8 @@ class IBDocumentRenderer:
             self.callout_renderer.render(cast(Blockquote, element.content))
 
         elif etype == ElementType.IMAGE:
-            self.image_renderer.render(cast(Image, element.content))
+            image = cast(Image, element.content)
+            self.image_renderer.render(image, caption_prefix(image))
 
         elif etype == ElementType.LATEX_BLOCK:
             self._render_latex_block(cast(LaTeXEquation, element.content))

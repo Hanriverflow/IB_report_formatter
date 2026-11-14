@@ -33,6 +33,9 @@ Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Bet
 - Every profile declares Korean (`ko-KR`) as the East Asian language in the document defaults; term-sheet already did. Word no longer breaks a line inside a Korean word after `㈜` or a closing `」` (`가나다㈜⏎는`, `「신탁법」⏎에`). Latin text keeps `en-US`, and term-sheet output is unchanged. Verification: `docs/verification-korean-typesetting-20261114.md`.
 - `ib-report` and `ib-memo` turn off Word's automatic spacing between Korean and Latin text or digits, as the other five profiles already did: `2025 년`, `300 억원`, `SPC 는` now print as `2025년`, `300억원`, `SPC는`. Page counts of the samples are unchanged.
 
+### Table and figure numbers
+- A table spec `id: tbl-…` or an image file line ending in `{#fig-…}` numbers that table or figure: its caption reads `표 1. 제목` / `그림 1. 설명`, where the number is a Word `SEQ` field holding the number already worked out (tables and figures counted separately in document order) and a hidden bookmark spans `표 1`. Every profile, the term-sheet caption/unit line included. Documents without IDs are unchanged. A malformed, repeated or caption-less table `id` rejects the document; an unusable figure ID keeps the line as text and is rejected in strict mode.
+
 ### Fixes
 - `w:updateFields` is inserted at its schema position in `settings.xml` in every profile. Output changes only in element order.
 - Logo paths written with percent-encoding are resolved and judged candidate by candidate, like body images. A relative logo path is made absolute without following links, so a Windows drive-relative path (`Z:logo.png`) keeps working.

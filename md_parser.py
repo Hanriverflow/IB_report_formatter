@@ -3,6 +3,10 @@ MD Parser Module for IB Style Word Report Converter
 Handles parsing of Markdown files including frontmatter, elements, tables,
 LaTeX equations, Base64 images, and footnotes.
 
+Changelog (captions):
+    - NEW: `![설명](파일){#fig-…}` is a numbered figure; an unusable `{#…}` ending
+      keeps the line as text and becomes a model warning.
+
 Changelog (property-test regressions):
     - Use documented rejections for malformed declared YAML and invalid footnote IDs.
     - Diagnose XML-incompatible input before strict rendering reaches metadata.
@@ -112,6 +116,7 @@ from document_model import (
 from document_model import (
     ElementType as ElementType,
 )
+from document_model import Figure, reference_id_problem
 from document_model import (
     Footnote as Footnote,
 )
@@ -237,6 +242,8 @@ class MarkdownParser:
         r"^!\[(.*?)\]\(\s*(?:<([^>\n]+)>|([^\s]+?))"
         r"(?:\s+(?:\"[^\"\n]*\"|'[^'\n]*'))?\s*\)$"
     )
+    # The `{#…}` ending of a figure line; IMAGE_PATTERN then reads what precedes it.
+    _FIGURE_ID_RE = re.compile(r"\{#([^{}\s]*)\}$")
     TABLE_START_PATTERN = re.compile(r"^\|")
     _HTML_IMAGE_LINE_RE = re.compile(r"^<img\b[^<>]*>$", re.IGNORECASE)
     SEPARATOR_PATTERN = re.compile(r"^(---|## ---)$")
@@ -975,6 +982,12 @@ class MarkdownParser:
                 file_image = Image(alt_text=match.group(1), path=match.group(2) or match.group(3))
             elif self._HTML_IMAGE_LINE_RE.match(line):
                 file_image = HtmlTableParser.image(line)
+            else:
+                file_image, problem = self._parse_figure_line(line)
+                if problem is not None:
+                    self._parse_warnings.append(
+                        f"Line {i + 1}: {problem}; the line was kept as text"
+                    )
             if file_image is not None:
                 elements.append(
                     Element(element_type=ElementType.IMAGE, content=file_image, raw_text=line)
@@ -1050,8 +1063,41 @@ class MarkdownParser:
             or self.BULLET_PATTERN.match(line)
             or self.NUMBERED_LIST_PATTERN.match(line)
             or self.IMAGE_PATTERN.match(line)
+            or self._parse_figure_line(line)[0] is not None
             or self._is_reference_header(line)
         )
+
+    @classmethod
+    def _parse_figure_line(cls, line: str) -> tuple[Figure | None, str | None]:
+        """Read an image line ending in a Quarto-style ID, `![설명](파일){#fig-…}`.
+
+        Only a usable ID on a file image with a description makes a figure. Any
+        other `{#…}` ending keeps today's reading of the line as text, and is
+        reported so strict mode can reject it.
+
+        Args:
+            line: One stripped source line.
+
+        Returns:
+            The figure, or None; and the problem when the line names an ID that
+            cannot be used.
+        """
+        attribute = cls._FIGURE_ID_RE.search(line)
+        if attribute is None:
+            return None, None
+        image = cls.IMAGE_PATTERN.match(line[: attribute.start()])
+        if image is None:
+            return None, None
+        ref_id = attribute.group(1)
+        path = image.group(2) or image.group(3)
+        problem = reference_id_problem(ref_id, "fig")
+        if problem is None and path.startswith("data:"):
+            problem = f"{ref_id!r} is on an embedded image; figure ids need an image file"
+        if problem is None and not image.group(1).strip():
+            problem = f"{ref_id!r} needs an image description: its number is written before it"
+        if problem is not None:
+            return None, "Figure id " + problem
+        return Figure(alt_text=image.group(1), path=path, ref_id=ref_id), None
 
     def _normalize_paragraph_line(self, raw_line: str) -> tuple[str, bool]:
         """Normalize one paragraph source line and detect hard line breaks."""

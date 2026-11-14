@@ -16,7 +16,7 @@ from docx.shared import Emu, Inches, Pt, RGBColor
 
 from ib_render_document_style import TableStyler
 from ib_render_fonts import FontStyler
-from ib_render_text import TextRenderer
+from ib_render_text import TextRenderer, caption_prefix
 from md_parser import Table, TableCell, TableRow, TableType, TextParser, TextRun
 from render_styles import STYLE
 from term_sheet import (
@@ -94,22 +94,25 @@ class TableRenderer:
                 # A diagnosed failure must not leave later content in landscape.
                 self._end_landscape(previous_geometry)
             return
-        for text in [
-            table.caption,
-            " · ".join(
-                v
-                for v in [
-                    "단위: " + table.unit if table.unit else "",
-                    "기준일: " + table.as_of if table.as_of else "",
-                ]
-                if v
+        for text, prefix in [
+            (table.caption, caption_prefix(table)),
+            (
+                " · ".join(
+                    v
+                    for v in [
+                        "단위: " + table.unit if table.unit else "",
+                        "기준일: " + table.as_of if table.as_of else "",
+                    ]
+                    if v
+                ),
+                [],
             ),
         ]:
             if text:
                 paragraph = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
                 paragraph.paragraph_format.keep_with_next = True
                 TextRenderer.render_runs(
-                    paragraph, TextParser.parse_runs(text), font_size=STYLE.SMALL_SIZE
+                    paragraph, [*prefix, *TextParser.parse_runs(text)], font_size=STYLE.SMALL_SIZE
                 )
         word_table = self.doc.add_table(rows=row_count, cols=col_count)
         word_table.style = STYLE.STYLE_TABLE_GRID
@@ -230,7 +233,13 @@ class TableRenderer:
         row_count, col_count = len(table.rows), table.col_count
         available = positive_printable_width(self.doc.sections[-1], "Term-sheet table")
         add_table_heading(
-            self.doc, table.caption, table.unit, table.as_of, TextRenderer.render_runs, available
+            self.doc,
+            table.caption,
+            table.unit,
+            table.as_of,
+            TextRenderer.render_runs,
+            available,
+            prefix=caption_prefix(table),
         )
         word_table = self.doc.add_table(rows=row_count, cols=col_count)
         word_table.style = STYLE.STYLE_TABLE_GRID

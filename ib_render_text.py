@@ -1,14 +1,24 @@
-"""Inline text rendering: runs, links, footnote references and inline images and equations."""
+"""Inline text rendering: runs, links, footnote references and inline images and equations.
+
+Changelog (captions):
+    - Caption numbers: the label, a `SEQ` field with its cached number and a hidden
+      bookmark around both, from a render-scoped table of numbers.
+"""
 
 import logging
 import os
 import re
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, field, replace
 
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
+from document_model import CaptionNumber
 from ib_render_fonts import FontStyler
 from ib_render_footnotes import FootnoteRenderer
 from ib_render_media import ImageRenderer, LaTeXRenderer
@@ -18,6 +28,59 @@ from render_styles import STYLE
 from term_variables import register_term_run
 
 logger = logging.getLogger("ib_renderer")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CAPTION NUMBERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@dataclass
+class CaptionNumbers:
+    """The caption numbers of one render, worked out before composition.
+
+    Attributes:
+        by_object: Caption number of each numbered table or figure, keyed by the
+            `id()` of the model object in the render's own copy of the model.
+        by_id: The number each reference ID resolves to (its first definition).
+        next_bookmark_id: The document's bookmark ID allocator.
+        errors: The render's diagnostic sink.
+    """
+
+    by_object: dict[int, CaptionNumber] = field(default_factory=dict)
+    by_id: dict[str, CaptionNumber] = field(default_factory=dict)
+    next_bookmark_id: Callable[[], int] = lambda: 0
+    errors: list[str] = field(default_factory=list)
+
+
+_CAPTION_NUMBERS: ContextVar[CaptionNumbers | None] = ContextVar("ib_caption_numbers", default=None)
+
+
+@contextmanager
+def use_caption_numbers(numbers: CaptionNumbers) -> Iterator[CaptionNumbers]:
+    """Make `numbers` the caption numbers of the render running in this context."""
+    token = _CAPTION_NUMBERS.set(numbers)
+    try:
+        yield numbers
+    finally:
+        _CAPTION_NUMBERS.reset(token)
+
+
+def caption_prefix(item: object) -> list[TextRun]:
+    """Return the `표 1` and `. ` runs that open the caption of `item`, if numbered.
+
+    Args:
+        item: A table or image of the model being rendered.
+
+    Returns:
+        The number run and its separator, or an empty list outside a render or
+        for an item without a number.
+    """
+    numbers = _CAPTION_NUMBERS.get()
+    number = numbers.by_object.get(id(item)) if numbers is not None else None
+    if number is None:
+        return []
+    return [replace(number), TextRun(text=". ")]
 
 
 class TextRenderer:
@@ -60,6 +123,21 @@ class TextRenderer:
             if run_data.image is not None:
                 TextRenderer._render_inline_image(paragraph, run_data.image, font_size)
                 continue
+            if isinstance(run_data, CaptionNumber):
+                style = run_data
+
+                def apply(run, style: TextRun = style) -> None:
+                    run.font.name = font_name
+                    run.font.size = font_size
+                    run.font.bold = style.bold
+                    run.font.italic = style.italic
+                    color = TextRenderer._rgb_from_hex(style.color_hex) or default_color
+                    if color:
+                        run.font.color.rgb = color
+                    FontStyler.set_east_asian_font(run)
+
+                TextRenderer.write_caption_number(paragraph, run_data, apply)
+                continue
 
             run = paragraph.add_run(run_data.text)
             # Inline code keeps its literal text in a monospace Latin font.
@@ -90,6 +168,72 @@ class TextRenderer:
                 paragraph._p.append(link)
             elif run_data.term_key is not None:
                 register_term_run(run._r, run_data.term_key, run_data.text)
+
+    @staticmethod
+    def write_caption_number(paragraph, number: CaptionNumber, style: Callable[..., None]) -> None:
+        """Write `표 1` as Word's caption command does, styling every run alike.
+
+        The label is text and the number is a `SEQ` field whose cached result is
+        the number this render worked out, so the document reads correctly
+        before any field update. A hidden bookmark spans label and number, which
+        is what a reference to the caption shows.
+
+        Args:
+            paragraph: The caption paragraph.
+            number: The caption number; an empty `bookmark` writes no bookmark.
+            style: Applies the caption's run formatting to one python-docx run.
+        """
+        label = paragraph.add_run(number.label + " ")
+        style(label)
+        runs = TextRenderer._field_runs(
+            paragraph, f" SEQ {number.label} \\* ARABIC ", str(number.number), style
+        )
+        if not number.bookmark:
+            return
+        numbers = _CAPTION_NUMBERS.get()
+        bookmark_id = str(numbers.next_bookmark_id() if numbers is not None else 0)
+        start = OxmlElement("w:bookmarkStart")
+        start.set(qn("w:id"), bookmark_id)
+        start.set(qn("w:name"), number.bookmark)
+        end = OxmlElement("w:bookmarkEnd")
+        end.set(qn("w:id"), bookmark_id)
+        label._r.addprevious(start)
+        runs[-1]._r.addnext(end)
+
+    @staticmethod
+    def _field_runs(paragraph, instruction: str, result: str, style: Callable[..., None]) -> list:
+        """Append a complex field with a cached result; return its five runs.
+
+        Args:
+            paragraph: Paragraph receiving the field.
+            instruction: Field instruction, with its surrounding spaces.
+            result: Cached result shown until Word updates the field.
+            style: Applies run formatting to each run.
+
+        Returns:
+            The begin, instruction, separate, result and end runs.
+        """
+        runs = []
+        for kind, text in (
+            ("begin", None),
+            ("instr", instruction),
+            ("separate", None),
+            ("result", result),
+            ("end", None),
+        ):
+            run = paragraph.add_run(result if kind == "result" else None)
+            style(run)
+            if kind == "instr":
+                code = OxmlElement("w:instrText")
+                code.set(qn("xml:space"), "preserve")
+                code.text = text
+                run._r.append(code)
+            elif kind != "result":
+                char = OxmlElement("w:fldChar")
+                char.set(qn("w:fldCharType"), kind)
+                run._r.append(char)
+            runs.append(run)
+        return runs
 
     @staticmethod
     def _render_inline_image(paragraph, image: Image, font_size: Pt) -> None:

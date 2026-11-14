@@ -23,6 +23,9 @@ Changelog (A2 rendering):
       grid, table frame, caption/unit line, note, source and 4pt spacer.
     - Opening block, per-line body paragraphs, accent headings, document defaults,
       two-row confirmation box and per-section header/footer.
+
+Changelog (captions):
+    - The caption/unit line takes the caption number of a table with an ID.
 """
 
 import logging
@@ -778,7 +781,13 @@ def set_row_pagination(word_row: Any, keep_together: bool, repeat_header: bool) 
 
 
 def add_table_heading(
-    doc: Any, caption: str, unit: str, as_of: str, render_runs: RenderRuns, width: int
+    doc: Any,
+    caption: str,
+    unit: str,
+    as_of: str,
+    render_runs: RenderRuns,
+    width: int,
+    prefix: Sequence[TextRun] = (),
 ) -> None:
     """Caption at left and `(단위 : …, 기준일 : …)` at right, kept with the table.
 
@@ -789,6 +798,8 @@ def add_table_heading(
         as_of: Reference date text; may be empty.
         render_runs: Injected run renderer.
         width: Printable width of the current section in EMU (right tab stop).
+        prefix: Runs written before the caption in its formatting (the caption
+            number of a table with an ID); ignored without a caption.
     """
     details = ", ".join(
         part
@@ -800,7 +811,7 @@ def add_table_heading(
     paragraph = doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
     paragraph.paragraph_format.keep_with_next = True
     if caption:
-        runs = [replace(run, bold=True) for run in TextParser.parse_runs(caption)]
+        runs = [replace(run, bold=True) for run in [*prefix, *TextParser.parse_runs(caption)]]
         render_runs(paragraph, runs, default_color=STYLE.NAVY, font_size=STYLE.BODY_SIZE)
     if details:
         if caption:

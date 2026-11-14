@@ -7,6 +7,9 @@ Changelog (feature port):
 Changelog (term-sheet foundation):
     - Register term-sheet metadata/style contracts and explicit table span options.
     - Accept a text-only table `note` in every profile.
+
+Changelog (captions):
+    - A table spec `id` (`tbl-…`) numbers the table's caption; the caption is required.
 """
 
 import math
@@ -16,11 +19,19 @@ from dataclasses import dataclass, fields, replace
 from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, cast
 
 from docx.shared import Inches, Pt, RGBColor
 
-from document_model import DocumentMetadata, DocumentModel, ElementType, Table, TableType
+from document_model import (
+    DocumentMetadata,
+    DocumentModel,
+    ElementType,
+    NumberedTable,
+    Table,
+    TableType,
+    reference_id_problem,
+)
 from input_safety import InputLimits, document_validation, load_yaml, validate_xml_strings
 from numeric_checks import Quantity, ScheduleSpec, check_schedule, money_unit, read_quantity
 from render_styles import IBStyle
@@ -531,11 +542,13 @@ def header_labels(rows: Sequence[Sequence[str]]) -> list[str]:
 
 def apply_table_specs(model: DocumentModel) -> None:
     """Apply explicit table semantics in document order, never infer a base case."""
-    tables = [
-        e.content
+    table_elements = [
+        e
         for e in model.elements
         if e.element_type == ElementType.TABLE and isinstance(e.content, Table)
     ]
+    tables = [cast(Table, e.content) for e in table_elements]
+    table_ids: set[str] = set()
     specs = model.metadata.extra.get("tables", [])
     if not isinstance(specs, list) or len(specs) > len(tables):
         raise ValueError("tables must be a list with at most one specification per body table")
@@ -567,6 +580,7 @@ def apply_table_specs(model: DocumentModel) -> None:
             "note",
             "header_rows",
             "schedule",
+            "id",
         }
         if unknown:
             raise ValueError("Unknown table settings: {}".format(", ".join(sorted(unknown))))
@@ -662,6 +676,36 @@ def apply_table_specs(model: DocumentModel) -> None:
             if table.table_type != TableType.BEP_SENSITIVITY:
                 raise ValueError("base_case requires a sensitivity table")
             table.rows[table.header_rows - 1 + row].cells[column - 1].is_base_case = True
+        if "id" in spec:
+            table_elements[index].content = _numbered_table(table, spec["id"], table_ids)
+
+
+def _numbered_table(table: Table, ref_id: Any, seen: set[str]) -> NumberedTable:
+    """Validate a table spec `id` and return the table carrying it.
+
+    Args:
+        table: The table after its other settings were applied.
+        ref_id: The `id` value as written.
+        seen: IDs of earlier tables in this document; extended with `ref_id`.
+
+    Returns:
+        A copy of the table with the reference ID.
+
+    Raises:
+        ValueError: The ID is not text, is malformed or repeated, or the table has no caption.
+    """
+    if not isinstance(ref_id, str):
+        raise ValueError("Table id must be text")
+    problem = reference_id_problem(ref_id, "tbl")
+    if problem is not None:
+        raise ValueError("Table id " + problem)
+    if ref_id in seen:
+        raise ValueError(f"Table id {ref_id!r} is used by more than one table")
+    if not table.caption.strip():
+        raise ValueError(f"Table id {ref_id!r} needs a caption: its number is written before it")
+    seen.add(ref_id)
+    values = {item.name: getattr(table, item.name) for item in fields(table)}
+    return NumberedTable(**values, ref_id=ref_id)
 
 
 _SCHEDULE_KEYS = {

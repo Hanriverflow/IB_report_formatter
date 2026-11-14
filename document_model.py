@@ -5,8 +5,13 @@ Changelog (quality hardening):
     - Add chart specifications with retained source for opt-in rendering.
     - Retain original confirmation fences for lossless term-sheet fallback.
     - Carry an optional table note rendered below the table in every profile.
+
+Changelog (captions):
+    - Tables and figures with a reference ID (`NumberedTable`, `Figure`) and the
+      render-time caption number run; subclasses keep models without IDs unchanged.
 """
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
@@ -72,6 +77,20 @@ class TextRun:
     term_key: str | None = None  # set when the text is a substituted {{term}} value
     code: bool = False  # inline code span content (rendered monospace, without backticks)
     image: Optional["Image"] = None  # inline image (e.g. in a table cell); the text is empty
+
+
+@dataclass
+class CaptionNumber(TextRun):
+    """The `표 1` at the start of a numbered caption, built at render time.
+
+    `text` holds the label and number as displayed; the renderer writes the
+    label, a `SEQ` field whose cached result is `number`, and a hidden bookmark
+    around both.
+    """
+
+    label: str = ""
+    number: int = 0
+    bookmark: str = ""
 
 
 @dataclass
@@ -221,6 +240,17 @@ class Table:
 
 
 @dataclass
+class NumberedTable(Table):
+    """A table whose specification gives a reference ID (`tables[].id`).
+
+    A subclass rather than a field, so tables without an ID keep their model
+    exactly as before.
+    """
+
+    ref_id: str = ""
+
+
+@dataclass
 class Heading:
     """A heading element"""
 
@@ -279,6 +309,52 @@ class Image:
     path: str
     base64_data: str | None = None  # NEW (v3): Base64-encoded image data
     mime_type: str = "image/png"  # NEW (v3): MIME type for Base64
+
+
+@dataclass
+class Figure(Image):
+    """An image line with a reference ID (`![설명](파일){#fig-…}`), numbered in its caption."""
+
+    ref_id: str = ""
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CAPTION NUMBERS AND REFERENCE IDS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Word's caption labels, the same in every profile (owner decision 2026-11-14).
+CAPTION_LABELS = {"tbl": "표", "fig": "그림"}
+# Lowercase ASCII words joined by hyphens: the ID maps one-to-one onto a Word
+# bookmark name (`-` becomes `_`), and a Korean particle may follow it directly.
+REFERENCE_ID_RE = re.compile(r"(tbl|fig)-[a-z0-9]+(?:-[a-z0-9]+)*")
+# Word allows 40 characters in a bookmark name; `_Ref_` takes five.
+REFERENCE_ID_MAX_LENGTH = 35
+
+
+def reference_id_problem(ref_id: str, kind: str) -> str | None:
+    """Explain why `ref_id` cannot name a table or figure, or return None.
+
+    Args:
+        ref_id: The ID as written, without `#` or `@`.
+        kind: `tbl` for a table, `fig` for a figure.
+
+    Returns:
+        A diagnostic sentence, or None for a usable ID.
+    """
+    match = REFERENCE_ID_RE.fullmatch(ref_id)
+    if match is None or match.group(1) != kind:
+        return (
+            f"{ref_id!r} is not a {'table' if kind == 'tbl' else 'figure'} id: write {kind}- "
+            "followed by lowercase letters and digits, words joined by hyphens"
+        )
+    if len(ref_id) > REFERENCE_ID_MAX_LENGTH:
+        return f"{ref_id!r} is longer than {REFERENCE_ID_MAX_LENGTH} characters"
+    return None
+
+
+def caption_bookmark_name(ref_id: str) -> str:
+    """Return the hidden Word bookmark around a caption's label and number."""
+    return "_Ref_" + ref_id.replace("-", "_")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
