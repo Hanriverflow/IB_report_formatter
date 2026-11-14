@@ -257,8 +257,18 @@ def test_every_value_is_drawn_whole_or_named_in_a_warning(monkeypatch, data, wid
     check(monkeypatch, data, width)
 
 
-def test_small_stacked_segments_are_written_beside_the_bar(monkeypatch):
-    assert not [w for w in check(monkeypatch, SMALL_STACK) if "lack of room" in w]
+def test_small_stacked_segments_are_written_on_their_own_segment_or_named(monkeypatch):
+    # Third independent review: a value beside its bar must have its centre
+    # within its own segment's height. B's segments are 2 and 3 pixels high,
+    # so their values (which the first fix wrote beside the bar, level with
+    # each other) have no such place and are named; this replaces the pin
+    # that nothing is left out. Where a value may be drawn is measured in
+    # tests/test_chart_final_rule.py.
+    room = [w for w in check(monkeypatch, SMALL_STACK) if "lack of room" in w]
+    assert room == [
+        "Chart 'stacked_bar': 2 value(s) not written in the picture for lack of room: "
+        "B, Debt: 10; B, Bank: 20"
+    ]
 
 
 def test_sixteen_line_ends_all_fit_inside_a_taller_picture(monkeypatch):

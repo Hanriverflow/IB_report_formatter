@@ -8,17 +8,25 @@ and no frame, the legend in one row above the plot, line names at the line
 ends, decreases hatched, and tones chosen so that series stay apart in black
 and white. Values are formatted with `chart_renderer.format_value` and never
 rescaled; the only numbers the engine works out are the waterfall's running
-total and, when the spec asks with `totals: true`, a stack's total.
+total and, when the spec asks with `totals: true`, a stack's total. A line
+chart keeps a value axis; only ticks whose written number equals their
+position are kept. A legend too wide for one row takes more rows. Names are
+drawn as written: a `$` never starts mathematical notation.
 
 Changelog (E10):
     - NEW: stacked_bar, bar_line, range and hbar; bar, line and waterfall
       redrawn in the same style; tones chosen by grayscale distance.
+    - FIXED (third review, 2026-11-14): value labels keep clear of every line,
+      point marker, reference line and zero line, sit nearest to their own
+      mark, and a stacked value beside its bar is centred on its own segment
+      (the final rule, `_Drawer.fits`).
 """
 
 import logging
 import math
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from decimal import Context, Decimal
 from io import BytesIO
 from itertools import combinations
 from typing import Any
@@ -265,6 +273,12 @@ def spread(desired: Sequence[float], gap: float, low: float, high: float) -> lis
 # ═══════════════════════════════════════════════════════════════════════════════
 
 MAX_GAP = 16.0  # points: a value farther than this from its bar end or point is not on it
+# Points: a value's own bar or point may be at most this much farther from the
+# text's centre than the nearest other bar or point (the final rule, d).
+NEAREST_MARGIN = 3.0
+# Values this large are drawn at an exact power-of-two scale, so that the
+# plot's limits do not overflow; the numbers written are the original ones.
+SAFE_MAGNITUDE = 1e290
 
 
 @dataclass
@@ -278,8 +292,9 @@ class _Spot:
     - `end`: centred over the bar or point, at most `MAX_GAP` above or below it;
     - `side`: level with the bar or point, at most `MAX_GAP` beside it;
     - `beside`: a stacked segment's value beside its bar, inside the
-      category's own column (`slot`, data x), overlapping the segment's
-      height, above the baseline and in the stack's order;
+      category's own column (`slot`, data x), its centre within the
+      segment's height, above the baseline and not level with another value
+      written beside the same bar;
     - `free`: a line-end name or a reference line, which carries its name.
     """
 
@@ -301,8 +316,10 @@ class _Spot:
 class _Label:
     """A number the chart type writes: drawn at the first spot that fits, else reported.
 
-    `owners` are the bars it may touch (its own bar or stack); every other
-    bar is kept clear. `group` and `rank` order a stack's segment values.
+    `owners` are its own bars (its bar or its stack). `group` is the stack a
+    segment value belongs to. `role` is `line` for a line-end name and
+    `reference` for a reference line's text: a line left without one has no
+    name in the picture, which the warning says.
     """
 
     number: str
@@ -311,7 +328,7 @@ class _Label:
     spots: list[_Spot]
     owners: list[Any] = field(default_factory=list)
     group: int | None = None
-    rank: int = 0
+    role: str = "value"
 
     @property
     def where(self) -> str:
@@ -334,6 +351,95 @@ def _contains(outer: Any, inner: Any, tolerance: float = 0.5) -> bool:
         and inner.y0 >= outer.y0 - tolerance
         and inner.y1 <= outer.y1 + tolerance
     )
+
+
+def _crosses(box: Any, segment: tuple[float, float, float, float, float]) -> bool:
+    """Whether a drawn line segment (its width included) passes over a box.
+
+    Args:
+        box: The text's box in pixels.
+        segment: Start and end in pixels and half the line's width.
+    """
+    x0, y0, x1, y1, half = segment
+    grow = half + 0.5  # half a pixel more: the line's soft edge must stay off the text
+    left, right = box.x0 - grow, box.x1 + grow
+    bottom, top = box.y0 - grow, box.y1 + grow
+    if left >= right or bottom >= top:
+        return False
+    enter, leave = 0.0, 1.0
+    dx, dy = x1 - x0, y1 - y0
+    for step, room in ((-dx, x0 - left), (dx, right - x0), (-dy, y0 - bottom), (dy, top - y0)):
+        if step == 0:
+            if room <= 0:
+                return False
+            continue
+        at = room / step
+        if step < 0:
+            enter = max(enter, at)
+        else:
+            leave = min(leave, at)
+        if enter >= leave:
+            return False
+    return True
+
+
+def _away(box: Any, x: float, y: float) -> float:
+    """Distance in pixels from a point to a box (0 inside it)."""
+    return math.hypot(max(box.x0 - x, x - box.x1, 0.0), max(box.y0 - y, y - box.y1, 0.0))
+
+
+def plain(text: str) -> str:
+    """`text` for matplotlib with every `$` literal (no mathematical notation)."""
+    return text.replace("$", "\\$")
+
+
+def written(text: str) -> str:
+    """The text an artist shows, as the spec wrote it (undoes `plain`)."""
+    return text.replace("\\$", "$")
+
+
+def _safe_scale(spec: ChartSpec) -> tuple[ChartSpec, float]:
+    """The spec at a scale whose plot limits cannot overflow, and that scale.
+
+    Only values beyond `SAFE_MAGNITUDE` are scaled, by a power of two (exact);
+    `_Drawer.fmt` divides by the scale again, so the numbers written are the
+    spec's own.
+    """
+    numbers = [value for series in spec.series for value in series.values]
+    numbers += [*spec.low, *spec.high, *(line.value for line in spec.reference_lines)]
+    largest = max((abs(value) for value in numbers), default=0.0)
+    if largest <= SAFE_MAGNITUDE:
+        return spec, 1.0
+    scale = 2.0 ** -(math.frexp(largest)[1] - math.frexp(SAFE_MAGNITUDE)[1])
+    return (
+        replace(
+            spec,
+            series=[
+                replace(series, values=[value * scale for value in series.values])
+                for series in spec.series
+            ],
+            low=[value * scale for value in spec.low],
+            high=[value * scale for value in spec.high],
+            reference_lines=[
+                replace(line, value=line.value * scale) for line in spec.reference_lines
+            ],
+        ),
+        scale,
+    )
+
+
+def exact_sum(values: Sequence[float], scale: float = 1.0) -> float:
+    """The sum of the numbers as the spec wrote them, at the plot's scale.
+
+    Each value is taken as its shortest decimal text (what the YAML held) and
+    the decimals are added exactly, so `[0.3, -0.1, -0.2]` sums to 0 and not
+    to the binary rounding error -2.8e-17.
+    """
+    exact = Context(prec=1000)
+    total = Decimal(0)
+    for value in values:
+        total = exact.add(total, Decimal(repr(value / scale)))
+    return float(total) * scale
 
 
 def fit_text(text: str, width_inches: float, size: float) -> str:
@@ -391,8 +497,9 @@ def render_standard_chart_png(
     """Draw `spec` in the IB/consulting style into PNG bytes.
 
     Every number the chart type writes is drawn on its own mark, whole inside
-    the picture and clear of the other texts and of other bars, or it is left
-    out and named in a warning (principles N, N2 and N3, independent reviews
+    the picture and clear of the other texts and of every other mark (bars,
+    lines, point markers, reference and zero lines), or it is left out and
+    named in a warning (the final rule of `_Drawer.fits`, independent reviews
     2026-11-14). After the numbers are placed the drawn picture is checked
     again; a number that fails is removed and named. Warnings are logged once
     here and added to `warnings`.
@@ -412,12 +519,14 @@ def render_standard_chart_png(
     from matplotlib.text import Text
 
     family = RasterFontPolicy.resolve(STYLE.KOREAN_FONT, "\n".join(chart_texts(spec)))
+    spec, scale = _safe_scale(spec)
     fig = Figure(figsize=(width_inches, chart_height(spec)), dpi=dpi, facecolor="#FFFFFF")
     FigureCanvasAgg(fig)
     try:
         ax = fig.add_subplot(111)
         ax.set_facecolor("#FFFFFF")
         drawer = _Drawer(fig, ax, spec, ChartTones.from_style(), width_inches, warnings, family)
+        drawer.scale = scale
         draw: Callable[[], None] | None = getattr(drawer, "draw_" + spec.chart_type, None)
         if draw is None:
             raise ChartSpecError(f"chart_type is invalid: {spec.chart_type}")
@@ -464,6 +573,10 @@ class _Drawer:
         self.placed: list[tuple[Any, _Label, _Spot]] = []
         self.axes: list[Any] = [ax]
         self.label_name = spec.title or spec.chart_type
+        # Plotted data points (axes, x, y): the rivals of a point's value.
+        self.points: list[tuple[Any, float, float]] = []
+        self.scale = 1.0  # see `_safe_scale`
+        self.value_axis = False
 
     # ── shared pieces ────────────────────────────────────────────────────────
 
@@ -474,8 +587,17 @@ class _Drawer:
             self.warnings.append(message)
 
     def fmt(self, value: float, right: bool = False) -> str:
+        """The number as written in the picture.
+
+        A negative value whose rounded text shows only zeros is written
+        without parentheses (`-0.04` as `0.0`, a waterfall total of
+        `-2.8e-17` as `0.0`), so that zero never reads as a negative amount.
+        """
         number_format = self.spec.right_number_format if right else self.spec.number_format
-        return format_value(value, number_format)
+        value = value / self.scale
+        text = format_value(abs(value), number_format)
+        negative = value < 0 and any(char in "123456789" for char in text)
+        return f"({text})" if negative else text
 
     def warn_many(self, count: int) -> None:
         if count > MAX_DISTINCT_SERIES:
@@ -495,6 +617,7 @@ class _Drawer:
         for side in ("top", "right", "left", "bottom"):
             ax.spines[side].set_visible(False)
         if value_axis:
+            self.value_axis = True
             ax.tick_params(axis="y", length=0, labelsize=VALUE_SIZE, colors=self.tones.text, pad=3)
             ax.yaxis.set_major_formatter(_formatter(self.fmt))
         else:
@@ -516,11 +639,13 @@ class _Drawer:
             for index, label in enumerate(labels)
         ]
         self.ax.set_xticks(list(positions))
-        self.ax.set_xticklabels(shown, fontsize=CATEGORY_SIZE, color=self.tones.text)
+        self.ax.set_xticklabels(
+            [plain(name) for name in shown], fontsize=CATEGORY_SIZE, color=self.tones.text
+        )
 
     def row_names(self, labels: Sequence[str]) -> list[str]:
         """Category names of a horizontal chart, broken at a third of the picture."""
-        return [fit_text(label, self.width / 3, CATEGORY_SIZE) for label in labels]
+        return [plain(fit_text(label, self.width / 3, CATEGORY_SIZE)) for label in labels]
 
     def value_limits(self, low: float, high: float, head: float = 0.14) -> None:
         low, high = min(0.0, low), max(0.0, high)
@@ -568,10 +693,10 @@ class _Drawer:
             anchor,
         )
 
-    def outward(self, spot: _Spot, below: bool, lines: int = 1) -> _Spot:
-        """The same spot moved `lines` nudges further from its mark."""
+    def outward(self, spot: _Spot, below: bool) -> _Spot:
+        """The same spot moved one nudge further from its mark."""
         dx, dy = spot.offset
-        step = LINE_GAP * lines * (-1 if below else 1)
+        step = LINE_GAP * (-1 if below else 1)
         return _Spot(**{**spot.__dict__, "offset": (dx, dy + step)})
 
     def add_label(
@@ -582,14 +707,14 @@ class _Drawer:
         spots: list[_Spot],
         owners: Sequence[Any] = (),
         group: int | None = None,
-        rank: int = 0,
+        role: str = "value",
     ) -> None:
-        self.labels.append(_Label(number, category, series, spots, list(owners), group, rank))
+        self.labels.append(_Label(number, category, series, spots, list(owners), group, role))
 
     def _make(self, spot: _Spot) -> Any:
         axes = spot.axes or self.ax
         return axes.annotate(
-            spot.text,
+            plain(spot.text),
             spot.xy,
             xytext=spot.offset,
             textcoords="offset points",
@@ -611,8 +736,8 @@ class _Drawer:
         """Fit the plot and legend inside the picture, settle the numbers, check."""
         band = self.legend_band()
         top = 1.0 - band / self.fig.get_figheight() if self.legend is not None else 1.0
-        self.fig.tight_layout(pad=0.3, rect=(0.0, 0.0, 1.0, top))
         self.fit_inside(top)
+        self.keep_true_ticks()
         if self.legend is not None:
             self.place_legend()
         for artist in self.provisional:
@@ -626,25 +751,42 @@ class _Drawer:
                 f"Chart {self.label_name!r}: {len(missing)} value(s) not written in the "
                 f"picture for lack of room: {listed}"
             )
+        for role, what in (("line", "line(s)"), ("reference", "reference line(s)")):
+            unnamed = [label.series for label in missing if label.role == role]
+            if unnamed:
+                self.note(
+                    f"Chart {self.label_name!r}: {len(unnamed)} {what} drawn without a name "
+                    f"(its text had no room): " + "; ".join(unnamed)
+                )
         self.check_fixed_texts()
 
     def fit_inside(self, top: float) -> None:
-        """Pull the plot in until its texts lie inside the picture.
+        """Place the plot so that its texts lie inside the picture.
 
-        `tight_layout` misses some overhangs, such as a long first or last
-        category name centred under its point; each pass moves the plot's
-        edges in by what still sticks out, at most a few times.
+        The plot starts as large as the picture below the legend band and each
+        pass moves its edges in by what sticks out (axis names, values at
+        their first spots, line-end names), at most a few times. matplotlib's
+        `tight_layout` is not used: it gives up with a Python warning when the
+        texts need more room than the picture has, and misses some overhangs.
+        When the texts cannot fit, the plot keeps the last usable place and
+        the texts that stick out are named by `check_fixed_texts` or left out.
         """
         from matplotlib.transforms import Bbox
 
         renderer = self.fig.canvas.get_renderer()
         width, height = self.fig.bbox.width, self.fig.bbox.height
-        for _ in range(4):
+        edge = 3.0 * self.fig.dpi / 72  # pixels kept free around the texts
+        start = Bbox.from_extents(
+            edge / width, edge / height, 1.0 - edge / width, top - edge / height
+        )
+        for axes in self.axes:
+            axes.set_position(start)
+        for _ in range(6):
             box = Bbox.union([axes.get_tightbbox(renderer) for axes in self.axes])
-            left = max(0.0, 2 - box.x0)
-            right = max(0.0, box.x1 - (width - 2))
-            bottom = max(0.0, 2 - box.y0)
-            over = max(0.0, box.y1 - (height * top - 2))
+            left = max(0.0, edge - box.x0)
+            right = max(0.0, box.x1 - (width - edge))
+            bottom = max(0.0, edge - box.y0)
+            over = max(0.0, box.y1 - (height * top - edge))
             if not (left or right or bottom or over):
                 return
             place = self.ax.get_position()
@@ -659,6 +801,35 @@ class _Drawer:
             for axes in self.axes:
                 axes.set_position(moved)
 
+    def keep_true_ticks(self) -> None:
+        """Keep the value-axis ticks whose written number equals their position.
+
+        A tick's text is rounded like every value (`fmt`), so a tick at 1.5
+        written `2` would repeat the next tick's number. Such ticks are
+        dropped; with fewer than two left the axis writes no numbers (the
+        values are written at the points).
+        """
+        if not self.value_axis:
+            return
+        ax = self.ax
+        if self.scale != 1.0:
+            # Ticks are round numbers at the plot's scale, not at the spec's.
+            ax.tick_params(axis="y", labelleft=False)
+            return
+        low, high = sorted(ax.get_ylim())
+        kept = []
+        for tick in ax.get_yticks():
+            if not low <= tick <= high:
+                continue
+            digits = "".join(char for char in self.fmt(float(tick)) if char in "0123456789.")
+            shown, real = float(digits), abs(float(tick) / self.scale)
+            if abs(shown - real) <= 1e-9 * max(1.0, real):
+                kept.append(float(tick))
+        if len(kept) >= 2:
+            ax.set_yticks(kept)
+        else:
+            ax.tick_params(axis="y", labelleft=False)
+
     def _legend(self, ncol: int, left: float) -> Any:
         from matplotlib.font_manager import FontProperties
 
@@ -666,7 +837,7 @@ class _Drawer:
         # A name wider than the picture breaks into lines instead of leaving it.
         return self.fig.legend(
             handles,
-            [fit_text(name, self.legend_room, LEGEND_SIZE) for name in names],
+            [plain(fit_text(name, self.legend_room, LEGEND_SIZE)) for name in names],
             loc="upper left",
             bbox_to_anchor=(left, 1.0),
             ncol=ncol,
@@ -733,9 +904,11 @@ class _Drawer:
             (transform.transform((last_x, value))[1], value, text, color, main, name)
             for value, text, color, main, name in self.ends
         )
-        probe = self._make(_Spot((last_x, items[0][1]), items[0][2], (6.0, 0.0), "left", "center"))
-        half = probe.get_window_extent(renderer).height / 2
-        probe.remove()
+        half = 0.0
+        for item in items:  # a long name is broken into lines: the tallest sets the gap
+            probe = self._make(_Spot((last_x, item[1]), item[2], (6.0, 0.0), "left", "center"))
+            half = max(half, probe.get_window_extent(renderer).height / 2)
+            probe.remove()
         gap = max(LINE_GAP * self.fig.dpi / 72, 2 * half + 1)
         low = self.ax.get_window_extent(renderer).y0 + half
         high = self.fig.bbox.y1 - half - 1
@@ -756,18 +929,71 @@ class _Drawer:
                 main,
                 rule="free",
             )
-            self.labels.append(_Label(self.fmt(value), category, name, [spot]))
+            self.labels.append(_Label(self.fmt(value), category, name, [spot], role="line"))
 
     def _context(self, renderer: Any) -> dict[str, Any]:
-        """Boxes every check reads: the picture, the fixed texts, the bars, the baseline."""
+        """What every check reads: the picture, the fixed texts and every drawn mark."""
         blocked = [box for _, box in self.fixed_texts(renderer)]
+        segments, discs = self.marks(renderer)
         return {
             "canvas": self.fig.bbox,
             "blocked": blocked,
             "bars": [(bar, bar.get_window_extent(renderer)) for bar in self.bars],
+            "segments": segments,
+            "discs": discs,
+            "points": [tuple(axes.transData.transform((x, y))) for axes, x, y in self.points],
             "floor": self.ax.get_window_extent(renderer).y0,
             "renderer": renderer,
         }
+
+    def marks(
+        self, renderer: Any
+    ) -> tuple[list[tuple[float, float, float, float, float]], list[tuple[float, float, float]]]:
+        """Every drawn line and point marker, in pixels.
+
+        Lines are the series' lines, reference lines, the zero line, waterfall
+        connectors and the visible axis lines (spines), each as segments with
+        half the line's width; a `|` marker is a short segment and every other
+        marker a disc. Grid lines and the tint of a range's overlap lie
+        behind the plot and are not marks.
+
+        Returns:
+            Segments `(x0, y0, x1, y1, half_width)` and discs `(x, y, radius)`.
+        """
+        scale = self.fig.dpi / 72
+        segments: list[tuple[float, float, float, float, float]] = []
+        discs: list[tuple[float, float, float]] = []
+        for axes in self.axes:
+            for line in axes.lines:
+                points = [
+                    (float(x), float(y))
+                    for x, y in line.get_transform().transform(line.get_xydata())
+                ]
+                half = float(line.get_linewidth()) * scale / 2
+                if line.get_linestyle() not in ("None", "", " "):
+                    for (x0, y0), (x1, y1) in zip(points, points[1:], strict=False):
+                        segments.append((x0, y0, x1, y1, half))
+                marker = line.get_marker()
+                if marker in (None, "None", "", " "):
+                    continue
+                size = float(line.get_markersize()) * scale
+                edge = float(line.get_markeredgewidth()) * scale
+                for x, y in points:
+                    if marker == "|":
+                        segments.append((x, y - size / 2, x, y + size / 2, edge / 2))
+                    else:
+                        discs.append((x, y, size / 2 + edge / 2))
+            place = axes.get_window_extent(renderer)
+            ends = {
+                "left": (place.x0, place.y0, place.x0, place.y1),
+                "right": (place.x1, place.y0, place.x1, place.y1),
+                "bottom": (place.x0, place.y0, place.x1, place.y0),
+                "top": (place.x0, place.y1, place.x1, place.y1),
+            }
+            for side, spine in axes.spines.items():
+                if spine.get_visible() and side in ends:
+                    segments.append((*ends[side], float(spine.get_linewidth()) * scale / 2))
+        return segments, discs
 
     def fixed_texts(self, renderer: Any) -> list[tuple[Any, Any]]:
         """Axis names and legend entries, with their boxes: texts no check removes."""
@@ -806,17 +1032,38 @@ class _Drawer:
         spot: _Spot,
         box: Any,
         others: Sequence[Any],
-        stacked: Sequence[tuple[_Label, Any]],
+        stacked: Sequence[Any],
         context: dict[str, Any],
     ) -> bool:
-        """Whether a value label drawn at `box` is whole, clear and on its own mark.
+        """The final rule: whether a text drawn at `box` may stay in the picture.
+
+        Every text (values, line-end names, reference texts):
+
+        - (a) lies whole inside the picture;
+        - (b) overlaps no other text;
+        - (c) overlaps no mark: no bar or segment (its own only when it is
+          written inside it), no line with its width, no point marker (its
+          own series' included), no reference line, zero line, axis line or
+          waterfall connector (`marks`).
+
+        A value (not a line-end name or reference text, which carry names):
+
+        - sits on its own mark: inside its bar; centred over or under its
+          bar or point within `MAX_GAP`; or beside its row with its centre
+          at the row's height, within `MAX_GAP`;
+        - (d) has no other bar, or other point, nearer to its centre than its
+          own by more than `NEAREST_MARGIN` (rows of a horizontal chart do
+          not overlap, so the centre at the row's height settles it);
+        - (e) beside a stack: inside the category's column, its centre within
+          its own segment's height, above the baseline, and not level with
+          another value written beside the same bar, on either side.
 
         Args:
             label: The value.
             spot: The place tried.
             box: The label's box there, in pixels.
             others: Boxes of the other value labels drawn.
-            stacked: Other labels of the same stack with their boxes (order).
+            stacked: Boxes of the other values written beside the same bar.
             context: From `_context`.
         """
         renderer = context["renderer"]
@@ -824,21 +1071,50 @@ class _Drawer:
             return False
         if any(_overlaps(box, other) for other in (*others, *context["blocked"])):
             return False
-        own = {id(owner) for owner in label.owners}
+        own = {id(owner) for owner in label.owners} if spot.rule == "inside" else set()
         if any(_overlaps(box, bar_box) for bar, bar_box in context["bars"] if id(bar) not in own):
+            return False
+        if any(_crosses(box, segment) for segment in context["segments"]):
+            return False
+        if any(_away(box, x, y) < radius + 0.5 for x, y, radius in context["discs"]):
             return False
         if spot.rule == "free":
             return True
         anchor = self._anchor_box(spot, renderer)
         tolerance = 0.5
         gap = MAX_GAP * self.fig.dpi / 72
+        margin = NEAREST_MARGIN * self.fig.dpi / 72
+        centre_x, centre_y = (box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2
         if spot.rule == "inside":
             return _contains(anchor, box)
         if spot.rule == "end":
-            centre = (box.x0 + box.x1) / 2
             beyond = max(box.y0 - anchor.y1, anchor.y0 - box.y1, 0.0)
-            return bool(anchor.x0 - 1 <= centre <= anchor.x1 + 1 and beyond <= gap)
-        level = box.y0 <= anchor.y1 + tolerance and box.y1 >= anchor.y0 - tolerance
+            if not (anchor.x0 - 1 <= centre_x <= anchor.x1 + 1 and beyond <= gap):
+                return False
+            if spot.anchor is None:  # a point: no other plotted point is nearer
+                near = math.hypot(centre_x - anchor.x0, centre_y - anchor.y0)
+                rivals = [
+                    math.hypot(centre_x - x, centre_y - y)
+                    for x, y in context["points"]
+                    if abs(x - anchor.x0) > tolerance or abs(y - anchor.y0) > tolerance
+                ]
+            else:  # a bar: no other bar is nearer than the label's own
+                mine = {id(owner) for owner in label.owners}
+                near = min(
+                    (
+                        _away(bar_box, centre_x, centre_y)
+                        for bar, bar_box in context["bars"]
+                        if id(bar) in mine
+                    ),
+                    default=0.0,
+                )
+                rivals = [
+                    _away(bar_box, centre_x, centre_y)
+                    for bar, bar_box in context["bars"]
+                    if id(bar) not in mine
+                ]
+            return all(rival >= near - margin for rival in rivals)
+        level = anchor.y0 - tolerance <= centre_y <= anchor.y1 + tolerance
         if spot.rule == "side":
             beside = max(box.x0 - anchor.x1, anchor.x0 - box.x1, 0.0)
             return bool(level and beside <= gap)
@@ -851,12 +1127,9 @@ class _Drawer:
             return False
         if not level or box.y0 < context["floor"] - tolerance:
             return False
-        centre = (box.y0 + box.y1) / 2
-        for other, other_box in stacked:
-            other_centre = (other_box.y0 + other_box.y1) / 2
-            if (other.rank < label.rank) != (other_centre < centre):
-                return False
-        return True
+        return not any(
+            box.y0 < other.y1 - tolerance and other.y0 < box.y1 - tolerance for other in stacked
+        )
 
     def settle(self) -> list[_Label]:
         """Draw every number at its first spot that `fits`; return those with none."""
@@ -871,9 +1144,11 @@ class _Drawer:
                 artist = self._make(spot)
                 box = artist.get_window_extent(renderer)
                 stacked = [
-                    (other, other_artist.get_window_extent(renderer))
-                    for other_artist, other, _ in self.placed
-                    if label.group is not None and other.group == label.group
+                    other_artist.get_window_extent(renderer)
+                    for other_artist, other, other_spot in self.placed
+                    if label.group is not None
+                    and other.group == label.group
+                    and other_spot.rule == "beside"
                 ]
                 if self.fits(label, spot, box, drawn, stacked, context):
                     artist.set_gid(f"value\t{label.category}\t{label.series}\t{label.number}")
@@ -901,10 +1176,11 @@ class _Drawer:
         for index, (artist, label, spot) in enumerate(self.placed):
             others = [boxes[other] for other in kept if other != index]
             stacked = [
-                (self.placed[other][1], boxes[other])
+                boxes[other]
                 for other in kept
                 if other != index and label.group is not None
                 if self.placed[other][1].group == label.group
+                and self.placed[other][2].rule == "beside"
             ]
             if not self.fits(label, spot, boxes[index], others, stacked, context):
                 artist.remove()
@@ -926,7 +1202,7 @@ class _Drawer:
         for index, (artist, box) in enumerate(texts):
             clash = any(_overlaps(box, other) for _, other in texts[index + 1 :])
             if not _contains(canvas, box) or clash:
-                wrong.append(artist.get_text().replace("\n", " "))
+                wrong.append(written(artist.get_text()).replace("\n", " "))
         if wrong:
             shown = ", ".join(repr(text if len(text) <= 40 else text[:39] + "…") for text in wrong)
             self.note(
@@ -1007,22 +1283,23 @@ class _Drawer:
         """Stacks; each segment's value inside it when it fits, else beside the bar.
 
         A value written beside the bar stays inside its category's column,
-        level with its own segment, above the baseline and in the stack's
-        order (principle N2); with no such place it is left out and named. A
-        segment of 0 has no height and no value. The stack total is written
-        only with `totals: true`.
+        with its centre within its own segment's height, above the baseline
+        and not level with another value beside the same bar (the final rule,
+        e); with no such place it is left out and named. A segment of 0 has
+        no height and no value. The stack total is written only with
+        `totals: true`.
         """
         spec, ax = self.spec, self.ax
         tones = self.tones.stack(len(spec.series))
         positions = range(len(spec.labels))
-        totals = [math.fsum(s.values[i] for s in spec.series) for i in positions]
+        totals = [exact_sum([s.values[i] for s in spec.series], self.scale) for i in positions]
         top = max(totals) or 1.0
         width = 0.56  # leaves each column room for a value beside its bar
         bar_inches = width * self.width * 0.85 / len(spec.labels)
         size = _value_size(bar_inches)
         bottoms = [0.0] * len(spec.labels)
         stacks: list[list[Any]] = [[] for _ in positions]
-        for rank, (series, tone) in enumerate(zip(spec.series, tones, strict=True)):
+        for series, tone in zip(spec.series, tones, strict=True):
             patches = ax.bar(
                 positions, series.values, bottom=bottoms, width=width, color=tone, linewidth=0
             )
@@ -1047,16 +1324,18 @@ class _Drawer:
                     )
                 ]
                 for side, ha in ((1, "left"), (-1, "right")):
-                    for va, y in (
-                        ("center", bottoms[i] + value / 2),
-                        ("bottom", bottoms[i]),
-                        ("top", bottoms[i] + value),
+                    # A point inside the segment's edge keeps the text clear of
+                    # the zero line and of the next segment's edge.
+                    for va, y, lift in (
+                        ("center", bottoms[i] + value / 2, 0.0),
+                        ("bottom", bottoms[i], 1.0),
+                        ("top", bottoms[i] + value, -1.0),
                     ):
                         spots.append(
                             _Spot(
                                 (i + side * width / 2, y),
                                 text,
-                                (side * 2.0, 0.0),
+                                (side * 2.0, lift),
                                 ha,
                                 va,
                                 size - 0.5,
@@ -1066,7 +1345,7 @@ class _Drawer:
                                 slot=(i - 0.5, i + 0.5),
                             )
                         )
-                self.add_label(text, spec.labels[i], series.name, spots, [patch], i, rank)
+                self.add_label(text, spec.labels[i], series.name, spots, [patch], i)
             bottoms = [b + v for b, v in zip(bottoms, series.values, strict=True)]
         if spec.totals:
             for i, total in enumerate(totals):
@@ -1090,7 +1369,10 @@ class _Drawer:
         spec, ax, tones = self.spec, self.ax, self.tones
         series = spec.series[0]
         values = series.values
-        bottoms, tops, total = waterfall_positions(values)
+        bottoms, tops, _ = waterfall_positions(values)
+        # The total written is the exact sum of the values as written, not
+        # the running sum's rounding error: `[0.3, -0.1, -0.2]` totals 0.
+        total = exact_sum(values, self.scale)
         anchor = tones.anchor()
         width = 0.6
         cumulative = 0.0
@@ -1160,6 +1442,7 @@ class _Drawer:
                 markersize=4 if main else 3,
                 zorder=4 if main else 3,
             )
+            self.points.extend((ax, x, value) for x, value in zip(xs, series.values, strict=True))
         main_values = spec.series[accent].values
         others = [s.values for i, s in enumerate(spec.series) if i != accent]
         # The last value is written with the line's name at its end.
@@ -1169,12 +1452,23 @@ class _Drawer:
             value = main_values[i]
             below = any(other[i] > value for other in others)
             text = self.fmt(value)
-            first = self.end_spot(i, value, text, below, color=self.tones.accent, bold=True)
-            flipped = self.end_spot(i, value, text, not below, color=self.tones.accent, bold=True)
+            # 4 pt clears the point's own marker (2.5 pt with its edge).
+            first = self.end_spot(i, value, text, below, VALUE_SIZE, self.tones.accent, True, 4.0)
+            flipped = self.end_spot(
+                i, value, text, not below, VALUE_SIZE, self.tones.accent, True, 4.0
+            )
             spots = [first, flipped, self.outward(first, below)]
             self.add_label(text, spec.labels[i], spec.series[accent].name, spots)
         for line in spec.reference_lines:
-            ax.axhline(line.value, color=self.tones.muted, linewidth=1.0, linestyle=(0, (4, 2)))
+            # Over the points only, so that it does not run through the
+            # line-end names beside the last point.
+            ax.plot(
+                [0, points - 1] if points > 1 else [-0.4, 0.4],
+                [line.value, line.value],
+                color=self.tones.muted,
+                linewidth=1.0,
+                linestyle=(0, (4, 2)),
+            )
             self.add_reference(line.name, line.value, (0, line.value), "left")
         self.plain_axes(value_axis=True, grid=True)
         step = math.ceil(points / 8) if points > MANY_POINTS else 1
@@ -1193,7 +1487,7 @@ class _Drawer:
         self.ends = [
             (
                 spec.series[i].values[-1],
-                f"{self.fmt(spec.series[i].values[-1])}  {spec.series[i].name}",
+                self.end_text(spec.series[i].values[-1], spec.series[i].name),
                 tones[i],
                 i == accent,
                 spec.series[i].name,
@@ -1206,9 +1500,18 @@ class _Drawer:
             spot = _Spot((last_x, value), text, (6.0, 0.0), "left", "center", bold=main)
             self.provisional.append(self._make(spot))
 
-    def add_reference(
-        self, name: str, value: float, xy: tuple[float, float], ha: str, va: str = "bottom"
-    ) -> None:
+    def end_text(self, value: float, name: str) -> str:
+        """A line end's value and name; a long name is broken into lines.
+
+        The text is at most 40 % of the picture wide (1 inch at least), so
+        that one long name does not squeeze the plot; the value and the
+        start of the name stay on the first line.
+        """
+        head = f"{self.fmt(value)}  "
+        room = max(1.0, self.width * 0.4) - _text_width(head, VALUE_SIZE)
+        return head + fit_text(name, max(0.5, room), VALUE_SIZE)
+
+    def add_reference(self, name: str, value: float, xy: tuple[float, float], ha: str) -> None:
         """A reference line's name and value, at its start, else just past it."""
         text = f"{name} {self.fmt(value)}"
         color, size = self.tones.muted, VALUE_SIZE - 0.5
@@ -1217,7 +1520,7 @@ class _Drawer:
             _Spot(xy, text, (0.0, -2.5), ha, "top", size, color, rule="free"),
             _Spot(xy, text, (0.0, 2.5 + LINE_GAP), ha, "bottom", size, color, rule="free"),
         ]
-        self.add_label(self.fmt(value), "", name, spots)
+        self.add_label(self.fmt(value), "", name, spots, role="reference")
 
     # ── bar + line ───────────────────────────────────────────────────────────
 
@@ -1275,6 +1578,9 @@ class _Drawer:
         for series, tone in zip(lines, line_tones, strict=True):
             right.plot(
                 positions, series.values, color=tone, linewidth=2.0, marker="o", markersize=4
+            )
+            self.points.extend(
+                (right, x, value) for x, value in zip(positions, series.values, strict=True)
             )
             for x, value, label in zip(positions, series.values, spec.labels, strict=True):
                 text = self.fmt(value, right=True)
@@ -1339,10 +1645,11 @@ class _Drawer:
                     for nudge in (0.0, LINE_GAP * 0.6, -LINE_GAP * 0.6)
                 ]
                 if patch is None:
-                    # A single value: the anchor is the point itself.
-                    for spot in spots:
-                        spot.xy = (value, y)
-                        spot.offset = (-3.0 if ha == "right" else 3.0, spot.offset[1])
+                    # A single value: the anchor is the point itself, and only
+                    # the place level with it is on it.
+                    spots = spots[:1]
+                    spots[0].xy = (value, y)
+                    spots[0].offset = (-3.0 if ha == "right" else 3.0, 0.0)
                 self.add_label(text, label, name, spots, [patch] if patch is not None else [])
         top_y = rows - 0.5
         for line in spec.reference_lines:
@@ -1368,7 +1675,7 @@ class _Drawer:
                 )
                 for lift in (0.0, LINE_GAP, 2 * LINE_GAP)
             ]
-            self.add_label(self.fmt(line.value), "", line.name, spots)
+            self.add_label(self.fmt(line.value), "", line.name, spots, role="reference")
         ax.set_yticks(ys)
         ax.set_yticklabels(self.row_names(spec.labels), fontsize=CATEGORY_SIZE, color=tones.text)
         ax.set_ylim(-0.6, top_y + (0.5 if spec.reference_lines else 0.1))
@@ -1403,10 +1710,12 @@ class _Drawer:
             self.mark(patches, label, series.name)
             strong = bool(spec.highlight) and marked
             text = self.fmt(value)
+            # A gap in points: a share of the span is far from the bar when
+            # every value is 0.
             outside = _Spot(
-                (value + (span * 0.015 if value >= 0 else -span * 0.015), y),
+                (value, y),
                 text,
-                (0.0, 0.0),
+                (4.0 if value >= 0 else -4.0, 0.0),
                 "left" if value >= 0 else "right",
                 "center",
                 VALUE_SIZE,
