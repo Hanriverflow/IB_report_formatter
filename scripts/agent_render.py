@@ -3,6 +3,10 @@
 Changelog (Codex workflow):
     - Reuse the converter registry, preserve source-relative assets, and report
       exact term comparisons separately from structural and visual review.
+
+Changelog (render warnings):
+    - `render_warnings` lists the renderer's warnings that never reject a
+      document (an image without a description, a split negative amount).
 """
 
 import argparse
@@ -82,6 +86,7 @@ def render_document(
     Returns:
         JSON-compatible evidence; ``ok`` covers strict rendering and structural
         issues only, not factual completeness, financial validity or page layout.
+        ``render_warnings`` never changes ``ok``.
         Audit failures retain generated files for diagnosis; input, term and
         strict-render failures produce no DOCX.
     """
@@ -94,6 +99,7 @@ def render_document(
         "output": {"directory": str(output_dir), "path": None, "sha256": None},
         "profile": profile,
         "audit": None,
+        "render_warnings": [],
         "visual_review": "not_performed",
         "expected_terms": {
             "status": "not_requested",
@@ -170,6 +176,7 @@ def render_document(
                     output_path=destination / "document.docx",
                     strict=True,
                     profile=profile,
+                    render_warnings=result["render_warnings"],
                 )
             ).resolve()
             result["output"].update({"path": str(saved), "sha256": _sha256(saved)})

@@ -11,6 +11,20 @@ Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Bet
 - A table or quote line led by HTML anchors (`<a id="x"></a>| a |`, `<a id="x"></a>> 인용`, also `><a id="x"></a> 인용`) had the same effect. It now reads as the same line without the leading anchors: they are dropped, as before a paragraph, and everything after the `|` or `>` stays as written, code included. Right after a table or quote, such a line continues it, as the line without the anchors does.
 - Documents that finished before are unchanged; no sample output changed. If a parsing pass ever consumes no line again, the conversion stops with an error naming the line instead of running forever. Verification: `docs/verification-list-marker-hang-20261114.md`.
 
+### Images without alt text are reported (roadmap E9, alt text only)
+Output documents are unchanged. Verification: `docs/verification-alt-text-warning-20261114.md`.
+- An author image inserted without a description (`![](a.png)`, `<img>` without `alt`, a blank description, Base64 and `data:` images, block or inside a paragraph, list or table cell) adds one rendering warning per picture: `IBDocumentRenderer.warnings` and the log. It names the file actually loaded (or `embedded image`) and the picture's Word name (`Picture 3`), never a folder path (percent-encoded or not) or the image data. It never rejects, in strict mode either.
+- Equations, diagrams and logos are drawn by the engine and have no description an author can write; they add no rendering warning. Charts always have one (their title, or `Chart N`).
+- `docx-audit` adds a warning, never an issue, for each picture in the main body whose alt text is missing or blank, unless Word marks it as decorative. It cannot tell who made a picture, so engine-drawn equations, diagrams and logos are reported there too.
+- `scripts/agent_render.py` adds `render_warnings` to `result.json`: the renderer's warnings, including the split-amount warnings of explicit negative styles, which did not reach it before. They never change `ok`. The registry's DOCX output converter takes a `render_warnings` list for this.
+- Colour-contrast diagnostics (the other half of roadmap E9) are not included.
+
+### Fixed: a footnote referenced more than once
+- A document that referenced the same footnote in two or more places passed strict conversion and schema validation, but Word reported it as corrupt and did not open it (seen with Word 16.0.20527). The footnote's first reference stays a native footnote mark; every later one is now a footnote cross-reference field (`NOTEREF … \f \h`) that shows the same superscript number, as Word's own Insert Cross-reference > Footnote number (formatted) writes it. The number follows after F9 when a footnote is inserted earlier. This applies in paragraphs, headings, table cells, lists, quotes and callouts, and to IB `^1^` markers.
+- Documents that reference each footnote once are unchanged.
+- `docx-audit` reports a `NOTEREF` field whose bookmark is missing as an issue and a cached number that no longer matches as a warning.
+- New QA sample `samples/qa/footnote-rereference.md`. Verification: `docs/verification-footnote-rereference-20261114.md`.
+
 ### Office letters: attachments, tables at the end and item symbols (roadmap E7)
 Existing office letters change appearance where they have attachments or items nested three or more levels deep. Verification: `docs/verification-office-letter-20261114.md`.
 - A letter body that ends with a full table keeps `끝.` below the table; this is now pinned by tests (no output change).

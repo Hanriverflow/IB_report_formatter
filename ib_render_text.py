@@ -393,6 +393,7 @@ class TextRenderer:
                 shape.height = int(shape.height * limit / shape.width)
                 shape.width = limit
             ImageRenderer._apply_alt_text(shape, image.alt_text)
+            ImageRenderer.warn_missing_description(paragraph.part, shape, image, source)
             return
         except InputLimitError:
             raise

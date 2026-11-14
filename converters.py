@@ -7,6 +7,10 @@ and ConverterRegistry for extensible format support.
 Changelog (hardening):
     - Publish the default registry only after locked, complete initialization.
 
+Changelog (render warnings):
+    - The DOCX output converter adds the renderer's warnings to a caller's
+      `render_warnings` list.
+
 Usage:
     from converters import get_default_registry
 
@@ -221,6 +225,10 @@ class DocxOutputConverter(OutputConverter):
         doc = renderer.render(
             source, asset_roots=kwargs.get("asset_roots", ()), limits=kwargs.get("limits")
         )
+        # A caller's list receives the warnings that never reject (IBDocumentRenderer.warnings).
+        sink = kwargs.get("render_warnings")
+        if sink is not None:
+            sink.extend(renderer.warnings)
         output_path = kwargs.get("output_path")
         if output_path:
             from cli_utils import safe_save
