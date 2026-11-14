@@ -648,6 +648,9 @@ class IBDocumentRenderer:
             The rendered document; strict rejections occur before callers can save it.
         """
         self._composing = False
+        # A fresh list on entry: a render rejected before composition must not
+        # leave the previous document's warnings behind.
+        self.warnings = []
         try:
             return self._render_model(model, asset_roots=asset_roots, limits=limits)
         except ConversionRejection:
@@ -752,7 +755,6 @@ class IBDocumentRenderer:
         with document_validation():
             validate_xml_strings(model if resolved.strict else model.metadata)
         self.errors = list(model.warnings)
-        self.warnings = []
         self._term_sheet = term_sheet
         self._reset_document()
         # Inline images (table cells, text) resolve relative paths against the source.

@@ -1190,14 +1190,20 @@ class TableRenderer:
             ]
         return display_content, display_runs
 
-    @staticmethod
-    def _is_semantic_run(run: TextRun) -> bool:
+    @classmethod
+    def _is_semantic_run(cls, run: TextRun) -> bool:
         """A footnote, equation, script, term value, code span or image run."""
+        return cls._is_protected_run(run) or run.superscript or run.subscript
+
+    @staticmethod
+    def _is_protected_run(run: TextRun) -> bool:
+        """A footnote, equation, term value, code span or image run.
+
+        Its text is never part of an amount that a `negative` style rewrites.
+        """
         return (
             run.footnote_id is not None
             or run.is_latex
-            or run.superscript
-            or run.subscript
             or run.term_key is not None
             or run.code
             or run.image is not None
@@ -1213,8 +1219,11 @@ class TableRenderer:
         Footnote markers after the amount stay where they are. A cell holding
         anything else (a range, several numbers, words, a code span) returns
         None and is formatted as in a table without the setting. So does an
-        amount split across differently formatted runs, which also records a
-        rendering warning; that warning never rejects the document.
+        amount split across differently formatted runs (bold, italic,
+        superscript or subscript pieces), which also records a rendering
+        warning; that warning never rejects the document. An amount written
+        wholly in superscript or subscript keeps its written form, as without
+        the setting.
 
         Args:
             cell_data: One body cell of a table that sets `negative`.
@@ -1231,7 +1240,7 @@ class TableRenderer:
         end = len(runs)
         while end and runs[end - 1].footnote_id is not None:
             end -= 1
-        if any(self._is_semantic_run(run) for run in runs[:end]):
+        if any(self._is_protected_run(run) for run in runs[:end]):
             return None
         body = [run for run in runs[:end] if run.text]
         text = "".join(run.text for run in body)
@@ -1243,6 +1252,8 @@ class TableRenderer:
                 f"Table negative style not applied to {text.strip()!r}: the amount is split "
                 "across differently formatted text, so it keeps its written form"
             )
+            return None
+        if body[0].superscript or body[0].subscript:
             return None
         leading = text[: len(text) - len(text.lstrip())]
         trailing = text[len(text.rstrip()) :]
@@ -1260,6 +1271,13 @@ class TableRenderer:
         `paren` gives `(1,234)` (a unit goes inside: `(3.5%)`), `minus` gives
         `-1,234` and `triangle` gives `△1,234`.
 
+        No digit is ever dropped. An integer part with a leading zero
+        (`0001200`, `01,200`; it may be a code) is not restyled, so the cell
+        shows the same text as in a table without the setting. Digits are the
+        decimal digits the formatting without the setting accepts (full-width
+        ones included); they are judged zero or not by their value and written
+        the way that formatting writes them (`-１２３４` gives `1,234`).
+
         Args:
             text: A cell's whole visible text.
             role: Explicit column presentation role, if configured.
@@ -1267,8 +1285,8 @@ class TableRenderer:
 
         Returns:
             The amount in the requested style, or None when the text is not
-            exactly one negative amount (negative zero included, which keeps
-            its written form).
+            exactly one negative amount (negative zero and an integer part
+            with a leading zero included, which keep their written form).
         """
         match = cls._NEGATIVE_AMOUNT_RE.fullmatch(text.strip())
         if match is None:
@@ -1279,7 +1297,11 @@ class TableRenderer:
             number, unit = match["paren"], match["inner"] or match["outer"] or ""
         else:
             number, unit = match["signed"], match["unit"] or ""
-        if not any(digit in number for digit in "123456789"):
+        number_digits = [int(ch) for ch in number if ch not in ",."]
+        integer_digits = [int(ch) for ch in number.split(".", 1)[0] if ch != ","]
+        if not any(number_digits):
+            return None
+        if len(integer_digits) > 1 and integer_digits[0] == 0:
             return None
         unit = unit or cls._ROLE_UNITS.get(role or "", "")
         number = cls._format_financial_number(number)

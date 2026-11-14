@@ -678,3 +678,145 @@ def test_a_footnote_marker_after_the_amount_stays_after_it(style: str) -> None:
         style, "1,200"
     )
     assert cell.xpath(".//w:r[last()]/w:footnoteReference")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NEGATIVE STYLE: SECOND INDEPENDENT REVIEW (2026-11-14)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def option_and_plain(values: list[str], style: str, profile: str = "ib-memo"):
+    """Value column of one money table with and without `negative`, and the warnings."""
+    body = one_column_table("검토", values)
+    spec = {"type": "financial", "columns": ["text", "money"]}
+    doc, renderer = render_noting(markdown(body, profile, tables=[{**spec, "negative": style}]))
+    without = render(markdown(body, profile, tables=[spec]))
+    return value_column(doc, "검토"), value_column(without, "검토"), renderer
+
+
+# Finding [1]: an integer part with a leading zero is never restyled, so no digit
+# is dropped by the option; the cell shows what a table without the option shows.
+LEADING_ZERO = ["(0001.20%)", "(0001200억원)", "−0001200"]
+
+
+@pytest.mark.parametrize("profile", THREE)
+@pytest.mark.parametrize("style", STYLES)
+def test_a_leading_zero_amount_shows_the_same_text_as_without_the_option(
+    profile: str, style: str
+) -> None:
+    shown_texts, plain, _ = option_and_plain(LEADING_ZERO, style, profile)
+    assert shown_texts == plain
+    assert shown_texts == LEADING_ZERO
+
+
+@pytest.mark.parametrize("style", STYLES)
+def test_other_leading_zero_forms_follow_the_table_without_the_option(style: str) -> None:
+    values = ["-0001200", "(0001.20)%", "-01,200", "-00.5", "△0012"]
+    shown_texts, plain, _ = option_and_plain(values, style)
+    assert shown_texts == plain
+
+
+@pytest.mark.parametrize("style", STYLES)
+def test_plain_amounts_keep_every_digit_of_the_fraction_and_the_unit(style: str) -> None:
+    values = ["-1,200.50", "-1.20%", "(1200.50억원)", "-0.50", "−3.10백만원", "△12.0bp"]
+    shown_texts, _, _ = option_and_plain(values, style)
+    assert shown_texts == [
+        shown(style, "1,200.50"),
+        shown(style, "1.20%"),
+        shown(style, "1,200.50억원"),
+        shown(style, "0.50"),
+        shown(style, "3.10백만원"),
+        shown(style, "12.0bp"),
+    ]
+
+
+SCRIPT_SPLIT = ["-1200^.50^", "-12~00~", "^-1200^"]
+
+
+@pytest.mark.parametrize("profile", THREE)
+@pytest.mark.parametrize("style", STYLES)
+def test_an_amount_split_by_a_superscript_or_subscript_keeps_its_text_and_warns(
+    profile: str, style: str
+) -> None:
+    # Finding [2]: a superscript or subscript piece splits an amount like bold does.
+    # An amount written wholly in superscript is not split: no warning, written form.
+    shown_texts, plain, renderer = option_and_plain(SCRIPT_SPLIT, style, profile)
+    assert shown_texts == plain
+    assert shown_texts == ["-1,200.50", "-1200", "-1200"]
+    assert renderer.warnings == [
+        f"Table negative style not applied to {text!r}: the amount is split across "
+        "differently formatted text, so it keeps its written form"
+        for text in ("-1200.50", "-1200")
+    ]
+    assert not any("split" in error for error in renderer.errors)
+
+
+def test_a_footnote_marker_and_a_code_span_stay_protected_without_a_warning() -> None:
+    body = "| 구분 | 값 |\n|---|---|\n| 검토0 | -1200[^1] |\n| 검토1 | `-1200` |\n\n[^1]: 가상.\n"
+    spec = {"type": "financial", "columns": ["text", "money"], "negative": "paren"}
+    doc, renderer = render_noting(markdown(body, "ib-memo", tables=[spec]))
+    assert value_column(doc, "검토") == ["(1,200)", "-1200"]
+    assert renderer.warnings == []
+
+
+@pytest.mark.parametrize("style", STYLES)
+def test_full_width_digits_are_read_as_the_formatting_without_the_option_reads_them(
+    style: str,
+) -> None:
+    # Finding [3]: the zero test uses the same digits the amount pattern accepts.
+    values = ["-１２３４", "(１２３４)", "-１２３４1", "-０", "(０.０)", "-０１２３"]
+    shown_texts, plain, _ = option_and_plain(values, style)
+    assert plain[:2] == ["-1,234", "(1,234)"]
+    assert shown_texts[:3] == [shown(style, "1,234"), shown(style, "1,234"), shown(style, "12,341")]
+    # Negative zero and a leading zero keep the text of a table without the option.
+    assert shown_texts[3:] == plain[3:]
+
+
+def test_a_render_rejected_before_composition_does_not_keep_earlier_warnings() -> None:
+    # Finding [4]: success, then a strict pre-validation failure, then success.
+    from input_safety import StrictValidationError
+
+    renderer = IBDocumentRenderer(options=RenderOptions(strict=True))
+    spec = {"type": "financial", "columns": ["text", "money"], "negative": "paren"}
+    split = MarkdownParser().parse(
+        markdown(one_column_table("검토", ["-1200**.50**"]), "ib-memo", tables=[spec])
+    )
+    renderer.render(split)
+    assert len(renderer.warnings) == 1
+    rejected = MarkdownParser(profile="plain").parse("가상 본문")
+    rejected.warnings = ["가상 검증 실패"]
+    with pytest.raises(StrictValidationError):
+        renderer.render(rejected)
+    assert renderer.warnings == []
+    clean = MarkdownParser().parse(
+        markdown(one_column_table("검토", ["-1200"]), "ib-memo", tables=[spec])
+    )
+    renderer.render(clean)
+    assert renderer.warnings == []
+    renderer.render(split)
+    assert len(renderer.warnings) == 1
+
+
+AUTHOR_BLUE = (
+    "| 구분 | 값 |\n|---|---|\n"
+    '| 청색0 | <span style="color:#0000FF">-1200</span> |\n'
+    "| 청색1 | -1300 |\n"
+)
+
+
+@pytest.mark.parametrize("profile", THREE)
+@pytest.mark.parametrize("style", STYLES)
+def test_an_author_colour_other_than_red_stays_only_in_a_table_with_the_option(
+    profile: str, style: str
+) -> None:
+    # Finding [6]: without the option the automatic red covers the author's colour
+    # (existing behaviour, unchanged); with it the author's colour is shown.
+    spec = {"type": "financial", "columns": ["text", "money"]}
+    table = body_table(
+        render(markdown(AUTHOR_BLUE, profile, tables=[{**spec, "negative": style}])), "청색0"
+    )
+    plain = body_table(render(markdown(AUTHOR_BLUE, profile, tables=[spec])), "청색0")
+    assert colors(cells(rows(table)[1])[1]) == {"0000FF"}
+    assert colors(cells(rows(table)[2])[1]) <= {"auto"}
+    assert colors(cells(rows(plain)[1])[1]) == {RED}
+    assert RED in colors(cells(rows(plain)[2])[1])
