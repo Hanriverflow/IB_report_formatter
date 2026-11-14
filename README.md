@@ -134,6 +134,18 @@ attachments: [제출 양식 1부]
 
 Letters require `recipients` and `sender.organization`; no seal/signature image is manufactured. Reports use `analyst`, `date`, `sender.department`; minutes also accept `meeting_time`, `location`, `attendees`. Quote dates, codes and numeric-looking identifiers to preserve their text. A matching first H1 is not duplicated when the profile already supplies a title.
 
+### Version and DRAFT marking
+
+```yaml
+version: "v1.2"   # quote it: unquoted 1.10 is read by YAML as 1.1
+status: draft     # draft or final
+```
+
+- `version` is written as the custom document property `Version` and shown in the page header after the company (`예시금융 | v1.2`, or `v1.2` alone without a company). The header text is a `DOCPROPERTY Version` field holding the current value, so it reads correctly as soon as the file opens. Office letters write the property but show no version; the term-sheet footer keeps showing `subtitle version`, with the version part as the same field.
+- To change the version in Word, edit **File > Info > Properties > Advanced Properties > Custom > Version**, then update the field: double-click the header and press **Ctrl+A, F9** (this updates that section's header only), or open **Ctrl+P** / print preview, which updates every section. Ctrl+A, F9 in the body does not update headers. Printing and saving as PDF use the new value.
+- `status: draft` puts a DRAFT watermark on every page, including the cover and landscape-table sections. It uses Word's own watermark shape, so **Design > Watermark > Remove Watermark** clears it from every page at once. `status: final` or no status adds nothing; any other value is rejected.
+- File > Info shows the document title, an empty author and comment, and the conversion time as the created and modified dates.
+
 ### Letters with an appendix
 
 The letter profile uses a centred company name, aligned recipient/reference/subject fields, attachment lines in the administrative-handbook form, a closing marker, signatory and issue/contact details. Wrapped metadata aligns below the value. The company name is not repeated in the page header. `sender.signatory` accepts a YAML multiline string; no signer name is invented.
@@ -230,7 +242,7 @@ Place an empty, closed fence where the house/frontmatter confirmation should app
 
 The box has an introduction/checklist row and a shaded, centred signature row kept on one page. Missing text, a nonempty fence or an unclosed fence preserves the source in a diagnostic code panel; strict rendering rejects it. Other profiles treat the fence as code.
 
-Every page uses `confidential_label` (default `Strictly Confidential`) in the header. An empty label, `layout.confidential: false`, or `--no-confidential` suppresses it. The footer shows `subtitle version` when `version` is present, plus `PAGE / NUMPAGES`. The opening disclaimer remains required even with `--no-disclaimer`. The existing **`termsheet` preset** only toggles cover/TOC/end-disclaimer sections; it does not select this profile, load house text or apply term-sheet table formatting.
+Every page uses `confidential_label` (default `Strictly Confidential`) in the header. An empty label, `layout.confidential: false`, or `--no-confidential` suppresses it. The footer shows `subtitle version` when `version` is present (the version is a `DOCPROPERTY Version` field; see [Version and DRAFT marking](#version-and-draft-marking)), plus `PAGE / NUMPAGES`. The opening disclaimer remains required even with `--no-disclaimer`. The existing **`termsheet` preset** only toggles cover/TOC/end-disclaimer sections; it does not select this profile, load house text or apply term-sheet table formatting.
 
 Term-sheet documents wrap Korean at word boundaries (`w:wordWrap=1`) and turn off Word's automatic spacing between Korean and Latin text or digits (`w:autoSpaceDE/DN=0`), so amounts print as `300억원` and `SPC에`.
 

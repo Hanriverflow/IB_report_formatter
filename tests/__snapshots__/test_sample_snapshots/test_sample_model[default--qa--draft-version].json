@@ -1,0 +1,1595 @@
+{
+  "metadata": {
+    "title": "가상 회사채 발행 검토",
+    "subtitle": "문서 속성·DRAFT 표시 검증용 예시",
+    "company": "예시금융",
+    "ticker": "",
+    "sector": "SECTOR",
+    "analyst": "DCM Team 1",
+    "extra": {
+      "date": "2026-11-14",
+      "version": "v0.3",
+      "status": "draft",
+      "tables": [
+        {
+          "type": "financial",
+          "columns": [
+            "text",
+            "money",
+            "money",
+            "money"
+          ],
+          "caption": "가상 재무 요약",
+          "unit": "백만원",
+          "source": "검증용 가상 데이터"
+        },
+        {
+          "type": "financial",
+          "landscape": true,
+          "columns": [
+            "text",
+            "money",
+            "money",
+            "money",
+            "money",
+            "money",
+            "money",
+            "money"
+          ],
+          "caption": "연도별 가상 실적",
+          "unit": "백만원",
+          "source": "검증용 가상 데이터"
+        }
+      ]
+    },
+    "profile": "ib-report",
+    "display_runs": {}
+  },
+  "sections": [],
+  "elements": [
+    {
+      "element_type": "HEADING_1",
+      "content": {
+        "level": 1,
+        "text": "가상 회사채 발행 검토",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "# 가상 회사채 발행 검토",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "1. 검토 요지",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 1. 검토 요지",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "이 문서는 초안 상태(`status: draft`)와 버전(`version`)을 함께 쓴 가상 예시입니다. 모든 쪽에 DRAFT 워터마크가 있고, 머리글의 버전은 파일 속성의 `Version` 값을 보여 줍니다.",
+        "runs": [
+          {
+            "text": "이 문서는 초안 상태(",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "status: draft",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": true,
+            "image": null
+          },
+          {
+            "text": ")와 버전(",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "version",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": true,
+            "image": null
+          },
+          {
+            "text": ")을 함께 쓴 가상 예시입니다. 모든 쪽에 DRAFT 워터마크가 있고, 머리글의 버전은 파일 속성의 ",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "Version",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": true,
+            "image": null
+          },
+          {
+            "text": " 값을 보여 줍니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "이 문서는 초안 상태(`status: draft`)와 버전(`version`)을 함께 쓴 가상 예시입니다. 모든 쪽에 DRAFT 워터마크가 있고, 머리글의 버전은 파일 속성의 `Version` 값을 보여 줍니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "TABLE",
+      "content": {
+        "rows": [
+          {
+            "cells": [
+              {
+                "content": "지표",
+                "runs": [
+                  {
+                    "text": "지표",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2024",
+                "runs": [
+                  {
+                    "text": "2024",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2025",
+                "runs": [
+                  {
+                    "text": "2025",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2026",
+                "runs": [
+                  {
+                    "text": "2026",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": true
+          },
+          {
+            "cells": [
+              {
+                "content": "매출",
+                "runs": [
+                  {
+                    "text": "매출",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "120000",
+                "runs": [
+                  {
+                    "text": "120000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "135000",
+                "runs": [
+                  {
+                    "text": "135000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "150000",
+                "runs": [
+                  {
+                    "text": "150000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "영업이익",
+                "runs": [
+                  {
+                    "text": "영업이익",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "15000",
+                "runs": [
+                  {
+                    "text": "15000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "16800",
+                "runs": [
+                  {
+                    "text": "16800",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "18200",
+                "runs": [
+                  {
+                    "text": "18200",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          }
+        ],
+        "table_type": "FINANCIAL",
+        "col_count": 4,
+        "alignments": [
+          "left",
+          "left",
+          "left",
+          "left"
+        ],
+        "column_types": [
+          "text",
+          "money",
+          "money",
+          "money"
+        ],
+        "caption": "가상 재무 요약",
+        "unit": "백만원",
+        "source": "검증용 가상 데이터",
+        "as_of": "",
+        "landscape": false,
+        "warnings": [],
+        "spans": null,
+        "label_columns": null,
+        "note": "",
+        "header_rows": 1,
+        "schedule": null
+      },
+      "raw_text": "| 지표 | 2024 | 2025 | 2026 |\n|---|---|---|---|\n| 매출 | 120000 | 135000 | 150000 |\n| 영업이익 | 15000 | 16800 | 18200 |",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "2. 연도별 실적",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 2. 연도별 실적",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "다음 표는 가로 구역에 놓입니다. 워터마크는 가로 쪽에도 있어야 합니다.",
+        "runs": [
+          {
+            "text": "다음 표는 가로 구역에 놓입니다. 워터마크는 가로 쪽에도 있어야 합니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "다음 표는 가로 구역에 놓입니다. 워터마크는 가로 쪽에도 있어야 합니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "TABLE",
+      "content": {
+        "rows": [
+          {
+            "cells": [
+              {
+                "content": "지표",
+                "runs": [
+                  {
+                    "text": "지표",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2020",
+                "runs": [
+                  {
+                    "text": "2020",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2021",
+                "runs": [
+                  {
+                    "text": "2021",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2022",
+                "runs": [
+                  {
+                    "text": "2022",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2023",
+                "runs": [
+                  {
+                    "text": "2023",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2024",
+                "runs": [
+                  {
+                    "text": "2024",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2025",
+                "runs": [
+                  {
+                    "text": "2025",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2026",
+                "runs": [
+                  {
+                    "text": "2026",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": true
+          },
+          {
+            "cells": [
+              {
+                "content": "매출",
+                "runs": [
+                  {
+                    "text": "매출",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "100000",
+                "runs": [
+                  {
+                    "text": "100000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "110000",
+                "runs": [
+                  {
+                    "text": "110000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "120000",
+                "runs": [
+                  {
+                    "text": "120000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "125000",
+                "runs": [
+                  {
+                    "text": "125000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "130000",
+                "runs": [
+                  {
+                    "text": "130000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "135000",
+                "runs": [
+                  {
+                    "text": "135000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "140000",
+                "runs": [
+                  {
+                    "text": "140000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "영업이익",
+                "runs": [
+                  {
+                    "text": "영업이익",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "10000",
+                "runs": [
+                  {
+                    "text": "10000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "12000",
+                "runs": [
+                  {
+                    "text": "12000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "14000",
+                "runs": [
+                  {
+                    "text": "14000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "15000",
+                "runs": [
+                  {
+                    "text": "15000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "16000",
+                "runs": [
+                  {
+                    "text": "16000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "17000",
+                "runs": [
+                  {
+                    "text": "17000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "18000",
+                "runs": [
+                  {
+                    "text": "18000",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "일회성 비용",
+                "runs": [
+                  {
+                    "text": "일회성 비용",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "(1000)",
+                "runs": [
+                  {
+                    "text": "(1000)",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "(1100)",
+                "runs": [
+                  {
+                    "text": "(1100)",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "(1200)",
+                "runs": [
+                  {
+                    "text": "(1200)",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "(1300)",
+                "runs": [
+                  {
+                    "text": "(1300)",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "(1400)",
+                "runs": [
+                  {
+                    "text": "(1400)",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "(1500)",
+                "runs": [
+                  {
+                    "text": "(1500)",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "(1600)",
+                "runs": [
+                  {
+                    "text": "(1600)",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": true,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          }
+        ],
+        "table_type": "FINANCIAL",
+        "col_count": 8,
+        "alignments": [
+          "left",
+          "left",
+          "left",
+          "left",
+          "left",
+          "left",
+          "left",
+          "left"
+        ],
+        "column_types": [
+          "text",
+          "money",
+          "money",
+          "money",
+          "money",
+          "money",
+          "money",
+          "money"
+        ],
+        "caption": "연도별 가상 실적",
+        "unit": "백만원",
+        "source": "검증용 가상 데이터",
+        "as_of": "",
+        "landscape": true,
+        "warnings": [],
+        "spans": null,
+        "label_columns": null,
+        "note": "",
+        "header_rows": 1,
+        "schedule": null
+      },
+      "raw_text": "| 지표 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 |\n|---|---|---|---|---|---|---|---|\n| 매출 | 100000 | 110000 | 120000 | 125000 | 130000 | 135000 | 140000 |\n| 영업이익 | 10000 | 12000 | 14000 | 15000 | 16000 | 17000 | 18000 |\n| 일회성 비용 | (1000) | (1100) | (1200) | (1300) | (1400) | (1500) | (1600) |",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "3. 검토 의견",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 3. 검토 의견",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "가로 표 다음 문단은 다시 세로 구역에 놓입니다. 최종본으로 바꿀 때는 `status: final`로 고쳐 다시 만들거나, Word에서 디자인 > 워터마크 > 워터마크 제거를 누릅니다.",
+        "runs": [
+          {
+            "text": "가로 표 다음 문단은 다시 세로 구역에 놓입니다. 최종본으로 바꿀 때는 ",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "status: final",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": true,
+            "image": null
+          },
+          {
+            "text": "로 고쳐 다시 만들거나, Word에서 디자인 > 워터마크 > 워터마크 제거를 누릅니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "가로 표 다음 문단은 다시 세로 구역에 놓입니다. 최종본으로 바꿀 때는 `status: final`로 고쳐 다시 만들거나, Word에서 디자인 > 워터마크 > 워터마크 제거를 누릅니다.",
+      "inferred_subtitle": false
+    }
+  ],
+  "footnotes": {},
+  "warnings": [],
+  "parsed_profile": "ib-report",
+  "source_dir": ".",
+  "asset_roots": [
+    "."
+  ],
+  "limits": {
+    "max_input_bytes": 16777216,
+    "max_table_cells": 50000,
+    "max_list_depth": 32,
+    "max_image_bytes": 20971520,
+    "max_image_pixels": 50000000
+  }
+}

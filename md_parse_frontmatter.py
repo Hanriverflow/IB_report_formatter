@@ -5,7 +5,14 @@ import re
 
 import yaml
 
-from document_model import DocumentMetadata, DocumentModel, ElementType, Heading, Paragraph
+from document_model import (
+    DefaultTitle,
+    DocumentMetadata,
+    DocumentModel,
+    ElementType,
+    Heading,
+    Paragraph,
+)
 from document_profiles import default_metadata
 from input_safety import StrictValidationError, document_validation, load_yaml
 
@@ -92,7 +99,9 @@ class FrontmatterParser:
             metadata.title = data.get("title", metadata.title)
             metadata.subtitle = data.get("subtitle", metadata.subtitle)
         else:
-            metadata.title = str(data.get("title", metadata.title))
+            if "title" in data:
+                # Without a title the profile's stand-in (DefaultTitle) stays marked.
+                metadata.title = str(data["title"])
             metadata.subtitle = str(data.get("subtitle", metadata.subtitle))
         metadata.company = str(data.get("company", metadata.company))
         metadata.ticker = str(data.get("ticker", metadata.ticker))
@@ -122,6 +131,9 @@ class FrontmatterParser:
         metadata.extra = {
             k: v if k in structured else str(v) for k, v in data.items() if k not in known_keys
         }
+        if "version" in data and data["version"] is None:
+            # An empty `version:` means no version, not the text "None".
+            metadata.extra["version"] = ""
 
         return metadata, lines[content_start_idx:]
 
@@ -209,9 +221,9 @@ def _infer_metadata_from_elements(
     """Backfill metadata from document content when frontmatter is absent or partial."""
     metadata = model.metadata
 
-    # Display runs exist only for a title written with a term reference; such a
-    # title is explicit even when its value equals the default.
-    if metadata.title == "IB Report" and "title" not in metadata.display_runs:
+    # Only the profile's stand-in gives way to the first H1. A written title, even
+    # "IB Report" or one made by a term reference, is a plain string and stays.
+    if isinstance(metadata.title, DefaultTitle):
         first_heading = next(
             (
                 element.content.text.strip()

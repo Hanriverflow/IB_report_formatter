@@ -756,7 +756,11 @@ def test_header_and_footer_follow_each_section_width():
         assert label.font.size.pt == 7.5 and str(label.font.color.rgb) == "888888"
         footer = section.footer.paragraphs[0]
         assert footer.text.startswith("Term Sheet v3\t")
-        assert footer._p.xpath(".//w:instrText/text()") == ["PAGE", "NUMPAGES"]
+        assert footer._p.xpath(".//w:instrText/text()") == [
+            " DOCPROPERTY Version \\* MERGEFORMAT ",
+            "PAGE",
+            "NUMPAGES",
+        ]
         stops = [
             (stop.get(qn("w:val")), int(stop.get(qn("w:pos"))))
             for stop in footer._p.xpath("./w:pPr/w:tabs/w:tab")
