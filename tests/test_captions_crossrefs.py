@@ -873,3 +873,306 @@ def test_audit_still_judges_plain_and_arabic_sequences() -> None:
         "Caption numbers SEQ 표 are not 1, 2, 3... in document order; "
         "update fields in Word (select all, F9)"
     ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECOND INDEPENDENT REVIEW FIXES (2026-11-14)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# A run is split only for a reference that resolves, so nothing is joined back.
+# `UNRESOLVED` pins principle P1 structurally: in a document that numbers a
+# table (the feature is in use), each input renders with the same paragraphs,
+# runs, pictures and content controls as the same input with every `@` written
+# as a full-width `＠` (which the grammar never reads), and its text differs
+# only in that character.
+
+FULLWIDTH_AT = "＠"
+IMAGE = "![A](s.png)"
+SPAN = '<span style="color:#123456">'
+TERMS = "terms:\n  x: VALUE\nterm_tags: true\n"
+
+
+def write_front(tmp_path: Path, body: str, front: str, tables: str = DEFINED_A) -> Path:
+    """Write a document with extra frontmatter lines and a numbered table `tbl-a`."""
+    path = write(tmp_path, body + TABLE_ONLY, tables)
+    text = path.read_text(encoding="utf-8").replace(
+        "title: 시험 문서\n", "title: 시험 문서\n" + front
+    )
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def structure(document: DocxDocument) -> tuple[list[list[str]], int, int, int]:
+    """Run texts of every body paragraph, and the number of pictures, controls and fields."""
+    paragraphs = [
+        [
+            "".join(node.text or "" for node in run.iter(f"{W}t")).replace(FULLWIDTH_AT, "@")
+            for run in paragraph.iter(f"{W}r")
+        ]
+        for paragraph in document.element.body.iter(f"{W}p")
+    ]
+    body = document.element.body
+    return (
+        paragraphs,
+        len(list(body.iter(f"{W}drawing"))),
+        len(list(body.iter(f"{W}sdt"))),
+        len(list(body.iter(f"{W}fldChar"))),
+    )
+
+
+UNRESOLVED = [
+    f"before @tbl-missing {IMAGE}{IMAGE}",
+    f"- item @tbl-missing {IMAGE}{IMAGE}\n    - nested @fig-x {IMAGE}{IMAGE}",
+    f"> quote @tbl-missing {IMAGE}{IMAGE}",
+    f"## heading @tbl-missing {IMAGE}{IMAGE}",
+    f"| a | b |\n|---|---|\n| cell @tbl-missing {IMAGE}{IMAGE} | y |",
+    "before @tbl-missing {{x}}{{x}}",
+    "- item @tbl-missing {{x}}{{x}}\n\n> quote @tbl-missing {{x}}{{x}}",
+    "## heading @tbl-missing {{x}}{{x}}",
+    f"@tbl-a{SPAN}b</span> and {SPAN}@tbl-a</span>b",
+    f"x{SPAN}</span>@tbl-a and @tbl-a{SPAN}</span>x",
+    "**bold @tbl-missing** *italic @fig-x* @tbl-a**b** @tbl-**a**",
+    "`@tbl-a` code, [link @tbl-a](https://x.example/@tbl-a) text",
+    "> callout $x@tbl-a$ math and **@tbl-missing** \\@tbl-a",
+    "line one<br>@tbl-missing after a break",
+    "<table><tr><td>@tbl-missing <b>@fig-x</b></td><td><code>@tbl-a</code></td></tr></table>",
+    "1. one @tbl-missing\n2. two \\@tbl-a",
+    "## @tbl-**a**\n\n## **@tbl-**a",
+    "see @tbl-a**b**.com and (@fig-x.example)",
+]
+
+
+@pytest.mark.parametrize("markdown", UNRESOLVED)
+def test_unresolved_references_keep_the_structure_of_text_without_them(
+    tmp_path: Path, markdown: str
+) -> None:
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    document, _ = render(write_front(tmp_path / "a", markdown, TERMS), strict=False)
+    control_source = markdown.replace("\\@", FULLWIDTH_AT).replace("@", FULLWIDTH_AT)
+    control, _ = render(write_front(tmp_path / "b", control_source, TERMS), strict=False)
+    assert references(document) == []
+    assert structure(document) == structure(control)
+
+
+# [13] Unresolved references never merge the runs after them.
+def test_unresolved_reference_keeps_every_picture_and_control(tmp_path: Path) -> None:
+    body = f"before @tbl-missing {IMAGE}{IMAGE}\n\nagain @tbl-missing {{{{x}}}}{{{{x}}}}"
+    document, errors = render(write_front(tmp_path, body, TERMS), strict=False)
+    assert len(list(document.element.body.iter(f"{W}drawing"))) == 2
+    controls = list(document.element.body.iter(f"{W}sdt"))
+    assert ["".join(t.text or "" for t in c.iter(f"{W}t")) for c in controls] == ["VALUE", "VALUE"]
+    assert errors == ["Cross-reference @tbl-missing has no table or figure with that id"]
+
+
+# [14] Reading an ID across a colour span always ends.
+_COLOUR_PROBE = """
+import sys
+from md_parser import ReferenceScope, TextParser
+with TextParser.reference_scope(ReferenceScope(targets=frozenset({"tbl-a"}), report=print)):
+    for text in sys.argv[1:]:
+        print([run.text for run in TextParser.parse_runs(text)])
+        print([run.text for run in TextParser.parse_runs_plain(text)])
+"""
+
+
+def test_reading_an_id_across_a_colour_span_ends() -> None:
+    import subprocess
+    import sys
+
+    texts = [f"@tbl-a{SPAN}b</span>", f"{SPAN}@tbl-a</span>b", f"@tbl-a{SPAN}b</span>.com"]
+    try:
+        probe = subprocess.run(
+            [sys.executable, "-c", _COLOUR_PROBE, *texts],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            cwd=Path(__file__).resolve().parents[1],
+            timeout=60,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("parsing an ID across a colour span did not finish")
+    assert probe.returncode == 0, probe.stderr[-300:]
+    lines = probe.stdout.splitlines()
+    assert lines.count("['@tbl-a', 'b']") == 4
+    assert lines.count("Cross-reference @tbl-ab is split by formatting and stays text") == 4
+
+
+# [15] An empty colour span is not the start or end of the text.
+def test_empty_colour_span_is_no_reference_edge(tmp_path: Path) -> None:
+    path = write(tmp_path, f"x{SPAN}</span>@tbl-a" + TABLE_ONLY, DEFINED_A)
+    document, errors = render(path)
+    assert errors == []
+    assert references(document) == []
+    path = write(tmp_path, f"@tbl-a{SPAN}</span>x" + TABLE_ONLY, DEFINED_A)
+    with pytest.raises(StrictValidationError, match="@tbl-ax is split by formatting"):
+        render(path)
+    document, _ = render(path, strict=False)
+    assert references(document) == []
+
+
+# [16] A heading is judged on its source, with the emphasis it renders without.
+@pytest.mark.parametrize("profile", ["business-report", "ib-report", "term-sheet"])
+@pytest.mark.parametrize("heading", ["## @tbl-**a**", "## **@tbl-**a"])
+def test_heading_reference_split_by_emphasis_is_reported(
+    tmp_path: Path, heading: str, profile: str
+) -> None:
+    body = heading + "\n\n| 구분 | 내용 |\n|---|---|\n| 1 | 2 |\n"
+    path = write(tmp_path, body, DEFINED_A, profile=profile)
+    with pytest.raises(StrictValidationError, match="@tbl-a is split by formatting"):
+        render(path)
+    document, _ = render(path, strict=False)
+    assert references(document) == []
+
+
+def test_heading_with_terms_is_judged_on_its_source(tmp_path: Path) -> None:
+    path = write_front(tmp_path, "## {{x}} @tbl-**a**\n\n## {{x}} **@tbl-a**", TERMS)
+    with pytest.raises(StrictValidationError, match="@tbl-a is split by formatting"):
+        render(path)
+    document, _ = render(path, strict=False)
+    assert references(document) == [(REF_INSTRUCTION.format("tbl_a"), "표 1")]
+
+
+# [17] The domain exclusion reads the whole visible ID first.
+@pytest.mark.parametrize("markdown", ["see @tbl-a**b**.com", f"see @tbl-a{SPAN}b</span>.org"])
+def test_domain_split_by_formatting_is_not_a_reference(tmp_path: Path, markdown: str) -> None:
+    document, errors = render(write(tmp_path, markdown + TABLE_ONLY, DEFINED_A))
+    assert errors == []
+    assert references(document) == []
+
+
+# [18] Term values are never read as references.
+@pytest.mark.parametrize("key", ["title", "subtitle", "date"])
+@pytest.mark.parametrize("profile", ["business-report", "ib-report", "term-sheet"])
+def test_term_values_in_metadata_are_not_references(tmp_path: Path, key: str, profile: str) -> None:
+    path = write(tmp_path, "body\n\n| 구분 | 내용 |\n|---|---|\n| 1 | 2 |\n", profile=profile)
+    front = f'terms:\n  x: "@tbl-missing"\n{key}: "{{{{x}}}}"\n'
+    if key != "title":
+        front = "title: 시험 문서\n" + front
+    text = path.read_text(encoding="utf-8").replace("title: 시험 문서\n", front)
+    path.write_text(text, encoding="utf-8")
+    document, errors = render(path)
+    assert errors == []
+    assert references(document) == []
+
+
+# [19] Every frontmatter value a document shows is checked; none holds a field.
+METADATA_KEYS = [
+    "subtitle",
+    "company",
+    "ticker",
+    "sector",
+    "analyst",
+    "date",
+    "recipient",
+    "report_type",
+    "subject_company",
+    "analysis_period",
+    "analysis_basis",
+    "document_no",
+    "meeting_time",
+    "location",
+    "version",
+]
+SENDER_KEYS = ["organization", "department", "signatory", "contact"]
+LIST_KEYS = ["recipients", "cc", "attachments", "attendees"]
+
+
+def _metadata_front(profile: str) -> tuple[str, dict[str, str]]:
+    """Frontmatter with a distinct `@fig-k…` in every value; key -> its ID."""
+    ids: dict[str, str] = {}
+    lines = [f"profile: {profile}", 'title: "Title @fig-ktitle"']
+    for index, key in enumerate(METADATA_KEYS):
+        ids[key] = f"fig-k{index}"
+        lines.append(f'{key}: "v @fig-k{index}"')
+    lines.append("sender:")
+    for index, key in enumerate(SENDER_KEYS):
+        ids["sender." + key] = f"fig-s{index}"
+        lines.append(f'  {key}: "v @fig-s{index}"')
+    for index, key in enumerate(LIST_KEYS):
+        ids[key] = f"fig-l{index}"
+        lines.append(f'{key}:\n  - "v @fig-l{index}"')
+    lines += ['prepared_by: "House @fig-kp"', 'disclaimer: "Test @fig-kd only."']
+    ids["prepared_by"], ids["disclaimer"] = "fig-kp", "fig-kd"
+    return "---\n" + "\n".join(lines) + "\n---\n\n# Title @fig-ktitle\n\nbody\n", ids
+
+
+@pytest.mark.parametrize("profile", sorted(PROFILES))
+def test_metadata_references_are_reported_exactly_where_they_are_shown(
+    tmp_path: Path, profile: str
+) -> None:
+    import io
+    import zipfile
+
+    source, ids = _metadata_front(profile)
+    path = tmp_path / "doc.md"
+    path.write_text(source, encoding="utf-8")
+    document, errors = render(path, strict=False)
+    assert references(document) == []
+    buffer = io.BytesIO()
+    document.save(buffer)
+    with zipfile.ZipFile(buffer) as archive:
+        shown = "".join(
+            archive.read(name).decode("utf-8")
+            for name in archive.namelist()
+            if name.startswith("word/") and name.endswith(".xml")
+        )
+    reported = {
+        key for key, ref_id in ids.items() if any(f"@{ref_id} in the " in error for error in errors)
+    }
+    printed = {
+        key
+        for key, ref_id in ids.items()
+        if re.search(re.escape("@" + ref_id) + "(?![A-Za-z0-9_-])", shown)
+    }
+    # The subtitle is checked in every profile, as before; the rest exactly where shown.
+    assert reported - {"subtitle"} == printed - {"subtitle"}
+    assert "subtitle" in reported
+    assert any("@fig-ktitle in the document title stays text" in error for error in errors)
+    with pytest.raises(StrictValidationError, match="stays text"):
+        render(path)
+
+
+def test_metadata_reference_in_business_report_rejects(tmp_path: Path) -> None:
+    front = 'date: "Date @tbl-missing"\nsender:\n  organization: Org\n  department: "Team @fig-missing"\n'
+    path = write_front(tmp_path, "body", front)
+    with pytest.raises(StrictValidationError, match="@tbl-missing in the frontmatter date"):
+        render(path)
+    _, errors = render(path, strict=False)
+    assert "Cross-reference @fig-missing in the frontmatter sender.department stays text" in errors
+
+
+def test_term_sheet_metadata_never_holds_a_field(tmp_path: Path) -> None:
+    front = 'date: "2026 @tbl-a"\nprepared_by: "House @tbl-a"\n'
+    path = write_front(tmp_path, "body @tbl-a", front)
+    text = path.read_text(encoding="utf-8").replace("business-report", "term-sheet")
+    text = text.replace("title: 시험 문서\n", "title: 시험 문서\ndisclaimer: 시험용.\n", 1)
+    path.write_text(text, encoding="utf-8")
+    document, errors = render(path, strict=False)
+    assert references(document) == [(REF_INSTRUCTION.format("tbl_a"), "표 1")]  # body only
+    assert "Cross-reference @tbl-a in the frontmatter date stays text" in errors
+    assert "Cross-reference @tbl-a in the term-sheet prepared_by stays text" in errors
+    assert "2026 @tbl-a" in body_text(document) and "House @tbl-a" in body_text(document)
+
+
+# [20] A table that is not drawn: rejected in strict mode, reported and unnumbered otherwise.
+def test_table_that_is_not_drawn_is_reported_in_the_default_mode(tmp_path: Path) -> None:
+    path = write(tmp_path, EMPTY_TABLE_BODY.replace(" and @tbl-empty", ""), EMPTY_TABLE_SPECS)
+    with pytest.raises(StrictValidationError, match="'tbl-empty' is on a table with no columns"):
+        render(path)
+    document, errors = render(path, strict=False)
+    assert "Reference id 'tbl-empty' is on a table with no columns, which is not drawn" in errors
+    assert caption_texts(document) == ["표 1. A"]
+
+
+def test_hand_built_model_metadata_is_checked_when_rendered() -> None:
+    from md_parser import DocumentMetadata, DocumentModel, Element, ElementType, Paragraph, TextRun
+
+    metadata = DocumentMetadata(title="Title @tbl-a", profile="business-report")
+    metadata.extra["date"] = "Date @fig-b"
+    body = Element(ElementType.PARAGRAPH, Paragraph(text="body", runs=[TextRun(text="body")]))
+    renderer = IBDocumentRenderer(options=RenderOptions(strict=False))
+    renderer.render(DocumentModel(metadata=metadata, elements=[body]))
+    assert "Cross-reference @tbl-a in the document title stays text" in renderer.errors
+    assert "Cross-reference @fig-b in the frontmatter date stays text" in renderer.errors

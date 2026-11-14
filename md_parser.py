@@ -7,6 +7,10 @@ Changelog (captions):
     - NEW: `![설명](파일){#fig-…}` is a numbered figure; an unusable `{#…}` ending
       keeps the line as text and is reported by the renderer wherever it stands.
     - Callouts and numbered headings, unescaped here, keep escaped `@` apart.
+    - Second review: a document that may hold references is parsed a second
+      time once its numbered tables and figures are known, so only resolvable
+      references split runs; title, subtitle, date, image descriptions and
+      footnotes are checked as text that cannot hold a field.
 
 Changelog (property-test regressions):
     - Use documented rejections for malformed declared YAML and invalid footnote IDs.
@@ -90,6 +94,15 @@ from document_model import (
 )
 from document_model import ConfirmationBlock as ConfirmationBlock
 from document_model import (
+    CrossReference,
+    Figure,
+    MarkedBlockquote,
+    MarkedHeading,
+    figure_id_problem,
+    numbered_items,
+    numbered_targets,
+)
+from document_model import (
     Diagram as Diagram,
 )
 from document_model import (
@@ -117,7 +130,6 @@ from document_model import (
 from document_model import (
     ElementType as ElementType,
 )
-from document_model import Figure, MarkedBlockquote, MarkedHeading, figure_id_problem
 from document_model import (
     Footnote as Footnote,
 )
@@ -192,6 +204,7 @@ from md_parse_tables import TableSpanResolver as TableSpanResolver
 from md_parse_text import _DRIVE_PATH_RE as _DRIVE_PATH_RE
 from md_parse_text import _URI_DRIVE_PATH_RE as _URI_DRIVE_PATH_RE
 from md_parse_text import _URI_SCHEME_RE as _URI_SCHEME_RE
+from md_parse_text import ReferenceScope as ReferenceScope
 from md_parse_text import TextParser as TextParser
 from md_parse_text import _document_int as _document_int
 from md_parse_text import _parse_term_runs as _parse_term_runs
@@ -314,6 +327,9 @@ class MarkdownParser:
         self._parse_warnings: list[str] = []
         # Per-parse `terms:` state; None keeps `{{...}}` ordinary text.
         self._terms: TermResolver | None = None
+        # Term runs of a heading whose references resolve, read without them,
+        # for the title when that heading becomes it.
+        self._title_runs: dict[int, list[TextRun]] = {}
 
     def parse(self, content: str) -> DocumentModel:
         """
@@ -329,7 +345,45 @@ class MarkdownParser:
         return self._parse_content(content)
 
     def _parse_content(self, content: str) -> DocumentModel:
-        """Parse text after the public text/file/stream boundary checked original bytes."""
+        """Parse text after the public text/file/stream boundary checked original bytes.
+
+        Text without `@tbl-` or `@fig-` is parsed once, outside any reference
+        scope, as before references existed. Otherwise it is parsed in a scope
+        in which no reference resolves yet; when that parse finds numbered
+        tables or figures, the document is parsed again in a scope holding their
+        IDs. Only resolvable references split runs; every other one is reported.
+        """
+        if "@tbl-" not in content and "@fig-" not in content:
+            with TextParser.reference_scope(None):
+                return self._parse_document(content)
+        found: list[str] = []
+
+        def report(message: str) -> None:
+            if message not in found:
+                found.append(message)
+
+        with TextParser.reference_scope(ReferenceScope(report=report)):
+            model = self._parse_document(content)
+        targets = numbered_targets(model.elements)
+        if targets:
+            found.clear()
+            with TextParser.reference_scope(ReferenceScope(targets=targets, report=report)):
+                model = self._parse_document(content)
+        # An ID that numbers nothing leaves its references without a target;
+        # say why first (the renderer reports the same when nothing refers to it).
+        problems = [
+            "Reference id " + problem
+            for _, _, problem in numbered_items(model.elements)
+            if problem is not None
+        ]
+        for message in [*problems, *found]:
+            if message not in model.warnings:
+                model.warnings.append(message)
+                logger.warning("%s", message)
+        return model
+
+    def _parse_document(self, content: str) -> DocumentModel:
+        """Parse the document once under the active reference scope."""
         lines = content.replace("\r\n", "\n").replace("\r", "\n").split("\n")
 
         # Parse frontmatter
@@ -340,6 +394,7 @@ class MarkdownParser:
         self._financial_rules = get_profile(metadata.profile).is_ib
         self._term_sheet = metadata.profile == "term-sheet"
         self._parse_warnings = []
+        self._title_runs = {}
         # An empty mapping enables checking: every reference is then undefined.
         with document_validation():
             self._terms = (
@@ -389,13 +444,16 @@ class MarkdownParser:
                     input_warnings.append(f"Duplicate footnote definition: {number}")
                 footnotes[number] = match.group(2)
             else:
+                # A raw line is only scanned for footnote marks here.
+                with TextParser.reference_scope(None):
+                    runs = TextParser.parse_runs(scan_lines[index])
                 explicit_references.update(
-                    run.footnote_id
-                    for run in TextParser.parse_runs(scan_lines[index])
-                    if run.footnote_id is not None
+                    run.footnote_id for run in runs if run.footnote_id is not None
                 )
                 content_lines.append(raw_line)
         remaining_lines = content_lines
+        for text in footnotes.values():
+            TextParser.check_text(text, "footnote")
 
         # Parse elements
         elements = self._parse_elements(remaining_lines)
@@ -411,7 +469,9 @@ class MarkdownParser:
         )
         # Title inference follows what the author wrote, not a substituted value.
         written_title = metadata.title
-        self._substitute_metadata(metadata)
+        self._check_metadata_references(metadata)
+        with TextParser.reference_scope(None):  # metadata never holds a field
+            self._substitute_metadata(metadata)
         with document_validation():
             validate_term_sheet_metadata(metadata)
         model = DocumentModel(
@@ -439,8 +499,20 @@ class MarkdownParser:
                 and first_heading.text
             ):
                 metadata.title = first_heading.text
+                if metadata.profile != "plain":  # where the heading becomes the title
+                    TextParser.check_text(
+                        first_heading.marked_text
+                        if isinstance(first_heading, MarkedHeading)
+                        else first_heading.text,
+                        "document title",
+                        markdown=metadata.profile == "term-sheet",
+                        escaped_at=isinstance(first_heading, MarkedHeading),
+                    )
                 if first_heading.runs:
-                    metadata.display_runs["title"] = [replace(run) for run in first_heading.runs]
+                    metadata.display_runs["title"] = [
+                        replace(run)
+                        for run in self._title_runs.get(id(first_heading), first_heading.runs)
+                    ]
         with document_validation(errors=(ValueError, TypeError)):
             apply_table_specs(model)
         # Span markers are classified on raw cell source, before term text changes.
@@ -502,12 +574,39 @@ class MarkdownParser:
             tokenized = TextParser.tokenize_terms(heading.text, self._terms, tokens)
         if tokens:
             heading.text = restore_terms(tokenized.replace(TextParser.ESCAPED_AT, "@"), tokens)
-            # HeadingRenderer drops bold markers because it bolds every run.
-            heading.runs = split_term_runs(
-                TextParser.parse_runs(tokenized.replace("**", "").strip(), escaped_at=marked),
-                tokens,
-            )
+            # HeadingRenderer drops bold markers because it bolds every run; the
+            # references are judged on the text with them, as in body text.
+            text, source = tokenized.replace("**", "").strip(), tokenized.strip()
+            runs = TextParser.parse_judged_runs(text, source, escaped_at=marked)
+            heading.runs = split_term_runs(runs, tokens)
+            if any(isinstance(run, CrossReference) for run in runs):
+                with TextParser.reference_scope(None):
+                    plain = TextParser.parse_runs(text, escaped_at=marked)
+                self._title_runs[id(heading)] = split_term_runs(plain, tokens)
         return element
+
+    def _check_metadata_references(self, metadata: DocumentMetadata) -> None:
+        """Report references in the title, subtitle and date, as written.
+
+        These values cannot hold a field and may take term values, which are
+        never read as references, so they are checked here before substitution.
+        The title and subtitle are always checked; the date wherever a profile
+        shows it (every profile but `plain`). A term sheet reads them as inline
+        Markdown, the other profiles show them as plain text.
+
+        Args:
+            metadata: Frontmatter metadata before term substitution.
+        """
+        markdown = metadata.profile == "term-sheet"
+        places: list[tuple[str, object]] = [
+            ("document title", metadata.title),
+            ("subtitle", metadata.subtitle),
+        ]
+        if metadata.profile != "plain":
+            places.append(("frontmatter date", metadata.extra.get("date")))
+        for place, value in places:
+            if isinstance(value, str):
+                TextParser.check_text(value, place, markdown=markdown)
 
     def _substitute_metadata(self, metadata: DocumentMetadata) -> None:
         """Substitute title, subtitle and date, keeping their runs for display."""
@@ -1001,6 +1100,9 @@ class MarkdownParser:
                 # the renderer reports it wherever such an image is written.
                 file_image = self._parse_figure_line(line)
             if file_image is not None:
+                if match or isinstance(file_image, Figure):
+                    # The description is a caption line that cannot hold a field.
+                    TextParser.check_text(file_image.alt_text, "image description")
                 elements.append(
                     Element(element_type=ElementType.IMAGE, content=file_image, raw_text=line)
                 )

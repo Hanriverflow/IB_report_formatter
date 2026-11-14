@@ -82,9 +82,7 @@
             "footnote_id": null,
             "term_key": null,
             "code": false,
-            "image": null,
-            "target": "",
-            "joined": false
+            "image": null
           },
           {
             "text": "id",
@@ -98,9 +96,7 @@
             "footnote_id": null,
             "term_key": null,
             "code": true,
-            "image": null,
-            "target": "",
-            "joined": false
+            "image": null
           },
           {
             "text": "를 주고, 그림에는 그림 줄 끝에 ",
@@ -114,9 +110,7 @@
             "footnote_id": null,
             "term_key": null,
             "code": false,
-            "image": null,
-            "target": "",
-            "joined": false
+            "image": null
           },
           {
             "text": "{#fig-…}",
@@ -130,9 +124,7 @@
             "footnote_id": null,
             "term_key": null,
             "code": true,
-            "image": null,
-            "target": "",
-            "joined": false
+            "image": null
           },
           {
             "text": "를 단다. 실적은 ",
@@ -146,9 +138,7 @@
             "footnote_id": null,
             "term_key": null,
             "code": false,
-            "image": null,
-            "target": "",
-            "joined": false
+            "image": null
           },
           {
             "text": "@tbl-results",
@@ -163,8 +153,7 @@
             "term_key": null,
             "code": false,
             "image": null,
-            "target": "tbl-results",
-            "joined": true
+            "target": "tbl-results"
           },
           {
             "text": "에서, 조달 구성은 ",
@@ -178,9 +167,7 @@
             "footnote_id": null,
             "term_key": null,
             "code": false,
-            "image": null,
-            "target": "",
-            "joined": true
+            "image": null
           },
           {
             "text": "@tbl-funding",
@@ -195,8 +182,7 @@
             "term_key": null,
             "code": false,
             "image": null,
-            "target": "tbl-funding",
-            "joined": true
+            "target": "tbl-funding"
           },
           {
             "text": "에서, 거래 구조는 ",
@@ -210,9 +196,7 @@
             "footnote_id": null,
             "term_key": null,
             "code": false,
-            "image": null,
-            "target": "",
-            "joined": true
+            "image": null
           },
           {
             "text": "@fig-structure",
@@ -227,8 +211,7 @@
             "term_key": null,
             "code": false,
             "image": null,
-            "target": "fig-structure",
-            "joined": true
+            "target": "fig-structure"
           },
           {
             "text": "에서 볼 수 있다.",
@@ -242,9 +225,7 @@
             "footnote_id": null,
             "term_key": null,
             "code": false,
-            "image": null,
-            "target": "",
-            "joined": true
+            "image": null
           }
         ],
         "has_inline_latex": false
@@ -1115,8 +1096,7 @@
             "term_key": null,
             "code": false,
             "image": null,
-            "target": "tbl-funding",
-            "joined": false
+            "target": "tbl-funding"
           },
           {
             "text": "의 합계 800억원은 ",
@@ -1130,9 +1110,7 @@
             "footnote_id": null,
             "term_key": null,
             "code": false,
-            "image": null,
-            "target": "",
-            "joined": true
+            "image": null
           },
           {
             "text": "@tbl-results",
@@ -1147,8 +1125,7 @@
             "term_key": null,
             "code": false,
             "image": null,
-            "target": "tbl-results",
-            "joined": true
+            "target": "tbl-results"
           },
           {
             "text": "의 2026년 매출보다 작다.",
@@ -1162,9 +1139,7 @@
             "footnote_id": null,
             "term_key": null,
             "code": false,
-            "image": null,
-            "target": "",
-            "joined": true
+            "image": null
           }
         ],
         "indent_level": 0

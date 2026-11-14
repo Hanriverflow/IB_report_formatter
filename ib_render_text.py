@@ -5,16 +5,17 @@ Changelog (captions):
       bookmark around both, from a render-scoped table of numbers.
     - Cross-references: `REF <bookmark> \\h \\* CHARFORMAT` with the target's
       `표 1` cached; an unresolvable reference stays text and is reported.
-    - Review fixes: reference pieces that do not resolve are joined back into
-      their original run, so such text renders exactly as before; inline image
-      descriptions with references and a `{#…}` after a non-figure image are
-      reported; every written caption number is recorded for the order check.
+    - Review fixes: a `{#…}` after a non-figure image is reported; every
+      written caption number is recorded for the order check.
+    - Second review: the parser splits runs only for references that resolve
+      (`reference_scope` gives it the render's numbers and diagnostic sink), so
+      nothing is joined back here.
 """
 
 import logging
 import os
 import re
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
@@ -28,16 +29,13 @@ from docx.shared import Inches, Pt, RGBColor
 from document_model import (
     CaptionNumber,
     CrossReference,
-    DescribedImage,
     figure_id_problem,
-    join_reference_pieces,
-    reference_id_problem,
 )
 from ib_render_fonts import FontStyler
 from ib_render_footnotes import FootnoteRenderer
 from ib_render_media import ImageRenderer, LaTeXRenderer
 from input_safety import DEFAULT_LIMITS, AssetOutsideRootError, InputLimitError
-from md_parser import Image, TextParser, TextRun
+from md_parser import Image, ReferenceScope, TextParser, TextRun
 from render_styles import STYLE
 from term_variables import register_term_run
 
@@ -106,53 +104,34 @@ def _report(numbers: CaptionNumbers, message: str) -> None:
         logger.warning("%s", message)
 
 
-def _reference_problem(reference: CrossReference) -> str | None:
-    """Why a reference piece stays text, or None when it can resolve."""
-    written = "@" + reference.target
-    if reference.text != written:
-        return f"Cross-reference {written} is split by formatting and stays text"
-    problem = reference_id_problem(reference.target, reference.target[:3])
-    if problem is not None:
-        return f"Cross-reference {written}: {problem}"
-    if reference.hyperlink:
-        return f"Cross-reference {written} is inside link text and stays text"
-    return None
+def reference_scope(numbers: CaptionNumbers) -> ReferenceScope:
+    """The reference scope of a render: its numbered IDs and diagnostic sink."""
+    return ReferenceScope(
+        targets=frozenset(numbers.by_id), report=lambda message: _report(numbers, message)
+    )
 
 
 def resolve_cross_reference(reference: CrossReference, report: bool = True) -> CaptionNumber | None:
-    """Return the caption a reference points to, or None to keep its written text.
+    """Return the caption a reference points to, or None to write its text.
 
-    Outside a render nothing is reported. Inside one, a malformed or split ID,
-    an ID no drawn table or figure has, and a reference inside link text (a
-    Word field cannot sit in a hyperlink run) are diagnostics that strict mode
-    rejects.
+    The parser makes a `CrossReference` only for an ID that resolves, so None
+    means a model built by hand (or changed after parsing); inside a render
+    that is reported.
 
     Args:
-        reference: A `@tbl-…` / `@fig-…` piece (`target` set).
-        report: Record the diagnostic of an unresolvable reference.
+        reference: A resolvable `@tbl-…` / `@fig-…` run.
+        report: Record the diagnostic when it does not resolve.
 
     Returns:
         The caption number of the target, or None.
     """
     numbers = _CAPTION_NUMBERS.get()
-    if numbers is None or not reference.target:
-        return None
-    problem = _reference_problem(reference)
-    number = None if problem is not None else numbers.by_id.get(reference.target)
-    if problem is None and number is None:
-        problem = f"Cross-reference @{reference.target} has no table or figure with that id"
-    if problem is not None and report:
-        _report(numbers, problem)
-    return number
-
-
-def report_unwritable_references(references: Iterable[str], place: str) -> None:
-    """Report references in text that cannot hold a Word field; they stay text."""
-    numbers = _CAPTION_NUMBERS.get()
     if numbers is None:
-        return
-    for target in references:
-        _report(numbers, f"Cross-reference @{target} in the {place} stays text")
+        return None
+    number = numbers.by_id.get(reference.target)
+    if number is None and report:
+        _report(numbers, f"Cross-reference @{reference.target} has no table or figure with that id")
+    return number
 
 
 def report_stray_figure_id(image: Image, following: str) -> None:
@@ -170,34 +149,16 @@ def report_stray_figure_id(image: Image, following: str) -> None:
 _FIGURE_ID_AFTER_IMAGE_RE = re.compile(r"\{#([^{}\s]*)\}")
 
 
-def resolved_reference_runs(runs: list[TextRun], report: bool = True) -> list[TextRun]:
-    """Join reference pieces back except the references that resolve.
-
-    Args:
-        runs: Runs of one paragraph or field.
-        report: Record diagnostics for references that stay text.
-
-    Returns:
-        Runs in which only resolvable references are `CrossReference` runs.
-    """
-    if not any(isinstance(run, CrossReference) for run in runs):
-        return runs
-    return join_reference_pieces(
-        runs, lambda reference: resolve_cross_reference(reference, report) is not None
-    )
-
-
 def reference_preview_text(runs: list[TextRun]) -> str | None:
     """Plain text of `runs` with resolvable references as their `표 1`, or None.
 
     Returns None when no reference resolves, so callers keep the text they
     showed before.
     """
-    joined = resolved_reference_runs(runs, report=False)
-    if not any(isinstance(run, CrossReference) for run in joined):
+    if not any(isinstance(run, CrossReference) for run in runs):
         return None
     pieces = []
-    for run in joined:
+    for run in runs:
         number = resolve_cross_reference(run, False) if isinstance(run, CrossReference) else None
         pieces.append(number.text if number is not None else run.text)
     return "".join(pieces)
@@ -232,7 +193,6 @@ class TextRenderer:
         font_name = font_name or STYLE.BODY_FONT
         font_size = font_size or STYLE.BODY_SIZE
 
-        runs = resolved_reference_runs(runs)
         for index, run_data in enumerate(runs):
             if run_data.is_latex:
                 TextRenderer._render_inline_latex(
@@ -242,18 +202,12 @@ class TextRenderer:
                 )
                 continue
             if run_data.image is not None:
-                if isinstance(run_data.image, DescribedImage):
-                    report_unwritable_references(
-                        list(run_data.image.references), "image description"
-                    )
                 if index + 1 < len(runs):
                     report_stray_figure_id(run_data.image, runs[index + 1].text)
                 TextRenderer._render_inline_image(paragraph, run_data.image, font_size)
                 continue
             target = (
-                resolve_cross_reference(run_data, report=False)
-                if isinstance(run_data, CrossReference)
-                else None
+                resolve_cross_reference(run_data) if isinstance(run_data, CrossReference) else None
             )
             if isinstance(run_data, CaptionNumber) or target is not None:
                 style = run_data
@@ -500,8 +454,6 @@ class TextRenderer:
         font_size = font_size or STYLE.BODY_SIZE
 
         parsed_runs = TextParser.parse_runs_plain(text, escaped_at=escaped_at)
-        # Only a reference that resolves needs runs; the rest stays text as before.
-        joined = resolved_reference_runs(parsed_runs)
         if any(
             run.bold
             or run.italic
@@ -512,7 +464,7 @@ class TextRenderer:
             or run.hyperlink
             or run.image is not None
             or isinstance(run, CrossReference)
-            for run in joined
+            for run in parsed_runs
         ):
             TextRenderer.render_runs(
                 paragraph,

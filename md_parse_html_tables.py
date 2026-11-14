@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass, field, replace
 from html.parser import HTMLParser
 
-from document_model import CrossReference, DescribedImage, Image, TableCell, TextRun
+from document_model import Image, TableCell, TextRun
 from input_safety import DEFAULT_LIMITS, InputLimits, RejectionCode
 from md_parse_text import TextParser
 from term_variables import TermResolver, TokenMap, split_term_runs
@@ -46,13 +46,8 @@ def _html_image(source: str, alt: str) -> Image | None:
         )
     if not source or any(character in source for character in "<>\n"):
         return None
-    references = tuple(
-        run.target
-        for run in TextParser.mark_cross_references([TextRun(text=alt)])
-        if isinstance(run, CrossReference) and run.target
-    )
-    if references:
-        return DescribedImage(alt_text=alt, path=source, references=references)
+    # The description is plain text that cannot hold a field.
+    TextParser.check_text(alt, "image description", markdown=False)
     return Image(alt_text=alt, path=source)
 
 
@@ -304,7 +299,7 @@ class _HtmlTableReader(HTMLParser):
         while cleaned and cleaned[-1].text == "\n":
             cleaned.pop()
         # Cross-references follow the rules of Markdown text (code holds none).
-        return TextParser.mark_cross_references(cleaned)
+        return TextParser.read_references(cleaned)
 
 
 class HtmlTableParser:

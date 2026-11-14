@@ -10,6 +10,10 @@ Changelog (captions):
     - Review fixes: such text is read with the body-text rules; a table that is
       not drawn gets no number; caption numbers actually written are compared
       with the numbers worked out after composition.
+    - Second review: composition runs in a `ReferenceScope` of the render's
+      numbers; the frontmatter values a document shows (besides title,
+      subtitle and date, checked by the parser) are checked here
+      (`_check_metadata_references`); term-sheet metadata never holds a field.
 
 Changelog (property-test regressions):
     - Heading bold-marker removal skips code spans and escaped characters, and
@@ -100,12 +104,8 @@ from document_model import (
     CaptionNumber,
     Chart,
     ConfirmationBlock,
-    DescribedImage,
-    Figure,
-    NumberedTable,
     caption_bookmark_name,
-    reference_id_problem,
-    table_is_drawn,
+    numbered_items,
 )
 from document_profiles import (
     RenderOptions,
@@ -133,7 +133,12 @@ from ib_render_media import ImageRenderer as ImageRenderer
 from ib_render_media import LaTeXRenderer as LaTeXRenderer
 from ib_render_tables import _BLACK as _BLACK
 from ib_render_tables import TableRenderer as TableRenderer
-from ib_render_text import CaptionNumbers, caption_prefix, use_caption_numbers
+from ib_render_text import (
+    CaptionNumbers,
+    caption_prefix,
+    reference_scope,
+    use_caption_numbers,
+)
 from ib_render_text import TextRenderer as TextRenderer
 from input_safety import (
     ConversionRejection,
@@ -148,6 +153,7 @@ from input_safety import (
 from md_parser import (
     Blockquote,
     CodeBlock,
+    DocumentMetadata,
     DocumentModel,
     Element,
     ElementType,
@@ -795,7 +801,16 @@ class IBDocumentRenderer:
             collect_raster_font_diagnostics() as font_warnings,
             collect_term_runs(resolved.term_tags) as term_runs,
             use_caption_numbers(self._caption_numbers(model)) as caption_numbers,
+            TextParser.reference_scope(reference_scope(caption_numbers)),
         ):
+            self._check_metadata_references(
+                model.metadata,
+                cover=resolved.cover,
+                opening=report_title_block or opening_title,
+                disclaimer=resolved.disclaimer,
+                confidential=resolved.confidential,
+                parsed=model.parsed_profile is not None,
+            )
             self.styler.setup_document()
             self.styler.create_styles()
             if resolved.profile.name == "office-letter":
@@ -822,7 +837,8 @@ class IBDocumentRenderer:
                     title_inserted = render_office_opening(self.doc, model.metadata)
             if self._term_sheet:
                 # Resolved in preflight; the opening leads the first page, before any TOC.
-                with _metadata_text("term-sheet opening"):
+                # Its metadata texts cannot hold a field (checked above).
+                with _metadata_text("term-sheet opening"), TextParser.reference_scope(None):
                     title_inserted = render_term_sheet_opening(
                         self.doc,
                         model.metadata,
@@ -889,7 +905,10 @@ class IBDocumentRenderer:
                 if isinstance(sender, dict)
                 else model.metadata.company
             )
-            with _metadata_text("header (sender.organization or company)"):
+            with (
+                _metadata_text("header (sender.organization or company)"),
+                TextParser.reference_scope(None),
+            ):
                 if self._term_sheet:
                     setup_term_sheet_header_footer(
                         self.doc,
@@ -1049,44 +1068,10 @@ class IBDocumentRenderer:
         """
         numbers = CaptionNumbers(next_bookmark_id=self._next_bookmark_id, errors=self.errors)
         counts = dict.fromkeys(CAPTION_LABELS, 0)
-        # Text that is never written as runs cannot hold a reference field; it is
-        # read with the same rules as body text and its references reported.
-        places: list[tuple[str, list[str]]] = [
-            ("document title", self._references_in(model.metadata.title)),
-            ("subtitle", self._references_in(model.metadata.subtitle)),
-        ]
-        for element in model.elements:
-            if element.element_type == ElementType.IMAGE and isinstance(element.content, Image):
-                image = element.content
-                found = (
-                    list(image.references)
-                    if isinstance(image, DescribedImage)
-                    else self._references_in(image.alt_text)
-                )
-                places.append(("image description", found))
-        places += [("footnote", self._references_in(text)) for text in model.footnotes.values()]
-        for place, targets in places:
-            for target in targets:
-                message = f"Cross-reference @{target} in the {place} stays text"
-                if message not in self.errors:
-                    self.errors.append(message)
-        for element in model.elements:
-            content = element.content
-            if element.element_type == ElementType.TABLE and isinstance(content, NumberedTable):
-                kind, caption = "tbl", content.caption
-            elif element.element_type == ElementType.IMAGE and isinstance(content, Figure):
-                kind, caption = "fig", content.alt_text
-            else:
-                continue
-            problem = reference_id_problem(content.ref_id, kind)
-            if problem is None and not caption.strip():
-                problem = f"{content.ref_id!r} has no caption to number"
-            if problem is None and kind == "tbl" and not table_is_drawn(cast(Table, content)):
-                # The renderer skips a table without rows or columns, so it gets
-                # no number and references to it have no target.
-                problem = f"{content.ref_id!r} is on a table with no columns, which is not drawn"
+        for content, kind, problem in numbered_items(model.elements):
             if problem is not None:
-                self.errors.append("Reference id " + problem)
+                if "Reference id " + problem not in self.errors:  # the parser may have said so
+                    self.errors.append("Reference id " + problem)
                 continue
             counts[kind] += 1
             label = CAPTION_LABELS[kind]
@@ -1105,10 +1090,106 @@ class IBDocumentRenderer:
             numbers.by_id.setdefault(content.ref_id, number)
         return numbers
 
-    @staticmethod
-    def _references_in(text: object) -> list[str]:
-        """Reference IDs in a metadata or description string (none in other values)."""
-        return TextParser.reference_targets(text) if isinstance(text, str) else []
+    def _check_metadata_references(
+        self,
+        metadata: DocumentMetadata,
+        cover: bool,
+        opening: bool,
+        disclaimer: bool,
+        confidential: bool,
+        parsed: bool,
+    ) -> None:
+        """Report references in the frontmatter values this render shows.
+
+        Such values are written as text and cannot hold a field. The parser
+        checks the title, subtitle and date before term values are inserted
+        (here only for a model built without the parser); this checks every
+        other value where a composer shows it: the cover,
+        the title block, the letter closing, the header, the disclaimer page,
+        and the term-sheet texts and footer. Values are read as the text they
+        are shown as, except term-sheet texts, which are inline Markdown. The
+        cover's `report_type` is shown in capitals, which the grammar never
+        reads as a reference.
+
+        Args:
+            metadata: The render's metadata.
+            cover: The cover page is rendered.
+            opening: The title block (`render_office_opening`) is rendered.
+            disclaimer: The disclaimer page is rendered.
+            confidential: The term-sheet confidentiality label is shown.
+            parsed: The model comes from the parser, which checked the title,
+                subtitle and date.
+        """
+        extra = metadata.extra
+        sender = extra.get("sender")
+        sender = sender if isinstance(sender, dict) else {}
+        profile = metadata.profile
+        shown: list[str] = []
+        if cover:
+            institution = (
+                "subject_company" if str(extra.get("subject_company", "")).strip() else "company"
+            )
+            shown += [
+                "sector",
+                "ticker",
+                institution,
+                "analyst",
+                "recipient",
+                "analysis_period",
+                "analysis_basis",
+            ]
+        if opening and profile == "office-letter":
+            shown += ["sender.organization", "recipients", "cc"]
+        elif opening:
+            shown += ["sender.department", "analyst", "meeting_time", "location", "attendees"]
+        if profile == "office-letter":
+            signatory = "sender.signatory" if sender.get("signatory") else "sender.organization"
+            shown += [
+                "attachments",
+                signatory,
+                "document_no",
+                "sender.department",
+                "sender.contact",
+            ]
+        elif not self._term_sheet:
+            shown.append("sender.organization" if "organization" in sender else "company")
+        if disclaimer:
+            shown.append("company")
+        if self._term_sheet:
+            shown.append("version")
+        values = {
+            "company": metadata.company,
+            "ticker": metadata.ticker,
+            "sector": metadata.sector,
+            "analyst": metadata.analyst,
+            **{f"sender.{key}": value for key, value in sender.items()},
+        }
+        for key in dict.fromkeys(shown):
+            value = values[key] if key in values else extra.get(key)
+            for text in value if isinstance(value, list) else [value]:
+                if isinstance(text, str):
+                    TextParser.check_text(text, f"frontmatter {key}", markdown=False)
+        if not parsed:
+            # A model built without the parser: its title, subtitle and date as they stand.
+            date = extra.get("date") if profile != "plain" else None
+            for place, text in (
+                ("document title", metadata.title),
+                ("subtitle", metadata.subtitle),
+                ("frontmatter date", date),
+            ):
+                if isinstance(text, str):
+                    TextParser.check_text(text, place, markdown=self._term_sheet)
+        texts = self.term_sheet_texts
+        if texts is not None:
+            for place, text in (
+                ("prepared_by", texts.prepared_by),
+                ("disclaimer", texts.disclaimer),
+            ):
+                TextParser.check_text(text, f"term-sheet {place}")
+            if confidential:
+                TextParser.check_text(
+                    texts.confidential_label, "term-sheet confidential_label", markdown=False
+                )
 
     def _check_caption_order(self, numbers: CaptionNumbers) -> None:
         """Report caption numbers that were not written as they were worked out.

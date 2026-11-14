@@ -5,6 +5,8 @@ Changelog (captions):
     - Review fixes: the preview reads the runs the heading renders
       (`HeadingRenderer.source_runs`), and headings and callouts unescaped at
       parse time keep an escaped `@` from becoming a reference.
+    - Second review: a heading's references are judged on its source with the
+      bold markers it is rendered without (`TextParser.parse_judged_runs`).
 """
 
 import re
@@ -159,7 +161,8 @@ class HeadingRenderer:
         clean_text = cls._BOLD_MARKER_RE.sub(
             lambda match: "" if match.group(0) == "**" else match.group(0), source
         )
-        return TextParser.parse_runs(clean_text.strip(), escaped_at=marked)
+        # References are judged like body text, on the source with its markers.
+        return TextParser.parse_judged_runs(clean_text.strip(), source.strip(), escaped_at=marked)
 
     def render(self, heading: Heading):
         """Render a heading with appropriate level; parse-time term runs are used as is."""

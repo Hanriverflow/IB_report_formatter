@@ -10,17 +10,17 @@ Changelog (captions):
     - Tables and figures with a reference ID (`NumberedTable`, `Figure`) and the
       render-time caption number run; subclasses keep models without IDs unchanged.
     - `CrossReference` runs for `@tbl-…` / `@fig-…` in body text.
-    - Review fixes: reference runs are pieces that `join_reference_pieces` puts
-      back together when a reference does not resolve; `MarkedHeading` and
-      `MarkedBlockquote` keep escaped `@` apart in text that was unescaped at
-      parse time; `DescribedImage` records references in an inline image's
-      description; `table_is_drawn` and `figure_id_problem` are the one rule
-      for what gets a number.
+    - Review fixes: `MarkedHeading` and `MarkedBlockquote` keep escaped `@`
+      apart in text that was unescaped at parse time; `table_is_drawn` and
+      `figure_id_problem` are the one rule for what gets a number.
+    - Second review: a `CrossReference` is made only for a reference that
+      resolves, so nothing is joined back; `numbered_items` is the one list of
+      numbered tables and figures for the parser and the renderer.
 """
 
 import re
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field, fields, replace
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass, field, fields
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Optional, Union
@@ -103,64 +103,18 @@ class CaptionNumber(TextRun):
 
 @dataclass
 class CrossReference(TextRun):
-    """One piece of a run that holds `@tbl-…` / `@fig-…` text.
+    """A `@tbl-…` / `@fig-…` that resolves to a numbered table or figure.
 
-    The parser splits such a run into pieces: the references (`target` is the
-    ID as written, `text` the `@…` form) and the text around them (`target`
-    empty). Every piece after the first has `joined` set. The renderer writes
-    a resolvable reference as a Word `REF` field and puts every other piece
-    back into the single run it came from, so a document whose references do
-    not resolve renders exactly as before (`join_reference_pieces`).
+    The parser makes one only for a reference whose target is numbered and
+    that stands where a Word field can go (`TextParser._read_references`);
+    `text` is the `@…` as written and `target` the ID. The renderer writes it
+    as a `REF` field. Text that is not such a reference keeps its run.
     """
 
     target: str = ""
-    joined: bool = False
 
 
 TEXT_RUN_FIELDS = tuple(item.name for item in fields(TextRun))
-_RUN_FORMAT_FIELDS = tuple(name for name in TEXT_RUN_FIELDS if name != "text")
-
-
-def join_reference_pieces(
-    runs: Sequence[TextRun], keep: Callable[[CrossReference], bool] = lambda reference: False
-) -> list[TextRun]:
-    """Put reference pieces back into the runs they were split from.
-
-    A piece joins the piece before it when it is marked `joined` and has the
-    same formatting; the result is a plain `TextRun`. References that `keep`
-    accepts stay `CrossReference` runs on their own.
-
-    Args:
-        runs: Runs of one paragraph or field.
-        keep: Whether a reference (a piece with a target) stays a reference.
-
-    Returns:
-        The runs with every other piece merged back.
-    """
-    result: list[TextRun] = []
-    after_piece = False
-    for run in runs:
-        if not isinstance(run, CrossReference):
-            result.append(run)
-            after_piece = False
-            continue
-        if run.target and keep(run):
-            result.append(run)
-            after_piece = False
-            continue
-        plain = TextRun(**{name: getattr(run, name) for name in TEXT_RUN_FIELDS})
-        previous = result[-1] if result else None
-        if (
-            run.joined
-            and after_piece
-            and previous is not None
-            and all(getattr(previous, name) == getattr(plain, name) for name in _RUN_FORMAT_FIELDS)
-        ):
-            result[-1] = replace(previous, text=previous.text + plain.text)
-        else:
-            result.append(plain)
-        after_piece = True
-    return result
 
 
 @dataclass
@@ -406,17 +360,6 @@ class Figure(Image):
     ref_id: str = ""
 
 
-@dataclass
-class DescribedImage(Image):
-    """An inline image whose description holds `@tbl-…` / `@fig-…` references.
-
-    The description is plain text in Word, so these references stay text and
-    are reported; `references` lists their IDs as read from the source.
-    """
-
-    references: tuple[str, ...] = ()
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # CAPTION NUMBERS AND REFERENCE IDS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -478,6 +421,46 @@ def figure_id_problem(ref_id: str, path: str, description: str) -> str | None:
 def table_is_drawn(table: "Table") -> bool:
     """Whether the renderer draws `table` (and so whether its caption gets a number)."""
     return bool(table.rows) and table.col_count > 0
+
+
+def numbered_items(
+    elements: Sequence["Element"],
+) -> Iterator[tuple["NumberedTable | Figure", str, str | None]]:
+    """Each table and figure with a reference ID, in document order.
+
+    The parser takes the IDs that resolve from here and the renderer numbers
+    the same items, so both agree on what a reference can point to.
+
+    Args:
+        elements: Document elements.
+
+    Yields:
+        The table or figure, its kind (`tbl` or `fig`) and why it gets no
+        number (None when it is numbered).
+    """
+    for element in elements:
+        content = element.content
+        if element.element_type == ElementType.TABLE and isinstance(content, NumberedTable):
+            kind, caption = "tbl", content.caption
+        elif element.element_type == ElementType.IMAGE and isinstance(content, Figure):
+            kind, caption = "fig", content.alt_text
+        else:
+            continue
+        problem = reference_id_problem(content.ref_id, kind)
+        if problem is None and not caption.strip():
+            problem = f"{content.ref_id!r} has no caption to number"
+        if problem is None and isinstance(content, NumberedTable) and not table_is_drawn(content):
+            # The renderer skips a table without rows or columns, so it gets
+            # no number and references to it have no target.
+            problem = f"{content.ref_id!r} is on a table with no columns, which is not drawn"
+        yield content, kind, problem
+
+
+def numbered_targets(elements: Sequence["Element"]) -> frozenset[str]:
+    """IDs that a reference can resolve to: those of numbered tables and figures."""
+    return frozenset(
+        item.ref_id for item, _, problem in numbered_items(elements) if problem is None
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

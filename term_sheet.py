@@ -26,7 +26,7 @@ Changelog (A2 rendering):
 
 Changelog (captions):
     - The caption/unit line takes the caption number of a table with an ID.
-    - Title and subtitle keep `@tbl-…` as text (no field), as reported.
+    - Opening and header texts keep `@tbl-…` as text (no field), as reported.
 """
 
 import logging
@@ -53,7 +53,6 @@ from document_model import (
     MarkedHeading,
     Paragraph,
     TextRun,
-    join_reference_pieces,
 )
 from input_safety import (
     DEFAULT_LIMITS,
@@ -1034,18 +1033,18 @@ def render_term_sheet_opening(
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title.paragraph_format.space_before = _COVER_TITLE_SPACE if cover else Pt(0)
     title.paragraph_format.space_after = Pt(2)
-    # Title and subtitle cannot hold a reference field in any profile: their
-    # references stay text (and are reported by the renderer).
+    # Metadata cannot hold a reference field: the renderer parses this block
+    # outside any reference scope and reports such references beforehand.
     render_runs(
         title,
-        _bold(join_reference_pieces(_display_runs(metadata, "title", metadata.title))),
+        _bold(_display_runs(metadata, "title", metadata.title)),
         default_color=STYLE.NAVY,
         font_name=STYLE.HEADING_FONT,
         font_size=STYLE.TS_TITLE_SIZE,
     )
     render_runs(
         _opening_paragraph(doc, Pt(8)),
-        _bold(join_reference_pieces(_display_runs(metadata, "subtitle", metadata.subtitle))),
+        _bold(_display_runs(metadata, "subtitle", metadata.subtitle)),
         default_color=STYLE.NAVY,
         font_name=STYLE.HEADING_FONT,
         font_size=STYLE.TS_SUBTITLE_SIZE,
