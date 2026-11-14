@@ -11,7 +11,8 @@ its formatter:
   values are drawn alone, the lines and markers are drawn alone, and no value
   may share ink with them;
 - which mark a value belongs to is judged by distance from the text's centre
-  to every bar or plotted point, not only to its own;
+  to every bar and every plotted point together, not only to its own, and by
+  what lies in the band between the text and its own mark;
 - the numbers expected are formatted here with `Decimal`, and totals are the
   sums of the numbers as written.
 
@@ -22,6 +23,24 @@ zero line; no other bar or point is nearer to its centre than its own by more
 than 3 pt; a stacked value beside its bar has its centre within its own
 segment's height and is not level with another value beside the same bar.
 A value with no such place is named in the warning, never drawn elsewhere.
+
+Fourth independent review and the coordinator's reading of the Word pages
+(2026-11-14): a value written outside its mark has nothing in the band between
+the text and the mark (no other bar, line, point or reference line: a bar's
+value above another series' line read as that line's value); a bar's value
+has no plotted point nearer than its bar, and a point's value no bar nearer
+than its point; a line-end name is nearest to its own line's end; and a
+value-axis tick is compared with its position as a decimal, not within a
+float tolerance. Self-review after that: a point's value under its point and
+just over a bar's end stood as near to the bar as to the point, so the own
+mark has to be nearer than every mark of the other kind by 3 pt; and a value
+beside a stack that is as high as a whole other thin segment of the bar names
+neither segment, so it is not drawn. In a
+horizontal chart (`hbar`, `range`) a value runs sideways
+from its bar's end, so a longer neighbouring bar is always nearer to the
+text's centre: there the value is judged by its centre lying within its own
+row's height and at most 16 pt beside the bar (an approved exception), with
+the band rule on top.
 """
 
 import math
@@ -40,6 +59,10 @@ from render_styles import STYLE
 
 MARGIN_POINTS = 3.0
 GAP_POINTS = 16.0
+# Pixels left out at the mark's own edge when the band between a text and its
+# mark is searched: a line along that edge (the baseline, a waterfall
+# connector leaving the bar's end) is not between them.
+EDGE_PIXELS = 1.5
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # WHAT THE PICTURE SHOWS
@@ -127,6 +150,16 @@ def draw(monkeypatch, spec, width: float) -> dict:
                 "ydata": [float(value) for value in line.get_ydata()],
                 "xdata": [float(value) for value in line.get_xdata()],
                 "dashed": line.is_dashed(),
+                "pixels": [
+                    (float(x), float(y))
+                    for x, y in line.get_transform().transform(line.get_xydata())
+                ],
+                "drawn": line.get_linestyle() not in ("None", "", " "),
+                "radius": (
+                    0.0
+                    if line.get_marker() in (None, "None", "", " ", "|")
+                    else float(line.get_markersize()) * fig.dpi / 72 / 2
+                ),
             }
             for line in lines
         ]
@@ -280,6 +313,55 @@ def _from_box(box, x, y) -> float:
     return math.hypot(max(box[0] - x, x - box[2], 0.0), max(box[1] - y, y - box[3], 0.0))
 
 
+def _band(box, target):
+    """The rectangle between a text and its mark, as wide (or as high) as the text."""
+    if box[1] >= target[3]:  # the text is above its mark
+        band = (box[0], target[3] + EDGE_PIXELS, box[2], box[1])
+    elif box[3] <= target[1]:  # below
+        band = (box[0], box[3], box[2], target[1] - EDGE_PIXELS)
+    elif box[0] >= target[2]:  # to the right
+        band = (target[2] + EDGE_PIXELS, box[1], box[0], box[3])
+    elif box[2] <= target[0]:  # to the left
+        band = (box[2], box[1], target[0] - EDGE_PIXELS, box[3])
+    else:
+        return None
+    return band if band[2] - band[0] > 0.5 and band[3] - band[1] > 0.5 else None
+
+
+def _within(band, x, y, grow=0.0) -> bool:
+    return band[0] - grow < x < band[2] + grow and band[1] - grow < y < band[3] + grow
+
+
+def in_the_band(band, seen, own_bars, own_point) -> list[str]:
+    """What lies between a text and its own mark: bars, lines and point markers.
+
+    Lines are walked half a pixel at a time. A point's own line (the one
+    through `own_point`) is its own mark and is left out.
+    """
+    found = []
+    for _, bar in seen["bars"]:
+        if not any(bar == mine for mine in own_bars) and _overlap(band, bar):
+            found.append("another bar")
+    for line in seen["lines"]:
+        pixels = line["pixels"]
+        if own_point is not None and any(
+            abs(x - own_point[0]) <= 0.5 and abs(y - own_point[1]) <= 0.5 for x, y in pixels
+        ):
+            continue
+        if line["drawn"]:
+            for (x0, y0), (x1, y1) in zip(pixels, pixels[1:], strict=False):
+                steps = max(1, int(math.hypot(x1 - x0, y1 - y0) * 2))
+                if any(
+                    _within(band, x0 + (x1 - x0) * step / steps, y0 + (y1 - y0) * step / steps)
+                    for step in range(steps + 1)
+                ):
+                    found.append("a line")
+                    break
+        if line["radius"] and any(_within(band, x, y, line["radius"] * 0.7) for x, y in pixels):
+            found.append("a point marker")
+    return found
+
+
 def problems(spec, seen) -> list[str]:
     """Every breach of the rule in the drawn picture, in words."""
     found: list[str] = []
@@ -366,10 +448,31 @@ def problems(spec, seen) -> list[str]:
         shared = int((seen["value_ink"][y0:y1, x0:x1] & seen["line_ink"][y0:y1, x0:x1]).sum())
         if shared >= 3:
             found.append(f"{key}: a line or point marker covers {shared} pixels of the text")
-        if role in ("line", "reference", "?"):
-            continue
         gap = GAP_POINTS * point
         margin = MARGIN_POINTS * point + 0.5
+        if role == "line":
+            # A line-end name is nearest to the end of its own line.
+            last = len(spec.labels) - 1
+            ends = {
+                item.name: seen["transforms"][0].transform((last, item.values[-1]))[1]
+                for item in spec.series
+            }
+            away = abs(centre[1] - ends[series])
+            if any(
+                abs(end - ends[series]) > 0.5 and abs(centre[1] - end) < away - margin
+                for end in ends.values()
+            ):
+                found.append(f"{key}: another line ends nearer to this name than its own")
+        if role in ("line", "reference", "?"):
+            continue
+        every_point = [
+            pixel
+            for line in seen["lines"]
+            if len(line["xdata"]) == len(spec.labels)
+            and not line["dashed"]
+            and line["xdata"] == [float(i) for i in range(len(spec.labels))]
+            for pixel in line["pixels"]
+        ]
         if role == "point":
             axes = 1 if kind == "bar_line" else 0
             transform = seen["transforms"][axes]
@@ -385,14 +488,6 @@ def problems(spec, seen) -> list[str]:
                 )
                 == number
             ]
-            every_point = [
-                tuple(seen["transforms"][line["axes"]].transform((x, y)))
-                for line in seen["lines"]
-                if len(line["xdata"]) == len(spec.labels)
-                and not line["dashed"]
-                and line["xdata"] == [float(i) for i in range(len(spec.labels))]
-                for x, y in zip(line["xdata"], line["ydata"], strict=True)
-            ]
             near = min(math.hypot(centre[0] - x, centre[1] - y) for x, y in own_points)
             mine = min(own_points, key=lambda p: math.hypot(centre[0] - p[0], centre[1] - p[1]))
             # on its own point: centred over or under it, at most 16 pt away
@@ -405,6 +500,15 @@ def problems(spec, seen) -> list[str]:
                     found.append(f"{key}: lies over another plotted point")
                 elif math.hypot(centre[0] - x, centre[1] - y) < near - margin:
                     found.append(f"{key}: another plotted point is nearer than its own")
+            # ... its own point is nearer than every bar by the margin (a
+            # point and its category's bar are on one centre line), and
+            # nothing lies between.
+            clearly = MARGIN_POINTS * point - 0.5
+            if any(_from_box(bar, *centre) < near + clearly for bar in every_bar):
+                found.append(f"{key}: a bar is as near as its own point")
+            band = _band(box, (mine[0], mine[1], mine[0], mine[1]))
+            for thing in in_the_band(band, seen, [], mine) if band else []:
+                found.append(f"{key}: {thing} lies between the value and its own point")
             continue
         if not own:
             if kind == "range":  # a range of one value: its point
@@ -414,13 +518,28 @@ def problems(spec, seen) -> list[str]:
                 )
                 if abs(centre[1] - py) > 1 or max(box[0] - px, px - box[2], 0) > gap:
                     found.append(f"{key}: is not beside its own point")
+                band = _band(box, (px, py, px, py))
+                for thing in in_the_band(band, seen, [], (px, py)) if band else []:
+                    found.append(f"{key}: {thing} lies between the value and its own point")
             else:
                 found.append(f"{key}: has no bar")
             continue
         if written_in:
             continue
         near = min(_from_box(bar, *centre) for bar in own)
+        # (f) Nothing lies between a value written outside its mark and that mark.
+        whole = (
+            min(bar[0] for bar in own),
+            min(bar[1] for bar in own),
+            max(bar[2] for bar in own),
+            max(bar[3] for bar in own),
+        )
+        band = _band(box, whole)
+        for thing in in_the_band(band, seen, own, None) if band else []:
+            found.append(f"{key}: {thing} lies between the value and its own bar")
         if kind in ("hbar", "range"):
+            # Rows do not overlap: the centre within the row's height settles
+            # whose value it is (see the module's note on horizontal charts).
             row = own[0]
             beside = max(box[0] - row[2], row[0] - box[2], 0)
             if not (row[1] - 1 <= centre[1] <= row[3] + 1) or beside > gap:
@@ -435,6 +554,15 @@ def problems(spec, seen) -> list[str]:
                 found.append(f"{key}: leaves its category's column")
             if not (segment[1] - 1 <= centre[1] <= segment[3] + 1):
                 found.append(f"{key}: its centre is not within its own segment's height")
+            # Not as high as a whole other segment of its bar: two thin
+            # segments level with one number cannot be told apart.
+            for (other_category, other_series), boxes in bars.items():
+                if other_category != category or other_series == series:
+                    continue
+                for other in boxes:
+                    drawn_high = other[3] - other[1] >= 1.0
+                    if drawn_high and other[1] >= box[1] and other[3] <= box[3]:
+                        found.append(f"{key}: is level with the whole segment {other_series!r}")
             continue
         low, high = min(bar[0] for bar in own), max(bar[2] for bar in own)
         top, bottom = max(bar[3] for bar in own), min(bar[1] for bar in own)
@@ -443,6 +571,9 @@ def problems(spec, seen) -> list[str]:
         rivals = [bar for bar in every_bar if not any(bar is mine for mine in own)]
         if any(_from_box(bar, *centre) < near - margin for bar in rivals):
             found.append(f"{key}: another bar is nearer than its own")
+        clearly = MARGIN_POINTS * point - 0.5
+        if any(math.hypot(centre[0] - x, centre[1] - y) < near + clearly for x, y in every_point):
+            found.append(f"{key}: a plotted point is as near as its own bar")
 
     # (e) Values beside one stacked bar are not level with each other.
     beside: dict[str, list] = {}
@@ -467,9 +598,13 @@ def problems(spec, seen) -> list[str]:
         for item in labels:
             if item["text"] != written_number(item["tick"][1], spec.number_format):
                 found.append(f"the value axis writes {item['text']!r} at {item['tick'][1]}")
+            # The text read as a decimal is the tick's position (the shortest
+            # decimal of the float it is drawn at), with no tolerance.
             digits = "".join(char for char in item["text"] if char in "0123456789.")
-            if abs(float(digits) - abs(item["tick"][1])) > 1e-9 * max(1.0, abs(item["tick"][1])):
-                found.append(f"the value axis writes {item['text']!r} at {item['tick'][1]}")
+            position = item["tick"][1]
+            read = Decimal(digits) * (-1 if item["text"].startswith("(") else 1)
+            if read != Decimal(repr(float(position))):
+                found.append(f"the value axis writes {item['text']!r} at {position!r}")
 
     # Texts no check removes: inside the picture and apart, or named in a warning.
     fixed = [item for item in texts if not item["gid"].startswith("value\t")]
@@ -622,6 +757,234 @@ def test_values_level_beside_one_bar_are_not_both_drawn(monkeypatch):
     seen = check(monkeypatch, LEVEL_VALUES)
     assert "5" not in shown(seen) and shown(seen).count("119") == 2
     assert "2026E, 기타: 5; 2027E, 기타: 5; 2028E, 기타: 5" in seen["warnings"][0]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# THE FOURTH REVIEW
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# The coordinator's reading of the Word page (O1): at 6 inches 16,454.0 stood
+# over its bar with another series' line and point between the two.
+# `LINE_OVER_BAR_VALUE` above is that chart.
+
+
+def test_a_bars_value_is_not_written_beyond_another_series_line(monkeypatch):
+    seen = check(monkeypatch, LINE_OVER_BAR_VALUE)
+    assert "16,454.0" not in shown(seen)
+    left_out = [note for note in seen["warnings"] if "not written in the picture" in note]
+    assert len(left_out) == 1 and "2026E, 장기: 16,454.0" in left_out[0]
+
+
+def test_the_band_measure_sees_what_lies_between_a_text_and_its_mark():
+    """The measure itself, on hand-made geometry (it does not ask the engine)."""
+    bar = (100.0, 0.0, 140.0, 50.0)
+    text = (105.0, 70.0, 135.0, 82.0)
+    band = _band(text, bar)
+    assert band == (105.0, 50.0 + EDGE_PIXELS, 135.0, 70.0)
+
+    def line(pixels, drawn=True, radius=0.0):
+        return {"pixels": pixels, "drawn": drawn, "radius": radius}
+
+    def between(lines, bars=(), own_point=None):
+        seen = {"bars": [("bar\tA\tS", bar), *bars], "lines": lines}
+        return in_the_band(band, seen, [bar], own_point)
+
+    assert between([]) == []
+    # a line across the band, a line only beside it, a line along the bar's own edge
+    assert between([line([(60.0, 55.0), (180.0, 65.0)])]) == ["a line"]
+    assert between([line([(60.0, 55.0), (104.0, 65.0)])]) == []
+    assert between([line([(60.0, 50.5), (180.0, 50.5)])]) == []
+    # a point marker in the band, with and without its line drawn
+    assert between([line([(120.0, 60.0)], drawn=False, radius=4.0)]) == ["a point marker"]
+    assert between([line([(60.0, 20.0), (120.0, 60.0)], radius=4.0)]) == [
+        "a line",
+        "a point marker",
+    ]
+    # another bar in the band; the text's own bar is not
+    assert between([], bars=[("bar\tA\tT", (90.0, 55.0, 150.0, 60.0))]) == ["another bar"]
+    # a point's own line is its own mark
+    point = (120.0, 40.0)
+    above = _band(text, (*point, *point))
+    own_line = line([(60.0, 60.0), point, (180.0, 60.0)], radius=4.0)
+    seen = {"bars": [], "lines": [own_line, line([(60.0, 60.0), (180.0, 60.0)])]}
+    assert in_the_band(above, seen, [], point) == ["a line"]
+    # text and mark touching: there is no band
+    assert _band((105.0, 50.5, 135.0, 62.0), bar) is None
+
+
+# Self-review: the value 3.6% stood under its point and as near to the bar
+# below it (4.5 pt) as to the point (4 pt); a point and its category's bar are
+# on one centre line.
+POINT_VALUE_OVER_A_BAR = {
+    "type": "bar_line",
+    "labels": ["2026E", "2027E", "2028E"],
+    "right_number_format": "percent",
+    "series": [
+        {"name": "회사채", "values": [5.0, 4.0, 3.0]},
+        {"name": "Alpha", "values": [3.6, 6.3, 2.4], "axis": "right"},
+    ],
+}
+# Self-review: the 2 beside bar E was as high as both thin segments (2 and 3).
+THIN_SEGMENTS_LEVEL = {
+    "type": "stacked_bar",
+    "totals": True,
+    "labels": ["A", "B", "C", "D", "E", "F"],
+    "series": [
+        {"name": "영업", "values": [120, 90, 60, 4, 75, 130]},
+        {"name": "투자", "values": [8, 30, 70, 3, 2, 9]},
+        {"name": "재무", "values": [10, 4, 25, 5, 3, 1]},
+    ],
+}
+# Three lines end within a few points of each other, under a reference line.
+LINE_ENDS_CLOSE = {
+    "type": "line",
+    "labels": ["1월", "2월", "3월", "4월", "5월"],
+    "accent_series": "AA-",
+    "series": [
+        {"name": "국고 3년", "values": [3.1, 3.2, 3.15, 3.3, 3.42]},
+        {"name": "AA-", "values": [3.9, 3.95, 3.8, 3.7, 3.46]},
+        {"name": "A+", "values": [4.4, 4.5, 4.2, 3.9, 3.5]},
+    ],
+    "reference": [{"name": "기준금리", "value": 3.5}],
+}
+# A reference line between a range's end and the value written beside it.
+REFERENCE_BESIDE_A_RANGE = {
+    "type": "range",
+    "labels": ["가상전자", "한빛물산", "새솔", "동녘"],
+    "low": [3.2, 3.6, 4.1, 3.9],
+    "high": [3.8, 4.4, 4.2, 5.0],
+    "reference": [{"name": "제시 금리", "value": 3.85}],
+}
+# Fourth independent review, [3]: the value beside row A is nearer to the
+# longer bar of row B than to its own. Approved exception: in a horizontal
+# chart the row decides (see the module's note).
+ROW_VALUE_NEAR_A_LONGER_ROW = {
+    "type": "hbar",
+    "labels": ["A", "B", "C"],
+    "number_format": ",.2f",
+    "series": [{"name": "S", "values": [100000000, 1000000000, 1000000000]}],
+}
+FOURTH_CASES = {
+    "point-value-over-a-bar": POINT_VALUE_OVER_A_BAR,
+    "thin-segments-level": THIN_SEGMENTS_LEVEL,
+    "line-ends-close": LINE_ENDS_CLOSE,
+    "reference-beside-a-range": REFERENCE_BESIDE_A_RANGE,
+    "row-value-near-a-longer-row": ROW_VALUE_NEAR_A_LONGER_ROW,
+}
+
+
+@pytest.mark.parametrize("name", FOURTH_CASES)
+@pytest.mark.parametrize("width", [3.0, 3.5, 4.5, 6.0])
+def test_the_fourth_reviews_charts_keep_the_rule(monkeypatch, name, width):
+    check(monkeypatch, FOURTH_CASES[name], width)
+
+
+def test_a_value_beside_a_row_is_judged_by_its_row(monkeypatch):
+    """The approved exception is measured: the row's height and 16 pt beside it."""
+    for width in (3.0, 3.5, 4.5, 6.0):
+        seen = check(monkeypatch, ROW_VALUE_NEAR_A_LONGER_ROW, width)
+        assert sorted(shown(seen)) == ["1,000,000,000.00", "1,000,000,000.00", "100,000,000.00"]
+        assert seen["warnings"] == []
+        # ... and the measure is the row, not the nearest bar: the value of A
+        # is nearer to B's bar than to its own, as the review found.
+        rows = {gid.split("\t")[1]: box for gid, box in seen["bars"]}
+        value = next(item["box"] for item in seen["texts"] if item["text"] == "100,000,000.00")
+        centre = ((value[0] + value[2]) / 2, (value[1] + value[3]) / 2)
+        assert _from_box(rows["B"], *centre) < _from_box(rows["A"], *centre)
+        assert rows["A"][1] <= centre[1] <= rows["A"][3]
+        assert value[0] - rows["A"][2] <= GAP_POINTS * seen["dpi"] / 72
+
+
+def test_a_value_is_not_written_beyond_a_reference_line_beside_its_range(monkeypatch):
+    seen = check(monkeypatch, REFERENCE_BESIDE_A_RANGE)
+    assert "3.8" not in shown(seen) and "3.9" not in shown(seen)
+    assert seen["warnings"] == [
+        "Chart 'range': 2 value(s) not written in the picture for lack of room: "
+        "가상전자, high: 3.8; 동녘, low: 3.9"
+    ]
+
+
+def test_a_points_value_is_clearly_nearer_to_its_point_than_to_a_bar(monkeypatch):
+    seen = check(monkeypatch, POINT_VALUE_OVER_A_BAR)
+    assert seen["warnings"] == []
+    value = next(item["box"] for item in seen["texts"] if item["text"] == "3.6%")
+    bar = next(box for gid, box in seen["bars"] if gid == "bar\t2026E\t회사채")
+    point = seen["transforms"][1].transform((0, 3.6))
+    # It was under its point and over the bar; now it is over its point.
+    assert value[1] > point[1] > bar[3]
+
+
+def test_a_value_as_high_as_a_whole_other_segment_is_not_drawn(monkeypatch):
+    seen = check(monkeypatch, THIN_SEGMENTS_LEVEL)
+    assert "2" not in shown(seen)
+    left_out = [note for note in seen["warnings"] if "not written in the picture" in note]
+    assert len(left_out) == 1 and "E, 투자: 2" in left_out[0] and "E, 재무: 3" in left_out[0]
+
+
+def _line(values, number_format=None):
+    data = {
+        "type": "line",
+        "labels": ["A", "B", "C"][: len(values)],
+        "series": [{"name": "L", "values": values}],
+    }
+    return {**data, "number_format": number_format} if number_format else data
+
+
+# Fourth independent review, [1]: a tick was kept when its text was within
+# 1e-9 of its position as a share of the value, so 1,000,000,000.5 was written
+# 1,000,000,001 and six ticks from 1e-10 to 2e-10 were all written 0.0.
+TICKS = [
+    (
+        _line([1000000000, 1000000002], ",.0f"),
+        ["1,000,000,000", "1,000,000,001", "1,000,000,002"],
+    ),
+    (_line([1.0e-10, 2.0e-10]), []),
+    # ... and sizes between the two.
+    (_line([1.0e-5, 3.0e-5]), []),
+    (_line([0.001, 0.003], ".2f"), []),
+    (_line([0.1, 0.2, 0.3]), ["0.1", "0.2", "0.3"]),
+    (
+        _line([1000.5, 1002.5], ",.1f"),
+        ["1,000.5", "1,001.0", "1,001.5", "1,002.0", "1,002.5"],
+    ),
+    (
+        _line([100000, 100004], ",.0f"),
+        ["100,000", "100,001", "100,002", "100,003", "100,004"],
+    ),
+    (_line([10000000, 10000001], ",.0f"), ["10,000,000", "10,000,001"]),
+    (
+        _line([1000000000.5, 1000000002.5], ",.1f"),
+        [
+            "1,000,000,000.5",
+            "1,000,000,001.0",
+            "1,000,000,001.5",
+            "1,000,000,002.0",
+            "1,000,000,002.5",
+        ],
+    ),
+    (
+        _line([123456789012, 123456789016], ",.0f"),
+        [
+            "123,456,789,012",
+            "123,456,789,013",
+            "123,456,789,014",
+            "123,456,789,015",
+            "123,456,789,016",
+        ],
+    ),
+]
+
+
+@pytest.mark.parametrize("data, ticks", TICKS)
+def test_a_tick_is_written_only_where_its_text_is_its_position(monkeypatch, data, ticks):
+    seen = check(monkeypatch, data)
+    labels = [item for item in seen["texts"] if item["tick"] is not None and item["tick"][0] == 0]
+    assert [item["text"] for item in labels] == ticks
+    for item in labels:  # as decimals, with no tolerance (also in `problems`)
+        digits = "".join(char for char in item["text"] if char in "0123456789.")
+        assert Decimal(digits) == Decimal(repr(float(item["tick"][1])))
+    # The points keep their values whatever the axis writes.
+    assert len(shown(seen)) == 2 if len(data["labels"]) == 2 else len(shown(seen)) == 3
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -902,11 +1265,11 @@ def test_line_ends_reference_lines_and_ticks_round_the_same_way(monkeypatch):
         "labels": ["2024", "2025", "2026E"],
         "number_format": ",.2f",
         "series": [{"name": "Spread", "values": [4.125, 2.675, 0.125]}],
-        "reference": [{"name": "Cap", "value": 3.005}],
+        "reference": [{"name": "Cap", "value": 1.005}],
     }
     seen = check(monkeypatch, data)
     texts = [" ".join(item["text"].split()) for item in seen["texts"]]
-    assert {"4.13", "2.68", "0.13 Spread", "Cap 3.01"} <= set(texts)
+    assert {"4.13", "2.68", "0.13 Spread", "Cap 1.01"} <= set(texts)
     whole = {**data, "number_format": ",.0f", "series": [{"name": "Count", "values": [1, 2, 3]}]}
     whole.pop("reference")
     seen = check(monkeypatch, whole)
