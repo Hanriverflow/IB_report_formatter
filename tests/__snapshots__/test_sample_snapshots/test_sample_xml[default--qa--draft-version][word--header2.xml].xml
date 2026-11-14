@@ -1,0 +1,118 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes'?>
+<w:hdr xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:mo="http://schemas.microsoft.com/office/mac/office/2008/main" xmlns:mv="urn:schemas-microsoft-com:mac:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" mc:Ignorable="w14 wp14">
+  <w:p>
+    <w:pPr>
+      <w:pStyle w:val="Header"/>
+      <w:pBdr>
+        <w:bottom w:color="C8C8C8" w:sz="6" w:val="single"/>
+      </w:pBdr>
+      <w:tabs>
+        <w:tab w:pos="13248" w:val="right"/>
+      </w:tabs>
+    </w:pPr>
+    <w:r>
+      <w:rPr>
+        <w:noProof/>
+      </w:rPr>
+      <w:pict>
+        <v:shapetype adj="10800" coordsize="21600,21600" id="_x0000_t136" path="m@7,l@8,m@5,21600l@6,21600e" o:spt="136">
+          <v:formulas>
+            <v:f eqn="sum #0 0 10800"/>
+            <v:f eqn="prod #0 2 1"/>
+            <v:f eqn="sum 21600 0 @1"/>
+            <v:f eqn="sum 0 0 @2"/>
+            <v:f eqn="sum 21600 0 @3"/>
+            <v:f eqn="if @0 @3 0"/>
+            <v:f eqn="if @0 21600 @1"/>
+            <v:f eqn="if @0 0 @2"/>
+            <v:f eqn="if @0 @4 21600"/>
+            <v:f eqn="mid @5 @6"/>
+            <v:f eqn="mid @8 @5"/>
+            <v:f eqn="mid @7 @8"/>
+            <v:f eqn="mid @6 @7"/>
+            <v:f eqn="sum @6 0 @5"/>
+          </v:formulas>
+          <v:path textpathok="t" o:connectangles="270,180,90,0" o:connectlocs="@9,0;@10,10800;@11,21600;@12,10800" o:connecttype="custom"/>
+          <v:textpath fitshape="t" on="t"/>
+          <v:handles>
+            <v:h position="#0,bottomRight" xrange="6629,14971"/>
+          </v:handles>
+          <o:lock shapetype="t" text="t" v:ext="edit"/>
+        </v:shapetype>
+        <v:shape fillcolor="silver" id="PowerPlusWaterMarkObject2" stroked="f" style="position:absolute;margin-left:0;margin-top:0;width:456pt;height:180.25pt;rotation:315;z-index:-251653120;mso-position-horizontal:center;mso-position-horizontal-relative:margin;mso-position-vertical:center;mso-position-vertical-relative:margin" type="#_x0000_t136" o:allowincell="f" o:spid="_x0000_s1026">
+          <v:fill opacity=".5"/>
+          <v:textpath string="DRAFT" style="font-family:&quot;Malgun Gothic&quot;;font-size:1pt"/>
+          <w10:wrap anchorx="margin" anchory="margin"/>
+        </v:shape>
+      </w:pict>
+    </w:r>
+    <w:r>
+      <w:rPr>
+        <w:rFonts w:ascii="Arial" w:eastAsia="Arial" w:hAnsi="Arial"/>
+        <w:color w:val="404040"/>
+        <w:sz w:val="18"/>
+      </w:rPr>
+      <w:t>예시금융</w:t>
+    </w:r>
+    <w:r>
+      <w:rPr>
+        <w:rFonts w:ascii="Arial" w:eastAsia="Arial" w:hAnsi="Arial"/>
+        <w:color w:val="404040"/>
+        <w:sz w:val="18"/>
+      </w:rPr>
+      <w:t xml:space="preserve"> | </w:t>
+    </w:r>
+    <w:r>
+      <w:rPr>
+        <w:rFonts w:ascii="Arial" w:eastAsia="Arial" w:hAnsi="Arial"/>
+        <w:color w:val="404040"/>
+        <w:sz w:val="18"/>
+      </w:rPr>
+      <w:fldChar w:fldCharType="begin"/>
+    </w:r>
+    <w:r>
+      <w:rPr>
+        <w:rFonts w:ascii="Arial" w:eastAsia="Arial" w:hAnsi="Arial"/>
+        <w:color w:val="404040"/>
+        <w:sz w:val="18"/>
+      </w:rPr>
+      <w:instrText xml:space="preserve"> DOCPROPERTY Version \* MERGEFORMAT </w:instrText>
+    </w:r>
+    <w:r>
+      <w:rPr>
+        <w:rFonts w:ascii="Arial" w:eastAsia="Arial" w:hAnsi="Arial"/>
+        <w:color w:val="404040"/>
+        <w:sz w:val="18"/>
+      </w:rPr>
+      <w:fldChar w:fldCharType="separate"/>
+    </w:r>
+    <w:r>
+      <w:rPr>
+        <w:rFonts w:ascii="Arial" w:eastAsia="Arial" w:hAnsi="Arial"/>
+        <w:color w:val="404040"/>
+        <w:sz w:val="18"/>
+      </w:rPr>
+      <w:t>v0.3</w:t>
+    </w:r>
+    <w:r>
+      <w:rPr>
+        <w:rFonts w:ascii="Arial" w:eastAsia="Arial" w:hAnsi="Arial"/>
+        <w:color w:val="404040"/>
+        <w:sz w:val="18"/>
+      </w:rPr>
+      <w:fldChar w:fldCharType="end"/>
+    </w:r>
+    <w:r>
+      <w:tab/>
+    </w:r>
+    <w:r>
+      <w:rPr>
+        <w:rFonts w:ascii="Arial" w:eastAsia="Arial" w:hAnsi="Arial"/>
+        <w:b/>
+        <w:color w:val="C00000"/>
+        <w:sz w:val="18"/>
+      </w:rPr>
+      <w:t>CONFIDENTIAL</w:t>
+    </w:r>
+  </w:p>
+</w:hdr>

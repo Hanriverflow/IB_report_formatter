@@ -332,11 +332,19 @@ class Footnote:
     text: str
 
 
+class DefaultTitle(str):
+    """A profile's stand-in title, not one the document gave.
+
+    Any title read from frontmatter or the body is a plain `str`, even when its
+    text equals the stand-in, so a renderer can tell the two apart.
+    """
+
+
 @dataclass
 class DocumentMetadata:
     """Document metadata from frontmatter"""
 
-    title: str = "IB Report"
+    title: str = DefaultTitle("IB Report")
     subtitle: str = ""
     company: str = "Korea Development Bank"
     ticker: str = ""

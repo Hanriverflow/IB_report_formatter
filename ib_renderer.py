@@ -86,10 +86,12 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Mm, Pt
 
-from document_model import Chart, ConfirmationBlock
+from document_model import Chart, ConfirmationBlock, DefaultTitle
 from document_profiles import (
     RenderOptions,
     default_metadata,
+    document_status,
+    document_version,
     load_style,
     resolve_options,
     validate_office_metadata,
@@ -100,6 +102,11 @@ from ib_render_blocks import HeadingRenderer as HeadingRenderer
 from ib_render_blocks import ListRenderer as ListRenderer
 from ib_render_blocks import ParagraphRenderer as ParagraphRenderer
 from ib_render_blocks import TOCRenderer as TOCRenderer
+from ib_render_document_style import (
+    VERSION_PROPERTY,
+    add_draft_watermark,
+    write_core_properties,
+)
 from ib_render_document_style import DocumentStyler as DocumentStyler
 from ib_render_document_style import GeneratorSignatureWriter as GeneratorSignatureWriter
 from ib_render_document_style import TableStyler as TableStyler
@@ -141,6 +148,8 @@ from numeric_checks import CHECKS_PROPERTY, checks_to_json, parse_checks
 from office_layout import (
     add_text,
     letter_appendix_index,
+    letter_numbering_warnings,
+    letter_partial_table_row,
     render_office_closing,
     render_office_opening,
     setup_korean_language,
@@ -701,7 +710,11 @@ class IBDocumentRenderer:
         if model.metadata.profile != resolved.profile.name:
             old_defaults = default_metadata(model.metadata.profile)
             new_defaults = default_metadata(resolved.profile.name)
-            for field_name in ("title", "company", "sector", "analyst"):
+            # A title is a stand-in by its mark, never by its text: "Document" given
+            # through the API stays the title under another profile.
+            if isinstance(model.metadata.title, DefaultTitle):
+                model.metadata.title = new_defaults.title
+            for field_name in ("company", "sector", "analyst"):
                 if getattr(model.metadata, field_name) == getattr(old_defaults, field_name):
                     setattr(model.metadata, field_name, getattr(new_defaults, field_name))
             model.metadata.profile = resolved.profile.name
@@ -748,6 +761,9 @@ class IBDocumentRenderer:
                     break
         with document_validation():
             appendix_index = letter_appendix_index(model)
+            status = document_status(model.metadata)
+            partial_table_row = letter_partial_table_row(model, appendix_index)
+        model.warnings.extend(letter_numbering_warnings(model))
         if resolved.strict and model.warnings:
             raise StrictValidationError("Input validation failed: ", model.warnings)
         # Strict mode rejects such a character anywhere in the model. Otherwise the
@@ -757,6 +773,8 @@ class IBDocumentRenderer:
         self.errors = list(model.warnings)
         self._term_sheet = term_sheet
         self._reset_document()
+        # Office letters number items with the administrative symbols (1. 가. 1) ...).
+        self.list_renderer.numbering.legal = resolved.profile.name == "office-letter"
         # Inline images (table cells, text) resolve relative paths against the source.
         cast(Any, self.doc.part)._ib_source_dir = model.source_dir
         cast(Any, self.doc.part)._ib_asset_roots = roots
@@ -824,7 +842,7 @@ class IBDocumentRenderer:
             for idx, element in enumerate(model.elements):
                 if idx == appendix_index:
                     with _metadata_text("closing"):
-                        render_office_closing(self.doc, model.metadata)
+                        render_office_closing(self.doc, model.metadata, partial_table_row)
                     office_closed = True
                     self.doc.add_page_break()
                     label = model.metadata.extra["letter"].get("appendix_label")
@@ -857,7 +875,7 @@ class IBDocumentRenderer:
                     )
             if not office_closed:
                 with _metadata_text("closing"):
-                    render_office_closing(self.doc, model.metadata)
+                    render_office_closing(self.doc, model.metadata, partial_table_row)
             if model.footnotes:
                 self.footnote_renderer.render(
                     model.footnotes, allow_legacy_refs=resolved.profile.is_ib
@@ -881,11 +899,17 @@ class IBDocumentRenderer:
                         TextRenderer.render_runs,
                     )
                 else:
+                    letter = resolved.profile.name == "office-letter"
                     self.styler.setup_header_footer(
-                        company="" if resolved.profile.name == "office-letter" else company,
+                        company="" if letter else company,
                         confidential=resolved.confidential,
                         show_page_numbers=True,
+                        # Letters show no version; the property is still written.
+                        version="" if letter else document_version(model.metadata),
                     )
+            if status == "draft":
+                # After every header exists, so each section's header carries it.
+                add_draft_watermark(self.doc)
             self.apply_generator_signature(
                 "ib_generated" if resolved.profile.name == "ib-report" else resolved.profile.name
             )
@@ -904,6 +928,16 @@ class IBDocumentRenderer:
                     self.doc,
                     {CHECKS_PROPERTY: checks_json},
                 )
+            version = document_version(model.metadata)
+            if version:
+                # Headers and the term-sheet footer refer to it by DOCPROPERTY fields.
+                GeneratorSignatureWriter.upsert_properties(self.doc, {VERSION_PROPERTY: version})
+            # File > Info shows this document's title, not python-docx's template details.
+            # A profile's stand-in title is not the document's; a written one is,
+            # whatever its text.
+            stand_in = isinstance(model.metadata.title, DefaultTitle)
+            with _metadata_text("title (file properties)"):
+                write_core_properties(self.doc, "" if stand_in else str(model.metadata.title))
             ImageRenderer.fit_table_cell_images(self.doc)
             from docx_audit import inspect_document_issues
 

@@ -24,7 +24,14 @@ from typing import Any
 
 from docx.shared import Inches, Pt, RGBColor
 
-from document_model import DocumentMetadata, DocumentModel, ElementType, Table, TableType
+from document_model import (
+    DefaultTitle,
+    DocumentMetadata,
+    DocumentModel,
+    ElementType,
+    Table,
+    TableType,
+)
 from input_safety import InputLimits, document_validation, load_yaml, validate_xml_strings
 from numeric_checks import Quantity, ScheduleSpec, check_schedule, money_unit, read_quantity
 from render_styles import IBStyle
@@ -66,7 +73,49 @@ def default_metadata(profile: str = "ib-report") -> DocumentMetadata:
     """Return neutral metadata for office documents, legacy defaults for IB."""
     if get_profile(profile).is_ib:
         return DocumentMetadata(profile=profile)
-    return DocumentMetadata(title="Document", company="", sector="", analyst="", profile=profile)
+    return DocumentMetadata(
+        title=DefaultTitle("Document"), company="", sector="", analyst="", profile=profile
+    )
+
+
+def document_version(metadata: DocumentMetadata) -> str:
+    """Return the frontmatter `version` as display text, or "" when absent or blank.
+
+    The value keeps the existing metadata display coercion: an unquoted YAML
+    number renders as YAML read it (`1.10` becomes `1.1`), so authors quote it.
+
+    Args:
+        metadata: Parsed or hand-built document metadata.
+
+    Returns:
+        Version text without surrounding spaces.
+    """
+    value = metadata.extra.get("version")
+    return "" if value is None else str(value).strip()
+
+
+DOCUMENT_STATUSES = ("draft", "final")
+
+
+def document_status(metadata: DocumentMetadata) -> str:
+    """Return the frontmatter `status` ("draft" or "final"), or "" when absent.
+
+    Args:
+        metadata: Parsed or hand-built document metadata.
+
+    Returns:
+        The status; "draft" marks every page with a removable DRAFT watermark.
+
+    Raises:
+        ValueError: The status is present but is not exactly draft or final, so
+            a misspelling cannot silently drop the draft marking.
+    """
+    if "status" not in metadata.extra:
+        return ""
+    value = metadata.extra["status"]
+    if not isinstance(value, str) or value not in DOCUMENT_STATUSES:
+        raise ValueError(f"status must be draft or final, not {value!r}")
+    return value
 
 
 def validate_term_sheet_metadata(metadata: DocumentMetadata, check_length: bool = True) -> None:
@@ -491,12 +540,14 @@ def validate_office_metadata(metadata: DocumentMetadata) -> None:
         letter = metadata.extra.get("letter", {})
         if not isinstance(letter, dict):
             raise ValueError("letter must be a YAML mapping")
-        if set(letter) - {"appendix_heading", "appendix_label"}:
+        if set(letter) - {"appendix_heading", "appendix_label", "table_end"}:
             raise ValueError("Unknown letter settings")
         if any(not isinstance(v, str) or not v.strip() for v in letter.values()):
             raise ValueError("letter settings must be non-empty text")
         if "appendix_label" in letter and "appendix_heading" not in letter:
             raise ValueError("letter.appendix_label requires appendix_heading")
+        if letter.get("table_end", "partial") != "partial":
+            raise ValueError("letter.table_end must be 'partial'")
 
 
 def header_labels(rows: Sequence[Sequence[str]]) -> list[str]:

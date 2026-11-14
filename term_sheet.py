@@ -44,6 +44,8 @@ from docx.oxml.table import CT_Tc
 from docx.shared import Emu, Length, Mm, Pt, RGBColor, Twips
 
 from document_model import DocumentMetadata, Heading, Paragraph, TextRun
+from document_profiles import document_version
+from ib_render_document_style import VERSION_PROPERTY, make_property_field
 from input_safety import (
     DEFAULT_LIMITS,
     AssetOutsideRootError,
@@ -1319,8 +1321,8 @@ def setup_term_sheet_header_footer(
 
     Header: right-aligned italic 7.5pt `TS_CONFIDENTIAL_HEX` confidentiality
     label (or `style.label_color`); empty when `confidential` is off or the
-    label is blank (plan §2-10). Footer: `"{subtitle} {version}"` at left (empty
-    without a version) and the page text (`style.page_number`, default
+    label is blank (plan §2-10). Footer: `"{subtitle} {version}"` at left, the
+    version as a `DOCPROPERTY Version` field (empty without a version), and the page text (`style.page_number`, default
     `{page} / {pages}`) at a right or centre tab on each section's own printable
     width, so portrait and landscape sections both align. `style.header_rule`
     and `style.footer_rule` add accent rules under the header and over the footer.
@@ -1334,8 +1336,7 @@ def setup_term_sheet_header_footer(
     """
     label = texts.confidential_label if texts is not None and confidential else ""
     style = texts.style if texts is not None else TermSheetStyle()
-    version = str(metadata.extra.get("version") or "").strip()
-    left = f"{metadata.subtitle} {version}" if version else ""
+    version = document_version(metadata)
     grey = _rgb(STYLE.TS_CONFIDENTIAL_HEX)
     label_color = _rgb(style.label_color[1:]) if style.label_color else grey
     size = STYLE.TS_HEADER_FOOTER_SIZE
@@ -1364,8 +1365,15 @@ def setup_term_sheet_header_footer(
                 footer.paragraph_format.tab_stops.add_tab_stop(Emu(width), WD_TAB_ALIGNMENT.RIGHT)
         if style.footer_rule:
             _accent_rule(footer, "top")
-        runs = ([TextRun(text=left)] if left else []) + [TextRun(text="\t")]
-        render_runs(footer, runs, default_color=grey, font_size=size)
+        if version:
+            # The version is the stored result of a DOCPROPERTY field, so changing
+            # the property in Word updates the footer (F9 there, or the print preview).
+            render_runs(
+                footer, [TextRun(text=f"{metadata.subtitle} ")], default_color=grey, font_size=size
+            )
+            render_runs(footer, [TextRun(text=version)], default_color=grey, font_size=size)
+            make_property_field(footer.runs[-1], VERSION_PROPERTY)
+        render_runs(footer, [TextRun(text="\t")], default_color=grey, font_size=size)
         for part in _PAGE_FIELD_RE.split(style.page_number):
             if part == "{page}":
                 _add_field(footer, "PAGE", grey, size)

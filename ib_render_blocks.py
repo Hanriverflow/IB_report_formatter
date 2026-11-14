@@ -214,7 +214,7 @@ class ListRenderer:
         p = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
         indent = self._resolve_indent(item.indent_level)
         p.paragraph_format.left_indent = indent
-        p.paragraph_format.first_line_indent = -STYLE.BULLET_INDENT
+        p.paragraph_format.first_line_indent = -self.numbering.hanging(item.indent_level)
 
         if STYLE.NATIVE_NUMBERING:
             self.numbering.apply(p, item.indent_level, start=int(number))

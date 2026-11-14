@@ -194,7 +194,7 @@
     <w:lvl w:ilvl="2">
       <w:start w:val="1"/>
       <w:numFmt w:val="decimal"/>
-      <w:lvlText w:val="(%3)"/>
+      <w:lvlText w:val="%3)"/>
       <w:lvlJc w:val="left"/>
       <w:pPr>
         <w:ind w:hanging="360" w:left="1080"/>
@@ -202,8 +202,8 @@
     </w:lvl>
     <w:lvl w:ilvl="3">
       <w:start w:val="1"/>
-      <w:numFmt w:val="decimal"/>
-      <w:lvlText w:val="%4."/>
+      <w:numFmt w:val="ganada"/>
+      <w:lvlText w:val="%4)"/>
       <w:lvlJc w:val="left"/>
       <w:pPr>
         <w:ind w:hanging="360" w:left="1440"/>
@@ -211,8 +211,8 @@
     </w:lvl>
     <w:lvl w:ilvl="4">
       <w:start w:val="1"/>
-      <w:numFmt w:val="ganada"/>
-      <w:lvlText w:val="%5."/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="(%5)"/>
       <w:lvlJc w:val="left"/>
       <w:pPr>
         <w:ind w:hanging="360" w:left="1800"/>
@@ -220,7 +220,7 @@
     </w:lvl>
     <w:lvl w:ilvl="5">
       <w:start w:val="1"/>
-      <w:numFmt w:val="decimal"/>
+      <w:numFmt w:val="ganada"/>
       <w:lvlText w:val="(%6)"/>
       <w:lvlJc w:val="left"/>
       <w:pPr>
@@ -229,8 +229,8 @@
     </w:lvl>
     <w:lvl w:ilvl="6">
       <w:start w:val="1"/>
-      <w:numFmt w:val="decimal"/>
-      <w:lvlText w:val="%7."/>
+      <w:numFmt w:val="decimalEnclosedCircle"/>
+      <w:lvlText w:val="%7"/>
       <w:lvlJc w:val="left"/>
       <w:pPr>
         <w:ind w:hanging="360" w:left="2520"/>
@@ -239,7 +239,7 @@
     <w:lvl w:ilvl="7">
       <w:start w:val="1"/>
       <w:numFmt w:val="ganada"/>
-      <w:lvlText w:val="%8."/>
+      <w:lvlText w:val="%8"/>
       <w:lvlJc w:val="left"/>
       <w:pPr>
         <w:ind w:hanging="360" w:left="2880"/>
@@ -247,8 +247,8 @@
     </w:lvl>
     <w:lvl w:ilvl="8">
       <w:start w:val="1"/>
-      <w:numFmt w:val="decimal"/>
-      <w:lvlText w:val="(%9)"/>
+      <w:numFmt w:val="ganada"/>
+      <w:lvlText w:val="%9"/>
       <w:lvlJc w:val="left"/>
       <w:pPr>
         <w:ind w:hanging="360" w:left="3240"/>
@@ -278,7 +278,7 @@
     <w:lvl w:ilvl="2">
       <w:start w:val="1"/>
       <w:numFmt w:val="decimal"/>
-      <w:lvlText w:val="(%3)"/>
+      <w:lvlText w:val="%3)"/>
       <w:lvlJc w:val="left"/>
       <w:pPr>
         <w:ind w:hanging="360" w:left="1080"/>
@@ -286,8 +286,8 @@
     </w:lvl>
     <w:lvl w:ilvl="3">
       <w:start w:val="1"/>
-      <w:numFmt w:val="decimal"/>
-      <w:lvlText w:val="%4."/>
+      <w:numFmt w:val="ganada"/>
+      <w:lvlText w:val="%4)"/>
       <w:lvlJc w:val="left"/>
       <w:pPr>
         <w:ind w:hanging="360" w:left="1440"/>
@@ -295,8 +295,8 @@
     </w:lvl>
     <w:lvl w:ilvl="4">
       <w:start w:val="1"/>
-      <w:numFmt w:val="ganada"/>
-      <w:lvlText w:val="%5."/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="(%5)"/>
       <w:lvlJc w:val="left"/>
       <w:pPr>
         <w:ind w:hanging="360" w:left="1800"/>
@@ -304,7 +304,7 @@
     </w:lvl>
     <w:lvl w:ilvl="5">
       <w:start w:val="1"/>
-      <w:numFmt w:val="decimal"/>
+      <w:numFmt w:val="ganada"/>
       <w:lvlText w:val="(%6)"/>
       <w:lvlJc w:val="left"/>
       <w:pPr>
@@ -313,8 +313,8 @@
     </w:lvl>
     <w:lvl w:ilvl="6">
       <w:start w:val="1"/>
-      <w:numFmt w:val="decimal"/>
-      <w:lvlText w:val="%7."/>
+      <w:numFmt w:val="decimalEnclosedCircle"/>
+      <w:lvlText w:val="%7"/>
       <w:lvlJc w:val="left"/>
       <w:pPr>
         <w:ind w:hanging="360" w:left="2520"/>
@@ -323,7 +323,7 @@
     <w:lvl w:ilvl="7">
       <w:start w:val="1"/>
       <w:numFmt w:val="ganada"/>
-      <w:lvlText w:val="%8."/>
+      <w:lvlText w:val="%8"/>
       <w:lvlJc w:val="left"/>
       <w:pPr>
         <w:ind w:hanging="360" w:left="2880"/>
@@ -331,8 +331,8 @@
     </w:lvl>
     <w:lvl w:ilvl="8">
       <w:start w:val="1"/>
-      <w:numFmt w:val="decimal"/>
-      <w:lvlText w:val="(%9)"/>
+      <w:numFmt w:val="ganada"/>
+      <w:lvlText w:val="%9"/>
       <w:lvlJc w:val="left"/>
       <w:pPr>
         <w:ind w:hanging="360" w:left="3240"/>
@@ -461,5 +461,19 @@
   </w:num>
   <w:num w:numId="12">
     <w:abstractNumId w:val="11"/>
+  </w:num>
+  <w:num w:numId="13">
+    <w:abstractNumId w:val="11"/>
+    <w:lvlOverride w:ilvl="0">
+      <w:lvl w:ilvl="0">
+        <w:start w:val="1"/>
+        <w:numFmt w:val="decimal"/>
+        <w:lvlText w:val="붙임&#9;%1."/>
+        <w:lvlJc w:val="left"/>
+        <w:pPr>
+          <w:ind w:hanging="360" w:left="360"/>
+        </w:pPr>
+      </w:lvl>
+    </w:lvlOverride>
   </w:num>
 </w:numbering>
