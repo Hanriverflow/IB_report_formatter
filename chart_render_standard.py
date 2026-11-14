@@ -280,6 +280,9 @@ MAX_GAP = 16.0  # points: a value farther than this from its bar end or point is
 # Points: a value's own bar or point may be at most this much farther from the
 # text's centre than the nearest other bar or point (the final rule, d).
 NEAREST_MARGIN = 3.0
+# Pixels kept between a text's box and a line or point marker: the soft
+# edges of both (anti-aliasing) reach about a pixel beyond their outlines.
+INK_MARGIN = 1.5
 # Values this large are drawn at an exact power-of-two scale, so that the
 # plot's limits do not overflow; the numbers written are the original ones.
 SAFE_MAGNITUDE = 1e290
@@ -365,7 +368,7 @@ def _crosses(box: Any, segment: tuple[float, float, float, float, float]) -> boo
         segment: Start and end in pixels and half the line's width.
     """
     x0, y0, x1, y1, half = segment
-    grow = half + 0.5  # half a pixel more: the line's soft edge must stay off the text
+    grow = half + INK_MARGIN
     left, right = box.x0 - grow, box.x1 + grow
     bottom, top = box.y0 - grow, box.y1 + grow
     if left >= right or bottom >= top:
@@ -1128,7 +1131,7 @@ class _Drawer:
             return False
         if any(_crosses(box, segment) for segment in context["segments"]):
             return False
-        if any(_away(box, x, y) < radius + 0.5 for x, y, radius in context["discs"]):
+        if any(_away(box, x, y) < radius + INK_MARGIN for x, y, radius in context["discs"]):
             return False
         if spot.rule == "free":
             return True
@@ -1517,7 +1520,7 @@ class _Drawer:
             # Over the points only, so that it does not run through the
             # line-end names beside the last point.
             ax.plot(
-                [0, points - 1] if points > 1 else [-0.4, 0.4],
+                [0.0, points - 1.0] if points > 1 else [-0.4, 0.4],
                 [line.value, line.value],
                 color=self.tones.muted,
                 linewidth=1.0,
