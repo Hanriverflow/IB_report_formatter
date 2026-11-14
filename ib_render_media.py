@@ -435,9 +435,10 @@ class ChartRenderer:
 
         The picture's height may be at most the current section's body height
         (page height less the top and bottom margins) less `CHART_TEXT_ROOM`
-        for its Word text, and never less than `MIN_CHART_HEIGHT`; a taller
-        picture is narrowed, keeping its proportions. Portrait and landscape
-        sections are measured alike.
+        for its Word text. A body too short for that leaves the picture
+        `MIN_CHART_HEIGHT`, but never more than the body height itself: the
+        body is the limit. A taller picture is narrowed, keeping its
+        proportions. Portrait and landscape sections are measured alike.
 
         Args:
             png: The drawn picture.
@@ -450,8 +451,10 @@ class ChartRenderer:
         page_height, top, bottom = section.page_height, section.top_margin, section.bottom_margin
         if page_height is None or top is None or bottom is None:
             return width
-        room = (page_height - top - bottom) / 914400 - self.CHART_TEXT_ROOM
-        room = max(room, self.MIN_CHART_HEIGHT)
+        body = (page_height - top - bottom) / 914400
+        if body <= 0:
+            return width
+        room = min(max(body - self.CHART_TEXT_ROOM, self.MIN_CHART_HEIGHT), body)
         pixels_wide, pixels_high = struct.unpack(">II", png[16:24])
         height = width * pixels_high / pixels_wide
         return width if height <= room else width * room / height

@@ -184,3 +184,22 @@ def test_an_ordinary_chart_keeps_its_size():
     ((height, width, _),) = _picture_heights(data)
     assert width == pytest.approx(6.0, abs=1e-3)
     assert height == pytest.approx(2.9, abs=0.01)
+
+
+@pytest.mark.parametrize("body_inches", [0.2, 0.3, 0.5, 1.0, 1.4, 2.0])
+def test_a_chart_is_never_taller_than_the_page_body(body_inches):
+    """Third independent review, C4: the 0.5 in minimum height exceeded a shorter body."""
+    renderer = IBDocumentRenderer(options=RenderOptions(profile="plain", charts=True))
+    document = renderer.render(MarkdownParser(profile="plain").parse("# Charts\n"))
+    section = document.sections[-1]
+    spare = section.page_height - Inches(body_inches)
+    section.top_margin = spare // 2
+    section.bottom_margin = spare - spare // 2
+    model = MarkdownParser(profile="plain").parse(fence(TALL))
+    chart = next(element.content for element in model.elements if hasattr(element.content, "spec"))
+    ChartRenderer(document).render(chart, "standard")
+    shape = document.inline_shapes[0]
+    assert shape.height / 914400 <= body_inches + 1e-3
+    # Where the body leaves room for the text, the earlier rule still holds.
+    if body_inches - ChartRenderer.CHART_TEXT_ROOM >= ChartRenderer.MIN_CHART_HEIGHT:
+        assert shape.height / 914400 <= body_inches - ChartRenderer.CHART_TEXT_ROOM + 1e-3
