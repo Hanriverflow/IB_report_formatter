@@ -900,3 +900,98 @@ def test_the_partial_table_mark_is_not_bold_off_a_named_row(spec) -> None:
     doc = render(partial_letter(spec))
     (mark,) = partial_mark_runs(doc)
     assert not mark.xpath("./w:rPr/w:b")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FOURTH INDEPENDENT CHECK (2026-11-14)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+SPLIT_WARNING = (
+    "Table negative style not applied to {!r}: the amount is split across "
+    "differently formatted text, so it keeps its written form"
+)
+
+
+def html_value_table(values: list[str]) -> str:
+    rows_html = "".join(f"<tr><td>검토{i}</td><td>{v}</td></tr>" for i, v in enumerate(values))
+    return f"<table><tr><th>구분</th><th>값</th></tr>{rows_html}</table>\n"
+
+
+def option_and_plain_doc(body: str, style: str, profile: str = "ib-memo"):
+    spec = {"type": "financial", "columns": ["text", "money"]}
+    doc, renderer = render_noting(markdown(body, profile, tables=[{**spec, "negative": style}]))
+    without = render(markdown(body, profile, tables=[spec]))
+    return body_table(doc, "검토0"), body_table(without, "검토0"), renderer
+
+
+def value_cell(table, index: int):
+    return cells(rows(table)[index + 1])[1]
+
+
+def run_texts(tc) -> list[str]:
+    return ["".join(run.xpath("./w:t/text()")) for run in tc.xpath(".//w:r[w:t]")]
+
+
+@pytest.mark.parametrize("profile", THREE)
+@pytest.mark.parametrize("style", STYLES)
+def test_a_space_run_after_the_amount_does_not_split_it(profile: str, style: str) -> None:
+    # Finding [1]: the bold amount is one format; the NBSP after it is not part of it.
+    table, plain, renderer = option_and_plain_doc(
+        html_value_table(
+            ["<b>-0001200</b>&nbsp;", "<b>-1200</b>&nbsp;", "<b>-1200</b><i>&nbsp;</i>"]
+        ),
+        style,
+        profile,
+    )
+    assert renderer.warnings == []
+    texts = [row[1] for row in cell_texts(table)[1:]]
+    assert texts[0] == [row[1] for row in cell_texts(plain)[1:]][0]
+    assert texts[1:] == [shown(style, "1,200") + "\xa0"] * 2
+    # The space keeps its own run and format; only the amount is restyled.
+    for index in (1, 2):
+        assert run_texts(value_cell(table, index)) == [shown(style, "1,200"), "\xa0"]
+        assert bold_runs(value_cell(table, index)) == [True, False]
+
+
+@pytest.mark.parametrize("style", STYLES)
+def test_a_space_run_before_the_amount_does_not_split_it(style: str) -> None:
+    body = one_column_table(
+        "검토", ['<span style="color:#0000FF"> </span>**-1200**', "<br>**-1200**"]
+    )
+    table, _, renderer = option_and_plain_doc(body, style)
+    assert renderer.warnings == []
+    coloured, broken = value_cell(table, 0), value_cell(table, 1)
+    assert run_texts(coloured) == [" ", shown(style, "1,200")]
+    assert coloured.xpath(".//w:r[1]/w:rPr/w:color/@w:val") == ["0000FF"]
+    assert bold_runs(coloured) == [False, True]
+    assert broken.xpath(".//w:r/w:br") and run_texts(broken)[-1] == shown(style, "1,200")
+
+
+@pytest.mark.parametrize("style", STYLES)
+def test_a_space_and_a_footnote_after_the_amount_do_not_split_it(style: str) -> None:
+    body = one_column_table("검토", ["**-1200** [^1]"]) + "\n[^1]: 가상 주석입니다.\n"
+    table, _, renderer = option_and_plain_doc(body, style)
+    assert renderer.warnings == []
+    cell = value_cell(table, 0)
+    assert run_texts(cell)[:2] == [shown(style, "1,200"), " "]
+    assert cell.xpath(".//w:r[last()]/w:footnoteReference")
+
+
+@pytest.mark.parametrize("style", STYLES)
+def test_a_split_inside_the_amount_still_warns_with_spaces_around_it(style: str) -> None:
+    body = html_value_table(
+        ["-1200<b>.50</b>&nbsp;", "-0001200<b>.50</b>&nbsp;", "-1200<b>&nbsp;</b>%"]
+    )
+    table, plain, renderer = option_and_plain_doc(body, style)
+    assert cell_texts(table) == cell_texts(plain)
+    # A space run inside the amount (before its unit) is part of it.
+    assert renderer.warnings == [
+        SPLIT_WARNING.format(text) for text in ("-1200.50", "-0001200.50", "-1200\xa0%")
+    ]
+
+
+@pytest.mark.parametrize("style", STYLES)
+def test_a_space_run_inside_digits_is_not_an_amount(style: str) -> None:
+    table, plain, renderer = option_and_plain_doc(html_value_table(["-1<b>&nbsp;</b>200"]), style)
+    assert cell_texts(table) == cell_texts(plain)
+    assert renderer.warnings == []

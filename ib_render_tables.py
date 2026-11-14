@@ -1221,7 +1221,9 @@ class TableRenderer:
         None and is formatted as in a table without the setting. So does an
         amount split across differently formatted runs (bold, italic,
         superscript or subscript pieces), which also records a rendering
-        warning; that warning never rejects the document. An amount written
+        warning; that warning never rejects the document. Runs holding only
+        spaces before or after the amount (`&nbsp;`, line breaks) are not part
+        of it: they never split it and keep their own text and format. An amount written
         wholly in superscript or subscript keeps its written form, as without
         the setting.
 
@@ -1248,13 +1250,18 @@ class TableRenderer:
         # restyled, so a split amount warns even when a leading zero keeps it.
         if self._read_negative_amount(text) is None:
             return None
-        if any(replace(run, text="") != replace(body[0], text="") for run in body[1:]):
+        # Runs holding only spaces (NBSP and line breaks included) before or after
+        # the amount are not part of it: their formatting never splits it.
+        first = next(i for i, run in enumerate(body) if run.text.strip())
+        last = max(i for i, run in enumerate(body) if run.text.strip())
+        core = body[first : last + 1]
+        if any(replace(run, text="") != replace(core[0], text="") for run in core[1:]):
             self._warn(
                 f"Table negative style not applied to {text.strip()!r}: the amount is split "
                 "across differently formatted text, so it keeps its written form"
             )
             return None
-        if body[0].superscript or body[0].subscript:
+        if core[0].superscript or core[0].subscript:
             return None
         amount = self._negative_amount(text, role, style)
         if amount is None:
@@ -1262,7 +1269,21 @@ class TableRenderer:
         leading = text[: len(text) - len(text.lstrip())]
         trailing = text[len(text.rstrip()) :]
         shown = leading + amount + trailing
-        return shown, [replace(body[0], text=shown), *runs[end:]]
+        if all(replace(run, text="") == replace(core[0], text="") for run in body):
+            return shown, [replace(body[0], text=shown), *runs[end:]]
+        # Space runs formatted apart from the amount keep their own text and format.
+        core_text = "".join(run.text for run in core)
+        core_shown = (
+            core_text[: len(core_text) - len(core_text.lstrip())]
+            + amount
+            + core_text[len(core_text.rstrip()) :]
+        )
+        return shown, [
+            *body[:first],
+            replace(core[0], text=core_shown),
+            *body[last + 1 :],
+            *runs[end:],
+        ]
 
     @classmethod
     def _read_negative_amount(cls, text: str) -> tuple[str, str] | None:
