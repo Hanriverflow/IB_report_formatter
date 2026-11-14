@@ -1454,7 +1454,7 @@ def test_references_the_raw_text_does_not_spell_are_read(
 def test_a_reference_decoded_from_a_yaml_escape_is_read(tmp_path: Path) -> None:
     path = tmp_path / "doc.md"
     path.write_text(
-        '---\nprofile: business-report\ntitle: "Title \u0040tbl-missing"\n---\n\nbody\n',
+        '---\nprofile: business-report\ntitle: "Title \\u0040tbl-missing"\n---\n\nbody\n',
         encoding="utf-8",
     )
     with pytest.raises(StrictValidationError, match="in the document title stays text"):
