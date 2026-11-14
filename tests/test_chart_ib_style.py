@@ -481,3 +481,129 @@ def test_chart_tones_stay_apart_in_black_and_white(accent):
             assert _min_gap(tones.compare(count, accent_index)) >= MIN_TONE_GAP[count]
     assert abs(luma(tones.anchor()) - luma(accent)) >= ANCHOR_GAP
     assert abs(luma(tones.pair_grey()) - luma(accent)) >= MIN_TONE_GAP[2]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# WORD PARAGRAPHS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+TABLE_WITH_ID = """```yaml table
+id: tbl-plan
+caption: 가상 조달 계획
+```
+
+| 구분 | 금액 |
+|---|---:|
+| 회사채 | 1,000 |
+
+"""
+
+
+def _chart_block(doc):
+    """Paragraphs from the first non-empty one before the picture to the picture's last line."""
+    paragraphs = doc.paragraphs
+    picture = next(i for i, p in enumerate(paragraphs) if p._p.xpath(".//w:drawing"))
+    return paragraphs, picture
+
+
+def _keep_next(paragraph) -> bool:
+    return bool(paragraph.paragraph_format.keep_with_next)
+
+
+@pytest.mark.parametrize(
+    "profile, note_word, source_word",
+    [("business-report", "주", "자료"), ("plain", "주", "자료"), ("ib-report", "Note", "Source")],
+)
+def test_title_subtitle_note_and_source_are_word_paragraphs(profile, note_word, source_word):
+    spec = STACKED.replace("note: 9월 말 잔액 기준", "note: 9월 말 잔액 기준")
+    renderer, doc, _ = render_doc(fence(spec), profile, strict=True)
+    assert not renderer.errors
+    paragraphs, picture = _chart_block(doc)
+    texts = [p.text for p in paragraphs[picture - 2 : picture + 3]]
+    assert texts == [
+        "2028년 만기가 가장 크다",
+        "연도별 만기 도래액, 단위: 억원",
+        "",
+        f"{note_word}: 9월 말 잔액 기준",
+        f"{source_word}: 가상 자료",
+    ]
+    title = paragraphs[picture - 2]
+    assert all(run.bold for run in title.runs)
+    assert [_keep_next(p) for p in paragraphs[picture - 2 : picture + 3]] == [
+        True,
+        True,
+        True,
+        True,
+        False,
+    ]
+    descr = doc.inline_shapes[0]._inline.docPr.get("descr")
+    assert descr == "2028년 만기가 가장 크다"
+
+
+def test_subtitle_falls_back_to_the_axis_label_as_written_and_adds_no_words():
+    _, doc, _ = render_doc(fence(CLASSIC_BAR), "business-report", strict=True)
+    paragraphs, picture = _chart_block(doc)
+    assert [p.text for p in paragraphs[picture - 2 : picture + 2]] == [
+        "가상 매출",
+        "백만원",
+        "",
+        "자료: 가상 자료",
+    ]
+    unit_only = CLASSIC_BAR.replace("y_label: 백만원", "unit: 이익률")
+    _, doc, _ = render_doc(fence(unit_only), "business-report", strict=True)
+    paragraphs, picture = _chart_block(doc)
+    assert paragraphs[picture - 1].text == "이익률"
+    _, doc, _ = render_doc(fence(unit_only + "subtitle: ''\n"), "business-report", strict=True)
+    paragraphs, picture = _chart_block(doc)
+    assert paragraphs[picture - 1].text == "가상 매출"  # an empty subtitle hides the line
+
+
+def test_a_chart_without_texts_is_only_its_picture():
+    bare = "chart_type: bar\nlabels: [a, b]\nseries:\n  - name: x\n    values: [1, 2]\n"
+    plain_doc = render_doc("문단\n", "plain")[1]
+    renderer, doc, _ = render_doc("문단\n\n" + fence(bare), "plain", strict=True)
+    assert not renderer.errors
+    assert len(doc.paragraphs) == len(plain_doc.paragraphs) + 1
+    assert not _keep_next(doc.paragraphs[-1])
+    assert doc.inline_shapes[0]._inline.docPr.get("descr") == "Chart 1"
+
+
+def test_a_theme_file_can_set_the_chart_words(tmp_path):
+    theme = tmp_path / "theme.yaml"
+    theme.write_text('CHART_SOURCE_LABEL: "출처"\nCHART_NOTE_LABEL: "참고"\n', encoding="utf-8")
+    _, doc, _ = render_doc(fence(STACKED), "ib-report", theme=str(theme), strict=True)
+    paragraphs, picture = _chart_block(doc)
+    assert [p.text for p in paragraphs[picture + 1 : picture + 3]] == [
+        "참고: 9월 말 잔액 기준",
+        "출처: 가상 자료",
+    ]
+
+
+@pytest.mark.parametrize("place", ["title", "subtitle", "note", "source"])
+def test_a_reference_in_chart_text_stays_text_and_is_reported(place):
+    texts = {"title": "가상 매출", "subtitle": "'단위: 원'", "note": "가상", "source": "가상 자료"}
+    texts[place] = "'@tbl-plan 참고'"
+    spec = "chart_type: bar\nlabels: [a]\nseries:\n  - name: x\n    values: [1]\n" + "".join(
+        f"{key}: {value}\n" for key, value in texts.items()
+    )
+    markdown = TABLE_WITH_ID + fence(spec)
+    renderer, doc, _ = render_doc(markdown, "business-report")
+    message = ";".join(renderer.errors)
+    assert f"chart {place}" in message and "@tbl-plan" in message
+    assert any("@tbl-plan 참고" in p.text for p in doc.paragraphs)
+    assert not any(
+        "REF" in (node.text or "")
+        for node in doc.element.body.iter()
+        if node.tag.endswith("instrText")
+    )
+    with pytest.raises(ValueError, match="chart"):
+        render_doc(markdown, "business-report", strict=True)
+
+
+def test_classic_chart_text_is_drawn_and_not_read_for_references():
+    spec = CLASSIC_BAR.replace("source: 가상 자료", "source: '@tbl-plan 참고'")
+    renderer, doc, _ = render_doc(
+        TABLE_WITH_ID + fence(spec), "business-report", chart_style="classic", strict=True
+    )
+    assert not renderer.errors
+    assert not any("@tbl-plan" in p.text for p in doc.paragraphs)

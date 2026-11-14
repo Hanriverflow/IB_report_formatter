@@ -2,6 +2,10 @@
 
 Changelog (captions):
     - A figure with an ID gets its caption number before the description.
+
+Changelog (charts, E10):
+    - `chart_style`: classic charts as before; standard charts with their
+      title and subtitle above and note and source below as Word paragraphs.
 """
 
 import logging
@@ -15,7 +19,7 @@ from typing import cast
 from docx.document import Document as DocxDocument
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
-from docx.shared import Inches
+from docx.shared import Inches, Pt, RGBColor
 from docx.text.paragraph import Paragraph
 
 from document_model import CaptionNumber, Chart, ChartSpec, TextRun
@@ -364,22 +368,92 @@ class ChartRenderer:
         return paragraph
 
     def _render_standard(self, chart: Chart, width: float) -> Paragraph:
-        """Insert a chart drawn in the IB/consulting style."""
+        """Insert a chart drawn in the IB/consulting style with its Word text.
+
+        The title and the subtitle (or, without one, `y_label`/`unit`) go
+        above the picture and the note and source below it, each as written;
+        only the words before the note and source come from the profile
+        (`STYLE.CHART_NOTE_LABEL`, `STYLE.CHART_SOURCE_LABEL`). The lines
+        are kept on the picture's page with keep-with-next.
+
+        These texts are plain text, as the classic style drew them, not
+        inline Markdown. A `@tbl-…` / `@fig-…` in them cannot become a field
+        (the title is also the picture's description, where E5 allows none),
+        so it stays text and is reported (`TextParser.check_text`).
+
+        Returns:
+            The picture paragraph.
+        """
         from chart_render_standard import render_standard_chart_png
+        from md_parse_text import TextParser
 
         spec = cast(ChartSpec, chart.spec)
         warnings = getattr(self.doc.part, "_ib_render_warnings", None)
         png = render_standard_chart_png(spec, width_inches=width, warnings=warnings)
-        paragraph = self.doc.add_paragraph()
-        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        subtitle = spec.subtitle if spec.subtitle is not None else (spec.y_label or spec.unit)
+        for place, text in (
+            ("chart title", spec.title),
+            ("chart subtitle", subtitle),
+            ("chart note", spec.note),
+            ("chart source", spec.source),
+        ):
+            if text:
+                TextParser.check_text(text, place, markdown=False)
+        below = [
+            f"{label}: {text}"
+            for label, text in (
+                (STYLE.CHART_NOTE_LABEL, spec.note),
+                (STYLE.CHART_SOURCE_LABEL, spec.source),
+            )
+            if text
+        ]
+        added: list[Paragraph] = []
         try:
+            if spec.title:
+                title = self._chart_text_paragraph(added, Pt(6), Pt(0), keep_next=True)
+                self._chart_run(title, spec.title, STYLE.BODY_SIZE, STYLE.NAVY, bold=True)
+            if subtitle:
+                line = self._chart_text_paragraph(added, Pt(0), Pt(2), keep_next=True)
+                self._chart_run(line, subtitle, STYLE.SMALL_SIZE, STYLE.MEDIUM_GRAY)
+            picture = self.doc.add_paragraph()
+            added.append(picture)
+            picture.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            if below:
+                picture.paragraph_format.keep_with_next = True
+                picture.paragraph_format.space_after = Pt(2)
             with BytesIO(png) as buffer:
-                shape = paragraph.add_run().add_picture(buffer, width=Inches(width))
+                shape = picture.add_run().add_picture(buffer, width=Inches(width))
             ImageRenderer._apply_alt_text(shape, spec.title or chart.label)
+            for index, text in enumerate(below):
+                last = index == len(below) - 1
+                after = STYLE.BODY_SPACE_AFTER if last else Pt(0)
+                line = self._chart_text_paragraph(added, Pt(0), after, keep_next=not last)
+                self._chart_run(line, text, STYLE.SMALL_SIZE, STYLE.MEDIUM_GRAY)
         except Exception:
-            paragraph._p.getparent().remove(paragraph._p)
+            for paragraph in added:
+                paragraph._p.getparent().remove(paragraph._p)
             raise
+        return picture
+
+    def _chart_text_paragraph(
+        self, added: list[Paragraph], before: Pt, after: Pt, keep_next: bool
+    ) -> Paragraph:
+        paragraph = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
+        added.append(paragraph)
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        layout = paragraph.paragraph_format
+        layout.space_before, layout.space_after = before, after
+        if keep_next:
+            layout.keep_with_next = True
         return paragraph
+
+    @staticmethod
+    def _chart_run(
+        paragraph: Paragraph, text: str, size: Pt, color: RGBColor, bold: bool = False
+    ) -> None:
+        FontStyler.apply_run_style(
+            paragraph.add_run(text), font_size=size, bold=bold or None, color=color
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

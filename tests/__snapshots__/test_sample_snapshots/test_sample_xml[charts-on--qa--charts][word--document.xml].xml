@@ -47,6 +47,41 @@
     </w:p>
     <w:p>
       <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="0" w:before="120"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="202020"/>
+          <w:sz w:val="22"/>
+        </w:rPr>
+        <w:t>가상기업 부문별 매출</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="40" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>백만원</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:keepNext/>
+        <w:spacing w:after="40"/>
         <w:jc w:val="center"/>
       </w:pPr>
       <w:bookmarkStart w:id="1" w:name="_ibrep_CHART_RANDOM"/>
@@ -87,6 +122,21 @@
       <w:bookmarkEnd w:id="1"/>
     </w:p>
     <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="160" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>자료: 기능 검증용 가상 자료</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
       <w:bookmarkStart w:id="2" w:name="_ibrep_SEPARATOR_RANDOM"/>
       <w:r>
         <w:br w:type="page"/>
@@ -124,6 +174,41 @@
     </w:p>
     <w:p>
       <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="0" w:before="120"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="202020"/>
+          <w:sz w:val="22"/>
+        </w:rPr>
+        <w:t>가상기업 분기별 이익률</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="40" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>이익률</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:keepNext/>
+        <w:spacing w:after="40"/>
         <w:jc w:val="center"/>
       </w:pPr>
       <w:bookmarkStart w:id="3" w:name="_ibrep_CHART_RANDOM"/>
@@ -164,6 +249,21 @@
       <w:bookmarkEnd w:id="3"/>
     </w:p>
     <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="160" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>자료: 기능 검증용 가상 자료</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
       <w:bookmarkStart w:id="4" w:name="_ibrep_SEPARATOR_RANDOM"/>
       <w:r>
         <w:br w:type="page"/>
@@ -201,6 +301,41 @@
     </w:p>
     <w:p>
       <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="0" w:before="120"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="202020"/>
+          <w:sz w:val="22"/>
+        </w:rPr>
+        <w:t>가상기업 현금 증감</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="40" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>백만원</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:keepNext/>
+        <w:spacing w:after="40"/>
         <w:jc w:val="center"/>
       </w:pPr>
       <w:bookmarkStart w:id="5" w:name="_ibrep_CHART_RANDOM"/>
@@ -239,6 +374,21 @@
         </w:drawing>
       </w:r>
       <w:bookmarkEnd w:id="5"/>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="160" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>자료: 기능 검증용 가상 자료</w:t>
+      </w:r>
     </w:p>
     <w:sectPr w:rsidR="REVISION" w:rsidRPr="REVISION" w:rsidSect="REVISION">
       <w:headerReference r:id="rId12" w:type="default"/>
