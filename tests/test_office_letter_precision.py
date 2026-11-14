@@ -235,6 +235,44 @@ def test_cells_that_show_characters_are_written(cell):
         render(letter(FULL_TABLE + f"| {cell} | | |\n", PARTIAL))
 
 
+@pytest.mark.parametrize("cell", ["`<br>`", r"\<br>", "$x$", "&nbsp;"])
+def test_written_cell_keeps_its_content_and_the_mark_goes_below(cell):
+    body = FULL_TABLE + f"| {cell} | | |\n| | | |\n"
+    marked = last_table(render(letter(body, PARTIAL)))
+    plain = last_table(render(letter(body)))
+
+    def written_cell(table) -> tuple[str, int]:
+        tc = table.findall(qn("w:tr"))[3].findall(qn("w:tc"))[0]
+        return text_of(tc), len(tc.findall(".//" + qn("w:drawing")))
+
+    # The written cell shows what the letter prints without the setting (the
+    # equation is an image, whose generated IDs differ between two renders).
+    assert written_cell(marked) == written_cell(plain)
+    assert written_cell(marked) != ("", 0)
+    assert "이하 빈칸" not in "".join(row_texts(marked)[3])
+    assert row_texts(marked)[4][0] == "이하 빈칸"
+
+
+HTML_IMAGE_TABLE = (
+    "<table><tr><th>구분</th><th>비고</th></tr>"
+    "<tr><td>납입</td><td>대금 납입</td></tr>"
+    f'<tr><td><img src="{PNG}" alt="도장"></td><td></td></tr>'
+    "{extra}</table>\n"
+)
+
+
+def test_html_image_only_row_is_written():
+    """The first review's reproduction: an HTML image in the last row."""
+    with pytest.raises(StrictValidationError, match="blank row"):
+        render(letter(HTML_IMAGE_TABLE.format(extra=""), PARTIAL))
+    doc = render(letter(HTML_IMAGE_TABLE.format(extra="<tr><td></td><td></td></tr>"), PARTIAL))
+    table = last_table(doc)
+    image_row = table.findall(qn("w:tr"))[2]
+    assert image_row.findall(".//" + qn("w:drawing"))
+    assert "이하 빈칸" not in "".join(row_texts(table)[2])
+    assert row_texts(table)[3][0] == "이하 빈칸"
+
+
 def test_html_table_cells_with_no_break_space_or_break_are_blank():
     source = (
         "<table><tr><th>구분</th><th>일자</th></tr>"
