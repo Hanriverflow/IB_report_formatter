@@ -95,6 +95,7 @@ from document_model import (
 from document_model import ConfirmationBlock as ConfirmationBlock
 from document_model import (
     CrossReference,
+    DefaultTitle,
     Figure,
     MarkedBlockquote,
     MarkedHeading,
@@ -172,6 +173,7 @@ from document_model import (
 from document_profiles import (
     apply_table_specs,
     check_schedules,
+    document_status,
     get_profile,
     validate_term_sheet_metadata,
 )
@@ -409,6 +411,7 @@ class MarkdownParser:
                 else None
             )
             validate_xml_strings(metadata)
+            document_status(metadata)
 
         # Detect whether YAML frontmatter was present
         has_frontmatter = len(remaining_lines) < len(lines)
@@ -499,8 +502,10 @@ class MarkdownParser:
                 ),
                 None,
             )
+            # Only the profile's stand-in or an empty title gives way to the first H1;
+            # a written "Document" or "IB Report" stays the title.
             if (
-                written_title in {"", "Document", "IB Report"}
+                (isinstance(written_title, DefaultTitle) or written_title == "")
                 and first_heading
                 and first_heading.text
             ):

@@ -518,6 +518,9 @@
         "label_columns": null,
         "note": "",
         "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
         "schedule": null,
         "ref_id": "tbl-results"
       },
@@ -748,6 +751,9 @@
         "label_columns": null,
         "note": "",
         "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
         "schedule": null
       },
       "raw_text": "| 항목 | 내용 |\n|---|---|\n| 작성 부서 | 문서표준화 TF |\n| 검토 상태 | 초안 |",
@@ -1072,6 +1078,9 @@
         "label_columns": null,
         "note": "",
         "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
         "schedule": null,
         "ref_id": "tbl-funding"
       },

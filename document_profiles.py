@@ -10,6 +10,10 @@ Changelog (term-sheet foundation):
 
 Changelog (captions):
     - A table spec `id` (`tbl-…`) numbers the table's caption; the caption is required.
+
+Changelog (IB table rules):
+    - NEW: explicit `total_rows` / `subtotal_rows` body-row lists in every profile.
+    - NEW: per-table `negative` style (paren, minus, triangle) for `type: financial` tables.
 """
 
 import math
@@ -24,6 +28,7 @@ from typing import Any, cast
 from docx.shared import Inches, Pt, RGBColor
 
 from document_model import (
+    DefaultTitle,
     DocumentMetadata,
     DocumentModel,
     ElementType,
@@ -73,7 +78,49 @@ def default_metadata(profile: str = "ib-report") -> DocumentMetadata:
     """Return neutral metadata for office documents, legacy defaults for IB."""
     if get_profile(profile).is_ib:
         return DocumentMetadata(profile=profile)
-    return DocumentMetadata(title="Document", company="", sector="", analyst="", profile=profile)
+    return DocumentMetadata(
+        title=DefaultTitle("Document"), company="", sector="", analyst="", profile=profile
+    )
+
+
+def document_version(metadata: DocumentMetadata) -> str:
+    """Return the frontmatter `version` as display text, or "" when absent or blank.
+
+    The value keeps the existing metadata display coercion: an unquoted YAML
+    number renders as YAML read it (`1.10` becomes `1.1`), so authors quote it.
+
+    Args:
+        metadata: Parsed or hand-built document metadata.
+
+    Returns:
+        Version text without surrounding spaces.
+    """
+    value = metadata.extra.get("version")
+    return "" if value is None else str(value).strip()
+
+
+DOCUMENT_STATUSES = ("draft", "final")
+
+
+def document_status(metadata: DocumentMetadata) -> str:
+    """Return the frontmatter `status` ("draft" or "final"), or "" when absent.
+
+    Args:
+        metadata: Parsed or hand-built document metadata.
+
+    Returns:
+        The status; "draft" marks every page with a removable DRAFT watermark.
+
+    Raises:
+        ValueError: The status is present but is not exactly draft or final, so
+            a misspelling cannot silently drop the draft marking.
+    """
+    if "status" not in metadata.extra:
+        return ""
+    value = metadata.extra["status"]
+    if not isinstance(value, str) or value not in DOCUMENT_STATUSES:
+        raise ValueError(f"status must be draft or final, not {value!r}")
+    return value
 
 
 def validate_term_sheet_metadata(metadata: DocumentMetadata, check_length: bool = True) -> None:
@@ -498,12 +545,14 @@ def validate_office_metadata(metadata: DocumentMetadata) -> None:
         letter = metadata.extra.get("letter", {})
         if not isinstance(letter, dict):
             raise ValueError("letter must be a YAML mapping")
-        if set(letter) - {"appendix_heading", "appendix_label"}:
+        if set(letter) - {"appendix_heading", "appendix_label", "table_end"}:
             raise ValueError("Unknown letter settings")
         if any(not isinstance(v, str) or not v.strip() for v in letter.values()):
             raise ValueError("letter settings must be non-empty text")
         if "appendix_label" in letter and "appendix_heading" not in letter:
             raise ValueError("letter.appendix_label requires appendix_heading")
+        if letter.get("table_end", "partial") != "partial":
+            raise ValueError("letter.table_end must be 'partial'")
 
 
 def header_labels(rows: Sequence[Sequence[str]]) -> list[str]:
@@ -538,6 +587,10 @@ def header_labels(rows: Sequence[Sequence[str]]) -> list[str]:
                 parts.append(text)
         labels.append(" ".join(parts))
     return labels
+
+
+# Table spec `negative`: (1,234), -1,234 or △1,234 in place of the written form and red.
+NEGATIVE_STYLES = ("paren", "minus", "triangle")
 
 
 def apply_table_specs(model: DocumentModel) -> None:
@@ -581,6 +634,9 @@ def apply_table_specs(model: DocumentModel) -> None:
             "header_rows",
             "schedule",
             "id",
+            "total_rows",
+            "subtotal_rows",
+            "negative",
         }
         if unknown:
             raise ValueError("Unknown table settings: {}".format(", ".join(sorted(unknown))))
@@ -598,6 +654,20 @@ def apply_table_specs(model: DocumentModel) -> None:
                     cell.is_header = row.is_header
         if "schedule" in spec:
             table.schedule = _schedule_spec(spec["schedule"], table.col_count)
+        body_rows = len(table.rows) - table.header_rows
+        for key in ("total_rows", "subtotal_rows"):
+            if key in spec:
+                setattr(table, key, _body_row_list(spec[key], key, body_rows))
+        shared = sorted(set(table.total_rows) & set(table.subtotal_rows))
+        if shared:
+            raise ValueError(f"Table body row {shared[0]} is in both total_rows and subtotal_rows")
+        if "negative" in spec:
+            # Display only: the amount is unchanged and red is dropped (owner decision D4).
+            if not isinstance(spec["negative"], str) or spec["negative"] not in NEGATIVE_STYLES:
+                raise ValueError("Table negative must be paren, minus or triangle")
+            if spec.get("type") != "financial":
+                raise ValueError("Table negative requires type: financial in the same spec")
+            table.negative = spec["negative"]
         if "spans" in spec:
             if not isinstance(spec["spans"], bool):
                 raise ValueError("Table spans must be true or false")
@@ -706,6 +776,31 @@ def _numbered_table(table: Table, ref_id: Any, seen: set[str]) -> NumberedTable:
     seen.add(ref_id)
     values = {item.name: getattr(table, item.name) for item in fields(table)}
     return NumberedTable(**values, ref_id=ref_id)
+
+
+def _body_row_list(raw: Any, key: str, body_rows: int) -> list[int]:
+    """Validate an explicit list of one-based body rows (`total_rows`, `subtotal_rows`).
+
+    Args:
+        raw: The YAML value; integers only, never inferred from cell text.
+        key: Specification key, for the message.
+        body_rows: Number of rows after the header rows.
+
+    Returns:
+        The rows in the order written.
+
+    Raises:
+        ValueError: Not a list, a value that is not an integer from 1 to `body_rows`,
+            or a row listed twice.
+    """
+    if not isinstance(raw, list) or any(
+        type(row) is not int or not 1 <= row <= body_rows for row in raw
+    ):
+        raise ValueError(f"Table {key} must be a list of body row numbers from 1 to {body_rows}")
+    for index, row in enumerate(raw):
+        if row in raw[:index]:
+            raise ValueError(f"Table {key} lists body row {row} twice")
+    return list(raw)
 
 
 _SCHEDULE_KEYS = {

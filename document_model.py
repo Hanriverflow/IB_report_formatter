@@ -5,6 +5,7 @@ Changelog (quality hardening):
     - Add chart specifications with retained source for opt-in rendering.
     - Retain original confirmation fences for lossless term-sheet fallback.
     - Carry an optional table note rendered below the table in every profile.
+    - Carry explicit totals/subtotal body rows and a per-table negative-number style.
 
 Changelog (captions):
     - Tables and figures with a reference ID (`NumberedTable`, `Figure`) and the
@@ -260,6 +261,10 @@ class Table:
     label_columns: int | None = None  # shaded leading label columns (term-sheet layout)
     note: str = ""  # table spec `note`: short right-aligned text below the table
     header_rows: int = 1  # leading rows drawn and repeated as the header (spec `header_rows`)
+    # One-based body rows from table specs `total_rows` / `subtotal_rows`; never inferred.
+    total_rows: list[int] = field(default_factory=list)
+    subtotal_rows: list[int] = field(default_factory=list)
+    negative: str | None = None  # table spec `negative`: paren, minus or triangle; None keeps red
     schedule: dict[str, Any] | None = None  # validated table spec `schedule` (repayment checks)
 
 
@@ -545,11 +550,19 @@ class Footnote:
     text: str
 
 
+class DefaultTitle(str):
+    """A profile's stand-in title, not one the document gave.
+
+    Any title read from frontmatter or the body is a plain `str`, even when its
+    text equals the stand-in, so a renderer can tell the two apart.
+    """
+
+
 @dataclass
 class DocumentMetadata:
     """Document metadata from frontmatter"""
 
-    title: str = "IB Report"
+    title: str = DefaultTitle("IB Report")
     subtitle: str = ""
     company: str = "Korea Development Bank"
     ticker: str = ""

@@ -683,6 +683,9 @@
         "label_columns": null,
         "note": "",
         "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
         "schedule": null
       },
       "raw_text": "| 지표 | 전기 | 당기 | 증감률 | 코드 |\n|---|---|---|---|---|\n| 매출 | 120000 | **135000** | 12.5 | 001234 |\n| 영업이익 | 15000 | 16800 | 12.0 | 005678 |\n| 일회성 비용 | (1200) | **(1800)** | | 009900 |",
@@ -1180,6 +1183,9 @@
         "label_columns": null,
         "note": "",
         "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
         "schedule": null
       },
       "raw_text": "| 구분 | 하단 | 기준 | 상단 |\n|---|---|---|---|\n| 보수 | 8000 | 9000 | 10000 |\n| 기본 | 10000 | 11000 | 12000 |\n| 낙관 | 12000 | 13000 | 14000 |",

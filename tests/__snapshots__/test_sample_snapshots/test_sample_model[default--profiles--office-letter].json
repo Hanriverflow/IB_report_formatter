@@ -473,6 +473,9 @@
         "label_columns": null,
         "note": "",
         "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
         "schedule": null
       },
       "raw_text": "| 구분 | 담당 | 비고 |\n|---|---|---|\n| 운영실적 | 운영지원팀 | 제출 양식 사용 |\n| 설비계획 | | 담당자 지정 후 회신 |",

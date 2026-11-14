@@ -15,7 +15,57 @@
         <w:color w:val="888888"/>
         <w:sz w:val="15"/>
       </w:rPr>
-      <w:t>Term Sheet v1.0 / 가상 예시</w:t>
+      <w:t xml:space="preserve">Term Sheet </w:t>
+    </w:r>
+    <w:r>
+      <w:rPr>
+        <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+        <w:b w:val="0"/>
+        <w:i w:val="0"/>
+        <w:color w:val="888888"/>
+        <w:sz w:val="15"/>
+      </w:rPr>
+      <w:fldChar w:fldCharType="begin"/>
+    </w:r>
+    <w:r>
+      <w:rPr>
+        <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+        <w:b w:val="0"/>
+        <w:i w:val="0"/>
+        <w:color w:val="888888"/>
+        <w:sz w:val="15"/>
+      </w:rPr>
+      <w:instrText xml:space="preserve"> DOCPROPERTY Version \* MERGEFORMAT </w:instrText>
+    </w:r>
+    <w:r>
+      <w:rPr>
+        <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+        <w:b w:val="0"/>
+        <w:i w:val="0"/>
+        <w:color w:val="888888"/>
+        <w:sz w:val="15"/>
+      </w:rPr>
+      <w:fldChar w:fldCharType="separate"/>
+    </w:r>
+    <w:r>
+      <w:rPr>
+        <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+        <w:b w:val="0"/>
+        <w:i w:val="0"/>
+        <w:color w:val="888888"/>
+        <w:sz w:val="15"/>
+      </w:rPr>
+      <w:t>v1.0 / 가상 예시</w:t>
+    </w:r>
+    <w:r>
+      <w:rPr>
+        <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
+        <w:b w:val="0"/>
+        <w:i w:val="0"/>
+        <w:color w:val="888888"/>
+        <w:sz w:val="15"/>
+      </w:rPr>
+      <w:fldChar w:fldCharType="end"/>
     </w:r>
     <w:r>
       <w:rPr>

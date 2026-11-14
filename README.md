@@ -134,9 +134,21 @@ attachments: [제출 양식 1부]
 
 Letters require `recipients` and `sender.organization`; no seal/signature image is manufactured. Reports use `analyst`, `date`, `sender.department`; minutes also accept `meeting_time`, `location`, `attendees`. Quote dates, codes and numeric-looking identifiers to preserve their text. A matching first H1 is not duplicated when the profile already supplies a title.
 
+### Version and DRAFT marking
+
+```yaml
+version: "v1.2"   # quote it: unquoted 1.10 is read by YAML as 1.1
+status: draft     # draft or final
+```
+
+- `version` is written as the custom document property `Version` and shown in the page header after the company (`예시금융 | v1.2`, or `v1.2` alone without a company). The header text is a `DOCPROPERTY Version` field holding the current value, so it reads correctly as soon as the file opens. Office letters write the property but show no version; the term-sheet footer keeps showing `subtitle version`, with the version part as the same field.
+- To change the version in Word, edit **File > Info > Properties > Advanced Properties > Custom > Version**, then update the field: double-click the header and press **Ctrl+A, F9** (this updates that section's header only), or open **Ctrl+P** / print preview, which updates every section. Ctrl+A, F9 in the body does not update headers. Printing and saving as PDF use the new value.
+- `status: draft` puts a DRAFT watermark on every page, including the cover and landscape-table sections. It uses Word's own watermark shape, so **Design > Watermark > Remove Watermark** clears it from every page at once. `status: final` or no status adds nothing; any other value is rejected.
+- File > Info shows the document title, an empty author and comment, and the conversion time as the created and modified dates.
+
 ### Letters with an appendix
 
-The letter profile uses a centred company name, aligned recipient/reference/subject fields, native numbered attachments, a closing marker, signatory and issue/contact details. Wrapped metadata aligns below the value. The company name is not repeated in the page header. `sender.signatory` accepts a YAML multiline string; no signer name is invented.
+The letter profile uses a centred company name, aligned recipient/reference/subject fields, attachment lines in the administrative-handbook form, a closing marker, signatory and issue/contact details. Wrapped metadata aligns below the value. The company name is not repeated in the page header. `sender.signatory` accepts a YAML multiline string; no signer name is invented.
 
 To place the closing **before** an appendix, specify its exact H1 text:
 
@@ -147,6 +159,23 @@ letter:
 ```
 
 That H1 must appear exactly once after the letter body and differ from the document title. Missing/duplicate/empty-body boundaries and unknown `letter` keys are rejected before saving. `appendix_label` is optional and requires `appendix_heading`. Without these settings the entire Markdown remains the letter body. Attachments are a declared list, not proof that external files exist or have been embedded. See [the complete synthetic example](samples/qa/office-letter-appendix.md).
+
+### Attachments, tables at the end and item symbols
+
+These follow the Korean administrative-document rule (enforcement rule of the 「행정업무의 운영 및 혁신에 관한 규정」, Art. 2(1) and 4(4)–(5)) and the 2025 administrative handbook. The rule binds government bodies only; for a company's letters it is the form recipients expect, not a legal requirement, and the engine does not certify legal adequacy. Details: [verification record](docs/verification-office-letter-20261114.md).
+
+- **Attachments.** One attachment is one unnumbered line, `붙임  발행조건 요약표 1부.  끝.`. Several start on the `붙임  1.` line and the next numbers align under `1.`; the numbers stay native Word numbering. `끝.` follows the last attachment.
+- **Body ending with a table.** A table filled to its last row gets `끝.` below it, one character in. If the final table is filled only partway (blank rows left for the record), declare it:
+
+  ```yaml
+  letter:
+    table_end: partial
+  ```
+
+  The first cell of the first blank row after the last written row then reads `이하 빈칸`, and `끝.` is omitted (it still follows attachments if there are any). The engine never infers this from blank rows, because a reply form keeps blank rows for the recipient. The setting is rejected before saving when its value is not `partial`, when the letter body does not end with a table, or when that table has no blank row after its last written row.
+- **Item symbols.** Nested numbered items in an office letter use `1.` `가.` `1)` `가)` `(1)` `(가)` `①` (levels one to seven). Word has no automatic format for the eighth symbol `㉮`: strict mode rejects an eighth level, and non-strict mode uses `가`, `나`, `다` with a warning. Word's 가나다 numbering returns to `가` after `하`; the handbook continues with `거`. Other profiles keep `1.` `가.` `(1)`.
+
+See [the synthetic partial-table example](samples/qa/office-letter-partial-table.md).
 
 Configuration precedence is **explicit CLI/API option > YAML > profile default**. YAML `layout` supports boolean `cover`, `toc`, `disclaimer`, `confidential`, `strict`, plus `separator_mode: auto|rule|page-break`. Unknown layout/table/theme keys fail validation. CLI overrides: `--profile`, `--theme`, `--strict`, `--no-cover`, `--no-toc`, `--no-disclaimer`, `--no-confidential`, `--separator-mode`. Enable cover/TOC through YAML or API when needed.
 
@@ -213,7 +242,7 @@ Place an empty, closed fence where the house/frontmatter confirmation should app
 
 The box has an introduction/checklist row and a shaded, centred signature row kept on one page. Missing text, a nonempty fence or an unclosed fence preserves the source in a diagnostic code panel; strict rendering rejects it. Other profiles treat the fence as code.
 
-Every page uses `confidential_label` (default `Strictly Confidential`) in the header. An empty label, `layout.confidential: false`, or `--no-confidential` suppresses it. The footer shows `subtitle version` when `version` is present, plus `PAGE / NUMPAGES`. The opening disclaimer remains required even with `--no-disclaimer`. The existing **`termsheet` preset** only toggles cover/TOC/end-disclaimer sections; it does not select this profile, load house text or apply term-sheet table formatting.
+Every page uses `confidential_label` (default `Strictly Confidential`) in the header. An empty label, `layout.confidential: false`, or `--no-confidential` suppresses it. The footer shows `subtitle version` when `version` is present (the version is a `DOCPROPERTY Version` field; see [Version and DRAFT marking](#version-and-draft-marking)), plus `PAGE / NUMPAGES`. The opening disclaimer remains required even with `--no-disclaimer`. The existing **`termsheet` preset** only toggles cover/TOC/end-disclaimer sections; it does not select this profile, load house text or apply term-sheet table formatting.
 
 Term-sheet documents wrap Korean at word boundaries (`w:wordWrap=1`) and turn off Word's automatic spacing between Korean and Latin text or digits (`w:autoSpaceDE/DN=0`), so amounts print as `300억원` and `SPC에`.
 
@@ -383,6 +412,10 @@ tables:
     landscape: false
   - type: sensitivity
     base_case: {row: 2, column: 3}
+  - type: financial
+    subtotal_rows: [3, 5]   # body rows: the first row after the header rows is 1
+    total_rows: [8]
+    negative: paren         # paren (1,234), minus -1,234 or triangle △1,234
 ```
 
 Specifications correspond to body tables in order; use `{}` to skip one. `header_rows` (default 1) sets how many leading rows form the repeating header in every profile. Supported types: `generic`, `financial`, `sensitivity`, `risk`. Supported column roles: `text`, `code`, `date`, `number`, `money`, `percent`, `bps`, `multiple`. If supplied, roles must cover every column.
@@ -390,6 +423,20 @@ Specifications correspond to body tables in order; use `{}` to skip one. `header
 Without roles, a column is numeric (right-aligned) when most of its first body values are numbers; empty cells and dash placeholders (`-`, `–`) are skipped. Number/money add thousands separators. Percent/bps/multiple append display suffixes to plain numbers; **they do not rescale values** (`12.5` becomes `12.5%`, not `1250%`). Code/date/text roles preserve values such as `001234`. Blank cells and escaped pipes `A\|B` retain their positions. Headers repeat across pages; rows are kept together when Word permits. `landscape: true` places that table in a separate landscape section, then restores portrait geometry.
 
 Sensitivity highlighting is **explicit only**: row 1 is the first data row; columns are one-based and include the label column. The old guessed centre-cell highlight is removed. Risk highlighting recognises supported risk headers and levels such as high/medium/low or 높음/중간/낮음.
+
+Totals and subtotals are **explicit only**, in every profile. `subtotal_rows` lists body rows that get a single rule above and bold text; `total_rows` lists body rows that also get a double rule below. Row 1 is the first row after the header rows, so with `header_rows: 2` the third Markdown row is row 1. Rules use the profile's table accent colour (navy in the IB profiles, dark grey in the general profiles, the term-sheet navy); when a totals row is the last row its double rule takes the place of the table's bottom border. A row reading `합계` or `Total` gets nothing unless it is listed, and `schedule.total` only checks. A merged cell crossing a listed row stays one cell: Word draws no rule inside it. Lists that are not integers, are out of range, repeat a row, or name one row in both lists are rejected in strict and non-strict mode.
+
+By default a financial table keeps each negative amount as written (`(1,234)` or `-1,234`) and shows it in red. A `type: financial` spec can set `negative: paren`, `minus` or `triangle` instead: that table's negative amounts become `(1,234)`, `-1,234` or `△1,234`, and the automatic red is off.
+
+- A cell is restyled only when its whole text is one negative amount in a numeric column, written `-…`, `−…`, `(…)` or `△…`. The unit may sit inside or after the parentheses (`(3.5%)`, `(3.5)%`), and every written form of one amount gives the same text.
+- The digits and the unit stay; thousands separators are added and a unit goes inside parentheses (`(3.5%)`, `(1,200억원)`). A bare number in a percent, bps or multiple column gets that column's unit, as it does without the option.
+- Everything else keeps its written form: ranges such as `1-2`, several numbers or words in one cell, negative zero, text, code and date columns, `▲`/`▼` and tokens such as `NM`.
+- An amount whose integer part starts with a zero (`(0001.20%)`, `−0001200`, `-01,200`; it may be a code) is not restyled. It keeps the existing number formatting, so it shows the same text as in a table without the option; in some forms (`-0001200`, `(0001.20)%`, `-00.5`) that formatting drops the leading zeros, as it always has. Full-width digits are read as that formatting reads them (`-１２３４` gives `(1,234)` with `paren`).
+- Not restyled either, and shown as in a table without the option: a currency sign (`-$1,200`, `₩-1,200`), a space between the sign or parentheses and the digits (`- 1,200`, `( 1,200 )`), `-.5`, exponent notation, full-width parentheses, `USD` or `%p` suffixes, a footnote marker before the amount, and an amount written wholly in superscript. The units `백만원`, `천원` and `bp` are supported.
+- An amount split across differently formatted text (`-1200**.50**`, `-**1200**`, `-1200^.50^`) also keeps its written form, and the conversion logs a warning. The warning does not make strict mode reject the document. Spaces and footnote markers before or after the amount (`&nbsp;`, a line break, `[^1]`), in any order and number, are not part of it: their formatting does not split it, and they keep their own text, format and place. An amount after a footnote marker is still not restyled, but a split one warns.
+- Without the option, the automatic red covers a colour written in the document (existing behaviour). The option turns off only the automatic red, so a colour written in the document (`<span style="color:…">`) shows as written. A link's colour stays in both cases.
+- Alignment and column widths are the same as without the option.
+- Without `negative`, a written `△…` is left exactly as written. Any other value, or `negative` without `type: financial` in the same spec, is rejected.
 
 ## Table and figure numbers and cross-references
 

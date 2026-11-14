@@ -676,6 +676,9 @@
         "label_columns": null,
         "note": "",
         "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
         "schedule": null
       },
       "raw_text": "| 결정사항 | 담당자 | 기한 | 상태 |\n|---|---|---|---|\n| 공문 초안 검토 | 김담당 | 2026-09-18 | 진행 중 |\n| 예제 수집 | 이검토 | 2026-09-21 | 예정 |\n| 양식 승인 | 박승인 | 2026-09-28 | 예정 |",

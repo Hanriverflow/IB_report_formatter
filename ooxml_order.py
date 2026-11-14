@@ -8,6 +8,7 @@ inserts them through `insert_ordered` instead of appending.
 Changelog (schema order):
     - NEW: shared tblPr/tcPr/pPr/rPr sequences and an ordered insert.
     - FIXED: settings sequence keeps updateFields before its schema successors.
+    - NEW: tcBorders sequence for cell borders on explicit totals rows.
 """
 
 from lxml import etree
@@ -156,6 +157,19 @@ SEQUENCES: dict[str, tuple[str, ...]] = {
         "cellMerge",
         "tcPrChange",
     ),
+    # CT_TcBorders child sequence; transitional left/right sit beside strict start/end.
+    "tcBorders": (
+        "top",
+        "left",
+        "start",
+        "bottom",
+        "right",
+        "end",
+        "insideH",
+        "insideV",
+        "tl2br",
+        "tr2bl",
+    ),
     "pPr": (
         "pStyle",
         "keepNext",
@@ -248,7 +262,8 @@ def insert_ordered(parent: etree._Element, child: etree._Element, replace: bool 
     """Insert a property child before the first sibling that must follow it.
 
     Args:
-        parent: A `w:settings`, `w:tblPr`, `w:tcPr`, `w:pPr` or `w:rPr` element.
+        parent: A `w:settings`, `w:tblPr`, `w:tcPr`, `w:tcBorders`, `w:pPr` or `w:rPr`
+            element.
         child: The new child element (for example `w:shd` or `w:pBdr`).
         replace: Remove existing children with the same name first, so the
             element occurs once as the schema requires.

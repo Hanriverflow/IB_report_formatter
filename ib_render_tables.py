@@ -13,6 +13,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Emu, Inches, Pt, RGBColor
+from docx.text.font import Font
 
 from document_model import table_is_drawn
 from ib_render_document_style import TableStyler
@@ -61,6 +62,17 @@ class TableRenderer:
         re.IGNORECASE,
     )
     _PURE_NUMBER_RE = re.compile(r"^\(?[+-]?\d[\d,]*(?:\.\d+)?\)?$")
+    # One whole negative amount for table spec `negative`, read from a cell's whole
+    # visible text: `(1,234)`, `-1,234`, `−1,234` (U+2212) or `△1,234`, with one unit
+    # from the set `_NUMERIC_LIKE_RE` accepts, inside or after the parentheses.
+    _AMOUNT = r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
+    _UNIT = r"\s*(?:%|bps|bp|x|배|백만원|천원|만원|억원|원|억|조|주|개|명|건)"
+    _NEGATIVE_AMOUNT_RE = re.compile(
+        rf"\((?P<paren>{_AMOUNT})(?P<inner>{_UNIT})?\)(?P<outer>{_UNIT})?"
+        rf"|[-\u2212△](?P<signed>{_AMOUNT})(?P<unit>{_UNIT})?",
+        re.IGNORECASE,
+    )
+    _ROLE_UNITS = {"percent": "%", "bps": " bps", "multiple": "x"}
     # A dash placeholder ("nothing this period") says nothing about a column's kind.
     _DASH_PLACEHOLDER_RE = re.compile(r"[-‒–—―－]+")
     _MIN_COLUMN_WIDTH_INCHES = 0.65
@@ -143,6 +155,7 @@ class TableRenderer:
                 table.alignments,
                 covered,
                 header_rows,
+                table.negative,
             )
         self._mirror_vertical_fills(word_table, rectangles)
 
@@ -152,6 +165,7 @@ class TableRenderer:
             word_row._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
         # Apply borders
         TableStyler.set_table_borders(word_table)
+        self._apply_row_rules(word_table, table)
 
         if table.source:
             paragraph = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
@@ -307,6 +321,7 @@ class TableRenderer:
                     )
                     line_counts[row_index] = max(line_counts[row_index], lines)
         self._mirror_vertical_fills(word_table, rectangles)
+        self._apply_row_rules(word_table, table)
         for row_index, word_row in enumerate(word_table.rows):
             header = row_index < table.header_rows
             set_row_pagination(
@@ -390,6 +405,7 @@ class TableRenderer:
                     size, bold, markers = STYLE.TABLE_HEADER_SIZE, True, False
                 else:
                     role = table.column_types[index] if table.column_types else None
+                    # Widths are judged on the written text (no `negative` style).
                     content, runs = self._display_content(cell, role, table.table_type)
                     runs = runs or TextParser.parse_runs_plain(content)
                     size, bold, markers = STYLE.TABLE_BODY_SIZE, False, True
@@ -473,7 +489,9 @@ class TableRenderer:
                 fill, color = STYLE.TABLE_HEADER_BG, STYLE.NAVY
             font_name, size = STYLE.HEADING_FONT, STYLE.TABLE_HEADER_SIZE
         else:
-            content, runs = self._display_content(cell_data, column_role, table.table_type)
+            content, runs = self._display_content(
+                cell_data, column_role, table.table_type, table.negative
+            )
             runs = runs or TextParser.parse_runs_plain(content)
             font_name, size = STYLE.BODY_FONT, STYLE.TABLE_BODY_SIZE
             if role == "label":
@@ -513,9 +531,53 @@ class TableRenderer:
             table.table_type == TableType.FINANCIAL and column_role in {"text", "code", "date"}
         ):
             self._apply_type_styling(
-                word_cell, cell_data, row_index, table.table_type, fill=self._ordered_fill
+                word_cell,
+                cell_data,
+                row_index,
+                table.table_type,
+                fill=self._ordered_fill,
+                negative=table.negative,
             )
         return texts, size
+
+    # Rule widths in eighths of a point: 0.75pt single above, 0.5pt double below.
+    _RULE_SIZE = 6
+    _DOUBLE_RULE_SIZE = 4
+
+    @classmethod
+    def _apply_row_rules(cls, word_table, table: Table) -> None:
+        """Rule and embolden only the body rows named by `subtotal_rows` / `total_rows`.
+
+        Each named row gets a single rule above it, drawn on its own top edge and on
+        the bottom edge of the row above so neither cell's lighter grid line wins;
+        a totals row also gets a double rule below. Every `w:tc` of the row is
+        ruled, including covered merge cells, and every run is bold. The colour is
+        the profile's table accent (`STYLE.NAVY_HEX`). Rows are never inferred from
+        their text; a table without either list is left exactly as it was.
+
+        Args:
+            word_table: Rendered table whose cells are already filled.
+            table: Parsed table with one-based body-row lists.
+        """
+        marked = [*table.subtotal_rows, *table.total_rows]
+        if not marked:
+            return
+        rows = word_table.rows
+        color = STYLE.NAVY_HEX
+        for body_row in marked:
+            index = table.header_rows + body_row - 1
+            for tc in rows[index]._tr.tc_lst:
+                TableStyler.set_cell_border(tc, "top", "single", cls._RULE_SIZE, color)
+                for run in tc.iter(qn("w:r")):
+                    Font(run).bold = True
+            if index > 0:
+                for tc in rows[index - 1]._tr.tc_lst:
+                    TableStyler.set_cell_border(tc, "bottom", "single", cls._RULE_SIZE, color)
+        # Totals last, so a double rule below is never replaced by the single
+        # rule above a following named row.
+        for body_row in table.total_rows:
+            for tc in rows[table.header_rows + body_row - 1]._tr.tc_lst:
+                TableStyler.set_cell_border(tc, "bottom", "double", cls._DOUBLE_RULE_SIZE, color)
 
     @staticmethod
     def _ordered_fill(cell, hex_color: str) -> None:
@@ -559,6 +621,13 @@ class TableRenderer:
         errors = getattr(self.doc.part, "_ib_render_errors", None)
         if errors is not None:
             errors.append(message)
+
+    def _warn(self, message: str) -> None:
+        """Log a rendering warning that never rejects the document, strict or not."""
+        logger.warning("%s", message)
+        warnings = getattr(self.doc.part, "_ib_render_warnings", None)
+        if warnings is not None and message not in warnings:
+            warnings.append(message)
 
     @staticmethod
     def _span_rectangles(table: Table) -> tuple[list[tuple[int, int, int, int]], list[str]]:
@@ -950,7 +1019,11 @@ class TableRenderer:
         return max(available_width, int(Inches(3.0)))
 
     def _cell_display_text(self, cell_data: TableCell, table_type: TableType) -> str:
-        """Return display text used for width estimation and column-kind inference."""
+        """Return display text used for width estimation and column-kind inference.
+
+        A table's `negative` style never enters here: alignment, column kinds and
+        widths are judged on the written text, exactly as without the setting.
+        """
         shown = term_cell_text(cell_data)
         if shown is not None:
             return shown  # term values are shown exactly as written in `terms:`
@@ -1019,11 +1092,13 @@ class TableRenderer:
         alignments: list[str] | None = None,
         covered: Set[tuple[int, int]] = frozenset(),
         header_rows: int = 1,
+        negative: str | None = None,
     ):
         """Render a data row with type-specific styling, skipping merged-away cells.
 
         Zebra shading counts body rows only, so it starts on the first body row
-        whatever the number of header rows.
+        whatever the number of header rows. `negative` is the table spec's
+        negative-number style; None keeps the written form and red.
         """
         word_cells = word_table.rows[row_idx].cells
 
@@ -1043,7 +1118,9 @@ class TableRenderer:
 
             # ── Format content (financial number formatting) ───────────────
             role = column_types[c_idx] if column_types else None
-            display_content, display_runs = self._display_content(cell_data, role, table_type)
+            display_content, display_runs = self._display_content(
+                cell_data, role, table_type, negative
+            )
 
             # ── Render content ──────────────────────────────────────────────
             if cell_data.runs:
@@ -1064,7 +1141,7 @@ class TableRenderer:
 
             # ── Type-specific styling ───────────────────────────────────────
             if not (table_type == TableType.FINANCIAL and role in {"text", "code", "date"}):
-                self._apply_type_styling(cell, cell_data, row_idx, table_type)
+                self._apply_type_styling(cell, cell_data, row_idx, table_type, negative=negative)
 
             # ── Alternating row colors (unless special styling applied) ─────
             if (
@@ -1090,12 +1167,25 @@ class TableRenderer:
         return WD_ALIGN_PARAGRAPH.LEFT
 
     def _display_content(
-        self, cell_data: TableCell, role: str | None, table_type: TableType
+        self,
+        cell_data: TableCell,
+        role: str | None,
+        table_type: TableType,
+        negative: str | None = None,
     ) -> tuple[str, list[TextRun]]:
-        """Return display text and runs, formatting amounts only for numeric roles."""
+        """Return display text and runs, formatting amounts only for numeric roles.
+
+        With a `negative` style, a cell whose whole visible text is one negative
+        amount is rewritten in that style (`_restyle_negative`); every other
+        cell is formatted exactly as in a table without the setting.
+        """
         format_numbers = role not in {None, "text", "code", "date"} or (
             not role and table_type == TableType.FINANCIAL and cell_data.is_numeric
         )
+        if format_numbers and negative:
+            restyled = self._restyle_negative(cell_data, role, negative)
+            if restyled is not None:
+                return restyled
         display_content = cell_data.content
         display_runs = cell_data.runs
         if format_numbers:
@@ -1105,18 +1195,186 @@ class TableRenderer:
             # and a term value keeps the exact text written in `terms:`.
             display_runs = [
                 run
-                if (
-                    run.footnote_id is not None
-                    or run.is_latex
-                    or run.superscript
-                    or run.subscript
-                    or run.term_key is not None
-                    or run.code
-                )
+                if self._is_semantic_run(run)
                 else replace(run, text=self._format_numeric_text(run.text, role))
                 for run in display_runs
             ]
         return display_content, display_runs
+
+    @classmethod
+    def _is_semantic_run(cls, run: TextRun) -> bool:
+        """A footnote, equation, script, term value, code span or image run."""
+        return cls._is_protected_run(run) or run.superscript or run.subscript
+
+    @staticmethod
+    def _is_protected_run(run: TextRun) -> bool:
+        """A footnote, equation, term value, code span or image run.
+
+        Its text is never part of an amount that a `negative` style rewrites.
+        """
+        return (
+            run.footnote_id is not None
+            or run.is_latex
+            or run.term_key is not None
+            or run.code
+            or run.image is not None
+        )
+
+    @classmethod
+    def _is_outer_piece(cls, run: TextRun) -> bool:
+        """A footnote marker or a run of spaces only (NBSP and line breaks included).
+
+        Such runs before or after an amount are not part of it, in any order.
+        """
+        return run.footnote_id is not None or (
+            not cls._is_protected_run(run) and not run.text.strip()
+        )
+
+    def _restyle_negative(
+        self, cell_data: TableCell, role: str | None, style: str
+    ) -> tuple[str, list[TextRun]] | None:
+        """Rewrite a cell that is exactly one negative amount in a `negative` style.
+
+        The sign, digits and unit are read once from the cell's visible text,
+        never run by run, so every written form gives the same result. Runs
+        before and after the amount that hold only spaces (`&nbsp;`, line
+        breaks) or a footnote marker, in any order and number, are not part of
+        it: they never split it and keep their own text, format and order. A
+        cell holding anything else (a range, several numbers, words, a code
+        span) returns None and is formatted as in a table without the setting.
+        So does an amount split across differently formatted runs (bold,
+        italic, superscript or subscript pieces), which also records a
+        rendering warning; that warning never rejects the document. An amount
+        after a footnote marker, or written wholly in superscript or
+        subscript, keeps its written form as without the setting; a split one
+        still warns.
+
+        Args:
+            cell_data: One body cell of a table that sets `negative`.
+            role: Explicit column presentation role, if configured.
+            style: `paren`, `minus` or `triangle`.
+
+        Returns:
+            (display text, display runs), or None to keep the written form.
+        """
+        runs = cell_data.runs
+        if not runs:
+            amount = self._negative_amount(cell_data.content, role, style)
+            return None if amount is None else (amount, [])
+        inner = [i for i, run in enumerate(runs) if not self._is_outer_piece(run)]
+        if not inner:
+            return None
+        first, last = inner[0], inner[-1]
+        core = runs[first : last + 1]
+        if any(self._is_protected_run(run) for run in core):
+            return None
+        body = [run for run in core if run.text]
+        text = "".join(run.text for run in body)
+        # Whether the text is an amount is decided apart from whether it can be
+        # restyled, so a split amount warns even when it is not restyled.
+        if self._read_negative_amount(text) is None:
+            return None
+        if any(replace(run, text="") != replace(body[0], text="") for run in body[1:]):
+            self._warn(
+                f"Table negative style not applied to {text.strip()!r}: the amount is split "
+                "across differently formatted text, so it keeps its written form"
+            )
+            return None
+        if any(run.footnote_id is not None for run in runs[:first]):
+            return None
+        if body[0].superscript or body[0].subscript:
+            return None
+        amount = self._negative_amount(text, role, style)
+        if amount is None:
+            return None
+        amount_text = text[: len(text) - len(text.lstrip())] + amount + text[len(text.rstrip()) :]
+        texts = [i for i, run in enumerate(runs) if run.text and run.footnote_id is None]
+        merge = all(
+            replace(runs[i], text="") == replace(body[0], text="") for i in texts
+        ) and not any(runs[i].footnote_id is not None for i in range(texts[0], texts[-1]))
+        shown_runs: list[TextRun] = []
+        if merge:
+            # One format throughout and no marker in between: one run, as written.
+            whole = "".join(runs[i].text for i in texts)
+            lead = whole[: len(whole) - len(whole.lstrip())]
+            trail = whole[len(whole.rstrip()) :]
+            shown_runs.append(replace(runs[texts[0]], text=lead + amount + trail))
+            shown_runs.extend(run for run in runs[texts[-1] + 1 :] if run.footnote_id is not None)
+        else:
+            for index, run in enumerate(runs):
+                if first <= index <= last:
+                    if index == first:
+                        shown_runs.append(replace(body[0], text=amount_text))
+                elif run.text or run.footnote_id is not None:
+                    shown_runs.append(run)
+        shown = "".join(run.text for run in shown_runs if run.footnote_id is None)
+        return shown, shown_runs
+
+    @classmethod
+    def _read_negative_amount(cls, text: str) -> tuple[str, str] | None:
+        """Read one whole nonzero negative amount, whether or not it can be restyled.
+
+        Args:
+            text: A cell's whole visible text.
+
+        Returns:
+            (number as written, unit as written), or None when the text is not
+            exactly one nonzero negative amount.
+        """
+        match = cls._NEGATIVE_AMOUNT_RE.fullmatch(text.strip())
+        if match is None:
+            return None
+        if match["paren"] is not None:
+            if match["inner"] and match["outer"]:
+                return None
+            number, unit = match["paren"], match["inner"] or match["outer"] or ""
+        else:
+            number, unit = match["signed"], match["unit"] or ""
+        if not any(int(ch) for ch in number if ch not in ",."):
+            return None
+        return number, unit
+
+    @classmethod
+    def _negative_amount(cls, text: str, role: str | None, style: str) -> str | None:
+        """Write one whole nonzero negative amount in a table's negative-number style.
+
+        `(1,234)`, `-1,234`, `−1,234` and `△1,234` are the same amount; so are
+        `(3.5%)` and `(3.5)%`. The digits and the written unit are kept and
+        thousands separators are added; a bare number in a percent, bps or
+        multiple column gets that column's unit, as it does without the setting.
+        `paren` gives `(1,234)` (a unit goes inside: `(3.5%)`), `minus` gives
+        `-1,234` and `triangle` gives `△1,234`.
+
+        An amount whose integer part starts with a zero (`0001200`, `01,200`;
+        it may be a code) is not restyled: the cell keeps the result of the
+        formatting without the setting, which drops such zeros in some forms
+        (`-0001200`, `(0001.20)%`, `-00.5`). Digits are the decimal digits that
+        formatting accepts (full-width ones included); they are judged zero or
+        not by their value and written the way that formatting writes them
+        (`-１２３４` gives `1,234`).
+
+        Args:
+            text: A cell's whole visible text.
+            role: Explicit column presentation role, if configured.
+            style: `paren`, `minus` or `triangle`.
+
+        Returns:
+            The amount in the requested style, or None when the text is not
+            exactly one nonzero negative amount or its integer part has a
+            leading zero; both keep the text of a table without the setting.
+        """
+        read = cls._read_negative_amount(text)
+        if read is None:
+            return None
+        number, unit = read
+        integer_digits = [int(ch) for ch in number.split(".", 1)[0] if ch != ","]
+        if len(integer_digits) > 1 and integer_digits[0] == 0:
+            return None
+        unit = unit or cls._ROLE_UNITS.get(role or "", "")
+        number = cls._format_financial_number(number)
+        if style == "paren":
+            return f"({number}{unit})"
+        return ("-" if style == "minus" else "△") + number + unit
 
     @classmethod
     def _format_numeric_text(cls, text: str, role: str | None) -> str:
@@ -1132,7 +1390,7 @@ class TableRenderer:
         if not cls._NUMERIC_LIKE_RE.fullmatch(text.strip()):
             return text
         formatted = cls._format_financial_number(text)
-        suffix = {"percent": "%", "bps": " bps", "multiple": "x"}.get(role or "", "")
+        suffix = cls._ROLE_UNITS.get(role or "", "")
         if suffix and cls._PURE_NUMBER_RE.fullmatch(text.strip()):
             formatted += suffix
         leading = text[: len(text) - len(text.lstrip())]
@@ -1219,16 +1477,19 @@ class TableRenderer:
         row_idx: int,
         table_type: TableType,
         fill: Callable[[Any, str], None] = TableStyler.set_cell_background,
+        negative: str | None = None,
     ):
         """Apply table-type specific styling to every paragraph of one owner cell.
 
         Args:
             fill: Cell background setter. Legacy tables keep the historical append;
                 term-sheet tables pass a schema-ordered setter.
+            negative: Table spec negative-number style; a table that sets one keeps
+                its negative amounts black (owner decision, 2026-11-14).
         """
         runs = [run for paragraph in cell.paragraphs for run in paragraph.runs]
         if table_type == TableType.FINANCIAL:
-            if cell_data.is_negative:
+            if cell_data.is_negative and negative is None:
                 for run in runs:
                     run.font.color.rgb = STYLE.RED
 

@@ -359,6 +359,9 @@
         "label_columns": null,
         "note": "",
         "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
         "schedule": null
       },
       "raw_text": "| 지표 | 전기 | 당기 |\n|---|---|---|\n| 매출 | 120000 | **135000** |\n| 영업이익 | 15000 | 16800 |",

@@ -1,5 +1,23 @@
 """Office document composition and editable Word numbering.
 
+Changelog (letter closing):
+    - `letter.table_end: partial` writes 이하 빈칸 in the first blank row after the
+      last written row of the table that ends the letter body, instead of "끝."
+      (`letter_partial_table_row`). Without the setting the output is unchanged.
+      A blank cell is one Word shows nothing in, judged on parsed runs (line
+      breaks and spaces are blank; text, images, equations are not); header
+      rows are never the target. The mark goes first in the cell, ahead of any
+      line break, so it sits on the cell's first line. On a row the table spec
+      names in `total_rows` or `subtotal_rows` the mark is bold like the rest of
+      that row (`letter_partial_table_bold`).
+    - Attachments follow the administrative handbook: one attachment is a single
+      unnumbered line `붙임⇥항목.  끝.`; several start on the `붙임⇥1.` line of a
+      native list whose other numbers align under `1.` (`render_attachments`).
+    - Office-letter numbered lists use the administrative symbols 1. 가. 1) 가)
+      (1) (가) ① (`LEGAL_LEVELS`); other profiles keep 1. 가. (1). Word has no
+      format for the eighth symbol ㉮, so deeper items are reported
+      (`letter_numbering_warnings`): strict mode rejects them, otherwise 가 is used.
+
 Changelog (Korean language):
     - Every profile other than term-sheet declares `ko-KR` as the East Asian
       language (`setup_korean_language`), so Word keeps `㈜는` and `」에` whole.
@@ -14,13 +32,26 @@ Changelog (hardening):
     - Reuse memo title/metadata typography for cover-free IB reports, adding subtitles.
 """
 
+from copy import deepcopy
+
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Pt
+from docx.shared import Inches, Pt
+from docx.text.paragraph import Paragraph
 
-from document_model import DocumentMetadata, DocumentModel, ElementType, Heading
+from document_model import (
+    DocumentMetadata,
+    DocumentModel,
+    ElementType,
+    Heading,
+    ListItem,
+    Table,
+    TableCell,
+    TableRow,
+    TextRun,
+)
 from document_profiles import string_list
 from ooxml_order import insert_ordered
 from render_styles import STYLE
@@ -149,6 +180,139 @@ def letter_appendix_index(model: DocumentModel) -> int | None:
     return matches[0]
 
 
+PARTIAL_TABLE_MARK = "이하 빈칸"
+
+
+def _visible_run(run: TextRun) -> bool:
+    """Whether a parsed run prints something in Word.
+
+    Spaces, no-break spaces and line breaks (`<br>`, already turned into newlines)
+    print nothing. Any other character does, including `<br>` shown as text by a
+    code span or an escape, as do images, equations and footnote marks.
+    """
+    return (
+        run.image is not None
+        or run.footnote_id is not None
+        or (run.is_latex and bool(run.text))
+        or bool(run.text.strip())
+    )
+
+
+def _blank_cell(cell: TableCell) -> bool:
+    """A cell with nothing visible, judged on its parsed runs, not its source text."""
+    if cell.merge == "left":
+        # Merged into the cell to its left: it shows that cell's content.
+        return True
+    if cell.merge == "up":
+        # Merged into the cell above, which continues written content.
+        return False
+    if cell.runs:
+        return not any(_visible_run(run) for run in cell.runs)
+    return not cell.content.strip()
+
+
+def _blank_row(row: TableRow) -> bool:
+    """A row whose cells show nothing in Word."""
+    return all(_blank_cell(cell) for cell in row.cells)
+
+
+def letter_partial_table_row(model: DocumentModel, appendix_index: int | None) -> int | None:
+    """Resolve where `letter.table_end: partial` writes 이하 빈칸, before any output.
+
+    The setting declares that the table ending the letter body is filled only
+    partway. The mark goes in the first cell of the first blank body row after the
+    last written body row (the first body row when no body row is written). A row
+    is blank when Word shows nothing in it; header rows are never the target.
+    Blank rows alone never trigger it: a reply form may keep blank rows for the
+    recipient.
+
+    Args:
+        model: Render copy of the document model, title H1 already removed.
+        appendix_index: Index of the explicit appendix H1; the body ends before it.
+
+    Returns:
+        Zero-based row index in the body's last table, or None without the setting.
+
+    Raises:
+        ValueError: The body does not end with a table, or that table has no blank
+            row after its last written row.
+    """
+    if model.metadata.profile != "office-letter":
+        return None
+    if model.metadata.extra.get("letter", {}).get("table_end") != "partial":
+        return None
+    body = model.elements if appendix_index is None else model.elements[:appendix_index]
+    last = body[-1] if body else None
+    if (
+        last is None
+        or last.element_type != ElementType.TABLE
+        or not isinstance(last.content, Table)
+    ):
+        raise ValueError("letter.table_end requires the letter body to end with a table")
+    table = last.content
+    rows = table.rows
+    # Header rows are drawn and repeated as the header (as the table renderer
+    # counts them); the mark belongs to the body rows below them.
+    first_body = min(table.header_rows, len(rows))
+    written = [index for index in range(first_body, len(rows)) if not _blank_row(rows[index])]
+    target = written[-1] + 1 if written else first_body
+    if target >= len(rows):
+        raise ValueError(
+            "letter.table_end requires a blank row after the last written row of the final table"
+        )
+    return target
+
+
+def letter_partial_table_bold(
+    model: DocumentModel, appendix_index: int | None, row_index: int | None
+) -> bool:
+    """Whether the row receiving 이하 빈칸 is a named totals or subtotal row.
+
+    Every run of such a row is bold (table spec `total_rows`, `subtotal_rows`),
+    and the mark is written after the table, so it takes the bold itself.
+
+    Args:
+        model: Render copy of the document model, title H1 already removed.
+        appendix_index: Index of the explicit appendix H1; the body ends before it.
+        row_index: Zero-based row from `letter_partial_table_row`, or None.
+
+    Returns:
+        True when that row is a named body row of the body's last table.
+    """
+    if row_index is None:
+        return False
+    body = model.elements if appendix_index is None else model.elements[:appendix_index]
+    table = body[-1].content
+    if not isinstance(table, Table):
+        return False
+    body_row = row_index - table.header_rows + 1
+    return body_row in (*table.total_rows, *table.subtotal_rows)
+
+
+def _mark_partial_table(doc, row_index: int, bold: bool = False) -> None:
+    """Write 이하 빈칸 into the first cell of a row of the last rendered table.
+
+    The table renderer creates one Word row per model row, so the model index
+    addresses the Word row. The mark is left-aligned even in a number column,
+    and it goes first in the cell, ahead of any line break the blank cell holds,
+    so it sits on the cell's first line. `bold` gives it the bold of a named
+    totals or subtotal row.
+    """
+    table = doc.element.body.findall(qn("w:tbl"))[-1]
+    cell = table.findall(qn("w:tr"))[row_index].findall(qn("w:tc"))[0]
+    paragraph = Paragraph(cell.findall(qn("w:p"))[0], doc)
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    run = paragraph.add_run(PARTIAL_TABLE_MARK)
+    run.font.name = STYLE.BODY_FONT
+    run.font.size = STYLE.TABLE_BODY_SIZE
+    run._element.get_or_add_rPr().get_or_add_rFonts().set(qn("w:eastAsia"), STYLE.KOREAN_FONT)
+    if bold:
+        run.font.bold = True
+    p = paragraph._p
+    p.remove(run._element)
+    p.insert(1 if p.pPr is not None else 0, run._element)
+
+
 def render_office_opening(doc, metadata: DocumentMetadata) -> bool:
     """Render profile metadata at the start of the body when there is no cover.
 
@@ -208,26 +372,74 @@ def render_office_opening(doc, metadata: DocumentMetadata) -> bool:
     return True
 
 
-def render_office_closing(doc, metadata: DocumentMetadata) -> None:
-    """Render attachments and sender without manufacturing a signature."""
+# "붙임" (two characters of the 10pt attachment style) plus a one-character gap,
+# the 2타 of the administrative handbook. Attachment numbers start here.
+ATTACHMENT_NUMBER_PT = 30
+# Attachment text starts at the attachment style's own tab stop.
+ATTACHMENT_TEXT_PT = 42
+
+
+def render_attachments(doc, attachments: list[str]) -> None:
+    """Write the attachment lines as in the administrative handbook, ending in "끝.".
+
+    One attachment is unnumbered: `붙임⇥발행조건 요약표 1부.  끝.`. Several are a
+    native Word list whose first item carries the label (`붙임⇥1.`) and whose
+    other numbers align under `1.`; Word keeps counting across them, so the
+    numbers stay editable. Wrapped lines align with the attachment text.
+
+    Args:
+        doc: Document after the letter body.
+        attachments: Declared attachment names; each gets a closing period.
+    """
+    lines = [item.rstrip().rstrip(".") + "." for item in attachments]
+    lines[-1] += "  끝."
+    if len(lines) == 1:
+        paragraph = add_text(doc, "붙임\t" + lines[0], style_name="Office Attachment")
+        paragraph.paragraph_format.space_before = Pt(8)
+        paragraph.paragraph_format.left_indent = Pt(ATTACHMENT_NUMBER_PT)
+        paragraph.paragraph_format.first_line_indent = Pt(-ATTACHMENT_NUMBER_PT)
+        paragraph.paragraph_format.tab_stops.add_tab_stop(Pt(ATTACHMENT_NUMBER_PT))
+        return
+    numbering = NativeNumbering(doc)
+    for index, line in enumerate(lines):
+        paragraph = add_text(doc, line, style_name="Office Attachment")
+        numbering.apply(paragraph, 0)
+        fmt = paragraph.paragraph_format
+        fmt.left_indent = Pt(ATTACHMENT_TEXT_PT)
+        fmt.tab_stops.add_tab_stop(Pt(ATTACHMENT_NUMBER_PT))
+        if index == 0:
+            numbering.label_first_item(paragraph, "붙임\t")
+            fmt.space_before = Pt(8)
+            fmt.first_line_indent = Pt(-ATTACHMENT_TEXT_PT)
+        else:
+            fmt.first_line_indent = Pt(ATTACHMENT_NUMBER_PT - ATTACHMENT_TEXT_PT)
+
+
+def render_office_closing(
+    doc,
+    metadata: DocumentMetadata,
+    partial_table_row: int | None = None,
+    partial_table_bold: bool = False,
+) -> None:
+    """Render attachments and sender without manufacturing a signature.
+
+    Args:
+        doc: Document whose letter body was rendered last.
+        metadata: Letter metadata (attachments, sender, issue details).
+        partial_table_row: Row of the body's last table that receives 이하 빈칸
+            (`letter_partial_table_row`). That mark replaces "끝." unless
+            attachments follow, which still end with "끝.".
+        partial_table_bold: The mark's row is a named totals or subtotal row
+            (`letter_partial_table_bold`), so the mark is bold.
+    """
     if metadata.profile != "office-letter":
         return
+    if partial_table_row is not None:
+        _mark_partial_table(doc, partial_table_row, bold=partial_table_bold)
     attachments = string_list(metadata.extra, "attachments")
     if attachments:
-        label = add_text(doc, "붙임", style_name="Office Attachment", keep_next=True)
-        label.paragraph_format.space_before = Pt(8)
-        numbering = NativeNumbering(doc)
-        for index, item in enumerate(attachments, 1):
-            ending = "  끝." if index == len(attachments) else ""
-            paragraph = add_text(
-                doc, item.rstrip().rstrip(".") + "." + ending, style_name="Office Attachment"
-            )
-            numbering.apply(paragraph, 0)
-            paragraph.paragraph_format.left_indent = Pt(30)
-            paragraph.paragraph_format.first_line_indent = Pt(-14)
-            paragraph.paragraph_format.tab_stops.clear_all()
-            paragraph.paragraph_format.tab_stops.add_tab_stop(Pt(30))
-    else:
+        render_attachments(doc, attachments)
+    elif partial_table_row is None:
         # Attach the closing marker to the last actual body paragraph when possible.
         last = doc.paragraphs[-1] if doc.paragraphs else None
         if (
@@ -257,12 +469,77 @@ def render_office_closing(doc, metadata: DocumentMetadata) -> None:
         add_text(doc, "담당\t" + contact, style_name="Office Contact")
 
 
-class NativeNumbering:
-    """One numbering state per document; supports Korean multilevel lists."""
+# Item symbols of the Korean administrative-document rule (enforcement rule
+# Art. 2(1)): 1. 가. 1) 가) (1) (가) ① ㉮. Word has no automatic circled-Hangul
+# format (㉮); see `LEGAL_LEVELS` and `letter_numbering_warnings`.
+LEGAL_LEVELS = (
+    ("decimal", "%1."),
+    ("ganada", "%2."),
+    ("decimal", "%3)"),
+    ("ganada", "%4)"),
+    ("decimal", "(%5)"),
+    ("ganada", "(%6)"),
+    ("decimalEnclosedCircle", "%7"),
+    # Stand-ins for ㉮ and anything deeper, reported by `letter_numbering_warnings`.
+    ("ganada", "%8"),
+    ("ganada", "%9"),
+)
+# Levels supported with the legal symbol; deeper office-letter items are reported.
+LEGAL_LEVEL_COUNT = 7
+# Hanging indent of the parenthesised levels, whose symbols ((10), (가)) are
+# wider than the 0.25in used elsewhere.
+LEGAL_WIDE_HANGING = Inches(0.3125)
 
-    def __init__(self, doc) -> None:
+
+def letter_numbering_warnings(model: DocumentModel) -> list[str]:
+    """Report office-letter numbered items deeper than the seven automatic levels.
+
+    Word numbers 1. 가. 1) 가) (1) (가) ① automatically but has no format for
+    the eighth symbol ㉮ (it neither offers one nor keeps a custom one). Strict
+    mode rejects such items through these warnings; otherwise they render with
+    가, 나, 다.
+
+    Args:
+        model: Render copy of the document model.
+
+    Returns:
+        One warning per numbered item at level eight or deeper.
+    """
+    if model.metadata.profile != "office-letter":
+        return []
+    warnings = []
+    for element in model.elements:
+        content = element.content
+        if element.element_type != ElementType.NUMBERED_LIST or not isinstance(content, tuple):
+            continue
+        item = content[1]
+        if isinstance(item, ListItem) and item.indent_level >= LEGAL_LEVEL_COUNT:
+            warnings.append(
+                f"Office-letter numbered item at level {item.indent_level + 1} is deeper "
+                f"than the {LEGAL_LEVEL_COUNT} levels Word numbers automatically "
+                "(1. 가. 1) 가) (1) (가) ①); ㉮ has no Word number format, so 가 is used: "
+                f"{item.text[:40]}"
+            )
+    return warnings
+
+
+class NativeNumbering:
+    """One numbering state per document; supports Korean multilevel lists.
+
+    With `legal` set (office letters), numbered lists use the administrative
+    symbols in `LEGAL_LEVELS`; other profiles keep 1. 가. (1) repeating.
+    """
+
+    def __init__(self, doc, legal: bool = False) -> None:
         self.doc = doc
+        self.legal = legal
         self.ids: dict[tuple[int, str], int] = {}
+
+    def hanging(self, level: int) -> Inches:
+        """Hanging indent for a numbered item, wider for the legal (1) and (가) levels."""
+        if self.legal and level in (4, 5):
+            return LEGAL_WIDE_HANGING
+        return Inches(STYLE.BULLET_INDENT.inches)
 
     def reset(self) -> None:
         """Start a fresh list after a non-list block."""
@@ -288,6 +565,43 @@ class NativeNumbering:
         num_pr.get_or_add_ilvl().val = level
         num_pr.get_or_add_numId().val = self.ids[key]
 
+    def label_first_item(self, paragraph, label: str) -> None:
+        """Put `label` before the number of a top-level list's first item.
+
+        A second list instance shares the abstract definition and overrides only
+        the level-0 text. Word counts items of one abstract definition together,
+        so the next items still number 2, 3, ... and stay editable.
+
+        Args:
+            paragraph: First item, already numbered at level 0 by `apply`.
+            label: Text before the number, such as "붙임	".
+        """
+        numbering = self.doc.part.numbering_part.element
+        num_id = self.ids[(0, "number")]
+        source = next(
+            n for n in numbering.findall(qn("w:num")) if int(n.get(qn("w:numId"))) == num_id
+        )
+        abstract_id = source.find(qn("w:abstractNumId")).get(qn("w:val"))
+        abstract = next(
+            a
+            for a in numbering.findall(qn("w:abstractNum"))
+            if a.get(qn("w:abstractNumId")) == abstract_id
+        )
+        level = deepcopy(abstract.find(qn("w:lvl")))
+        level.find(qn("w:lvlText")).set(qn("w:val"), label + "%1.")
+        override = OxmlElement("w:lvlOverride")
+        override.set(qn("w:ilvl"), "0")
+        override.append(level)
+        labelled = OxmlElement("w:num")
+        labelled_id = max(int(n.get(qn("w:numId"))) for n in numbering.findall(qn("w:num"))) + 1
+        labelled.set(qn("w:numId"), str(labelled_id))
+        reference = OxmlElement("w:abstractNumId")
+        reference.set(qn("w:val"), abstract_id)
+        labelled.append(reference)
+        labelled.append(override)
+        numbering.append(labelled)
+        paragraph._p.get_or_add_pPr().get_or_add_numPr().get_or_add_numId().val = labelled_id
+
     def _create(self, bullet: bool, start: int, start_level: int) -> int:
         numbering = self.doc.part.numbering_part.element
         abstract_ids = [
@@ -304,8 +618,13 @@ class NativeNumbering:
         for level in range(9):
             lvl = OxmlElement("w:lvl")
             lvl.set(qn("w:ilvl"), str(level))
-            number_format = "bullet" if bullet else ("ganada" if level % 3 == 1 else "decimal")
-            label = "•" if bullet else ("(%{})" if level % 3 == 2 else "%{}.").format(level + 1)
+            if bullet:
+                number_format, label = "bullet", "•"
+            elif self.legal:
+                number_format, label = LEGAL_LEVELS[level]
+            else:
+                number_format = "ganada" if level % 3 == 1 else "decimal"
+                label = ("(%{})" if level % 3 == 2 else "%{}.").format(level + 1)
             for tag, value in [
                 ("start", "1"),
                 ("numFmt", number_format),

@@ -119,6 +119,7 @@ tables:
 <tr><td><code>label_columns</code></td><td>왼쪽 라벨 열의 수. 0 이상 전체 열 수 미만입니다. 두 단계 조건표는 2, 일반 상환표는 0으로 지정할 수 있습니다.</td></tr>
 <tr><td><code>unit</code>, <code>note</code></td><td>표 위의 단위와 표 아래 오른쪽 주석. 단위를 적는 것만으로 숫자를 환산하지 않습니다.</td></tr>
 <tr><td><code>header_rows</code></td><td>반복할 머리행 수. 기본 1. 2로 지정하면 구분선 바로 뒤 첫 행도 머리행에 포함합니다.</td></tr>
+<tr><td><code>total_rows</code>, <code>subtotal_rows</code></td><td>합계·소계 행 번호 목록. 머리행 다음 첫 행이 1입니다. 소계 행은 위 단선과 굵은 글씨, 합계 행은 여기에 아래 이중선이 더해집니다. 예: <code>total_rows: [13]</code>. ‘합 계’라고 적은 행도 여기 적어야만 선이 생깁니다.</td></tr>
 <tr><td><code>spans</code></td><td><code>false</code>이면 그 표의 병합 기호 해석을 끕니다. 텀시트에서는 기본으로 켜져 있습니다.</td></tr>
 </tbody></table><p>날짜·코드는 역할을 명시하여 앞자리 0과 표기를 지키세요. <code>percent</code>에서 <code>4.5</code>는 <code>4.5%</code>이며 <code>450%</code>가 아닙니다. YAML의 날짜·코드·변수 값은 따옴표로 감싸고, Markdown 표의 일반 날짜는 따옴표 없이 작성합니다.</p>
 <h3>가로·세로 병합</h3><pre><code>| 구 분 | &lt;&lt; | 내 용 |
