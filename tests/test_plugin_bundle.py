@@ -59,7 +59,7 @@ def test_plugin_archive_layout_hashes_and_no_private_inputs(plugin_checkout, tmp
             for name in bundle.namelist()
         )
         manifest = json.loads(bundle.read("bundle-manifest.json"))
-        assert manifest["plugin_version"] == plugin_version == "0.1.0"
+        assert manifest["plugin_version"] == plugin_version == "0.2.0"
         assert manifest["engine_version"] == engine_version == "2.0.0"
         assert {item["path"] for item in manifest["files"]} == set(paths)
         for item in manifest["files"]:
@@ -81,7 +81,7 @@ def test_manifests_use_same_identity_and_local_root(plugin_checkout):
         for path in builder.MANIFESTS
     ]
     assert {(item["name"], item["version"]) for item in manifests} == {
-        ("ib-report-formatter", "0.1.0")
+        ("ib-report-formatter", "0.2.0")
     }
     onboarding = manifests[0]["extensions"]["com.openai"]["onboardingSkill"]
     assert onboarding == "./skills/setup/SKILL.md"

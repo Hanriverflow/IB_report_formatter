@@ -4,7 +4,20 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
-Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Beta)** and the plugin stays **0.1.0**; nothing here has been tagged or published. Verification: `docs/verification-20261110.md`.
+Nothing yet.
+
+## [2.0.0-beta.2] - YYYY-MM-DD (not yet published)
+
+Second public distribution prerelease, prepared on 2026-11-15 from `main` and **not yet tagged or published**; the date is filled in when it is published. Changes since 2.0.0-beta.1 (PRs #23 to #35). As with beta.1, the release tag `v2.0.0-beta.2` identifies the delivery set and engine/package metadata stays **2.0.0 (Beta)**. The plugin moves from **0.1.0** to **0.2.0**, because the engine, skills and runtime launcher it carries changed. Verification: `docs/verification-20261110.md` and the records named in each section below.
+
+### Read first: what changes for existing documents
+- **Charts look different.** A document with `charts: true` now draws its charts in an IB/consulting style (`chart_style: standard`): one accent colour with greys, values on the bars, the legend above, title and subtitle above and note and source below as Word paragraphs. To keep the earlier look, write `chart_style: classic` in the frontmatter (API: `RenderOptions(chart_style="classic")`); this keeps `bar`, `line` and `waterfall` charts that use only the earlier keys exactly as before. A value with no clear place in the picture is left out rather than drawn over something else, and every value left out is named in a warning (the CLI prints it; the plugin's `result.json` lists it under `render_warnings`); this is never a rejection. Numbers in standard charts round a 5 away from zero, as a spreadsheet does. Details under "Charts in the IB/consulting style" below.
+- **Images and logos load only from allowed folders.** A path outside the Markdown file's folder is rejected as `[asset_outside_root]` in strict mode (and replaced by a placeholder otherwise). Add folders with `--asset-root`, or copy the files next to the Markdown. The plugin and the Windows converter have no such option: copy images, the house file and its logo into the job folder.
+- **Input limits** (input size, table cells, list depth, image bytes and pixels) stop a conversion in every mode.
+- **Strict mode rejects more inputs:** table and figure references that do not resolve, characters XML cannot hold, and self-referring or exploding YAML aliases.
+- **Other appearance changes:** IB body text is left-aligned and Korean/Latin auto-spacing is off in the IB profiles; office-letter attachments and item symbols follow the administrative handbook; frontmatter `version` shows in the page header; `status: draft` adds a removable DRAFT watermark; File > Info shows the document's own title instead of python-docx's values.
+- **Fixed:** a document that references one footnote more than once now opens in Word, and blank list items or anchor-led table and quote lines no longer keep a conversion from finishing.
+- **Distribution:** the Windows converter and the Codex source kit keep the engine version in their file names, so their beta.2 assets have the same names as beta.1's (`…-2.0.0.zip`); tell them apart by the release tag and SHA-256. The plugin files become `ib-report-formatter-plugin-0.2.0.zip` / `.plugin`.
 
 ### Charts in the IB/consulting style (roadmap E10)
 Existing documents with `charts: true` change appearance. Owner decisions 2026-11-14. Verification: `docs/verification-charts-20261114.md`.
@@ -125,6 +138,10 @@ Existing office letters change appearance where they have attachments or items n
 ### Repository upkeep
 - Removed two sample files with real company names and the prototype script that read them; test names were replaced with fictional ones. Earlier commits are not rewritten.
 - Applied `ruff format` to the whole tree (the commit is listed in `.git-blame-ignore-revs`) and modernized type annotations. Sample output was compared before and after: all XML parts identical.
+
+### Documentation
+- The roadmap's status section records the goals and order agreed on 2026-11-14 (`docs/improvement-roadmap-20260929.md`).
+- The office-letter rules (item symbols, `붙임`, `끝.`) were compared with the current text of the regulation and its enforcement rule at law.go.kr on 2026-11-14; they match (`docs/verification-office-letter-20261114.md`, section 1.1). No output change.
 
 ### Internal structure
 - `ib_renderer.py` and `md_parser.py` are split into twelve internal files (`ib_render_*.py`, `md_parse_*.py`) by moving code only; every name is still imported from `ib_renderer` and `md_parser`, and output, commands, messages and log names are unchanged. Verification: `docs/verification-large-file-split-20261113.md`.

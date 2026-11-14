@@ -59,7 +59,7 @@ uv run python scripts/build_codex_bundle.py --output-dir dist
 uv run python scripts/build_plugin_bundle.py --output-dir dist
 ```
 
-새 출력 폴더에 `ib-report-formatter-plugin-0.1.0.zip`과 같은 바이트의 `.plugin` 파일, 각각의 SHA-256 파일을 생성합니다. 플러그인 버전은 엔진 버전과 별도로 관리되므로 실제 파일명은 매니페스트의 버전을 따릅니다. ZIP 최상위에는 `plugin.json`, 호스트별 매니페스트, `skills/`, 엔진 소스와 잠금 파일이 있습니다. 빌드 당시 소스 상태와 파일별 해시는 내부 `bundle-manifest.json`에 기록합니다.
+새 출력 폴더에 `ib-report-formatter-plugin-0.2.0.zip`과 같은 바이트의 `.plugin` 파일, 각각의 SHA-256 파일을 생성합니다. 플러그인 버전은 엔진 버전과 별도로 관리되므로 실제 파일명은 매니페스트의 버전을 따릅니다. ZIP 최상위에는 `plugin.json`, 호스트별 매니페스트, `skills/`, 엔진 소스와 잠금 파일이 있습니다. 빌드 당시 소스 상태와 파일별 해시는 내부 `bundle-manifest.json`에 기록합니다.
 
 이 묶음은 소스 배포본입니다. Python 런타임·라이브러리·EXE는 포함되지 않으며, `setup` 스킬이 `scripts/plugin_runtime.py`를 통해 플러그인 밖 캐시에 잠긴 의존성을 준비합니다. 사용자는 [플러그인 안내](plugin-guide.md)에 따라 ZIP을 별도 폴더에 전체 압축 해제하고 사용하는 호스트에서 불러옵니다. 실제 자료와 생성 문서는 설치 폴더 밖에 둡니다.
 
@@ -75,9 +75,9 @@ uv run python scripts/build_plugin_bundle.py --output-dir dist
 |---|---|---|
 | Windows 실행형 | `ib-report-formatter-windows-x64-2.0.0.zip` | 엔진 `pyproject.toml` |
 | Codex 소스형 | `ib-report-formatter-codex-source-2.0.0.zip` | 엔진 `pyproject.toml` |
-| 공용 플러그인 | `ib-report-formatter-plugin-0.1.0.zip` | 호스트별 플러그인 manifest |
+| 공용 플러그인 | `ib-report-formatter-plugin-0.2.0.zip` | 호스트별 플러그인 manifest |
 
-플러그인의 `.plugin` 파일은 같은 이름·내용의 대체 확장자이며 네 번째 배포본이 아닙니다. 엔진 2.0.0은 Beta 메타데이터이고 플러그인 0.1.0과 별도로 관리합니다. 파일명 예시는 게시된 Release를 의미하지 않습니다. 이름 변경 후 새로 빌드한 자산의 해시를 기록하며, 과거 검증 문서의 파일명·해시는 당시 기록으로 보존합니다.
+플러그인의 `.plugin` 파일은 같은 이름·내용의 대체 확장자이며 네 번째 배포본이 아닙니다. 엔진 2.0.0은 Beta 메타데이터이고 플러그인 0.2.0과 별도로 관리합니다. 파일명 예시는 게시된 Release를 의미하지 않습니다. Windows 실행형과 Codex 소스형 파일명에는 엔진 버전만 들어가므로, 엔진 버전이 같은 사전 릴리스(`v2.0.0-beta.1`, `v2.0.0-beta.2`)의 자산은 파일명이 같습니다. Release 태그와 SHA-256으로 구분하십시오. 이름 변경 후 새로 빌드한 자산의 해시를 기록하며, 과거 검증 문서의 파일명·해시는 당시 기록으로 보존합니다.
 
 ## 저장소와 Release 운영
 
