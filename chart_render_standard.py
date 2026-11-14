@@ -1135,9 +1135,10 @@ class _Drawer:
           bar for a bar's value and no other point for a point's value by
           more than `NEAREST_MARGIN`, and its own mark nearer than every
           mark of the other kind (a point of any series for a bar's value, a
-          bar for a point's value) by at least `NEAREST_MARGIN`: a point and
-          its category's bar are on one centre line, so only the distance
-          tells them apart. Rows of a horizontal chart (`hbar`, `range`) do not overlap
+          bar for a point's value) and than every other series' point of the
+          same category by at least `NEAREST_MARGIN`: those are on the
+          text's own centre line, so only the distance tells them apart.
+          Rows of a horizontal chart (`hbar`, `range`) do not overlap
           and their values run sideways from the bar's end, where a longer
           neighbouring bar is always nearer to the text's centre: there the
           centre at the row's height settles it (an exception approved by
@@ -1204,10 +1205,16 @@ class _Drawer:
                 rivals = [
                     math.hypot(centre_x - x, centre_y - y)
                     for x, y in context["points"]
-                    if abs(x - anchor.x0) > tolerance or abs(y - anchor.y0) > tolerance
+                    if abs(x - anchor.x0) > 1.0
                 ]
-                # ... and no bar is nearer at all.
-                others = [_away(bar_box, centre_x, centre_y) for _, bar_box in context["bars"]]
+                # Another series' point of the same category, and every bar,
+                # is on the text's own centre line.
+                others = [
+                    math.hypot(centre_x - x, centre_y - y)
+                    for x, y in context["points"]
+                    if abs(x - anchor.x0) <= 1.0 and abs(y - anchor.y0) > tolerance
+                ]
+                others += [_away(bar_box, centre_x, centre_y) for _, bar_box in context["bars"]]
             else:  # a bar: no other bar is nearer than the label's own
                 mine = {id(owner) for owner in label.owners}
                 near = min(
@@ -1225,10 +1232,12 @@ class _Drawer:
                 ]
                 # ... and no plotted point of any series is nearer at all.
                 others = [math.hypot(centre_x - x, centre_y - y) for x, y in context["points"]]
-            # A mark of the same kind may be nearer by the margin: the text
-            # is centred on its own. A mark of the other kind stands on the
-            # same centre line (a point over its category's bar), so there
-            # the text's own mark has to be the nearer one by that margin.
+            # A mark of the same kind beside the text's own may be nearer by
+            # the margin: the text is centred on its own. A mark on the same
+            # centre line (a point over its category's bar, two series'
+            # points of one category) is told apart by distance alone, so
+            # there the text's own mark has to be the nearer one by that
+            # margin.
             return all(rival >= near - margin for rival in rivals) and all(
                 other >= near + margin for other in others
             )

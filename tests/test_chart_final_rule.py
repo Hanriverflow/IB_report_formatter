@@ -35,7 +35,9 @@ float tolerance. Self-review after that: a point's value under its point and
 just over a bar's end stood as near to the bar as to the point, so the own
 mark has to be nearer than every mark of the other kind by 3 pt; and a value
 beside a stack that is as high as a whole other thin segment of the bar names
-neither segment, so it is not drawn. In a
+neither segment, so it is not drawn. Reading the Word pages: a line's value
+stood halfway between its own point and another series' point of the same
+category, so there too the own point has to be nearer by 3 pt. In a
 horizontal chart (`hbar`, `range`) a value runs sideways
 from its bar's end, so a longer neighbouring bar is always nearer to the
 text's centre: there the value is judged by its centre lying within its own
@@ -500,6 +502,13 @@ def problems(spec, seen) -> list[str]:
                     found.append(f"{key}: lies over another plotted point")
                 elif math.hypot(centre[0] - x, centre[1] - y) < near - margin:
                     found.append(f"{key}: another plotted point is nearer than its own")
+                elif (
+                    abs(x - mine[0]) <= 0.5
+                    and math.hypot(centre[0] - x, centre[1] - y) < near + margin - 1
+                ):
+                    # another series' point of the same category is on the
+                    # text's own centre line: the own point is nearer by 3 pt
+                    found.append(f"{key}: another series' point is as near as its own")
             # ... its own point is nearer than every bar by the margin (a
             # point and its category's bar are on one centre line), and
             # nothing lies between.
@@ -864,8 +873,24 @@ ROW_VALUE_NEAR_A_LONGER_ROW = {
     "number_format": ",.2f",
     "series": [{"name": "S", "values": [100000000, 1000000000, 1000000000]}],
 }
+# Reading the Word pages: at 2027E the grey 4.2x stood halfway between its own
+# point (under it) and the other line's point (over it).
+TWO_LINES_ONE_CATEGORY = {
+    "type": "bar_line",
+    "labels": ["2021", "2022", "2023", "2024", "2025", "2026E", "2027E", "2028E"],
+    "right_number_format": "multiple",
+    "series": [
+        {
+            "name": "가상전자",
+            "values": [210.136, 271.186, 343.628, 349.963, 395.407, 331.555, 262.73, 239.962],
+        },
+        {"name": "Alpha", "values": [1.8, 3.5, 1.5, 4.8, 5.8, 6.0, 6.2, 4.6], "axis": "right"},
+        {"name": "새솔", "values": [5.2, 4.2, 4.7, 4.2, 3.0, 2.1, 4.2, 3.0], "axis": "right"},
+    ],
+}
 FOURTH_CASES = {
     "point-value-over-a-bar": POINT_VALUE_OVER_A_BAR,
+    "two-lines-one-category": TWO_LINES_ONE_CATEGORY,
     "thin-segments-level": THIN_SEGMENTS_LEVEL,
     "line-ends-close": LINE_ENDS_CLOSE,
     "reference-beside-a-range": REFERENCE_BESIDE_A_RANGE,
@@ -912,6 +937,29 @@ def test_a_points_value_is_clearly_nearer_to_its_point_than_to_a_bar(monkeypatch
     point = seen["transforms"][1].transform((0, 3.6))
     # It was under its point and over the bar; now it is over its point.
     assert value[1] > point[1] > bar[3]
+
+
+def test_a_points_value_is_clearly_nearer_to_its_point_than_to_another_series(monkeypatch):
+    seen = check(monkeypatch, TWO_LINES_ONE_CATEGORY)
+    lines = {"Alpha": [1.8, 3.5, 1.5, 4.8, 5.8, 6.0, 6.2, 4.6]}
+    lines["새솔"] = [5.2, 4.2, 4.7, 4.2, 3.0, 2.1, 4.2, 3.0]
+    labels = TWO_LINES_ONE_CATEGORY["labels"]
+    clearly = MARGIN_POINTS * seen["dpi"] / 72 - 1
+    measured = 0
+    for item in seen["texts"]:
+        parts = item["gid"].split("\t")
+        if parts[0] != "value" or parts[2] not in lines:
+            continue
+        index, box = labels.index(parts[1]), item["box"]
+        centre = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
+        away = {
+            name: math.hypot(*(centre - seen["transforms"][1].transform((index, values[index]))))
+            for name, values in lines.items()
+        }
+        other = next(name for name in lines if name != parts[2])
+        assert away[other] >= away[parts[2]] + clearly, item["gid"]
+        measured += 1
+    assert measured >= 8  # most of the sixteen values still have a place
 
 
 def test_a_value_as_high_as_a_whole_other_segment_is_not_drawn(monkeypatch):
