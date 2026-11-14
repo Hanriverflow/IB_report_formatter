@@ -408,13 +408,19 @@ tables:
 @tbl-results에서 보듯 매출이 늘었다. 구조는 @fig-structure 참조.
 ```
 
-- Tables take `id: tbl-…` in their table spec and need a `caption`. Figures take `{#fig-…}` at the end of an image file line and need a description. Embedded Base64 images, images inside table cells, charts and diagrams are not numbered.
-- Tables and figures are counted separately from the start of the document; there are no chapter numbers (`표 2-1`). The labels are `표` and `그림` in every profile.
-- `@tbl-…` and `@fig-…` become cross-references in paragraphs, lists, quotes, headings, table cells and table caption/unit/source/note text. A Korean particle may follow the ID directly. Code, math, link destinations, an `@` with a letter before it (an e-mail address) and an escaped `\@` stay literal.
+- Tables take `id: tbl-…` in their table spec and need a `caption`. Figures take `{#fig-…}` at the end of an image file line of its own and need a description. A `{#…}` after an image inside a paragraph, list or table cell, or on an embedded Base64 image, numbers nothing and is reported. Charts and diagrams are not numbered.
+- Tables and figures are counted separately from the start of the document, and only those actually drawn; there are no chapter numbers (`표 2-1`). The labels are `표` and `그림` in every profile.
+- `@tbl-…` and `@fig-…` become cross-references in paragraphs, lists, quotes, headings, table cells (HTML tables included) and table caption/unit/source/note text.
+- Reference grammar:
+  - The character before `@` must be the start of the text, whitespace, or an opening bracket or quote (`(`, `[`, `「`, `"`, ...). An `@` after a letter, digit, `+`, `.`, `_` or `-` (an e-mail address such as `user+@tbl-x.example`) is not a reference.
+  - The ID is read whole, up to the last letter, digit, `-` or `_`, then checked. A malformed ID (`@tbl-a-`, `@tbl-`, `@tbl-Results`) is reported, never shortened to a valid prefix. A Korean particle, whitespace or punctuation may follow the ID directly (`@tbl-results에서`, `(@tbl-results)`).
+  - An ID followed by `.` and a letter or digit (a domain such as `@tbl-x.example`) is not a reference.
+  - Code spans and blocks, math (`$…$`), link destinations and an escaped `\@` never hold a reference, wherever they stand.
+  - Text that is not read as a reference, and a reference that does not resolve, render exactly as written, as before the feature.
 - Word does not update these fields on opening or print preview (checked with Word 16 on Windows); select all and press F9 after editing. The cached values are correct until then.
 - Korean Word has no built-in `그림` caption label. To continue figure numbers with Word's Insert Caption, create the label `그림` once (References › Insert Caption › New Label).
-- Strict mode rejects a reference to an unknown ID, a repeated figure ID, a malformed reference, a reference inside link text, and a reference in a figure description, the document title, the subtitle or a footnote, where no Word field can go; the default mode keeps such text literal and reports it. A malformed figure ID keeps the line as text and is rejected in strict mode. Table spec `id` errors (shape, repetition, missing caption) reject the document in both modes, like other table spec errors.
-- `docx-audit` reports a reference whose target bookmark is missing as an issue and a stale reference or caption number (fields not yet updated) as a warning.
+- Strict mode rejects, wherever the grammar reads a reference, one to an unknown ID, a malformed one, one whose ID formatting splits (`@tbl-a**b**`), one inside link text, and one in an image description (inline images included), the document title, the subtitle or a footnote, where no Word field can go; the default mode keeps such text exactly as written and reports it. A repeated figure ID and a `{#…}` that numbers nothing are rejected in strict mode too and kept as text otherwise. Table spec `id` errors (shape, repetition, missing caption, a table with no columns that is not drawn) reject the document in both modes, like other table spec errors.
+- `docx-audit` reports a reference whose target bookmark is missing as an issue and a stale reference or caption number (fields not yet updated) as a warning. Numbering order is judged only for `SEQ` sequences without switches or with `\* ARABIC` alone. Only the main body is checked (not headers, footers or footnotes).
 
 ## Allowed asset folders, input limits and rejections
 
