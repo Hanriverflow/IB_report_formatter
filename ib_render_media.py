@@ -15,6 +15,7 @@ Changelog (alt text):
 import logging
 import os
 import re
+import struct
 from collections.abc import Sequence
 from io import BytesIO
 from pathlib import Path, PureWindowsPath
@@ -369,6 +370,12 @@ class ImageRenderer:
 class ChartRenderer:
     """Insert a validated chart from memory, respecting the active section width."""
 
+    # Inches of the body kept for a standard chart's title, subtitle, note and
+    # source paragraphs, which stay on the picture's page (keep-with-next).
+    CHART_TEXT_ROOM = 1.1
+    # The least picture height a chart is fitted to, whatever the page.
+    MIN_CHART_HEIGHT = 0.5
+
     def __init__(self, doc: DocxDocument) -> None:
         self.doc = doc
 
@@ -422,6 +429,32 @@ class ChartRenderer:
             paragraph._p.getparent().remove(paragraph._p)
             raise
         return paragraph
+
+    def fitted_width(self, png: bytes, width: float) -> float:
+        """The picture width that keeps a standard chart within the page body.
+
+        The picture's height may be at most the current section's body height
+        (page height less the top and bottom margins) less `CHART_TEXT_ROOM`
+        for its Word text, and never less than `MIN_CHART_HEIGHT`; a taller
+        picture is narrowed, keeping its proportions. Portrait and landscape
+        sections are measured alike.
+
+        Args:
+            png: The drawn picture.
+            width: The width it was drawn at, in inches (at most the body width).
+
+        Returns:
+            The width to insert it at, in inches.
+        """
+        section = self.doc.sections[-1]
+        page_height, top, bottom = section.page_height, section.top_margin, section.bottom_margin
+        if page_height is None or top is None or bottom is None:
+            return width
+        room = (page_height - top - bottom) / 914400 - self.CHART_TEXT_ROOM
+        room = max(room, self.MIN_CHART_HEIGHT)
+        pixels_wide, pixels_high = struct.unpack(">II", png[16:24])
+        height = width * pixels_high / pixels_wide
+        return width if height <= room else width * room / height
 
     @staticmethod
     def check_visible_texts(spec: ChartSpec) -> None:
@@ -501,7 +534,9 @@ class ChartRenderer:
                 picture.paragraph_format.keep_with_next = True
                 picture.paragraph_format.space_after = Pt(2)
             with BytesIO(png) as buffer:
-                shape = picture.add_run().add_picture(buffer, width=Inches(width))
+                shape = picture.add_run().add_picture(
+                    buffer, width=Inches(self.fitted_width(png, width))
+                )
             ImageRenderer._apply_alt_text(shape, spec.title or chart.label)
             for index, text in enumerate(below):
                 last = index == len(below) - 1
