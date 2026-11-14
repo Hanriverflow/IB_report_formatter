@@ -111,11 +111,12 @@ from document_model import (
     Figure,
     MarkedBlockquote,
     MarkedHeading,
-    chart_readings,
     figure_id_problem,
-    link_chart_readings,
+    fold_chart_reading,
     numbered_items,
     numbered_targets,
+    pair_chart_readings,
+    pending_chart_reading,
 )
 from document_model import (
     Diagram as Diagram,
@@ -382,7 +383,9 @@ class MarkdownParser:
             A DocumentModel with all parsed elements
         """
         self.limits.check(RejectionCode.LIMIT_INPUT_BYTES, len(content.encode("utf-8")))
-        return self._parse_content(content)
+        model = self._parse_content(content)
+        fold_chart_reading(model)
+        return model
 
     def _parse_content(
         self, content: str, infer_metadata: bool = False, frontmatter_present: bool = False
@@ -401,11 +404,13 @@ class MarkdownParser:
         A chart's `id` is a target only when charts are drawn (principle V3:
         with charts off a chart block is a code block in every respect).
         Whether they are drawn is settled at render time, so when the two
-        sets of targets differ the document is read both ways and the
-        readings are kept together (`link_chart_readings`); the one for this
-        parser's own setting is returned. The second reading logs nothing,
-        and a diagnostic only one reading has is logged by the renderer that
-        uses that reading.
+        sets of targets differ the document is read both ways. The reading
+        for this parser's own setting is returned with the other one pending
+        (`pair_chart_readings`); the public entry points fold it into the
+        returned model part by part (`fold_chart_reading`), so there is one
+        model and the renderer draws the one it is given. The second reading
+        logs nothing, and a diagnostic only one reading has is logged by the
+        renderer that uses that reading.
 
         Args:
             content: The decoded text.
@@ -472,10 +477,7 @@ class MarkdownParser:
                 logger.warning("%s", message)
         own = [message for message in messages if message not in other_messages]
         other_own = [message for message in other_messages if message not in messages]
-        if drawn:
-            link_chart_readings(model, other, own, other_own)
-        else:
-            link_chart_readings(other, model, other_own, own)
+        pair_chart_readings(model, other, drawn, own, other_own)
         return model
 
     def _parse_document(
@@ -1966,9 +1968,13 @@ def parse_markdown_file(
                         if not image_path.is_absolute():
                             image.path = str(source_dir / image_path)
 
-    # A document with chart IDs has two readings; each gets the file's folders.
-    for model in chart_readings(parsed):
-        localise(model)
+    # A document with chart IDs was read two ways; each reading gets the
+    # file's folders before the second is folded into the first.
+    localise(parsed)
+    other = pending_chart_reading(parsed)
+    if other is not None:
+        localise(other)
+    fold_chart_reading(parsed)
     model = parsed
     logger.info(
         "Parsed %s: %d elements, %d footnotes, latex_blocks=%d, images=%d",

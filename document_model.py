@@ -532,7 +532,7 @@ def numbered_items(
     is a render option; a chart that is not drawn is skipped altogether: it
     is a code panel, so its ID is neither numbered nor checked and no
     reference resolves to it (principle V3). The parser reads a document
-    both ways when the two differ (`link_chart_readings`).
+    both ways when the two differ (`fold_chart_reading`).
 
     Args:
         elements: Document elements.
@@ -726,60 +726,154 @@ class DocumentModel:
     limits: InputLimits = DEFAULT_LIMITS
 
 
-# ── chart readings (principle V3) ────────────────────────────────────────────
+# ── chart setting (principle V3) ─────────────────────────────────────────────
 #
 # With charts off a chart block is a code block in every respect: its `id`
 # names nothing, so a `@fig-…` written for it is read exactly as in a document
 # without that chart. Whether charts are drawn is settled only at render time
-# (frontmatter, CLI or API), so when the two readings differ the parser keeps
-# both and the renderer takes the one for its setting. They are plain
-# attributes, not dataclass fields: a document without a chart ID has neither,
+# (frontmatter, CLI or API), so when the two readings differ the parser reads
+# the document both ways. It returns one model, read for its own setting; the
+# parts the other reading reads differently (an element, a metadata value, the
+# diagnostics) carry that other reading with them (`fold_chart_reading`). The
+# renderer draws the model it is given and, on its own copy, takes the other
+# reading only of a part the caller left as parsed (`apply_chart_setting`):
+# what a caller changed, added or removed after parsing is never replaced
+# (fourth independent review, 2026-11-14). Everything is kept in plain
+# attributes, not dataclass fields: a document without a chart ID has none,
 # and the pinned model of every sample is unchanged.
 
-_READINGS = "_chart_readings"
-_READING_ONLY = "_chart_reading_only"
+_PENDING = "_chart_reading_pending"
+_SETTING = "_chart_setting"
+_ALTERNATIVE = "_chart_alternative"
 
 
-def link_chart_readings(
-    drawn: "DocumentModel",
-    undrawn: "DocumentModel",
-    drawn_only: Sequence[str],
-    undrawn_only: Sequence[str],
+def pair_chart_readings(
+    model: "DocumentModel",
+    other: "DocumentModel",
+    drawn: bool,
+    own_only: Sequence[str],
+    other_only: Sequence[str],
 ) -> None:
-    """Keep the two readings of one document together.
+    """Hold the other reading of `model` until `fold_chart_reading`.
 
     Args:
-        drawn: The document read with its charts drawn (their IDs are targets).
-        undrawn: The same document read with charts off (code blocks).
-        drawn_only: Diagnostics only the first reading has.
-        undrawn_only: Diagnostics only the second reading has.
+        model: The document read for the parser's own chart setting.
+        other: The same document read for the opposite setting.
+        drawn: The parser's setting: charts are drawn (their IDs are targets).
+        own_only: Diagnostics only `model` has.
+        other_only: Diagnostics only `other` has.
     """
-    readings = {True: drawn, False: undrawn}
-    for model, own in ((drawn, drawn_only), (undrawn, undrawn_only)):
-        setattr(model, _READINGS, readings)
-        setattr(model, _READING_ONLY, tuple(own))
+    setattr(model, _PENDING, (other, drawn, tuple(own_only), tuple(other_only)))
 
 
-def chart_reading(model: "DocumentModel", charts_drawn: bool) -> "DocumentModel":
-    """The document as read for a render that draws its charts, or does not.
+def pending_chart_reading(model: "DocumentModel") -> "DocumentModel | None":
+    """The other reading not yet folded into `model` (it needs the same finishing)."""
+    pending = getattr(model, _PENDING, None)
+    return None if pending is None else pending[0]
 
-    A model with one reading (no chart ID, or built by hand) is returned as is.
+
+def fold_chart_reading(model: "DocumentModel") -> None:
+    """Give each part of `model` that the other reading reads differently that reading.
+
+    An element carries the other reading's element, the metadata its other
+    values, and the model the other diagnostics, each beside a copy of the
+    part as parsed, so that a later change by the caller can be told. The
+    other model itself is dropped.
     """
-    readings: dict[bool, DocumentModel] | None = getattr(model, _READINGS, None)
-    return model if readings is None else readings[charts_drawn]
+    from copy import deepcopy
+
+    pending = model.__dict__.pop(_PENDING, None)
+    if pending is None:
+        return
+    other, drawn, own_only, other_only = pending
+    values: dict[str, tuple[Any, Any]] = {}
+    paired = len(model.elements) == len(other.elements) and all(
+        mine.element_type == theirs.element_type
+        for mine, theirs in zip(model.elements, other.elements, strict=True)
+    )
+    if paired:
+        for mine, theirs in zip(model.elements, other.elements, strict=True):
+            if mine != theirs:
+                setattr(mine, _ALTERNATIVE, (drawn, deepcopy(mine), theirs))
+    for item in fields(model):
+        if item.name in ("metadata", "warnings") or (item.name == "elements" and paired):
+            continue
+        mine, theirs = getattr(model, item.name), getattr(other, item.name)
+        if mine != theirs:
+            values[item.name] = (deepcopy(mine), theirs)
+    changed = {
+        item.name: (
+            deepcopy(getattr(model.metadata, item.name)),
+            getattr(other.metadata, item.name),
+        )
+        for item in fields(model.metadata)
+        if getattr(model.metadata, item.name) != getattr(other.metadata, item.name)
+    }
+    if changed:
+        setattr(model.metadata, _ALTERNATIVE, changed)
+    setattr(
+        model,
+        _SETTING,
+        {
+            "drawn": drawn,
+            "own_only": own_only,
+            "other_only": other_only,
+            "warnings": (list(model.warnings), list(other.warnings)),
+            "values": values,
+        },
+    )
 
 
-def chart_readings(model: "DocumentModel") -> tuple["DocumentModel", ...]:
-    """Every reading of the document, the given one first."""
-    readings: dict[bool, DocumentModel] | None = getattr(model, _READINGS, None)
-    if readings is None:
-        return (model,)
-    return (model, *(other for other in readings.values() if other is not model))
+def apply_chart_setting(model: "DocumentModel", charts_drawn: bool) -> tuple[list[str], list[str]]:
+    """Read `model`, the render's own copy, for the render's chart setting.
 
+    With the parser's own setting nothing changes. With the opposite one,
+    each part that is still as parsed takes the other reading; a part the
+    caller changed stays as given, and an element among them is reported:
+    its references were read for the other setting.
 
-def chart_reading_diagnostics(model: "DocumentModel") -> tuple[str, ...]:
-    """Diagnostics only this reading has; the renderer logs them when it uses it."""
-    return tuple(getattr(model, _READING_ONLY, ()))
+    Args:
+        model: A copy the caller no longer sees; it is changed in place.
+        charts_drawn: The render's setting.
+
+    Returns:
+        Parser diagnostics of this reading still to be logged, and problems
+        to report.
+    """
+    setting = model.__dict__.pop(_SETTING, None)
+    carried = model.metadata.__dict__.pop(_ALTERNATIVE, {})
+    problems: list[str] = []
+    for index, element in enumerate(model.elements, 1):
+        alternative = element.__dict__.pop(_ALTERNATIVE, None)
+        if alternative is None:
+            continue
+        drawn, parsed, other = alternative
+        if drawn == charts_drawn:
+            continue
+        if element == parsed:
+            for item in fields(element):
+                setattr(element, item.name, getattr(other, item.name))
+        else:
+            read, now = ("on", "off") if drawn else ("off", "on")
+            problems.append(
+                f"Element {index} was changed after parsing: its references were read with "
+                f"charts {read}, and this render has charts {now}. Parse the document again "
+                f"with charts={charts_drawn} to read them for this render"
+            )
+    if setting is None:
+        return [], problems
+    if setting["drawn"] == charts_drawn:
+        return list(setting["own_only"]), problems
+    for name, (parsed, other) in carried.items():
+        if getattr(model.metadata, name) == parsed:
+            setattr(model.metadata, name, other)
+    for name, (parsed, other) in setting["values"].items():
+        if getattr(model, name) == parsed:
+            setattr(model, name, other)
+    parsed_warnings, other_warnings = setting["warnings"]
+    if model.warnings == parsed_warnings:
+        model.warnings = list(other_warnings)
+    return list(setting["other_only"]), problems
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

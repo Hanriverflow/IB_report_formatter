@@ -5,10 +5,12 @@ reference target when charts were off. `See:@fig-test` was then reported as a
 reference written right after other text (strict mode rejected a document that
 converted before chart IDs existed), and `See @fig-test` split one Word run
 into three. The parser now reads a document with chart IDs both with and
-without its charts and the renderer takes the reading for its own setting, so
-every way of turning charts off (no frontmatter key, `charts: false`, the API
-or CLI override, with or without telling the parser) gives the document it
-gave before: the chart's `id` changes nothing but its own code text.
+without its charts; the parts the two readings read differently carry the
+other reading, and the renderer takes it for its own setting (on its copy,
+for parts still as parsed; `tests/test_chart_setting_model.py`). So every way
+of turning charts off (no frontmatter key, `charts: false`, the API or CLI
+override, with or without telling the parser) gives the document it gave
+before: the chart's `id` changes nothing but its own code text.
 """
 
 import logging
@@ -17,7 +19,6 @@ from zipfile import ZipFile
 
 import pytest
 
-from document_model import chart_reading, chart_readings
 from document_profiles import RenderOptions
 from ib_renderer import IBDocumentRenderer
 from md_parser import MarkdownParser, parse_markdown_file
@@ -159,31 +160,36 @@ def test_nothing_is_logged_for_the_reading_that_is_not_used(caplog):
     assert len([record for record in caplog.records if "fig-test" in record.getMessage()]) == 1
 
 
-def test_the_two_readings_differ_only_when_a_chart_id_is_a_target():
+def test_the_other_reading_is_carried_only_when_a_chart_id_is_a_target():
     plain = MarkdownParser(profile="plain").parse("# 본문\n\n@fig-test 참조.\n")
-    assert chart_readings(plain) == (plain,) and chart_reading(plain, True) is plain
+    assert "_chart_setting" not in vars(plain)
     with_id = MarkdownParser(profile="plain").parse(
         "# 본문\n\n@fig-test 참조.\n\n" + CHART.format(id="fig-test")
     )
-    drawn, undrawn = chart_reading(with_id, True), chart_reading(with_id, False)
-    assert with_id is undrawn and drawn is not undrawn  # no frontmatter key: charts are off
-    assert undrawn.warnings == ["Cross-reference @fig-test has no table or figure with that id"]
-    assert drawn.warnings == []
+    # No frontmatter key: the model is the charts-off reading.
+    assert with_id.warnings == ["Cross-reference @fig-test has no table or figure with that id"]
+    carrying = [element for element in with_id.elements if "_chart_alternative" in vars(element)]
+    assert [element.content.text for element in carrying] == ["@fig-test 참조."]
+    on = IBDocumentRenderer(options=RenderOptions(profile="plain", charts=True, strict=True))
+    assert len(on.render(with_id).inline_shapes) == 1 and on.errors == []
     told = MarkdownParser(profile="plain", charts=True).parse(
         "# 본문\n\n@fig-test 참조.\n\n" + CHART.format(id="fig-test")
     )
-    assert told.warnings == [] and chart_reading(told, True) is told
+    assert told.warnings == []
 
 
 def test_a_file_gives_both_readings_its_folder(tmp_path):
+    from tests.test_captions_crossrefs import SAMPLE_IMAGE
+
+    (tmp_path / "s.png").write_bytes(SAMPLE_IMAGE.read_bytes())
     source = tmp_path / "doc.md"
     source.write_text(
-        "---\nprofile: plain\n---\n\n# 본문\n\n@fig-test 참조.\n\n" + CHART.format(id="fig-test"),
+        "---\nprofile: plain\n---\n\n# 본문\n\n@fig-test 참조.\n\n![가상 그림](s.png)\n\n"
+        + CHART.format(id="fig-test"),
         encoding="utf-8",
     )
     model = parse_markdown_file(str(source))
-    readings = chart_readings(model)
-    assert len(readings) == 2
-    assert {reading.source_dir for reading in readings} == {tmp_path.resolve()}
-    drawn = IBDocumentRenderer(options=RenderOptions(charts=True, strict=True)).render(model)
-    assert len(drawn.inline_shapes) == 1
+    assert model.source_dir == tmp_path.resolve()
+    for charts, pictures in ((True, 2), (False, 1)):
+        rendered = IBDocumentRenderer(options=RenderOptions(charts=charts)).render(model)
+        assert len(rendered.inline_shapes) == pictures

@@ -108,9 +108,8 @@ from document_model import (
     ConfirmationBlock,
     DefaultTitle,
     InferredText,
+    apply_chart_setting,
     caption_bookmark_name,
-    chart_reading,
-    chart_reading_diagnostics,
     model_images,
     numbered_items,
 )
@@ -740,11 +739,16 @@ class IBDocumentRenderer:
         roots = resolve_asset_roots((*model.asset_roots, *self.options.asset_roots, *asset_roots))
         resolved = resolve_options(model.metadata, self.options)
         # A document with chart IDs was read both with and without its charts
-        # (principle V3): take the reading for this render's setting, and log
-        # the diagnostics only that reading has (the parser logged the rest).
-        model = chart_reading(model, resolved.charts)
-        for message in chart_reading_diagnostics(model):
+        # (principle V3). The render draws the model it was given: on this
+        # copy, only the parts still as parsed take the reading for this
+        # render's setting, and the diagnostics only that reading has are
+        # logged here (the parser logged the rest).
+        unlogged, changed_parts = apply_chart_setting(model, resolved.charts)
+        for message in unlogged:
             logging.getLogger("md_parser").warning("%s", message)
+        for message in changed_parts:
+            logger.warning("%s", message)
+            model.warnings.append(message)
         if model.parsed_profile is not None and model.parsed_profile != resolved.profile.name:
             raise ValueError(
                 f"Document was parsed with profile {model.parsed_profile!r}; "
