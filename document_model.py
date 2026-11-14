@@ -288,11 +288,12 @@ class Heading:
 class MarkedHeading(Heading):
     """A heading whose `text` was unescaped at parse time and held an escaped `@`.
 
-    `marked_text` is `text` with each escaped `@` written as
-    `TextParser.ESCAPED_AT`, so a `\\@tbl-…` is never read as a reference.
+    `escaped_ats` are the offsets in `text` of each `@` that was escaped in the
+    Markdown (`TextParser.escaped_ats`), so a `\\@tbl-…` is never read as a
+    reference.
     """
 
-    marked_text: str = ""
+    escaped_ats: tuple[int, ...] = ()
 
 
 @dataclass
@@ -340,7 +341,7 @@ class Blockquote:
 class MarkedBlockquote(Blockquote):
     """A callout whose source held an escaped `@` (see `MarkedHeading`)."""
 
-    marked_text: str = ""
+    escaped_ats: tuple[int, ...] = ()
 
 
 @dataclass

@@ -154,15 +154,15 @@ class HeadingRenderer:
         """The runs a heading renders; parse-time term runs are used as is."""
         if heading.runs:
             return heading.runs
-        marked = isinstance(heading, MarkedHeading)
-        source = heading.marked_text if isinstance(heading, MarkedHeading) else heading.text
+        source = heading.text
         # Drop bold markers outside code spans and escapes, then parse once:
         # unescaping before the parse turned escaped punctuation into syntax.
         clean_text = cls._BOLD_MARKER_RE.sub(
             lambda match: "" if match.group(0) == "**" else match.group(0), source
         )
         # References are judged like body text, on the source with its markers.
-        return TextParser.parse_judged_runs(clean_text.strip(), source.strip(), escaped_at=marked)
+        escaped_ats = heading.escaped_ats if isinstance(heading, MarkedHeading) else ()
+        return TextParser.parse_judged_runs(clean_text.strip(), source, escaped_ats)
 
     def render(self, heading: Heading):
         """Render a heading with appropriate level; parse-time term runs are used as is."""
@@ -372,17 +372,16 @@ class CalloutRenderer:
             )
         elif content_text:
             content_para = cell.add_paragraph()
-            marked = isinstance(blockquote, MarkedBlockquote)
-
             TextRenderer.render_text_with_formatting(
                 content_para,
-                blockquote.marked_text.strip()
-                if isinstance(blockquote, MarkedBlockquote)
-                else content_text,
+                content_text,
                 font_name=STYLE.BODY_FONT,
                 font_size=STYLE.BODY_SIZE,
                 default_color=content_color,
-                escaped_at=marked,
+                source=blockquote.text,
+                escaped_ats=(
+                    blockquote.escaped_ats if isinstance(blockquote, MarkedBlockquote) else ()
+                ),
             )
 
         # Apply border styling

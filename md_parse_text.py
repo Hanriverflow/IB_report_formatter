@@ -18,7 +18,7 @@ import logging
 import os
 import re
 from bisect import bisect_right
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
@@ -65,9 +65,13 @@ class ReferenceScope:
         place: Set for text that cannot hold a Word field; it names the place
             in the diagnostic and no reference resolves there.
         allowed: When set, only the `@` with these ordinals (counted over the
-            visible `@` of the text) may resolve: a heading is judged on its
-            source with emphasis markers and rendered without them.
+            visible `@` of the text, escaped ones included) may resolve: text
+            is judged on one form and its runs made from another (see
+            `TextParser.parse_judged_runs`).
         kept: Receives the ordinal of each `@` that resolves.
+        escaped_at: A character that stands for an escaped `@` in the text
+            being judged; it is counted like `@` and is never a reference. It
+            does not otherwise occur in that text.
     """
 
     targets: frozenset[str] = frozenset()
@@ -75,6 +79,7 @@ class ReferenceScope:
     place: str | None = None
     allowed: frozenset[int] | None = None
     kept: Callable[[int], None] | None = None
+    escaped_at: str = ""
 
 
 _REFERENCE_SCOPE: ContextVar[ReferenceScope | None] = ContextVar("ib_reference_scope", default=None)
@@ -239,19 +244,17 @@ class TextParser:
     # Characters that may stand right before a reference's `@` besides
     # whitespace and the start of the text: opening brackets and quotes.
     _REFERENCE_OPENERS = frozenset("([{<\"'“‘「『《〈【〔（［｛")
-    # Stands for a Markdown `\@`: in text that was unescaped before it is parsed
-    # (callouts, numbered headings), and in runs until references are read, so
-    # that `@` is never read as a reference. `ESCAPED_DOLLAR` does the same for
-    # `\$`, so an escaped dollar never closes math around a reference.
-    ESCAPED_AT = "\ue010"
-    ESCAPED_DOLLAR = "\ue011"
+    # Where marks for escaped `@` and `$` come from while references are read:
+    # private-use characters of planes 15 and 16, chosen afresh for each text
+    # among those it does not hold (`free_marks`), so a mark never stands for a
+    # character of the input. Outside a reference scope no mark is used.
+    _MARK_POOL = (range(0xF0000, 0xFFFFE), range(0x100000, 0x10FFFE))
     # One visible unit that is not prose: code, math, an image, a footnote mark,
     # a term value or any other token. It is neither a reference edge nor an
     # ID character.
     _OPAQUE = "\ue012"
-    # Characters of a token left in run text (term values and the like); the two
-    # escape marks above are the only private-use characters that stay readable.
-    _TOKEN_CHAR_RE = re.compile("[\ue000-\ue00f\ue012-\uf8ff]")
+    # Characters of a token left in run text (term values and the like).
+    _TOKEN_CHAR_RE = re.compile("[\ue000-\uf8ff]")
 
     # Inline formatting patterns. A term token counts as one subscript unit, so a
     # value between tildes is a subscript whatever it contains (never re-parsed).
@@ -279,16 +282,87 @@ class TextParser:
     )
 
     @classmethod
-    def parse_runs(cls, text: str, escaped_at: bool = False) -> list[TextRun]:
+    def parse_runs(cls, text: str) -> list[TextRun]:
         """
         Parse text into runs with formatting.
         Handles **bold**, inline $LaTeX$, and combinations.
 
         Args:
             text: Inline Markdown.
-            escaped_at: The text was unescaped already and writes each escaped
-                `@` as `ESCAPED_AT`; it is shown as `@` and never a reference.
         """
+        return cls._with_marks(text, cls._parse_runs)
+
+    @classmethod
+    def _with_marks(
+        cls, text: str, parse: Callable[[str, str, str], list[TextRun]]
+    ) -> list[TextRun]:
+        """Run `parse` with marks for escaped `@` and `$` when references are read.
+
+        Outside a reference scope, or in text without `@`, escapes are written
+        back at once and no mark is used: the text is parsed exactly as before
+        cross-references existed. In a scope, each escaped `@` and `$` stays a
+        mark, a character the text does not hold, until references are read.
+
+        Args:
+            text: The text `parse` reads.
+            parse: Takes the text and the marks for `@` and `$` ("" for none).
+
+        Returns:
+            The runs `parse` makes.
+        """
+        scope = _REFERENCE_SCOPE.get()
+        if scope is None or "@" not in text:
+            return parse(text, "", "")
+        marks = cls.free_marks(text, 2)
+        if marks is None:
+            return cls._unread(text, lambda: parse(text, "", ""))
+        return parse(text, marks[0], marks[1])
+
+    @classmethod
+    def free_marks(cls, text: str, count: int) -> tuple[str, ...] | None:
+        """Characters from `_MARK_POOL` that `text` does not hold.
+
+        Args:
+            text: The text the marks go into.
+            count: How many marks are needed.
+
+        Returns:
+            `count` distinct characters, or None when the text holds nearly the
+            whole pool.
+        """
+        used = set(text)
+        found: list[str] = []
+        for block in cls._MARK_POOL:
+            for code in block:
+                if chr(code) not in used:
+                    found.append(chr(code))
+                    if len(found) == count:
+                        return tuple(found)
+        return None
+
+    @classmethod
+    def _unread(cls, text: str, parse: Callable[[], list[TextRun]]) -> list[TextRun]:
+        """Parse outside any scope text whose escapes cannot be marked, and say so.
+
+        Args:
+            text: The text, for the diagnostic.
+            parse: Parses it.
+
+        Returns:
+            The runs, made exactly as outside a scope.
+        """
+        scope = _REFERENCE_SCOPE.get()
+        if scope is not None and scope.report is not None:
+            scope.report(
+                "Cross-references are not read in text that holds every private-use "
+                f"character of planes 15 and 16: {text[:40]!r}..."
+            )
+        with cls.reference_scope(None):
+            return parse()
+
+    @classmethod
+    def _parse_runs(cls, text: str, at_mark: str, dollar_mark: str) -> list[TextRun]:
+        """`parse_runs` with the marks `_with_marks` chose."""
         runs: list[TextRun] = []
         text, code_spans = cls._protect_code_spans(text)
         text, images = cls._protect_images(text)
@@ -313,12 +387,14 @@ class TextParser:
                 else:
                     runs.extend(
                         cls._apply_color(
-                            cls._parse_inline_formatting(inline_text, escaped_at), color_hex
+                            cls._parse_inline_formatting(inline_text, at_mark, dollar_mark),
+                            color_hex,
                         )
                     )
 
-        runs = cls._split_image_runs(runs, images, code_spans, escaped_at)
-        runs = cls._read_references(cls._split_code_runs(runs, code_spans), dollars=False)
+        runs = cls._split_image_runs(runs, images, code_spans)
+        runs = cls._split_code_runs(runs, code_spans)
+        runs = cls._read_references(runs, dollars=False, at_mark=at_mark, dollar_mark=dollar_mark)
         return cls._encode_link_targets(runs)
 
     @classmethod
@@ -354,22 +430,30 @@ class TextParser:
         return segments
 
     @classmethod
-    def parse_runs_plain(cls, text: str, escaped_at: bool = False) -> list[TextRun]:
+    def parse_runs_plain(cls, text: str) -> list[TextRun]:
         """
         Parse runs WITHOUT LaTeX detection.
         Used for contexts where $ should not be interpreted as LaTeX
         (e.g., table cells with currency values). Text between dollar signs is
-        still never read as a cross-reference. `escaped_at` as in `parse_runs`.
+        still never read as a cross-reference.
         """
+        return cls._with_marks(text, cls._parse_runs_plain)
+
+    @classmethod
+    def _parse_runs_plain(cls, text: str, at_mark: str, dollar_mark: str) -> list[TextRun]:
+        """`parse_runs_plain` with the marks `_with_marks` chose."""
         text, code_spans = cls._protect_code_spans(text)
         text, images = cls._protect_images(text)
         runs: list[TextRun] = []
         for segment_text, color_hex in cls._split_on_color_spans(text):
             runs.extend(
-                cls._apply_color(cls._parse_inline_formatting(segment_text, escaped_at), color_hex)
+                cls._apply_color(
+                    cls._parse_inline_formatting(segment_text, at_mark, dollar_mark), color_hex
+                )
             )
-        runs = cls._split_image_runs(runs, images, code_spans, escaped_at)
-        runs = cls._read_references(cls._split_code_runs(runs, code_spans), dollars=True)
+        runs = cls._split_image_runs(runs, images, code_spans)
+        runs = cls._split_code_runs(runs, code_spans)
+        runs = cls._read_references(runs, dollars=True, at_mark=at_mark, dollar_mark=dollar_mark)
         return cls._encode_link_targets(runs)
 
     @classmethod
@@ -426,7 +510,6 @@ class TextParser:
         runs: list[TextRun],
         images: dict[str, tuple[str, str, str]],
         code_spans: dict[str, str],
-        escaped_at: bool = False,
     ) -> list[TextRun]:
         """Turn image tokens into image runs that keep the surrounding formatting.
 
@@ -438,7 +521,6 @@ class TextParser:
             runs: Runs parsed from text whose images were replaced by tokens.
             images: Token to (source, alt text, destination) from `_protect_images`.
             code_spans: Code-span tokens, restored inside image fields.
-            escaped_at: Whether `ESCAPED_AT` stands for an escaped `@` (see `parse_runs`).
 
         Returns:
             Runs with each image as its own run whose text is empty.
@@ -467,10 +549,7 @@ class TextParser:
                 source = restore(alt)
                 description = cls.cleanup_text(source)
                 path = restore(destination)
-                if escaped_at:
-                    description = description.replace(cls.ESCAPED_AT, "@")
-                    path = path.replace(cls.ESCAPED_AT, "@")
-                cls.check_text(source, "image description", escaped_at=escaped_at)
+                cls.check_text(source, "image description")
                 image = Image(alt_text=description, path=path)
                 result.append(replace(run, text="", image=image))
                 offset = match.end()
@@ -494,11 +573,8 @@ class TextParser:
         return cls._CODE_SPAN_RE.sub(replace, text), literals
 
     @classmethod
-    def _protect_escapes(cls, text: str, escaped_at: bool = False) -> tuple[str, dict[str, str]]:
-        """Keep escaped punctuation literal until inline tokenization finishes.
-
-        With `escaped_at`, each `ESCAPED_AT` is an escaped `@` too.
-        """
+    def _protect_escapes(cls, text: str) -> tuple[str, dict[str, str]]:
+        """Keep escaped punctuation literal until inline tokenization finishes."""
         literals: dict[str, str] = {}
         prefix = "\ue000ESC"
         while prefix in text:
@@ -508,14 +584,6 @@ class TextParser:
             token = prefix + str(len(literals)) + "\ue001"
             literals[token] = match.group(1)
             return token
-
-        if escaped_at and cls.ESCAPED_AT in text:
-            parts = text.split(cls.ESCAPED_AT)
-            text = parts[0]
-            for part in parts[1:]:
-                token = prefix + str(len(literals)) + "\ue001"
-                literals[token] = "@"
-                text += token + part
 
         # Text between dollar signs keeps the legacy set whether or not this
         # context renders math, so `$12\%$` reads the same in a callout or a cell.
@@ -581,20 +649,20 @@ class TextParser:
 
     @classmethod
     def _restore_code_spans(
-        cls, runs: list[TextRun], literals: dict[str, str], mark: bool = False
+        cls, runs: list[TextRun], literals: dict[str, str], marks: Mapping[str, str] | None = None
     ) -> list[TextRun]:
         """Restore original text without manufacturing code-font semantics.
 
         Args:
             runs: Runs whose text and destinations hold tokens.
             literals: Token to the text it stands for.
-            mark: Write an escaped `@` or `$` in run text as `ESCAPED_AT` or
-                `ESCAPED_DOLLAR`; `_read_references` writes them back.
+            marks: Literal to the mark written for it in run text instead
+                (escaped `@` and `$`); `_read_references` writes them back.
 
         Returns:
             The same runs.
         """
-        marks = {"@": cls.ESCAPED_AT, "$": cls.ESCAPED_DOLLAR} if mark else {}
+        marks = marks or {}
         for run in runs:
             for token, literal in literals.items():
                 run.text = run.text.replace(token, marks.get(literal, literal))
@@ -689,18 +757,21 @@ class TextParser:
         return quote(target.replace("\\", "/"), safe="/#%")
 
     @classmethod
-    def _parse_inline_formatting(cls, text: str, escaped_at: bool = False) -> list[TextRun]:
+    def _parse_inline_formatting(
+        cls, text: str, at_mark: str = "", dollar_mark: str = ""
+    ) -> list[TextRun]:
         """Parse links and numeric footnote references alongside inline emphasis.
 
         Args:
             text: One segment of inline Markdown (no math, one colour).
-            escaped_at: Whether `ESCAPED_AT` stands for an escaped `@`.
+            at_mark: Written for an escaped `@` until `_read_references` has
+                read the text ("": the `@` itself).
+            dollar_mark: The same for an escaped `$`.
 
         Returns:
-            The segment's runs. An escaped `@` or `$` is written as `ESCAPED_AT`
-            or `ESCAPED_DOLLAR` until `_read_references` has read the text.
+            The segment's runs.
         """
-        text, literals = cls._protect_escapes(text, escaped_at)
+        text, literals = cls._protect_escapes(text)
         runs: list[TextRun] = []
         offset = 0
         for match in cls._INLINE_REFERENCE_RE.finditer(text):
@@ -725,7 +796,8 @@ class TextParser:
             if run.hyperlink:
                 for token, literal in literals.items():
                     run.hyperlink = run.hyperlink.replace(token, "\\" + literal)
-        return cls._restore_code_spans(runs, literals, mark=True)
+        marks = {"@": at_mark, "$": dollar_mark} if at_mark else None
+        return cls._restore_code_spans(runs, literals, marks)
 
     # ── Cross-references ─────────────────────────────────────────────────────
 
@@ -748,7 +820,7 @@ class TextParser:
 
     @classmethod
     def check_text(
-        cls, text: str, place: str, markdown: bool = True, escaped_at: bool = False
+        cls, text: str, place: str, markdown: bool = True, escaped_ats: Sequence[int] = ()
     ) -> None:
         """Report the references in text that cannot hold a Word field.
 
@@ -760,16 +832,67 @@ class TextParser:
             place: Where the text is shown, for the diagnostic.
             markdown: Read `text` as inline Markdown; otherwise as the plain
                 text it is shown as.
-            escaped_at: Whether `ESCAPED_AT` stands for an escaped `@`.
+            escaped_ats: Offsets in `text` of each `@` that was escaped before
+                `text` was unescaped (see `escaped_ats`); never a reference.
         """
         scope = _REFERENCE_SCOPE.get()
         if scope is None or scope.report is None or "@" not in text:
             return
         with cls.reference_scope(ReferenceScope(report=scope.report, place=place)):
+            if escaped_ats:
+                marked = cls._mark_escaped_ats(text, escaped_ats)
+                if marked is None:
+                    cls._unread(text, list)
+                    return
+                text = marked[0]
             if markdown:
-                cls.parse_runs(text, escaped_at=escaped_at)
+                cls.parse_runs(text)
             else:
                 cls._read_references([TextRun(text=text)], dollars=True)
+
+    @classmethod
+    def escaped_ats(cls, text: str) -> tuple[int, ...]:
+        """Where `cleanup_text(text)` holds an `@` that `text` escapes.
+
+        The text is unescaped twice, writing an escaped `@` as two different
+        characters; the offsets where the results differ are those `@`.
+        Nothing else in the text can make them differ, so no character of the
+        text is ever taken for an escaped `@`.
+
+        Args:
+            text: Inline Markdown that is unescaped before it is parsed again
+                (a callout line, a numbered heading).
+
+        Returns:
+            The offsets, in order.
+        """
+        if "\\@" not in text:
+            return ()
+        first, second = cls.cleanup_text(text, at_as="0"), cls.cleanup_text(text, at_as="1")
+        return tuple(
+            index
+            for index, (one, other) in enumerate(zip(first, second, strict=True))
+            if one != other
+        )
+
+    @classmethod
+    def _mark_escaped_ats(cls, text: str, escaped_ats: Sequence[int]) -> tuple[str, str] | None:
+        """`text` with each escaped `@` written as a mark it does not otherwise hold.
+
+        Args:
+            text: Unescaped text.
+            escaped_ats: Offsets of its escaped `@`.
+
+        Returns:
+            The marked text and the mark, or None when no mark is free.
+        """
+        marks = cls.free_marks(text, 1)
+        if marks is None:
+            return None
+        characters = list(text)
+        for index in escaped_ats:
+            characters[index] = marks[0]
+        return "".join(characters), marks[0]
 
     @classmethod
     def read_references(cls, runs: list[TextRun]) -> list[TextRun]:
@@ -787,45 +910,67 @@ class TextParser:
         return cls._read_references(runs, dollars=True)
 
     @classmethod
-    def parse_judged_runs(cls, text: str, source: str, escaped_at: bool = False) -> list[TextRun]:
+    def parse_judged_runs(
+        cls, text: str, source: str, escaped_ats: Sequence[int] = (), plain: bool = False
+    ) -> list[TextRun]:
         """Parse `text` with the references that resolve in `source`.
 
-        A heading is written without its `**` markers (every heading run is
-        bold) but judged like body text, on its source with the markers, so an
-        ID that emphasis splits is never a reference. Diagnostics come from the
-        source; the `@` in both texts are the same, counted in order.
+        The runs are always those of `text` as written; `source` only decides
+        which of its references resolve. A heading is written without its `**`
+        markers (every heading run is bold) but judged like body text, on its
+        source with the markers, so an ID that emphasis splits is never a
+        reference. Text unescaped at parse time (a callout, a numbered heading)
+        is judged with each escaped `@` marked, so it is never a reference.
+        Diagnostics come from the source; the `@` in both texts are the same,
+        counted in order.
 
         Args:
             text: The text to parse into runs.
-            source: The same text with its emphasis markers.
-            escaped_at: Whether `ESCAPED_AT` stands for an escaped `@`.
+            source: The same text with its emphasis markers; it is stripped
+                after its escaped `@` are marked.
+            escaped_ats: Offsets in `source` of each `@` it holds unescaped
+                that was escaped in the Markdown (see `escaped_ats`).
+            plain: Parse with `parse_runs_plain` (no inline math).
 
         Returns:
-            The runs of `text`.
+            The runs of `text`; outside a scope, exactly `parse(text)`.
         """
+        parse = cls.parse_runs_plain if plain else cls.parse_runs
         scope = _REFERENCE_SCOPE.get()
         if scope is None or "@" not in source:
-            return cls.parse_runs(text, escaped_at=escaped_at)
+            return parse(text)
+        escaped_at = ""
+        if escaped_ats:
+            marked = cls._mark_escaped_ats(source, escaped_ats)
+            if marked is None:
+                return cls._unread(source, lambda: parse(text))
+            source, escaped_at = marked
         kept: list[int] = []
-        with cls.reference_scope(replace(scope, kept=kept.append)):
-            cls.parse_runs(source, escaped_at=escaped_at)
-        judged = replace(scope, report=None, allowed=frozenset(kept), kept=None)
+        with cls.reference_scope(replace(scope, kept=kept.append, escaped_at=escaped_at)):
+            parse(source.strip())
+        judged = replace(scope, report=None, allowed=frozenset(kept), kept=None, escaped_at="")
         with cls.reference_scope(judged):
-            return cls.parse_runs(text, escaped_at=escaped_at)
+            return parse(text)
 
     @classmethod
-    def _read_references(cls, runs: list[TextRun], dollars: bool) -> list[TextRun]:
+    def _read_references(
+        cls, runs: list[TextRun], dollars: bool, at_mark: str = "", dollar_mark: str = ""
+    ) -> list[TextRun]:
         """Split runs around resolvable references, report the others, unmark escapes.
 
-        Outside a scope the runs are only unmarked, exactly as text without
-        references. Inside one, each reference the grammar reads either
-        resolves (its run is split around a `CrossReference`) or is reported
-        without touching the runs.
+        Outside a scope the runs hold no marks and are returned unchanged.
+        Inside one, each reference the grammar reads either resolves (its run
+        is split around a `CrossReference`) or is reported without touching
+        the runs; then each mark is written back as the character it stands
+        for. A mark is a character the parsed text did not hold, so no other
+        character changes.
 
         Args:
-            runs: Finished runs; escaped `@` and `$` still marked.
+            runs: Finished runs.
             dollars: Text between dollar signs is not read (math is not rendered
                 here; where it is, math is already its own run).
+            at_mark: Stands for an escaped `@` in the runs ("" for none).
+            dollar_mark: Stands for an escaped `$` in the runs.
 
         Returns:
             The runs with escapes written back.
@@ -833,7 +978,8 @@ class TextParser:
         scope = _REFERENCE_SCOPE.get()
         if scope is not None and any("@" in run.text for run in runs):
             resolved: list[_Candidate] = []
-            for candidate in cls._reference_candidates(runs, dollars):
+            counted = "@" + at_mark + scope.escaped_at
+            for candidate in cls._reference_candidates(runs, dollars, counted):
                 problem = cls._reference_problem(candidate, runs[candidate.run], scope)
                 if problem is None:
                     resolved.append(candidate)
@@ -843,13 +989,15 @@ class TextParser:
                     scope.report(problem)
             if resolved:
                 runs = cls._split_references(runs, resolved)
-        for run in runs:
-            if cls.ESCAPED_AT in run.text or cls.ESCAPED_DOLLAR in run.text:
-                run.text = run.text.replace(cls.ESCAPED_AT, "@").replace(cls.ESCAPED_DOLLAR, "$")
+        if at_mark:
+            for run in runs:
+                run.text = run.text.replace(at_mark, "@").replace(dollar_mark, "$")
         return runs
 
     @classmethod
-    def _reference_candidates(cls, runs: list[TextRun], dollars: bool) -> list[_Candidate]:
+    def _reference_candidates(
+        cls, runs: list[TextRun], dollars: bool, counted: str = "@"
+    ) -> list[_Candidate]:
         """Find what the grammar reads as references in the visible text of `runs`.
 
         The text is read as a reader sees it, across every run: emphasis and
@@ -865,6 +1013,8 @@ class TextParser:
         Args:
             runs: Finished runs; escaped `@` and `$` still marked.
             dollars: Skip text between dollar signs.
+            counted: `@` and the marks that stand for an escaped `@`; each is
+                counted for a reference's ordinal, only `@` starts one.
 
         Returns:
             The references in reading order.
@@ -891,9 +1041,10 @@ class TextParser:
         math = [match.span() for match in cls._INLINE_LATEX_RE.finditer(visible)] if dollars else []
         math_starts = [low for low, _ in math]
         found: list[_Candidate] = []
-        for ordinal, match in enumerate(cls._AT_RE.finditer(visible)):
+        at_signs = re.compile("[" + re.escape(counted) + "]") if counted != "@" else cls._AT_RE
+        for ordinal, match in enumerate(at_signs.finditer(visible)):
             at = match.start()
-            if visible[at + 1 : at + 5] not in ("tbl-", "fig-"):
+            if match.group() != "@" or visible[at + 1 : at + 5] not in ("tbl-", "fig-"):
                 continue
             inside = bisect_right(math_starts, at) - 1
             if inside >= 0 and at < math[inside][1]:
@@ -1063,12 +1214,12 @@ class TextParser:
         return bool(cls._INLINE_LATEX_RE.search(text))
 
     @classmethod
-    def _unescape(cls, text: str, mark_at: bool = False) -> str:
+    def _unescape(cls, text: str, at_as: str = "@") -> str:
         """Resolve escapes in text that is not tokenized; literal spans keep the legacy set.
 
         Args:
             text: Raw inline Markdown of a heading, quote line or emphasis part.
-            mark_at: Write an escaped `@` as `ESCAPED_AT` instead of `@`.
+            at_as: Written for an escaped `@` (see `escaped_ats`).
 
         Returns:
             Text with escapes resolved once.
@@ -1076,7 +1227,7 @@ class TextParser:
 
         def unescape(match: Match[str]) -> str:
             char = match.group(1)
-            return cls.ESCAPED_AT if mark_at and char == "@" else char
+            return at_as if char == "@" else char
 
         pieces: list[str] = []
         offset = 0
@@ -1088,12 +1239,12 @@ class TextParser:
         return "".join(pieces)
 
     @staticmethod
-    def cleanup_text(text: str, mark_at: bool = False) -> str:
+    def cleanup_text(text: str, at_as: str = "@") -> str:
         """Remove markdown artifacts and escape characters (single-pass regex).
 
-        With `mark_at`, an escaped `@` becomes `ESCAPED_AT` (see `parse_runs`).
+        `at_as` is written for an escaped `@` (see `escaped_ats`).
         """
-        return TextParser.normalize_html_breaks(TextParser._unescape(text, mark_at).strip())
+        return TextParser.normalize_html_breaks(TextParser._unescape(text, at_as).strip())
 
     @staticmethod
     def cleanup_text_preserve_spacing(text: str) -> str:

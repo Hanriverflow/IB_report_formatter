@@ -501,12 +501,12 @@ class MarkdownParser:
                 metadata.title = first_heading.text
                 if metadata.profile != "plain":  # where the heading becomes the title
                     TextParser.check_text(
-                        first_heading.marked_text
-                        if isinstance(first_heading, MarkedHeading)
-                        else first_heading.text,
+                        first_heading.text,
                         "document title",
                         markdown=metadata.profile == "term-sheet",
-                        escaped_at=isinstance(first_heading, MarkedHeading),
+                        escaped_ats=first_heading.escaped_ats
+                        if isinstance(first_heading, MarkedHeading)
+                        else (),
                     )
                 if first_heading.runs:
                     metadata.display_runs["title"] = [
@@ -565,23 +565,31 @@ class MarkdownParser:
         if self._terms is None or not isinstance(heading, Heading):
             return element
         tokens: TokenMap = {}
-        marked = isinstance(heading, MarkedHeading)
+        escaped_ats: tuple[int, ...] = ()
         if element.element_type == ElementType.NUMBERED_HEADING:
             # Its text is already unescaped, so substitute from the source line.
             source = TextParser.tokenize_terms(element.raw_text, self._terms, tokens)
-            tokenized = TextParser.cleanup_text(source, mark_at=marked)
+            tokenized = TextParser.cleanup_text(source)
+            escaped_ats = TextParser.escaped_ats(source)
         else:
             tokenized = TextParser.tokenize_terms(heading.text, self._terms, tokens)
         if tokens:
-            heading.text = restore_terms(tokenized.replace(TextParser.ESCAPED_AT, "@"), tokens)
+            if isinstance(heading, MarkedHeading):
+                # Its offsets are those of the text without values; the runs
+                # made here carry what they protected.
+                heading = Heading(
+                    level=heading.level, text=heading.text, is_numbered=heading.is_numbered
+                )
+                element.content = heading
+            heading.text = restore_terms(tokenized, tokens)
             # HeadingRenderer drops bold markers because it bolds every run; the
             # references are judged on the text with them, as in body text.
-            text, source = tokenized.replace("**", "").strip(), tokenized.strip()
-            runs = TextParser.parse_judged_runs(text, source, escaped_at=marked)
+            text = tokenized.replace("**", "").strip()
+            runs = TextParser.parse_judged_runs(text, tokenized, escaped_ats)
             heading.runs = split_term_runs(runs, tokens)
             if any(isinstance(run, CrossReference) for run in runs):
                 with TextParser.reference_scope(None):
-                    plain = TextParser.parse_runs(text, escaped_at=marked)
+                    plain = TextParser.parse_runs(text)
                 self._title_runs[id(heading)] = split_term_runs(plain, tokens)
         return element
 
@@ -987,9 +995,9 @@ class MarkdownParser:
             match = self.BLOCKQUOTE_PATTERN.match(line)
             if match:
                 bq_lines: list[str] = []
-                # The same lines with escaped `@` kept apart: the callout body is
-                # unescaped here and parsed again when rendered.
-                marked_lines: list[str] = []
+                # The callout body is unescaped here and parsed again when
+                # rendered, so where it held an escaped `@` is kept apart.
+                sources: list[str] = []
                 quote_tokens: TokenMap = {}
                 while i < len(lines):
                     bq_match = self.BLOCKQUOTE_PATTERN.match(lines[i].strip())
@@ -1004,26 +1012,25 @@ class MarkdownParser:
                                 latex=False,
                             )
                         bq_lines.append(TextParser.cleanup_text(source))
-                        marked_lines.append(TextParser.cleanup_text(source, mark_at=True))
+                        sources.append(source)
                         i += 1
                     else:
                         break
 
                 title, body = self._extract_blockquote_title(bq_lines)
-                _, marked_body = self._extract_blockquote_title(marked_lines)
-                quote = (
-                    MarkedBlockquote(text=body, title=title, marked_text=marked_body)
-                    if marked_body != body
-                    else Blockquote(text=body, title=title)
-                )
+                escaped_ats = self._quote_escaped_ats(sources)
+                quote: Blockquote
                 if quote_tokens:
-                    quote.text = restore_terms(body, quote_tokens)
-                    marked = isinstance(quote, MarkedBlockquote)
+                    # The runs made here carry what the offsets protected.
+                    quote = Blockquote(text=restore_terms(body, quote_tokens), title=title)
                     quote.runs = split_term_runs(
-                        TextParser.parse_runs_plain(marked_body, escaped_at=marked), quote_tokens
+                        TextParser.parse_judged_runs(body, body, escaped_ats, plain=True),
+                        quote_tokens,
                     )
-                    if isinstance(quote, MarkedBlockquote):
-                        quote.marked_text = restore_terms(marked_body, quote_tokens)
+                elif escaped_ats:
+                    quote = MarkedBlockquote(text=body, title=title, escaped_ats=escaped_ats)
+                else:
+                    quote = Blockquote(text=body, title=title)
                 elements.append(
                     Element(
                         element_type=ElementType.BLOCKQUOTE,
@@ -1282,9 +1289,9 @@ class MarkdownParser:
     def _numbered_heading(line: str, level: int) -> Heading:
         """A numbered heading, whose text is unescaped here (see `MarkedHeading`)."""
         text = TextParser.cleanup_text(line)
-        marked = TextParser.cleanup_text(line, mark_at=True)
-        if marked != text:
-            return MarkedHeading(level=level, text=text, is_numbered=True, marked_text=marked)
+        escaped_ats = TextParser.escaped_ats(line)
+        if escaped_ats:
+            return MarkedHeading(level=level, text=text, is_numbered=True, escaped_ats=escaped_ats)
         return Heading(level=level, text=text, is_numbered=True)
 
     def _try_parse_heading(self, line: str) -> Element | None:
@@ -1585,6 +1592,34 @@ class MarkdownParser:
 
         body = " ".join(body_lines).strip()
         return title, body
+
+    @classmethod
+    def _quote_escaped_ats(cls, sources: list[str]) -> tuple[int, ...]:
+        """Offsets in a callout body of each `@` its lines escape.
+
+        As in `TextParser.escaped_ats`, the lines are unescaped and joined twice
+        with an escaped `@` written as two different characters; the offsets
+        where the two bodies differ are those `@`.
+
+        Args:
+            sources: The callout's lines as written (after `> `).
+
+        Returns:
+            The offsets in the body `_extract_blockquote_title` makes, in order.
+        """
+        if not any("\\@" in source for source in sources):
+            return ()
+        _, first = cls._extract_blockquote_title(
+            [TextParser.cleanup_text(source, at_as="0") for source in sources]
+        )
+        _, second = cls._extract_blockquote_title(
+            [TextParser.cleanup_text(source, at_as="1") for source in sources]
+        )
+        return tuple(
+            index
+            for index, (one, other) in enumerate(zip(first, second, strict=True))
+            if one != other
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

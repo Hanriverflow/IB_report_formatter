@@ -15,7 +15,7 @@ Changelog (captions):
 import logging
 import os
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
@@ -439,7 +439,8 @@ class TextRenderer:
         font_name: str | None = None,
         font_size: Pt | None = None,
         default_color: RGBColor | None = None,
-        escaped_at: bool = False,
+        source: str | None = None,
+        escaped_ats: Sequence[int] = (),
     ):
         """Parse and render text with **bold**, *italic*, ^superscript^, and ~subscript~ markers.
 
@@ -448,12 +449,18 @@ class TextRenderer:
             2. Within non-bold segments, split on *italic* markers
             3. Within all segments, detect ^superscript^ and ~subscript~ markers
 
-        `escaped_at`: the text writes an escaped `@` as `TextParser.ESCAPED_AT`.
+        `source` is the text before it was stripped and `escaped_ats` the offsets
+        there of each `@` escaped before the text was unescaped (a callout), so
+        that such an `@` is never a reference.
         """
         font_name = font_name or STYLE.BODY_FONT
         font_size = font_size or STYLE.BODY_SIZE
 
-        parsed_runs = TextParser.parse_runs_plain(text, escaped_at=escaped_at)
+        parsed_runs = (
+            TextParser.parse_judged_runs(text, source, escaped_ats, plain=True)
+            if source is not None and escaped_ats
+            else TextParser.parse_runs_plain(text)
+        )
         if any(
             run.bold
             or run.italic
@@ -475,8 +482,6 @@ class TextRenderer:
             )
             return
 
-        if escaped_at:
-            text = text.replace(TextParser.ESCAPED_AT, "@")
         # Split on bold markers first
         bold_parts = TextRenderer._BOLD_SPLIT_RE.split(text)
         for bold_part in bold_parts:

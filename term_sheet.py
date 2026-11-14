@@ -1133,7 +1133,7 @@ def render_term_sheet_heading(doc: Any, heading: Heading, render_runs: RenderRun
     if heading.runs:
         runs = heading.runs
     elif isinstance(heading, MarkedHeading):  # an escaped `@` is never a reference
-        runs = TextParser.parse_runs(heading.marked_text, escaped_at=True)
+        runs = TextParser.parse_judged_runs(heading.text, heading.text, heading.escaped_ats)
     else:
         runs = TextParser.parse_runs(heading.text)
     render_runs(

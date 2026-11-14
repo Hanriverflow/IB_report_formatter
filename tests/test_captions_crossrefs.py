@@ -4,8 +4,10 @@ Every test goes through the production parser and renderer. Tables are numbered
 by a table spec `id` (`tbl-…`), figures by `{#fig-…}` after an image file line.
 """
 
+import random
 import re
 import shutil
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -1214,3 +1216,210 @@ def test_term_values_in_table_texts_are_not_references(tmp_path: Path) -> None:
     assert references(document) == []
     assert "표 1. 가상 @tbl-a" in caption_texts(document)
     assert "주석 @tbl-a" in body_text(document)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# THIRD REVIEW (2026-11-14): RANDOMIZED P1 CHECK
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Documents with no numbered table or figure are built from random inline
+# fragments with a fixed seed. Each renders three ways: as it is; with every
+# reference scope switched off (no text is ever read as a reference, as before
+# the feature); and with each private-use probe character replaced by an
+# ordinary symbol that no rule treats specially, mapped back afterwards. All
+# three must give the same XML, so neither reading references nor any internal
+# marker may change a character, a run, an image or a content control.
+
+# Private-use characters, including those the engine uses internally, and the
+# ordinary symbols (same East Asian width, not word characters) that stand in.
+_PROBES = {
+    "": "§",
+    "": "¶",
+    "": "※",
+    "": "†",
+    "": "‡",
+    "\U000f0000": "‖",
+}
+_FRAGMENTS = [
+    " ", " ", " ", "본문", "text", "a", "x", "1", "@", "@", "@", "tbl-", "fig-", "tbl", "-",
+    "-", "a1", ".", ".com", "x.example", "(", ")", "「", "」", "**", "**", "*", "_", "~", "^",
+    "`", "`", "``", "\\@", "\\@", "\\$", "\\*", "\\\\", "\\-", "\\`", "[", "]",
+    "](https://x.example/@tbl-a)", "](s.png)", "![", "![alt @tbl-q](s.png)",
+    '<span style="color:#C00000">', "</span>", "<br>", "&#64;", "&amp;", "{{x}}", "{{y}}",
+    "@tbl-a", "@fig-b", "@tbl-missing", "user@tbl-x.example", "[^1]",
+]  # fmt: skip
+_DOLLARS = ["$", "$", "$x^2$", "$@tbl-a$", "\\$"]
+_P1_TERMS = 'terms:\n  x: "@tbl-missing"\n  y: "값 \\ue010 \\U000f0000 @fig-b"\n'
+
+
+def _random_inline(rng: random.Random, probes: bool) -> str:
+    """A run of random fragments; with probes or with dollar signs, never both.
+
+    Math is drawn as an image whose size depends on its glyphs, so a probe
+    must not end up inside it.
+    """
+    pool = _FRAGMENTS + (list(_PROBES) * 3 if probes else _DOLLARS * 2)
+    return "".join(rng.choice(pool) for _ in range(rng.randint(3, 12)))
+
+
+def _random_document(seed: int, blocks: int) -> tuple[str, str]:
+    """Frontmatter and body of a random document, and its profile."""
+    rng = random.Random(seed)
+    profile = "ib-report" if seed % 2 else "business-report"
+    lines: list[str] = []
+    for _ in range(blocks):
+        probes = rng.random() < 0.6
+        text = _random_inline(rng, probes)
+        kind = rng.choice(
+            ["paragraph", "paragraph", "heading", "list", "numbered", "quote", "table", "html"]
+            + (["numbered-heading"] if profile == "ib-report" else [])
+        )
+        if kind == "heading":
+            lines.append("## " + text)
+        elif kind == "numbered-heading":
+            lines.append("**1. 개요 " + text + "**")
+        elif kind == "list":
+            lines.append("- " + text + "\n- " + _random_inline(rng, probes))
+        elif kind == "numbered":
+            lines.append("1. " + text)
+        elif kind == "quote":
+            lines.append("> " + text + "\n> " + _random_inline(rng, probes))
+        elif kind == "table":
+            cells = [text.replace("|", "/")] + [
+                _random_inline(rng, probes).replace("|", "/") for _ in range(3)
+            ]
+            lines.append(f"| {cells[0]} | {cells[1]} |\n|---|---|\n| {cells[2]} | {cells[3]} |")
+        elif kind == "html":
+            lines.append(
+                f"<table><tr><td>{text}</td><td>{_random_inline(rng, probes)}</td></tr></table>"
+            )
+        else:
+            lines.append(text)
+    lines.append("[^1]: 각주 @tbl-missing  \\@tbl-a")
+    front = f"---\nprofile: {profile}\ntitle: 시험 문서\n{_P1_TERMS}---\n\n"
+    return front + "\n\n".join(lines) + "\n", profile
+
+
+def _rendered_xml(path: Path) -> str:
+    """Body and footnote XML of a non-strict render, temporary image names removed."""
+    renderer = IBDocumentRenderer(options=RenderOptions(strict=False))
+    document = renderer.render(parse_markdown_file(str(path)))
+    parts = [document_xml(document)]
+    for part in document.part.package.iter_parts():
+        if str(part.partname) == "/word/footnotes.xml":
+            parts.append(_TEMP_IMAGE_NAME_RE.sub('name="tmp.png"', part.blob.decode("utf-8")))
+    return "\n".join(parts)
+
+
+def _first_difference(left: str, right: str) -> str:
+    """Where two XML texts first differ, for the assertion message."""
+    index = next(
+        (i for i, (a, b) in enumerate(zip(left, right, strict=False)) if a != b),
+        min(len(left), len(right)),
+    )
+    return f"at {index}: {left[index - 80 : index + 80]!r} != {right[index - 80 : index + 80]!r}"
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_random_text_without_targets_renders_as_with_no_reference_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, seed: int
+) -> None:
+    from contextlib import contextmanager
+
+    from md_parse_text import TextParser
+
+    markdown, _ = _random_document(seed, blocks=50)
+    assert "{#" not in markdown and "id:" not in markdown  # nothing is numbered
+    probed = markdown
+    for probe, stand_in in _PROBES.items():
+        probed = probed.replace(probe, stand_in)
+    for name, text in (("on", markdown), ("off", markdown), ("probe", probed)):
+        (tmp_path / name).mkdir()
+        shutil.copy(SAMPLE_IMAGE, tmp_path / name / "s.png")
+        (tmp_path / name / "doc.md").write_text(text, encoding="utf-8")
+
+    scope_on = _rendered_xml(tmp_path / "on" / "doc.md")
+    stand_ins = _rendered_xml(tmp_path / "probe" / "doc.md")
+    for probe, stand_in in _PROBES.items():
+        stand_ins = stand_ins.replace(stand_in, probe)
+    original = TextParser.reference_scope
+
+    @contextmanager
+    def no_scope(scope: object) -> Iterator[None]:
+        with original(None):
+            yield None
+
+    monkeypatch.setattr(TextParser, "reference_scope", staticmethod(no_scope))
+    scope_off = _rendered_xml(tmp_path / "off" / "doc.md")
+    assert scope_on == scope_off, _first_difference(scope_on, scope_off)
+    assert scope_on == stand_ins, _first_difference(scope_on, stand_ins)
+
+
+# [22] Private-use characters, including those the engine once used as marks,
+# are text like any other: no mark stands for a character of the input.
+def all_text(document: DocxDocument) -> str:
+    """Every `w:t` of the body, tables included."""
+    return "".join(node.text or "" for node in document.element.body.iter(f"{W}t"))
+
+
+@pytest.mark.parametrize(
+    "markdown",
+    [
+        "a\ue010b\ue011c",
+        "`\ue010` and `\ue011`",
+        "## 제목 a\ue010b\ue011c @tbl-a",
+        "- 목록 a\ue010b @tbl-a\n- `\ue011`",
+        "> 인용 \\@tbl-a \ue010 @tbl-a \ue011",
+        "| a\ue010 @tbl-a | `\ue011` |\n|---|---|\n| \\@tbl-a\ue010 | 2 |",
+        "<table><tr><td>\ue010 @tbl-a \ue011</td></tr></table>",
+        "본문 \\@tbl-a \\$ \ue010\ue011 @tbl-a \U000f0000",
+    ],
+)
+def test_private_use_characters_are_kept_with_and_without_targets(
+    tmp_path: Path, markdown: str
+) -> None:
+    for name, tables in (("none", ""), ("defined", DEFINED_A)):
+        (tmp_path / name).mkdir()
+        document, _ = render(write(tmp_path / name, markdown + TABLE_ONLY, tables), strict=False)
+        text = all_text(document)
+        for character in ("\ue010", "\ue011", "\U000f0000"):
+            assert text.count(character) == markdown.count(character), (name, character)
+        if tables:
+            # Each unescaped `@tbl-a` resolves; the escaped ones stay text.
+            expected = markdown.count("@tbl-a") - markdown.count("\\@tbl-a")
+            assert len(references(document)) == expected
+
+
+def test_private_use_characters_in_a_numbered_heading_are_kept(tmp_path: Path) -> None:
+    body = "**1. 개요 \ue010 \\@tbl-a @tbl-a \ue011**\n\n본문"
+    document, errors = render(write(tmp_path, body + TABLE_ONLY, DEFINED_A, "ib-report"))
+    assert errors == []
+    heading = next(p.text for p in document.paragraphs if "개요" in p.text)
+    assert heading == "1. 개요 \ue010 @tbl-a 표 1 \ue011"
+    assert references(document) == [(REF_INSTRUCTION.format("tbl_a"), "표 1")]
+
+
+def test_escaped_at_offsets_ignore_every_other_character() -> None:
+    from md_parse_text import TextParser
+
+    text = "\ue010 0 1 \\@a @b \\\\@c `\\@d` \\@"
+    cleaned = TextParser.cleanup_text(text)
+    offsets = TextParser.escaped_ats(text)
+    assert [cleaned[index] for index in offsets] == ["@", "@"]
+    assert cleaned[offsets[0] + 1] == "a" and offsets[1] == len(cleaned) - 1
+
+
+def test_text_holding_every_mark_is_not_read_and_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from md_parse_text import TextParser
+
+    monkeypatch.setattr(TextParser, "_MARK_POOL", (range(0xF0000, 0xF0002),))
+    body = "본문 \U000f0000\U000f0001 @tbl-a \\@tbl-a"
+    path = write(tmp_path, body + TABLE_ONLY, DEFINED_A)
+    with pytest.raises(StrictValidationError, match="Cross-references are not read in text"):
+        render(path)
+    document, errors = render(path, strict=False)
+    assert references(document) == []
+    assert "본문 \U000f0000\U000f0001 @tbl-a @tbl-a" in body_text(document)
+    assert any(error.startswith("Cross-references are not read") for error in errors)
