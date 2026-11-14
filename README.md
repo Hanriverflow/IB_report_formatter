@@ -402,8 +402,10 @@ By default a financial table keeps each negative amount as written (`(1,234)` or
 - A cell is restyled only when its whole text is one negative amount in a numeric column, written `-…`, `−…`, `(…)` or `△…`. The unit may sit inside or after the parentheses (`(3.5%)`, `(3.5)%`), and every written form of one amount gives the same text.
 - The digits and the unit stay; thousands separators are added and a unit goes inside parentheses (`(3.5%)`, `(1,200억원)`). A bare number in a percent, bps or multiple column gets that column's unit, as it does without the option.
 - Everything else keeps its written form: ranges such as `1-2`, several numbers or words in one cell, negative zero, text, code and date columns, `▲`/`▼` and tokens such as `NM`.
-- An amount split across differently formatted text (`-1200**.50**`, `-**1200**`) also keeps its written form, and the conversion logs a warning. The warning does not make strict mode reject the document.
-- The option turns off only the automatic red. A colour written in the document (`<span style="color:…">`) and a link's colour stay.
+- No digit is dropped. An amount whose integer part starts with a zero (`(0001.20%)`, `−0001200`, `-01,200`; it may be a code) is not restyled and shows the same text as in a table without the option. Full-width digits are read as that formatting reads them (`-１２３４` gives `(1,234)` with `paren`).
+- Not restyled either, and shown as in a table without the option: a currency sign (`-$1,200`, `₩-1,200`), a space between the sign or parentheses and the digits (`- 1,200`, `( 1,200 )`), `-.5`, exponent notation, full-width parentheses, `USD` or `%p` suffixes, a footnote marker before the amount, and an amount written wholly in superscript. The units `백만원`, `천원` and `bp` are supported.
+- An amount split across differently formatted text (`-1200**.50**`, `-**1200**`, `-1200^.50^`) also keeps its written form, and the conversion logs a warning. The warning does not make strict mode reject the document.
+- Without the option, the automatic red covers a colour written in the document (existing behaviour). The option turns off only the automatic red, so a colour written in the document (`<span style="color:…">`) shows as written. A link's colour stays in both cases.
 - Alignment and column widths are the same as without the option.
 - Without `negative`, a written `△…` is left exactly as written. Any other value, or `negative` without `type: financial` in the same spec, is rejected.
 
