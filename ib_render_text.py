@@ -3,6 +3,8 @@
 Changelog (captions):
     - Caption numbers: the label, a `SEQ` field with its cached number and a hidden
       bookmark around both, from a render-scoped table of numbers.
+    - Cross-references: `REF <bookmark> \\h \\* CHARFORMAT` with the target's
+      `표 1` cached; an unresolvable reference stays text and is reported.
 """
 
 import logging
@@ -12,13 +14,15 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
+from re import Match
+from typing import cast
 
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
-from document_model import CaptionNumber
+from document_model import CaptionNumber, CrossReference, reference_id_problem
 from ib_render_fonts import FontStyler
 from ib_render_footnotes import FootnoteRenderer
 from ib_render_media import ImageRenderer, LaTeXRenderer
@@ -83,6 +87,56 @@ def caption_prefix(item: object) -> list[TextRun]:
     return [replace(number), TextRun(text=". ")]
 
 
+def _report(numbers: CaptionNumbers, message: str) -> None:
+    """Record a diagnostic once per render."""
+    if message not in numbers.errors:
+        numbers.errors.append(message)
+        logger.warning("%s", message)
+
+
+def resolve_cross_reference(reference: CrossReference) -> CaptionNumber | None:
+    """Return the caption a reference points to, or None to keep its written text.
+
+    Outside a render nothing is reported. Inside one, a malformed ID, an ID no
+    table or figure defines, and a reference inside link text (a Word field
+    cannot sit in a hyperlink run) are diagnostics that strict mode rejects.
+
+    Args:
+        reference: A `@tbl-…` / `@fig-…` run.
+
+    Returns:
+        The caption number of the target, or None.
+    """
+    numbers = _CAPTION_NUMBERS.get()
+    if numbers is None:
+        return None
+    written = "@" + reference.target
+    problem = reference_id_problem(reference.target, reference.target[:3])
+    if problem is not None:
+        _report(numbers, f"Cross-reference {written}: {problem}")
+        return None
+    if reference.hyperlink:
+        _report(numbers, f"Cross-reference {written} is inside link text and stays text")
+        return None
+    number = numbers.by_id.get(reference.target)
+    if number is None:
+        _report(numbers, f"Cross-reference {written} has no table or figure with that id")
+    return number
+
+
+def cross_reference_text(text: str) -> str:
+    """Show resolvable `@…` references in plain text as their cached `표 1`."""
+    numbers = _CAPTION_NUMBERS.get()
+    if numbers is None or "@" not in text:
+        return text
+
+    def shown(match: Match[str]) -> str:
+        number = numbers.by_id.get(match.group(1))
+        return number.text if number is not None else match.group(0)
+
+    return TextParser.CROSS_REFERENCE_RE.sub(shown, text)
+
+
 class TextRenderer:
     """Renders text with formatting"""
 
@@ -123,7 +177,10 @@ class TextRenderer:
             if run_data.image is not None:
                 TextRenderer._render_inline_image(paragraph, run_data.image, font_size)
                 continue
-            if isinstance(run_data, CaptionNumber):
+            target = (
+                resolve_cross_reference(run_data) if isinstance(run_data, CrossReference) else None
+            )
+            if isinstance(run_data, CaptionNumber) or target is not None:
                 style = run_data
 
                 def apply(run, style: TextRun = style) -> None:
@@ -131,12 +188,25 @@ class TextRenderer:
                     run.font.size = font_size
                     run.font.bold = style.bold
                     run.font.italic = style.italic
+                    if style.superscript:
+                        run.font.superscript = True
+                    if style.subscript:
+                        run.font.subscript = True
                     color = TextRenderer._rgb_from_hex(style.color_hex) or default_color
                     if color:
                         run.font.color.rgb = color
                     FontStyler.set_east_asian_font(run)
 
-                TextRenderer.write_caption_number(paragraph, run_data, apply)
+                if target is not None:
+                    # CHARFORMAT: the result takes the instruction's (body) formatting,
+                    # not the caption's, however long the number becomes after F9.
+                    TextRenderer._field_runs(
+                        paragraph, f" REF {target.bookmark} \\h \\* CHARFORMAT ", target.text, apply
+                    )
+                else:
+                    TextRenderer.write_caption_number(
+                        paragraph, cast(CaptionNumber, run_data), apply
+                    )
                 continue
 
             run = paragraph.add_run(run_data.text)
@@ -359,6 +429,7 @@ class TextRenderer:
             or run.code
             or run.hyperlink
             or run.image is not None
+            or isinstance(run, CrossReference)
             for run in parsed_runs
         ):
             TextRenderer.render_runs(

@@ -9,6 +9,7 @@ Changelog (quality hardening):
 Changelog (captions):
     - Tables and figures with a reference ID (`NumberedTable`, `Figure`) and the
       render-time caption number run; subclasses keep models without IDs unchanged.
+    - `CrossReference` runs for `@tbl-…` / `@fig-…` in body text.
 """
 
 import re
@@ -91,6 +92,18 @@ class CaptionNumber(TextRun):
     label: str = ""
     number: int = 0
     bookmark: str = ""
+
+
+@dataclass
+class CrossReference(TextRun):
+    """`@tbl-…` or `@fig-…` in body text; `text` keeps the written `@…` form.
+
+    The renderer writes a Word `REF` field to the caption bookmark of `target`,
+    with the caption's `표 1` as its cached result. A reference it cannot
+    resolve stays as the written text and is reported.
+    """
+
+    target: str = ""
 
 
 @dataclass

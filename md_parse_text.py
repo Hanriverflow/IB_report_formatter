@@ -1,15 +1,20 @@
-"""Inline Markdown parsing, local link targets and term-variable substitution in text."""
+"""Inline Markdown parsing, local link targets and term-variable substitution in text.
+
+Changelog (captions):
+    - `@tbl-…` / `@fig-…` in text become `CrossReference` runs; code, math, link
+      destinations, escaped `\\@` and e-mail-like `a@tbl-x` stay literal.
+"""
 
 import logging
 import os
 import re
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import fields, replace
 from pathlib import Path
 from re import Match
 from urllib.parse import quote, unquote, urlsplit
 
-from document_model import Image, TextRun
+from document_model import CrossReference, Image, TextRun
 from input_safety import StrictValidationError
 from term_variables import (
     TERM_REFERENCE_RE,
@@ -149,6 +154,11 @@ class TextParser:
     # parse_runs reproduce inserted text verbatim.
     _ESCAPABLE_RE = re.compile(r'([\\$`^~.*"\'()\[\]{}|_-])')
     _LITERAL_BREAK_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+    # `@tbl-…` / `@fig-…` that starts a word: not after a letter or digit (an
+    # e-mail address), a path or URL character, another `@` or a backslash. The
+    # ID is read generously and validated later, so `@tbl-Perf` is reported
+    # rather than silently left as text; it ends on a letter or digit.
+    CROSS_REFERENCE_RE = re.compile(r"(?<![\w@./\\-])@((?:tbl|fig)-[A-Za-z0-9_-]*[A-Za-z0-9])")
 
     # Inline formatting patterns. A term token counts as one subscript unit, so a
     # value between tildes is a subscript whatever it contains (never re-parsed).
@@ -566,7 +576,53 @@ class TextParser:
             if run.hyperlink:
                 for token, literal in literals.items():
                     run.hyperlink = run.hyperlink.replace(token, "\\" + literal)
-        return cls._restore_code_spans(runs, literals)
+        # Escaped characters are still tokens here, so `\@tbl-x` is not a reference.
+        return cls._restore_code_spans(cls._split_cross_references(runs), literals)
+
+    @classmethod
+    def _split_cross_references(cls, runs: list[TextRun]) -> list[TextRun]:
+        """Give each `@tbl-…` / `@fig-…` its own `CrossReference` run.
+
+        The reference keeps the surrounding formatting (and a link, which the
+        renderer then reports). Footnote, term, code, math and image runs are
+        never split.
+
+        Args:
+            runs: Runs whose escapes and code spans are still protected tokens.
+
+        Returns:
+            The runs with every reference as its own run.
+        """
+        result: list[TextRun] = []
+        for run in runs:
+            if (
+                "@" not in run.text
+                or run.footnote_id is not None
+                or run.term_key is not None
+                or run.code
+                or run.is_latex
+                or run.image is not None
+            ):
+                result.append(run)
+                continue
+            offset = 0
+            for match in cls.CROSS_REFERENCE_RE.finditer(run.text):
+                if match.start() > offset:
+                    result.append(replace(run, text=run.text[offset : match.start()]))
+                values = {item.name: getattr(run, item.name) for item in fields(TextRun)}
+                values["text"] = match.group(0)
+                result.append(CrossReference(**values, target=match.group(1)))
+                offset = match.end()
+            if offset == 0:
+                result.append(run)
+            elif offset < len(run.text):
+                result.append(replace(run, text=run.text[offset:]))
+        return result
+
+    @classmethod
+    def cross_reference_targets(cls, text: str) -> list[str]:
+        """IDs of the `@tbl-…` / `@fig-…` references written in plain text."""
+        return [match.group(1) for match in cls.CROSS_REFERENCE_RE.finditer(text)]
 
     @classmethod
     def _encode_link_targets(cls, runs: list[TextRun]) -> list[TextRun]:

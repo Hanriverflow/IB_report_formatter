@@ -1,4 +1,8 @@
-"""Block element rendering: table of contents, headings, paragraphs, lists and callouts."""
+"""Block element rendering: table of contents, headings, paragraphs, lists and callouts.
+
+Changelog (captions):
+    - The static TOC preview shows a heading's `@tbl-…` references as `표 1`.
+"""
 
 import re
 from dataclasses import replace
@@ -10,7 +14,7 @@ from docx.shared import Inches, Pt, RGBColor
 
 from ib_render_document_style import TableStyler
 from ib_render_fonts import FontStyler
-from ib_render_text import TextRenderer
+from ib_render_text import TextRenderer, cross_reference_text
 from md_parser import (
     Blockquote,
     DocumentModel,
@@ -90,7 +94,8 @@ class TOCRenderer:
                 continue
 
             level = max(1, min(element.content.level, 4))
-            text = element.content.text.strip()
+            # The preview shows a heading's references as their cached numbers.
+            text = cross_reference_text(element.content.text.strip())
             if text:
                 entries.append((level, text))
 

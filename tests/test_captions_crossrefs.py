@@ -291,3 +291,225 @@ def test_figure_line_with_id_starts_its_own_block(tmp_path: Path) -> None:
     document, _ = render(write(tmp_path, body))
     texts = [paragraph.text for paragraph in document.paragraphs if paragraph.text]
     assert "앞 문단 첫 줄" in texts and "그림 1. 가상 그림" in texts and "뒤 문단" in texts
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CROSS-REFERENCES (@tbl-…, @fig-…)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+REF_TABLES = (
+    "  - id: tbl-perf\n    caption: 가상 실적 요약\n  - id: tbl-debt\n    caption: 가상 차입 내역\n"
+)
+REF_TABLE_BODY = "| 가 | 나 |\n|---|---:|\n| 1 | 2 |\n\n| 다 | 라 |\n|---|---:|\n| 3 | 4 |\n"
+REF_INSTRUCTION = "REF _Ref_{} \\h \\* CHARFORMAT"
+
+
+def references(document: DocxDocument) -> list[tuple[str, str]]:
+    """The REF fields of the body: (instruction, cached result)."""
+    return [field for field in fields(document) if field[0].startswith("REF ")]
+
+
+def body_text(document: DocxDocument) -> list[str]:
+    """Visible text of every non-empty body paragraph (tables excluded)."""
+    return [paragraph.text for paragraph in document.paragraphs if paragraph.text]
+
+
+def test_references_become_ref_fields_with_cached_numbers(tmp_path: Path) -> None:
+    body = (
+        "앞에서 @tbl-debt를 먼저 가리키고 @fig-flow 그림을 본다.\n\n"
+        + REF_TABLE_BODY
+        + "\n![가상 흐름도](s.png){#fig-flow}\n\n뒤에서 @tbl-perf에서 보듯, @tbl-perf.\n"
+    )
+    document, errors = render(write(tmp_path, body, REF_TABLES))
+    assert errors == []
+    assert references(document) == [
+        (REF_INSTRUCTION.format("tbl_debt"), "표 2"),
+        (REF_INSTRUCTION.format("fig_flow"), "그림 1"),
+        (REF_INSTRUCTION.format("tbl_perf"), "표 1"),
+        (REF_INSTRUCTION.format("tbl_perf"), "표 1"),
+    ]
+    texts = body_text(document)
+    assert "앞에서 표 2를 먼저 가리키고 그림 1 그림을 본다." in texts
+    assert "뒤에서 표 1에서 보듯, 표 1." in texts
+
+
+def test_reference_keeps_the_body_formatting_not_the_caption_formatting(tmp_path: Path) -> None:
+    body = "**굵게 @tbl-perf 안** *기울임 @tbl-debt*\n\n" + REF_TABLE_BODY
+    document, _ = render(write(tmp_path, body, REF_TABLES))
+    paragraph = next(p for p in document.paragraphs if p.text.startswith("굵게"))
+    shown = {run.text: run for run in paragraph.runs if run.text in {"표 1", "표 2"}}
+    assert shown["표 1"].bold and not shown["표 1"].italic
+    assert shown["표 2"].italic and not shown["표 2"].bold
+    body_size = next(run.font.size for run in paragraph.runs if run.text.startswith("굵게"))
+    instruction_runs = [run for run in paragraph.runs if run._r.find(f"{W}instrText") is not None]
+    assert {run.font.size for run in instruction_runs} == {body_size}
+    assert all(run.bold for run in instruction_runs[:1])
+
+
+@pytest.mark.parametrize(
+    ("markdown", "shown"),
+    [
+        ("문의: kim@tbl-desk.example.com", "문의: kim@tbl-desk.example.com"),
+        ("담당 @kim 과 @tbl 은 참조가 아니다", "담당 @kim 과 @tbl 은 참조가 아니다"),
+        ("코드 `@tbl-perf` 그대로", "코드 @tbl-perf 그대로"),
+        ("이스케이프 \\@tbl-perf 그대로", "이스케이프 @tbl-perf 그대로"),
+        ("[자료](https://example.com/@tbl-perf) 링크", "자료 링크"),
+        ("경로 C:/data/@fig-perf.png 그대로", "경로 C:/data/@fig-perf.png 그대로"),
+        ("이중 @@tbl-perf 그대로", "이중 @@tbl-perf 그대로"),
+        ("수식 $a@tbl-perf$ 뒤", None),
+    ],
+)
+def test_at_signs_that_are_not_references_stay_literal(
+    tmp_path: Path, markdown: str, shown: str | None
+) -> None:
+    document, errors = render(write(tmp_path, markdown + "\n\n" + REF_TABLE_BODY, REF_TABLES))
+    assert errors == []
+    assert references(document) == []
+    if shown is not None:
+        assert shown in body_text(document)
+
+
+def test_reference_in_a_code_block_stays_literal(tmp_path: Path) -> None:
+    body = "```text\n@tbl-perf\n```\n\n" + REF_TABLE_BODY
+    document, errors = render(write(tmp_path, body, REF_TABLES))
+    assert errors == []
+    assert references(document) == []
+    assert "@tbl-perf" in document.element.xml
+
+
+@pytest.mark.parametrize(
+    ("markdown", "message"),
+    [
+        ("없는 @tbl-nope 참조", "Cross-reference @tbl-nope has no table or figure with that id"),
+        ("없는 @fig-perf 참조", "Cross-reference @fig-perf has no table or figure with that id"),
+        ("모양 @tbl-Perf 오류", "Cross-reference @tbl-Perf: 'tbl-Perf' is not a table id"),
+        ("모양 @tbl-perf_x 오류", "Cross-reference @tbl-perf_x: 'tbl-perf_x' is not a table id"),
+        ("[링크 @tbl-perf 글자](https://example.com)", "@tbl-perf is inside link text"),
+    ],
+)
+def test_unresolvable_references_reject_in_strict_and_stay_text_otherwise(
+    tmp_path: Path, markdown: str, message: str
+) -> None:
+    path = write(tmp_path, markdown + "\n\n" + REF_TABLE_BODY, REF_TABLES)
+    with pytest.raises(StrictValidationError, match=message.replace("(", r"\(")):
+        render(path)
+    document, errors = render(path, strict=False)
+    assert message in "\n".join(errors)
+    written = markdown.split(" ")[1] if not markdown.startswith("[") else "@tbl-perf"
+    assert written in document.element.xml
+    assert references(document) == []
+
+
+@pytest.mark.parametrize(
+    ("frontmatter", "body", "place"),
+    [
+        ("subtitle: 부제 @tbl-perf\n", "", "subtitle"),
+        ("", "![설명 @tbl-perf](s.png)\n\n", "image description"),
+        ("", "본문[^1]\n\n[^1]: 각주 @tbl-perf\n\n", "footnote"),
+    ],
+)
+def test_references_where_no_field_can_go_are_reported(
+    tmp_path: Path, frontmatter: str, body: str, place: str
+) -> None:
+    path = write(tmp_path, body + REF_TABLE_BODY, REF_TABLES)
+    text = path.read_text(encoding="utf-8").replace(
+        "title: 시험 문서\n", "title: 시험 문서\n" + frontmatter
+    )
+    path.write_text(text, encoding="utf-8")
+    message = f"Cross-reference @tbl-perf in the {place} stays text"
+    with pytest.raises(StrictValidationError, match=message):
+        render(path)
+    _, errors = render(path, strict=False)
+    assert message in errors
+
+
+def test_reference_in_the_title_is_reported(tmp_path: Path) -> None:
+    path = write(tmp_path, REF_TABLE_BODY, REF_TABLES)
+    text = path.read_text(encoding="utf-8").replace("시험 문서", "제목 @tbl-perf")
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(StrictValidationError, match="@tbl-perf in the document title stays text"):
+        render(path)
+
+
+def test_references_work_in_lists_quotes_headings_cells_and_captions(tmp_path: Path) -> None:
+    tables = (
+        "  - id: tbl-perf\n    caption: 가상 실적 요약\n"
+        "  - id: tbl-debt\n    caption: 차입 (@tbl-perf 참조)\n    note: 주석 @tbl-perf\n"
+    )
+    body = (
+        "### 제목 @tbl-perf 검토\n\n- 목록 @tbl-perf\n\n1. 번호 @tbl-debt\n\n> 인용 @tbl-perf\n\n"
+        "| 가 | 나 |\n|---|---|\n| 칸 @tbl-debt | 1 |\n\n| 다 | 라 |\n|---|---:|\n| 3 | 4 |\n"
+    )
+    document, errors = render(write(tmp_path, body, tables))
+    assert errors == []
+    shown = [result for _, result in references(document)]
+    # heading, bullet, quote, caption and note point to 표 1; numbered item and cell to 표 2
+    assert shown.count("표 1") == 5 and shown.count("표 2") == 2
+    assert "표 2. 차입 (표 1 참조)" in caption_texts(document)
+
+
+def test_report_toc_preview_shows_heading_references_as_numbers(tmp_path: Path) -> None:
+    body = "## 개요 @tbl-perf\n\n" + REF_TABLE_BODY
+    document, _ = render(write(tmp_path, body, REF_TABLES, profile="ib-report"))
+    assert "개요 표 1" in body_text(document)
+    assert all("@tbl-perf" not in text for text in body_text(document))
+
+
+@pytest.mark.parametrize("profile", sorted(PROFILES))
+def test_every_profile_writes_references(tmp_path: Path, profile: str) -> None:
+    tables = "  - id: tbl-a\n    caption: 가상 표\n    unit: 억원\n"
+    body = "문단 @tbl-a와 @fig-a.\n\n| 가 | 나 |\n|---|---:|\n| 1 | 2 |\n\n![가상 그림](s.png){#fig-a}\n"
+    document, errors = render(write(tmp_path, body, tables, profile=profile))
+    assert errors == []
+    assert references(document) == [
+        (REF_INSTRUCTION.format("tbl_a"), "표 1"),
+        (REF_INSTRUCTION.format("fig_a"), "그림 1"),
+    ]
+
+
+# ── docx_audit ────────────────────────────────────────────────────────────────
+
+
+def test_fresh_output_has_no_reference_findings(tmp_path: Path) -> None:
+    from docx_audit import inspect_document
+
+    body = "앞 @tbl-debt, 뒤 @tbl-perf.\n\n" + REF_TABLE_BODY
+    document, _ = render(write(tmp_path, body, REF_TABLES))
+    audit = inspect_document(document)
+    assert audit.issues == [] and audit.warnings == []
+
+
+def test_audit_reports_a_reference_whose_caption_was_deleted(tmp_path: Path) -> None:
+    from docx_audit import inspect_document, inspect_document_issues
+
+    body = "앞 @tbl-debt.\n\n" + REF_TABLE_BODY
+    document, _ = render(write(tmp_path, body, REF_TABLES))
+    for node in list(document.element.body.iter(f"{W}bookmarkStart", f"{W}bookmarkEnd")):
+        if node.get(qn("w:name")) == "_Ref_tbl_debt" or node.get(qn("w:id")) == "2":
+            node.getparent().remove(node)
+    expected = "Cross-reference field REF _Ref_tbl_debt has no bookmark named _Ref_tbl_debt"
+    assert inspect_document_issues(document) == [expected]
+    assert expected in inspect_document(document).issues
+
+
+def test_audit_warns_about_stale_references_and_numbers(tmp_path: Path) -> None:
+    from docx_audit import inspect_document
+
+    body = "앞 @tbl-debt.\n\n" + REF_TABLE_BODY
+    document, _ = render(write(tmp_path, body, REF_TABLES))
+    # As after inserting a table in Word without updating fields: the second
+    # caption now reads 3 while the reference still shows its old number.
+    seq = [
+        code for code in document.element.body.iter(f"{W}instrText") if "SEQ" in (code.text or "")
+    ][-1]
+    result_run = seq.getparent().getnext().getnext()  # instruction -> separate -> result
+    result_run.find(f"{W}t").text = "3"
+    warnings = inspect_document(document).warnings
+    assert (
+        "Cross-reference REF _Ref_tbl_debt shows '표 2' but its target reads '표 3'; "
+        "update fields in Word (select all, F9)"
+    ) in warnings
+    assert (
+        "Caption numbers SEQ 표 are not 1, 2, 3... in document order; "
+        "update fields in Word (select all, F9)"
+    ) in warnings

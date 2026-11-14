@@ -5,6 +5,8 @@ Handles styling and rendering of document elements in IB Bank style.
 Changelog (captions):
     - Tables and figures with IDs are numbered in document order before
       composition; their captions open with `표 1. ` / `그림 1. `.
+    - `@tbl-…`/`@fig-…` written where no field can go (title, subtitle, image
+      description, footnote) is reported and stays text.
 
 Changelog (property-test regressions):
     - Heading bold-marker removal skips code spans and escaped characters, and
@@ -150,6 +152,7 @@ from md_parser import (
     ListItem,
     Paragraph,
     Table,
+    TextParser,
 )
 from numeric_checks import CHECKS_PROPERTY, checks_to_json, parse_checks
 from office_layout import (
@@ -1040,6 +1043,19 @@ class IBDocumentRenderer:
         """
         numbers = CaptionNumbers(next_bookmark_id=self._next_bookmark_id, errors=self.errors)
         counts = dict.fromkeys(CAPTION_LABELS, 0)
+        # Plain text that never becomes runs cannot hold a reference field.
+        places = [("document title", model.metadata.title), ("subtitle", model.metadata.subtitle)]
+        places += [
+            ("image description", element.content.alt_text)
+            for element in model.elements
+            if element.element_type == ElementType.IMAGE and isinstance(element.content, Image)
+        ]
+        places += [("footnote", text) for text in model.footnotes.values()]
+        for place, text in places:
+            for target in TextParser.cross_reference_targets(text if isinstance(text, str) else ""):
+                message = f"Cross-reference @{target} in the {place} stays text"
+                if message not in self.errors:
+                    self.errors.append(message)
         for element in model.elements:
             content = element.content
             if element.element_type == ElementType.TABLE and isinstance(content, NumberedTable):

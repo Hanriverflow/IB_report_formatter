@@ -15,6 +15,10 @@ Changelog (term variables):
 Changelog (hardening):
     - Index styles once per audit and separate render validation from observations.
     - Treat placeholder-like text as warnings and validate native numbering references.
+
+Changelog (captions):
+    - A REF/PAGEREF field whose bookmark is missing is an issue; a REF result or
+      SEQ number that no longer matches (fields not updated) is a warning.
 """
 
 import argparse
@@ -218,6 +222,7 @@ def inspect_document(doc: DocxDocument) -> DocumentAudit:
             result.warnings.append(
                 "Possible rendering placeholder (may be literal user text): " + text
             )
+    result.warnings.extend(_cross_reference_findings(doc)[1])
     terms = inspect_terms(doc)
     if terms is not None:
         result.warnings.extend(_term_warnings(terms))
@@ -457,7 +462,117 @@ def inspect_document_issues(doc: DocxDocument) -> list[str]:
         if relation and relation not in doc.part.rels:
             issues.append("Hyperlink relationship is missing")
     issues.extend(_numbering_issues(doc))
+    issues.extend(_cross_reference_findings(doc)[0])
     return issues
+
+
+_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_REFERENCE_FIELD_RE = re.compile(r"^(REF|PAGEREF)\s+(\S+)(.*)$", re.IGNORECASE | re.DOTALL)
+_SEQ_FIELD_RE = re.compile(r"^SEQ\s+(\S+)(.*)$", re.IGNORECASE | re.DOTALL)
+# A REF switch that changes what is shown (paragraph number, position, ...).
+_REF_SHOWN_SWITCH_RE = re.compile(r"\\[nprwtfd]\b", re.IGNORECASE)
+# A SEQ switch other than the number format (repeat, reset, hide, next).
+_SEQ_ORDER_SWITCH_RE = re.compile(r"\\[crsnh]\b", re.IGNORECASE)
+
+
+def _body_fields(doc: DocxDocument) -> tuple[dict[str, str], list[tuple[str, str]]]:
+    """Read bookmarks and fields of the main document in order.
+
+    Text counts as visible unless it is a field instruction, so a bookmark
+    around `표 ` and a `SEQ` field reads `표 1`.
+
+    Args:
+        doc: Open document.
+
+    Returns:
+        Visible text of each bookmark by casefolded name, and each field's
+        instruction and cached result in document order.
+    """
+    marks: dict[str, list[str]] = {}
+    open_marks: dict[str, str] = {}
+    stack: list[dict[str, Any]] = []
+    found: list[tuple[str, str]] = []
+    for node in doc.element.body.iter():
+        tag = node.tag
+        if tag == _W + "bookmarkStart":
+            name = (node.get(qn("w:name")) or "").casefold()
+            open_marks[node.get(qn("w:id")) or ""] = name
+            marks.setdefault(name, [])
+        elif tag == _W + "bookmarkEnd":
+            open_marks.pop(node.get(qn("w:id")) or "", None)
+        elif tag == _W + "fldChar":
+            kind = node.get(qn("w:fldCharType"))
+            if kind == "begin":
+                stack.append({"code": [], "result": [], "shown": False})
+            elif kind == "separate" and stack:
+                stack[-1]["shown"] = True
+            elif kind == "end" and stack:
+                field_state = stack.pop()
+                found.append(("".join(field_state["code"]).strip(), "".join(field_state["result"])))
+        elif tag == _W + "instrText" and stack and not stack[-1]["shown"]:
+            stack[-1]["code"].append(node.text or "")
+        elif tag == _W + "fldSimple":
+            result = "".join(text.text or "" for text in node.iter(_W + "t"))
+            found.append(((node.get(qn("w:instr")) or "").strip(), result))
+        elif tag == _W + "t" and all(state["shown"] for state in stack):
+            for name in open_marks.values():
+                marks[name].append(node.text or "")
+            for state in stack:
+                state["result"].append(node.text or "")
+    return {name: "".join(parts) for name, parts in marks.items()}, found
+
+
+def _cross_reference_findings(doc: DocxDocument) -> tuple[list[str], list[str]]:
+    """Check REF/PAGEREF targets and cached results, and SEQ numbering order.
+
+    A reference whose bookmark is missing (its caption was deleted in Word) is
+    an issue. A reference or caption number whose cached result no longer
+    matches (fields not updated after an edit) is a warning.
+
+    Args:
+        doc: Open document.
+
+    Returns:
+        Issues and warnings.
+    """
+    marks, found = _body_fields(doc)
+    issues: list[str] = []
+    warnings: list[str] = []
+    counts: dict[str, int] = {}
+    for code, result in found:
+        reference = _REFERENCE_FIELD_RE.match(code)
+        if reference is not None:
+            kind, name, switches = reference.groups()
+            target = marks.get(name.casefold())
+            if target is None:
+                issue = f"Cross-reference field {kind.upper()} {name} has no bookmark named {name}"
+                if issue not in issues:
+                    issues.append(issue)
+            elif (
+                kind.upper() == "REF"
+                and not _REF_SHOWN_SWITCH_RE.search(switches)
+                and result.strip() != target.strip()
+            ):
+                warnings.append(
+                    f"Cross-reference REF {name} shows {result.strip()!r} but its target reads "
+                    f"{target.strip()!r}; update fields in Word (select all, F9)"
+                )
+            continue
+        sequence = _SEQ_FIELD_RE.match(code)
+        if sequence is None:
+            continue
+        name, switches = sequence.groups()
+        if _SEQ_ORDER_SWITCH_RE.search(switches):
+            continue
+        counts[name] = counts.get(name, 0) + 1
+        if result.strip() != str(counts[name]):
+            message = (
+                f"Caption numbers SEQ {name} are not 1, 2, 3... in document order; "
+                "update fields in Word (select all, F9)"
+            )
+            if message not in warnings:
+                warnings.append(message)
+    return issues, warnings
 
 
 def _numbering_issues(doc: DocxDocument) -> list[str]:

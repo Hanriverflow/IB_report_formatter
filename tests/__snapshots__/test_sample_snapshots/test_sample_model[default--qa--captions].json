@@ -68,7 +68,7 @@
     {
       "element_type": "PARAGRAPH",
       "content": {
-        "text": "이 문서는 표와 그림 번호가 Word 필드로 들어가는지 확인하는 가상 예시다. 번호를 붙일 표에는 표 사양에 `id`를 주고, 그림에는 그림 줄 끝에 `{#fig-…}`를 단다.",
+        "text": "이 문서는 표와 그림 번호가 Word 필드로 들어가는지 확인하는 가상 예시다. 번호를 붙일 표에는 표 사양에 `id`를 주고, 그림에는 그림 줄 끝에 `{#fig-…}`를 단다. 실적은 @tbl-results에서, 조달 구성은 @tbl-funding에서, 거래 구조는 @fig-structure에서 볼 수 있다.",
         "runs": [
           {
             "text": "이 문서는 표와 그림 번호가 Word 필드로 들어가는지 확인하는 가상 예시다. 번호를 붙일 표에는 표 사양에 ",
@@ -127,7 +127,94 @@
             "image": null
           },
           {
-            "text": "를 단다.",
+            "text": "를 단다. 실적은 ",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "@tbl-results",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null,
+            "target": "tbl-results"
+          },
+          {
+            "text": "에서, 조달 구성은 ",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "@tbl-funding",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null,
+            "target": "tbl-funding"
+          },
+          {
+            "text": "에서, 거래 구조는 ",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "@fig-structure",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null,
+            "target": "fig-structure"
+          },
+          {
+            "text": "에서 볼 수 있다.",
             "bold": false,
             "italic": false,
             "superscript": false,
@@ -143,7 +230,7 @@
         ],
         "has_inline_latex": false
       },
-      "raw_text": "이 문서는 표와 그림 번호가 Word 필드로 들어가는지 확인하는 가상 예시다. 번호를 붙일 표에는 표 사양에 `id`를 주고, 그림에는 그림 줄 끝에 `{#fig-…}`를 단다.",
+      "raw_text": "이 문서는 표와 그림 번호가 Word 필드로 들어가는지 확인하는 가상 예시다. 번호를 붙일 표에는 표 사양에 `id`를 주고, 그림에는 그림 줄 끝에 `{#fig-…}`를 단다. 실적은 @tbl-results에서, 조달 구성은 @tbl-funding에서, 거래 구조는 @fig-structure에서 볼 수 있다.",
       "inferred_subtitle": false
     },
     {
@@ -989,6 +1076,128 @@
         "ref_id": "tbl-funding"
       },
       "raw_text": "| 조달원 | 금액 | 비중 |\n|---|---:|---:|\n| 가상은행 | 500 | 62.5% |\n| 예시캐피탈 | 300 | 37.5% |",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "BULLET_LIST",
+      "content": {
+        "text": "@tbl-funding의 합계 800억원은 @tbl-results의 2026년 매출보다 작다.",
+        "runs": [
+          {
+            "text": "@tbl-funding",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null,
+            "target": "tbl-funding"
+          },
+          {
+            "text": "의 합계 800억원은 ",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "@tbl-results",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null,
+            "target": "tbl-results"
+          },
+          {
+            "text": "의 2026년 매출보다 작다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "indent_level": 0
+      },
+      "raw_text": "- @tbl-funding의 합계 800억원은 @tbl-results의 2026년 매출보다 작다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "BULLET_LIST",
+      "content": {
+        "text": "담당자 연락처(doc-team@tbl-example.com)와 코드 `@tbl-results`, 이스케이프한 \\@tbl-results는 참조가 아니다.",
+        "runs": [
+          {
+            "text": "담당자 연락처(doc-team@tbl-example.com)와 코드 ",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "@tbl-results",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": true,
+            "image": null
+          },
+          {
+            "text": ", 이스케이프한 @tbl-results는 참조가 아니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "indent_level": 0
+      },
+      "raw_text": "- 담당자 연락처(doc-team@tbl-example.com)와 코드 `@tbl-results`, 이스케이프한 \\@tbl-results는 참조가 아니다.",
       "inferred_subtitle": false
     }
   ],
