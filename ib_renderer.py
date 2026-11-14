@@ -86,7 +86,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Mm, Pt
 
-from document_model import Chart, ConfirmationBlock
+from document_model import Chart, ConfirmationBlock, DefaultTitle
 from document_profiles import (
     RenderOptions,
     default_metadata,
@@ -917,10 +917,11 @@ class IBDocumentRenderer:
                 # Headers and the term-sheet footer refer to it by DOCPROPERTY fields.
                 GeneratorSignatureWriter.upsert_properties(self.doc, {VERSION_PROPERTY: version})
             # File > Info shows this document's title, not python-docx's template details.
-            placeholder = default_metadata(resolved.profile.name).title
+            # A profile's stand-in title is not the document's; a written one is,
+            # whatever its text.
+            stand_in = isinstance(model.metadata.title, DefaultTitle)
             with _metadata_text("title (file properties)"):
-                title = str(model.metadata.title)
-                write_core_properties(self.doc, "" if title == placeholder else title)
+                write_core_properties(self.doc, "" if stand_in else str(model.metadata.title))
             ImageRenderer.fit_table_cell_images(self.doc)
             from docx_audit import inspect_document_issues
 

@@ -434,3 +434,19 @@ def test_long_title_saves_and_is_shortened_only_in_file_properties(
     assert _core(output).title == title[:255]
     assert title in _document_text(output)
     assert "File-properties title shortened to 255 characters" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("profile", "source", "expected"),
+    [
+        ("plain", "---\nprofile: plain\ntitle: Document\n---\n본문\n", "Document"),
+        ("ib-memo", "---\nprofile: ib-memo\ntitle: IB Report\n---\n본문\n", "IB Report"),
+        ("ib-report", "---\nprofile: ib-report\ntitle: IB Report\n---\n본문\n", "IB Report"),
+        ("plain", "# Document\n\n본문\n", "Document"),
+    ],
+)
+def test_written_title_equal_to_a_stand_in_is_kept(tmp_path, profile, source, expected):
+    """A title the document gave is the file title, even when it reads like a stand-in."""
+    output = _render(source, profile, tmp_path / "out.docx")
+
+    assert _core(output).title == expected

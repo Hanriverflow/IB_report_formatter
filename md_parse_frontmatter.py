@@ -92,7 +92,9 @@ class FrontmatterParser:
             metadata.title = data.get("title", metadata.title)
             metadata.subtitle = data.get("subtitle", metadata.subtitle)
         else:
-            metadata.title = str(data.get("title", metadata.title))
+            if "title" in data:
+                # Without a title the profile's stand-in (DefaultTitle) stays marked.
+                metadata.title = str(data["title"])
             metadata.subtitle = str(data.get("subtitle", metadata.subtitle))
         metadata.company = str(data.get("company", metadata.company))
         metadata.ticker = str(data.get("ticker", metadata.ticker))

@@ -20,7 +20,14 @@ from typing import Any
 
 from docx.shared import Inches, Pt, RGBColor
 
-from document_model import DocumentMetadata, DocumentModel, ElementType, Table, TableType
+from document_model import (
+    DefaultTitle,
+    DocumentMetadata,
+    DocumentModel,
+    ElementType,
+    Table,
+    TableType,
+)
 from input_safety import InputLimits, document_validation, load_yaml, validate_xml_strings
 from numeric_checks import Quantity, ScheduleSpec, check_schedule, money_unit, read_quantity
 from render_styles import IBStyle
@@ -62,7 +69,9 @@ def default_metadata(profile: str = "ib-report") -> DocumentMetadata:
     """Return neutral metadata for office documents, legacy defaults for IB."""
     if get_profile(profile).is_ib:
         return DocumentMetadata(profile=profile)
-    return DocumentMetadata(title="Document", company="", sector="", analyst="", profile=profile)
+    return DocumentMetadata(
+        title=DefaultTitle("Document"), company="", sector="", analyst="", profile=profile
+    )
 
 
 def document_version(metadata: DocumentMetadata) -> str:
