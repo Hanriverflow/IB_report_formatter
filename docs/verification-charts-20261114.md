@@ -38,7 +38,7 @@ Windows 11(10.0.26300), Python 3.12, matplotlib 3.10.8, Pillow 12.1.0, python-do
 **그대로인 것(테스트로 고정).**
 
 - 차트가 없는 문서, `charts`가 꺼진 문서: 산출물 변화 없음. 기존 스냅숏 367개 가운데 바뀐 것은 `samples/qa/charts.md`의 것뿐이다(3절).
-- `chart_style: classic`: 예전 키만 쓴 `bar`·`line`·`waterfall`은 예전 그림과 예전 문서 XML 그대로다. `render_chart_png` 본문은 한 글자도 바뀌지 않았고(`c97841c`와 비교), 스냅숏 묶음의 `classic-charts` 변형의 XML 파트 21개는 변경 전 `charts-on` 스냅숏과 바이트 단위로 같다. 그림 요소(막대 위치·높이·색, 선, 글자, 축 범위, 그림 크기·해상도)는 `tests/__snapshots__/test_chart_ib_style.ambr`에 고정했고, classic이 넣는 PNG가 `render_chart_png`의 출력과 같은지도 시험한다.
+- `chart_style: classic`: 예전 키만 쓴 `bar`·`line`·`waterfall`은 예전 그림과 예전 문서 XML 그대로다. `render_chart_png` 본문은 한 글자도 바뀌지 않았고(`c97841c`와 비교), 스냅숏 묶음의 `classic-charts` 변형의 스냅숏 21개(모델 1, XML 파트 20)는 변경 전 `charts-on` 스냅숏과 바이트 단위로 같다. 그림 요소(막대 위치·높이·색, 선, 글자, 축 범위, 그림 크기·해상도)는 `tests/__snapshots__/test_chart_ib_style.ambr`에 고정했고, classic이 넣는 PNG가 `render_chart_png`의 출력과 같은지도 시험한다.
 - 사양 오류 처리: strict 거부, 일반 모드는 코드 상자 + 진단. 새 거부 코드 없음.
 - 대체 텍스트: 제목, 없으면 `Chart N`.
 - 값의 배율: 바꾸지 않는다(`12.5`는 `percent`에서 `12.5%`). 형식 함수는 `format_value` 하나다.
@@ -64,7 +64,7 @@ Windows 11(10.0.26300), Python 3.12, matplotlib 3.10.8, Pillow 12.1.0, python-do
 
 - `charts.md`의 모델 스냅숏 2개(`default`, `charts-on`): `ChartSpec`·`ChartSeries`에 새 필드가 기본값으로 **추가된 것뿐**이다.
 - `charts.md`의 `word/document.xml` 스냅숏 2개: 그림 높이(`cy` 2926080 → 2651760 EMU), 그림 문단 정렬(가운데 → 왼쪽, 그림 앞뒤 문단이 있으면 keep-with-next와 간격), 그리고 각 차트마다 제목·부제 문단 2개와 출처 문단 1개가 더해졌다. 글자는 사양에 쓴 그대로이고(`가상기업 부문별 매출`, `백만원`, `자료: 기능 검증용 가상 자료` 등), 이 문서는 business-report라 앞말이 `자료`다.
-- 새 스냅숏: `classic-charts--qa--charts`(22개, XML은 변경 전과 같음), `default--qa--charts-dcm`(22개).
+- 새 스냅숏: `classic-charts--qa--charts`(21개: 모델 1, XML 파트 20. XML은 변경 전과 같음), `default--qa--charts-dcm`(21개), 그림 요소 스냅숏 `test_chart_ib_style.ambr`(2개).
 - 그 밖의 스냅숏: 0건 변경.
 
 ## 4. 흑백 밝기 기준
