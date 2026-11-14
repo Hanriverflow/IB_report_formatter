@@ -168,8 +168,11 @@ def test_the_other_reading_is_carried_only_when_a_chart_id_is_a_target():
     )
     # No frontmatter key: the model is the charts-off reading.
     assert with_id.warnings == ["Cross-reference @fig-test has no table or figure with that id"]
-    carrying = [element for element in with_id.elements if "_chart_alternative" in vars(element)]
-    assert [element.content.text for element in carrying] == ["@fig-test 참조."]
+    # The other reading is kept on the model alone: no element carries anything.
+    assert "_chart_setting" in vars(with_id)
+    plain_keys = [set(vars(element)) for element in plain.elements]
+    assert [set(vars(element)) for element in with_id.elements][: len(plain_keys)] == plain_keys
+    assert not [name for name in vars(with_id.metadata) if name.startswith("_chart")]
     on = IBDocumentRenderer(options=RenderOptions(profile="plain", charts=True, strict=True))
     assert len(on.render(with_id).inline_shapes) == 1 and on.errors == []
     told = MarkdownParser(profile="plain", charts=True).parse(

@@ -406,9 +406,10 @@ class MarkdownParser:
         Whether they are drawn is settled at render time, so when the two
         sets of targets differ the document is read both ways. The reading
         for this parser's own setting is returned with the other one pending
-        (`pair_chart_readings`); the public entry points fold it into the
-        returned model part by part (`fold_chart_reading`), so there is one
-        model and the renderer draws the one it is given. The second reading
+        (`pair_chart_readings`); the public entry points keep it in one
+        record on the returned model (`fold_chart_reading`), and the renderer
+        draws the given model or, when its setting is the other one and the
+        model is still as parsed, the other reading. The second reading
         logs nothing, and a diagnostic only one reading has is logged by the
         renderer that uses that reading.
 
@@ -1969,7 +1970,7 @@ def parse_markdown_file(
                             image.path = str(source_dir / image_path)
 
     # A document with chart IDs was read two ways; each reading gets the
-    # file's folders before the second is folded into the first.
+    # file's folders before the second is kept with the first.
     localise(parsed)
     other = pending_chart_reading(parsed)
     if other is not None:

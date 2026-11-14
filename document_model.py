@@ -732,19 +732,32 @@ class DocumentModel:
 # names nothing, so a `@fig-…` written for it is read exactly as in a document
 # without that chart. Whether charts are drawn is settled only at render time
 # (frontmatter, CLI or API), so when the two readings differ the parser reads
-# the document both ways. It returns one model, read for its own setting; the
-# parts the other reading reads differently (an element, a metadata value, the
-# diagnostics) carry that other reading with them (`fold_chart_reading`). The
-# renderer draws the model it is given and, on its own copy, takes the other
-# reading only of a part the caller left as parsed (`apply_chart_setting`):
-# what a caller changed, added or removed after parsing is never replaced
-# (fourth independent review, 2026-11-14). Everything is kept in plain
-# attributes, not dataclass fields: a document without a chart ID has none,
-# and the pinned model of every sample is unchanged.
+# the document both ways. The contract (fifth independent review, 2026-11-15;
+# it replaces the part-by-part exchange of the fourth):
+#
+# - G1. The record (the parser's setting X, the model read for the other
+#   setting, a copy of the model as parsed) is kept on the model object alone,
+#   in a plain attribute. Elements and metadata carry nothing. Two readings
+#   that are equal leave no record. It is not a dataclass field: a document
+#   without a chart ID has none, and the pinned model of every sample is
+#   unchanged. `copy.deepcopy` and pickle keep it; `dataclasses.replace`
+#   makes a model without it, like one built by hand.
+# - G2. A render with setting Y == X, or of a model without a record, draws
+#   the model it is given.
+# - G3. With Y != X and the model equal in value to its copy as parsed
+#   (dataclass `==`, diagnostics included; identity is not looked at), the
+#   render draws the other reading, whole.
+# - G4. With Y != X and the model changed since parsing, the render draws the
+#   model it is given and reports it, once for the document: its references
+#   to chart IDs were read for the other setting. Strict mode rejects. The
+#   report does not depend on what was changed.
+#
+# A caller who overrides the chart setting passes the same setting to the
+# parser, as with the profile. A model that holds a NaN is not equal to its
+# own copy and takes G4.
 
 _PENDING = "_chart_reading_pending"
 _SETTING = "_chart_setting"
-_ALTERNATIVE = "_chart_alternative"
 
 
 def pair_chart_readings(
@@ -773,12 +786,9 @@ def pending_chart_reading(model: "DocumentModel") -> "DocumentModel | None":
 
 
 def fold_chart_reading(model: "DocumentModel") -> None:
-    """Give each part of `model` that the other reading reads differently that reading.
+    """Keep the other reading of `model` in one record on the model (G1).
 
-    An element carries the other reading's element, the metadata its other
-    values, and the model the other diagnostics, each beside a copy of the
-    part as parsed, so that a later change by the caller can be told. The
-    other model itself is dropped.
+    Two readings that are equal leave no record.
     """
     from copy import deepcopy
 
@@ -786,94 +796,62 @@ def fold_chart_reading(model: "DocumentModel") -> None:
     if pending is None:
         return
     other, drawn, own_only, other_only = pending
-    values: dict[str, tuple[Any, Any]] = {}
-    paired = len(model.elements) == len(other.elements) and all(
-        mine.element_type == theirs.element_type
-        for mine, theirs in zip(model.elements, other.elements, strict=True)
-    )
-    if paired:
-        for mine, theirs in zip(model.elements, other.elements, strict=True):
-            if mine != theirs:
-                setattr(mine, _ALTERNATIVE, (drawn, deepcopy(mine), theirs))
-    for item in fields(model):
-        if item.name in ("metadata", "warnings") or (item.name == "elements" and paired):
-            continue
-        mine, theirs = getattr(model, item.name), getattr(other, item.name)
-        if mine != theirs:
-            values[item.name] = (deepcopy(mine), theirs)
-    changed = {
-        item.name: (
-            deepcopy(getattr(model.metadata, item.name)),
-            getattr(other.metadata, item.name),
-        )
-        for item in fields(model.metadata)
-        if getattr(model.metadata, item.name) != getattr(other.metadata, item.name)
-    }
-    if changed:
-        setattr(model.metadata, _ALTERNATIVE, changed)
+    if model == other and not own_only and not other_only:
+        return
+    parsed = deepcopy(model)  # before the record is set: the copy has none
     setattr(
         model,
         _SETTING,
         {
             "drawn": drawn,
+            "other": other,
+            "parsed": parsed,
             "own_only": own_only,
             "other_only": other_only,
-            "warnings": (list(model.warnings), list(other.warnings)),
-            "values": values,
         },
     )
 
 
-def apply_chart_setting(model: "DocumentModel", charts_drawn: bool) -> tuple[list[str], list[str]]:
-    """Read `model`, the render's own copy, for the render's chart setting.
-
-    With the parser's own setting nothing changes. With the opposite one,
-    each part that is still as parsed takes the other reading; a part the
-    caller changed stays as given, and an element among them is reported:
-    its references were read for the other setting.
+def chart_setting_reading(
+    model: "DocumentModel", charts_drawn: bool
+) -> "tuple[DocumentModel, list[str], str | None]":
+    """The model a render with `charts_drawn` draws (G2 to G4). `model` is not changed.
 
     Args:
-        model: A copy the caller no longer sees; it is changed in place.
+        model: The model the render was given.
         charts_drawn: The render's setting.
 
     Returns:
-        Parser diagnostics of this reading still to be logged, and problems
-        to report.
+        The model to draw (the given one, or the other reading), the parser
+        diagnostics of that reading still to be logged, and the report of a
+        model changed after parsing (None without one).
     """
-    setting = model.__dict__.pop(_SETTING, None)
-    carried = model.metadata.__dict__.pop(_ALTERNATIVE, {})
-    problems: list[str] = []
-    for index, element in enumerate(model.elements, 1):
-        alternative = element.__dict__.pop(_ALTERNATIVE, None)
-        if alternative is None:
-            continue
-        drawn, parsed, other = alternative
-        if drawn == charts_drawn:
-            continue
-        if element == parsed:
-            for item in fields(element):
-                setattr(element, item.name, getattr(other, item.name))
-        else:
-            read, now = ("on", "off") if drawn else ("off", "on")
-            problems.append(
-                f"Element {index} was changed after parsing: its references were read with "
-                f"charts {read}, and this render has charts {now}. Parse the document again "
-                f"with charts={charts_drawn} to read them for this render"
-            )
-    if setting is None:
-        return [], problems
-    if setting["drawn"] == charts_drawn:
-        return list(setting["own_only"]), problems
-    for name, (parsed, other) in carried.items():
-        if getattr(model.metadata, name) == parsed:
-            setattr(model.metadata, name, other)
-    for name, (parsed, other) in setting["values"].items():
-        if getattr(model, name) == parsed:
-            setattr(model, name, other)
-    parsed_warnings, other_warnings = setting["warnings"]
-    if model.warnings == parsed_warnings:
-        model.warnings = list(other_warnings)
-    return list(setting["other_only"]), problems
+    record = getattr(model, _SETTING, None)
+    if record is None:
+        return model, [], None
+    if record["drawn"] == charts_drawn:
+        return model, list(record["own_only"]), None
+    if model == record["parsed"]:
+        return record["other"], list(record["other_only"]), None
+    read, now = ("on", "off") if record["drawn"] else ("off", "on")
+    return (
+        model,
+        list(record["own_only"]),
+        f"The document was changed after it was parsed with charts {read}; this render has "
+        f"charts {now}, so references to chart IDs are drawn as parsed. Parse it again with "
+        f"charts={charts_drawn}",
+    )
+
+
+def copy_without_chart_record(model: "DocumentModel") -> "DocumentModel":
+    """A deep copy of `model` for one render, without its record of the other reading."""
+    from copy import deepcopy
+
+    record = getattr(model, _SETTING, None)
+    # The memo answers for the record, so that it is not copied with the model.
+    copy = deepcopy(model, {id(record): None} if record is not None else {})
+    copy.__dict__.pop(_SETTING, None)
+    return copy
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

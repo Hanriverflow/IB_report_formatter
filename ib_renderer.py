@@ -84,7 +84,6 @@ import re
 import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from copy import deepcopy
 from pathlib import Path
 from typing import (
     Any,
@@ -108,8 +107,9 @@ from document_model import (
     ConfirmationBlock,
     DefaultTitle,
     InferredText,
-    apply_chart_setting,
     caption_bookmark_name,
+    chart_setting_reading,
+    copy_without_chart_record,
     model_images,
     numbered_items,
 )
@@ -735,20 +735,23 @@ class IBDocumentRenderer:
         self.term_sheet_texts = None
         limits = limits or self.options.limits or model.limits
         self._check_model_limits(model, limits)
-        model = deepcopy(model)
+        # A document with chart IDs was read both with and without its charts
+        # (principle V3). The render draws the model it was given; only when
+        # its chart setting is the other one and the model is still as parsed
+        # does it draw the other reading, whole. A model changed since parsing
+        # is drawn as given and reported (`chart_setting_reading`, G2 to G4).
+        # The diagnostics only the drawn reading has are logged here (the
+        # parser logged the rest).
+        charts_drawn = resolve_options(model.metadata, self.options).charts
+        reading, unlogged, changed = chart_setting_reading(model, charts_drawn)
+        model = copy_without_chart_record(reading)
         roots = resolve_asset_roots((*model.asset_roots, *self.options.asset_roots, *asset_roots))
         resolved = resolve_options(model.metadata, self.options)
-        # A document with chart IDs was read both with and without its charts
-        # (principle V3). The render draws the model it was given: on this
-        # copy, only the parts still as parsed take the reading for this
-        # render's setting, and the diagnostics only that reading has are
-        # logged here (the parser logged the rest).
-        unlogged, changed_parts = apply_chart_setting(model, resolved.charts)
         for message in unlogged:
             logging.getLogger("md_parser").warning("%s", message)
-        for message in changed_parts:
-            logger.warning("%s", message)
-            model.warnings.append(message)
+        if changed is not None:
+            logger.warning("%s", changed)
+            model.warnings.append(changed)
         if model.parsed_profile is not None and model.parsed_profile != resolved.profile.name:
             raise ValueError(
                 f"Document was parsed with profile {model.parsed_profile!r}; "
