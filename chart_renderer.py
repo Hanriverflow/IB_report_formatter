@@ -263,7 +263,8 @@ def _validate_series(raw_series: Any, kind: str, length: int) -> list[ChartSerie
         if kind == "stacked_bar" and any(value < 0 for value in values):
             raise ChartSpecError(f"{field}.values must not be negative in stacked_bar")
         axis = item.get("axis", "left")
-        if axis not in {"left", "right"}:
+        # A list or mapping is unhashable: judge the type before the set lookup.
+        if not isinstance(axis, str) or axis not in {"left", "right"}:
             raise ChartSpecError(f"{field}.axis must be left or right")
         series.append(ChartSeries(item["name"], values, axis))
     if kind == "bar_line":
