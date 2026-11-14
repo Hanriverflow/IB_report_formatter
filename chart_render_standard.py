@@ -6,9 +6,13 @@ decisions 2026-11-14): one accent colour (the theme's primary colour) with
 greys, values written on the marks instead of a value axis, a zero baseline
 and no frame, the legend in one row above the plot, line names at the line
 ends, decreases hatched, and tones chosen so that series stay apart in black
-and white. Values are formatted with `chart_renderer.format_value` and never
-rescaled; the only numbers the engine works out are the waterfall's running
-total and, when the spec asks with `totals: true`, a stack's total. A line
+and white. Values are never rescaled and are written with the decimal places
+of `chart_renderer.format_value`, but rounded as a spreadsheet rounds: on the
+decimal the spec wrote, a 5 away from zero (`round_half_up_text`; owner
+decision 2026-11-14; the classic style keeps its rounding). The only numbers
+the engine works out are the waterfall's total and, when the spec asks with
+`totals: true`, a stack's total: exact sums of the written decimals, rounded
+once. A line
 chart keeps a value axis; only ticks whose written number equals their
 position are kept. A legend too wide for one row takes more rows. Names are
 drawn as written: a `$` never starts mathematical notation.
@@ -26,12 +30,12 @@ import logging
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
-from decimal import Context, Decimal
+from decimal import ROUND_HALF_UP, Context, Decimal
 from io import BytesIO
 from itertools import combinations
 from typing import Any
 
-from chart_renderer import ChartSpecError, format_value, waterfall_positions
+from chart_renderer import ChartSpecError, waterfall_positions
 from document_model import ChartSpec
 from render_styles import STYLE, RasterFontPolicy
 
@@ -428,18 +432,67 @@ def _safe_scale(spec: ChartSpec) -> tuple[ChartSpec, float]:
     )
 
 
-def exact_sum(values: Sequence[float], scale: float = 1.0) -> float:
-    """The sum of the numbers as the spec wrote them, at the plot's scale.
+# Sums and rounding of written decimals are exact: the largest finite float
+# with six decimals has 315 digits.
+EXACT = Context(prec=1000)
+SUFFIXES = {"percent": "%", "bps": " bps", "multiple": "x"}
 
-    Each value is taken as its shortest decimal text (what the YAML held) and
-    the decimals are added exactly, so `[0.3, -0.1, -0.2]` sums to 0 and not
-    to the binary rounding error -2.8e-17.
+
+def written_decimal(value: float) -> Decimal:
+    """The number as the spec wrote it: the float's shortest decimal text.
+
+    `2.675` is the decimal 2.675, not the binary float just below it, so that
+    rounding is done on what the author typed.
     """
-    exact = Context(prec=1000)
+    return Decimal(repr(float(value)))
+
+
+def exact_sum(values: Sequence[float], scale: float = 1.0) -> Decimal:
+    """The exact sum of the numbers as the spec wrote them.
+
+    The decimals are added without rounding, so `[0.3, -0.1, -0.2]` sums to 0
+    and not to the binary rounding error -2.8e-17, and a sum is rounded once,
+    when it is written. `values` are at the plot's scale (`_safe_scale`); the
+    sum is at the spec's.
+    """
     total = Decimal(0)
     for value in values:
-        total = exact.add(total, Decimal(repr(value / scale)))
-    return float(total) * scale
+        total = EXACT.add(total, written_decimal(value / scale))
+    return total
+
+
+def round_half_up_text(number: Decimal, number_format: str | None) -> str:
+    """A number as a standard chart writes it: a 5 rounds away from zero.
+
+    The decimal places are those of `chart_renderer.format_value` (the named
+    formats and no format write one decimal unless the number is whole; a
+    fixed-point format writes its own), with thousands separators, the same
+    suffixes and parentheses for a negative amount. Only the rounding
+    differs: `4.125` is `4.13` and `2.5` with `,.0f` is `3`, as a spreadsheet
+    rounds, where the classic style keeps Python's rounding of the binary
+    float (ties to even). A negative amount that rounds to zero is written
+    without parentheses.
+
+    Args:
+        number: The exact decimal to write.
+        number_format: Named format or a fixed-point format such as ',.2f'.
+
+    Returns:
+        The text written in the picture.
+    """
+    magnitude = number.copy_abs()
+    if number_format and number_format not in ("number", *SUFFIXES):
+        places = number_format.lstrip(",").rstrip("f")
+        digits = int(places[1:]) if places else 6
+        rounded = magnitude.quantize(Decimal(1).scaleb(-digits), ROUND_HALF_UP, EXACT)
+        text = format(rounded, ",f" if number_format.startswith(",") else "f")
+    elif magnitude == magnitude.to_integral_value():
+        text = f"{int(magnitude):,}"
+    else:
+        text = format(magnitude.quantize(Decimal("0.1"), ROUND_HALF_UP, EXACT), ",f")
+    text += SUFFIXES.get(number_format or "", "")
+    negative = number.is_signed() and any(char in "123456789" for char in text)
+    return f"({text})" if negative else text
 
 
 def fit_text(text: str, width_inches: float, size: float) -> str:
@@ -586,18 +639,17 @@ class _Drawer:
         if self.warnings is not None:
             self.warnings.append(message)
 
-    def fmt(self, value: float, right: bool = False) -> str:
-        """The number as written in the picture.
+    def fmt(self, value: float | Decimal, right: bool = False) -> str:
+        """The number as written in the picture (`round_half_up_text`).
 
-        A negative value whose rounded text shows only zeros is written
-        without parentheses (`-0.04` as `0.0`, a waterfall total of
-        `-2.8e-17` as `0.0`), so that zero never reads as a negative amount.
+        A float is a value at the plot's scale and is written as the decimal
+        the spec held; a `Decimal` is a sum already at the spec's scale
+        (`exact_sum`), rounded here once.
         """
         number_format = self.spec.right_number_format if right else self.spec.number_format
-        value = value / self.scale
-        text = format_value(abs(value), number_format)
-        negative = value < 0 and any(char in "123456789" for char in text)
-        return f"({text})" if negative else text
+        if not isinstance(value, Decimal):
+            value = written_decimal(value / self.scale)
+        return round_half_up_text(value, number_format)
 
     def warn_many(self, count: int) -> None:
         if count > MAX_DISTINCT_SERIES:
@@ -1292,7 +1344,8 @@ class _Drawer:
         spec, ax = self.spec, self.ax
         tones = self.tones.stack(len(spec.series))
         positions = range(len(spec.labels))
-        totals = [exact_sum([s.values[i] for s in spec.series], self.scale) for i in positions]
+        sums = [exact_sum([s.values[i] for s in spec.series], self.scale) for i in positions]
+        totals = [float(total) * self.scale for total in sums]
         top = max(totals) or 1.0
         width = 0.56  # leaves each column room for a value beside its bar
         bar_inches = width * self.width * 0.85 / len(spec.labels)
@@ -1350,11 +1403,11 @@ class _Drawer:
         if spec.totals:
             for i, total in enumerate(totals):
                 first = self.end_spot(
-                    i, total, self.fmt(total), False, size + 0.5, bold=True, anchor=stacks[i][-1]
+                    i, total, self.fmt(sums[i]), False, size + 0.5, bold=True, anchor=stacks[i][-1]
                 )
                 spots = [first, self.outward(first, False)]
                 self.add_label(
-                    self.fmt(total), spec.labels[i], STYLE.CHART_TOTAL_LABEL, spots, stacks[i]
+                    self.fmt(sums[i]), spec.labels[i], STYLE.CHART_TOTAL_LABEL, spots, stacks[i]
                 )
         self.plain_axes()
         self.baseline()
@@ -1372,7 +1425,8 @@ class _Drawer:
         bottoms, tops, _ = waterfall_positions(values)
         # The total written is the exact sum of the values as written, not
         # the running sum's rounding error: `[0.3, -0.1, -0.2]` totals 0.
-        total = exact_sum(values, self.scale)
+        total_written = exact_sum(values, self.scale)
+        total = float(total_written) * self.scale
         anchor = tones.anchor()
         width = 0.6
         cumulative = 0.0
@@ -1408,10 +1462,10 @@ class _Drawer:
         self.bars.extend(patches)
         self.mark(patches, total_label, series.name)
         first = self.end_spot(
-            total_x, total, self.fmt(total), total < 0, bold=True, anchor=patches[0]
+            total_x, total, self.fmt(total_written), total < 0, bold=True, anchor=patches[0]
         )
         spots = [first, self.outward(first, total < 0)]
-        self.add_label(self.fmt(total), total_label, series.name, spots, patches)
+        self.add_label(self.fmt(total_written), total_label, series.name, spots, patches)
         labels = [*spec.labels, total_label]
         self.plain_axes()
         self.baseline()
