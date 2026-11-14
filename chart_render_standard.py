@@ -336,6 +336,8 @@ class _Label:
     owners: list[Any] = field(default_factory=list)
     group: int | None = None
     role: str = "value"
+    # A line-end name: where its own line ends (data x and value).
+    end: tuple[float, float] | None = None
 
     @property
     def where(self) -> str:
@@ -860,9 +862,11 @@ class _Drawer:
         """Keep the value-axis ticks whose written number equals their position.
 
         A tick's text is rounded like every value (`fmt`), so a tick at 1.5
-        written `2` would repeat the next tick's number. Such ticks are
-        dropped; with fewer than two left the axis writes no numbers (the
-        values are written at the points).
+        written `2` would repeat the next tick's number. A tick is kept only
+        when its text, read as a decimal, is its position (the shortest
+        decimal of the float it is drawn at), and when no other kept tick
+        has the same text; with fewer than two left the axis writes no
+        numbers (the values are written at the points).
         """
         if not self.value_axis:
             return
@@ -872,14 +876,29 @@ class _Drawer:
             ax.tick_params(axis="y", labelleft=False)
             return
         low, high = sorted(ax.get_ylim())
-        kept = []
+        # The locator's own arithmetic noise (3 * 0.1 is 0.30000000000000004):
+        # a few units in the last place of the axis's largest number, and far
+        # below a pixel. Only that much may a tick be moved.
+        noise = min(4 * math.ulp(max(abs(low), abs(high))), 1e-9 * (high - low))
+        true: list[tuple[float, str]] = []
         for tick in ax.get_yticks():
             if not low <= tick <= high:
                 continue
-            digits = "".join(char for char in self.fmt(float(tick)) if char in "0123456789.")
-            shown, real = float(digits), abs(float(tick) / self.scale)
-            if abs(shown - real) <= 1e-9 * max(1.0, real):
-                kept.append(float(tick))
+            text = self.fmt(float(tick))
+            digits = "".join(char for char in text if char in "0123456789.")
+            shown = Decimal(digits or "0")
+            if text.startswith("("):
+                shown = -shown
+            # Compared as decimals, not within a float tolerance: a tick at
+            # 1,000,000,000.5 is not 1,000,000,001. The tick is drawn at the
+            # number its text says (the float whose shortest decimal is that
+            # text), which is where the locator put it but for its noise.
+            at = float(shown)
+            if Decimal(repr(at)) == shown and abs(at - float(tick)) <= noise:
+                true.append((at, text))
+        # A number written at two ticks says nothing: neither is kept.
+        texts = [text for _, text in true]
+        kept = [tick for tick, text in true if texts.count(text) == 1]
         if len(kept) >= 2:
             ax.set_yticks(kept)
         else:
@@ -984,7 +1003,9 @@ class _Drawer:
                 main,
                 rule="free",
             )
-            self.labels.append(_Label(self.fmt(value), category, name, [spot], role="line"))
+            self.labels.append(
+                _Label(self.fmt(value), category, name, [spot], role="line", end=(last_x, value))
+            )
 
     def _context(self, renderer: Any) -> dict[str, Any]:
         """What every check reads: the picture, the fixed texts and every drawn mark."""
@@ -997,6 +1018,10 @@ class _Drawer:
             "segments": segments,
             "discs": discs,
             "points": [tuple(axes.transData.transform((x, y))) for axes, x, y in self.points],
+            "ends": [
+                float(self.ax.transData.transform((len(self.spec.labels) - 1, value))[1])
+                for value, *_ in self.ends
+            ],
             "floor": self.ax.get_window_extent(renderer).y0,
             "renderer": renderer,
         }
@@ -1106,12 +1131,30 @@ class _Drawer:
         - sits on its own mark: inside its bar; centred over or under its
           bar or point within `MAX_GAP`; or beside its row with its centre
           at the row's height, within `MAX_GAP`;
-        - (d) has no other bar, or other point, nearer to its centre than its
-          own by more than `NEAREST_MARGIN` (rows of a horizontal chart do
-          not overlap, so the centre at the row's height settles it);
+        - (d) has no other mark nearer to its centre than its own: no other
+          bar for a bar's value and no other point for a point's value by
+          more than `NEAREST_MARGIN`, and its own mark nearer than every
+          mark of the other kind (a point of any series for a bar's value, a
+          bar for a point's value) by at least `NEAREST_MARGIN`: a point and
+          its category's bar are on one centre line, so only the distance
+          tells them apart. Rows of a horizontal chart (`hbar`, `range`) do not overlap
+          and their values run sideways from the bar's end, where a longer
+          neighbouring bar is always nearer to the text's centre: there the
+          centre at the row's height settles it (an exception approved by
+          the owner's coordinator, fourth review);
         - (e) beside a stack: inside the category's column, its centre within
-          its own segment's height, above the baseline, and not level with
-          another value written beside the same bar, on either side.
+          its own segment's height, above the baseline, not level with
+          another value written beside the same bar, on either side, and not
+          as high as a whole other segment of that bar (a drawn segment of
+          1 px or more that lies wholly within the text's height);
+        - (f) written outside its mark (over, under or beside it), has
+          nothing between: the band from the text to its own mark, as wide
+          as the text, holds no other bar or segment, no line, no point and
+          no reference line (`_band_is_clear`). Otherwise a bar's value over
+          another series' line reads as that line's value.
+
+        A line-end name sits nearest to its own line's end: no other line
+        ends nearer to its centre's height by more than `NEAREST_MARGIN`.
 
         Args:
             label: The value.
@@ -1133,15 +1176,25 @@ class _Drawer:
             return False
         if any(_away(box, x, y) < radius + INK_MARGIN for x, y, radius in context["discs"]):
             return False
-        if spot.rule == "free":
-            return True
-        anchor = self._anchor_box(spot, renderer)
         tolerance = 0.5
         gap = MAX_GAP * self.fig.dpi / 72
         margin = NEAREST_MARGIN * self.fig.dpi / 72
         centre_x, centre_y = (box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2
+        if spot.rule == "free":
+            if label.end is None:
+                return True
+            own_end = float(self.ax.transData.transform(label.end)[1])
+            away = abs(centre_y - own_end)
+            return all(
+                abs(centre_y - other) >= away - margin
+                for other in context["ends"]
+                if abs(other - own_end) > tolerance
+            )
+        anchor = self._anchor_box(spot, renderer)
         if spot.rule == "inside":
             return _contains(anchor, box)
+        if not self._band_is_clear(label, spot, box, anchor, context):
+            return False
         if spot.rule == "end":
             beyond = max(box.y0 - anchor.y1, anchor.y0 - box.y1, 0.0)
             if not (anchor.x0 - 1 <= centre_x <= anchor.x1 + 1 and beyond <= gap):
@@ -1153,6 +1206,8 @@ class _Drawer:
                     for x, y in context["points"]
                     if abs(x - anchor.x0) > tolerance or abs(y - anchor.y0) > tolerance
                 ]
+                # ... and no bar is nearer at all.
+                others = [_away(bar_box, centre_x, centre_y) for _, bar_box in context["bars"]]
             else:  # a bar: no other bar is nearer than the label's own
                 mine = {id(owner) for owner in label.owners}
                 near = min(
@@ -1168,7 +1223,15 @@ class _Drawer:
                     for bar, bar_box in context["bars"]
                     if id(bar) not in mine
                 ]
-            return all(rival >= near - margin for rival in rivals)
+                # ... and no plotted point of any series is nearer at all.
+                others = [math.hypot(centre_x - x, centre_y - y) for x, y in context["points"]]
+            # A mark of the same kind may be nearer by the margin: the text
+            # is centred on its own. A mark of the other kind stands on the
+            # same centre line (a point over its category's bar), so there
+            # the text's own mark has to be the nearer one by that margin.
+            return all(rival >= near - margin for rival in rivals) and all(
+                other >= near + margin for other in others
+            )
         level = anchor.y0 - tolerance <= centre_y <= anchor.y1 + tolerance
         if spot.rule == "side":
             beside = max(box.x0 - anchor.x1, anchor.x0 - box.x1, 0.0)
@@ -1182,8 +1245,61 @@ class _Drawer:
             return False
         if not level or box.y0 < context["floor"] - tolerance:
             return False
+        # A text as high as a whole other segment of its bar names neither:
+        # two thin segments level with one number cannot be told apart.
+        mine = {id(owner) for owner in label.owners}
+        for bar, bar_box in context["bars"]:
+            if id(bar) in mine or bar_box.y1 - bar_box.y0 < 1.0:
+                continue
+            same_bar = abs(bar_box.x0 - anchor.x0) <= 1.0 and abs(bar_box.x1 - anchor.x1) <= 1.0
+            if same_bar and bar_box.y0 >= box.y0 - tolerance and bar_box.y1 <= box.y1 + tolerance:
+                return False
         return not any(
             box.y0 < other.y1 - tolerance and other.y0 < box.y1 - tolerance for other in stacked
+        )
+
+    def _band_is_clear(
+        self, label: _Label, spot: _Spot, box: Any, anchor: Any, context: dict[str, Any]
+    ) -> bool:
+        """Rule (f): nothing lies between a text and the mark it is written beside.
+
+        The band is the rectangle from the text to its own mark, as wide (or,
+        beside a row, as high) as the text. It starts one pixel off the mark,
+        so a line that runs along the mark's own edge (the baseline under a
+        bar of zero, a waterfall connector leaving the bar's end) is not in
+        it, and neither are the two pieces of a point's own line that meet at
+        the point. Every other bar, line, point marker or reference line in
+        it hides which mark the number belongs to.
+        """
+        from matplotlib.transforms import Bbox
+
+        edge = 1.0
+        if spot.rule == "end":
+            if box.y0 >= anchor.y1:
+                band = Bbox.from_extents(box.x0, anchor.y1 + edge, box.x1, box.y0)
+            else:
+                band = Bbox.from_extents(box.x0, box.y1, box.x1, anchor.y0 - edge)
+        elif box.x0 >= anchor.x1:
+            band = Bbox.from_extents(anchor.x1 + edge, box.y0, box.x0, box.y1)
+        else:
+            band = Bbox.from_extents(box.x1, box.y0, anchor.x0 - edge, box.y1)
+        if band.x1 <= band.x0 or band.y1 <= band.y0:
+            return True  # the text touches its mark
+        mine = {id(owner) for owner in label.owners}
+        if any(_overlaps(band, bar_box) for bar, bar_box in context["bars"] if id(bar) not in mine):
+            return False
+        point = (anchor.x0, anchor.y0) if spot.anchor is None else None
+
+        def own(x: float, y: float) -> bool:
+            return point is not None and abs(x - point[0]) <= 0.5 and abs(y - point[1]) <= 0.5
+
+        for x0, y0, x1, y1, _ in context["segments"]:
+            if own(x0, y0) or own(x1, y1):
+                continue
+            if _crosses(band, (x0, y0, x1, y1, -INK_MARGIN)):  # the line's centre
+                return False
+        return not any(
+            _away(band, x, y) < radius for x, y, radius in context["discs"] if not own(x, y)
         )
 
     def settle(self) -> list[_Label]:
@@ -1338,9 +1454,10 @@ class _Drawer:
         """Stacks; each segment's value inside it when it fits, else beside the bar.
 
         A value written beside the bar stays inside its category's column,
-        with its centre within its own segment's height, above the baseline
-        and not level with another value beside the same bar (the final rule,
-        e); with no such place it is left out and named. A segment of 0 has
+        with its centre within its own segment's height, above the baseline,
+        not level with another value beside the same bar and not as high as
+        a whole other segment of the bar (the final rule, e); with no such
+        place it is left out and named. A segment of 0 has
         no height and no value. The stack total is written only with
         `totals: true`.
         """
