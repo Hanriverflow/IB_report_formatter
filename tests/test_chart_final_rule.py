@@ -43,6 +43,20 @@ from its bar's end, so a longer neighbouring bar is always nearer to the
 text's centre: there the value is judged by its centre lying within its own
 row's height and at most 16 pt beside the bar (an approved exception), with
 the band rule on top.
+
+Fifth independent review (2026-11-15): the engine's check and this measure
+both took a mark for a value's own because it lay where the value's point
+lay. Another series' line through that spot was left out of the band, and
+another series' point on that spot was no rival: `A, Own: 100.00` stood over
+a spot it shared with the other series' 100.01. Here a series' line is now
+found by its data (the solid line that plots exactly that series' values) and
+a point by its series and category; where a mark lies decides nothing. Only
+the two pieces of the value's own series' line that meet at its own point,
+and its own marker, are left out of the band. Another series' point of the
+same category is a rival also on the very same spot, with one exception: two
+points on one spot (within half a pixel) that are written with the same text,
+as where two index lines both start at 100. That number is true of both, so
+it is written once, and the value not written is not named as missing.
 """
 
 import math
@@ -149,6 +163,7 @@ def draw(monkeypatch, spec, width: float) -> dict:
         seen["lines"] = [
             {
                 "axes": fig.axes.index(line.axes),
+                "gid": line.get_gid() or "",
                 "ydata": [float(value) for value in line.get_ydata()],
                 "xdata": [float(value) for value in line.get_xdata()],
                 "dashed": line.is_dashed(),
@@ -334,24 +349,28 @@ def _within(band, x, y, grow=0.0) -> bool:
     return band[0] - grow < x < band[2] + grow and band[1] - grow < y < band[3] + grow
 
 
-def in_the_band(band, seen, own_bars, own_point) -> list[str]:
+def in_the_band(band, seen, own_bars, own=None, twins=()) -> list[str]:
     """What lies between a text and its own mark: bars, lines and point markers.
 
-    Lines are walked half a pixel at a time. A point's own line (the one
-    through `own_point`) is its own mark and is left out.
+    Lines are walked half a pixel at a time. `own` is a point's value's own
+    point, as its series' line and the category's index: only the two pieces
+    of that line that meet at that point, and that point's marker, are its own
+    mark and left out. `twins` are points (line, index) the number is also
+    true of; their markers are left out, their lines are not. Nothing is left
+    out for lying where the own point lies.
     """
     found = []
     for _, bar in seen["bars"]:
-        if not any(bar == mine for mine in own_bars) and _overlap(band, bar):
+        if not any(bar is mine for mine in own_bars) and _overlap(band, bar):
             found.append("another bar")
     for line in seen["lines"]:
         pixels = line["pixels"]
-        if own_point is not None and any(
-            abs(x - own_point[0]) <= 0.5 and abs(y - own_point[1]) <= 0.5 for x, y in pixels
-        ):
-            continue
+        mine = own is not None and line is own[0]
         if line["drawn"]:
-            for (x0, y0), (x1, y1) in zip(pixels, pixels[1:], strict=False):
+            pieces = enumerate(zip(pixels, pixels[1:], strict=False))
+            for start, ((x0, y0), (x1, y1)) in pieces:
+                if mine and own[1] in (start, start + 1):
+                    continue
                 steps = max(1, int(math.hypot(x1 - x0, y1 - y0) * 2))
                 if any(
                     _within(band, x0 + (x1 - x0) * step / steps, y0 + (y1 - y0) * step / steps)
@@ -359,8 +378,65 @@ def in_the_band(band, seen, own_bars, own_point) -> list[str]:
                 ):
                     found.append("a line")
                     break
-        if line["radius"] and any(_within(band, x, y, line["radius"] * 0.7) for x, y in pixels):
-            found.append("a point marker")
+        if not line["radius"]:
+            continue
+        for index, (x, y) in enumerate(pixels):
+            if mine and index == own[1]:
+                continue
+            if any(line is other and index == at for other, at in twins):
+                continue
+            if _within(band, x, y, line["radius"] * 0.7):
+                found.append("a point marker")
+                break
+    return found
+
+
+def _same_data(drawn, values) -> bool:
+    """Whether a drawn line plots exactly these values.
+
+    Values beyond 1e290 are drawn at one power-of-two scale, which is exact.
+    """
+    values = [float(value) for value in values]
+    if len(drawn) != len(values):
+        return False
+    if list(drawn) == values:
+        return True
+    largest = max(values, key=abs, default=0.0)
+    if abs(largest) <= 1e290:
+        return False
+    scale = drawn[values.index(largest)] / largest
+    return math.frexp(scale)[0] == 0.5 and all(
+        y == value * scale for y, value in zip(drawn, values, strict=True)
+    )
+
+
+def series_lines(spec, seen) -> dict[int, dict]:
+    """The drawn line of each plotted series, by the series' place in the spec.
+
+    A series' line is the solid line over all categories, on the axes its
+    series is plotted on, whose y data are exactly the series' values. Where
+    the line lies in the picture plays no part. Two series with the same
+    values have two such lines, taken in drawing order: they are one line
+    drawn twice.
+    """
+    kind = spec.chart_type
+    if kind not in ("line", "bar_line"):
+        return {}
+    xs = [float(index) for index in range(len(spec.labels))]
+    axes = 1 if kind == "bar_line" else 0
+    free = [
+        line
+        for line in seen["lines"]
+        if line["xdata"] == xs and not line["dashed"] and line["axes"] == axes
+    ]
+    found = {}
+    for index, series in enumerate(spec.series):
+        if kind == "bar_line" and series.axis != "right":
+            continue
+        match = next((line for line in free if _same_data(line["ydata"], series.values)), None)
+        if match is not None:
+            free = [line for line in free if line is not match]
+            found[index] = match
     return found
 
 
@@ -380,6 +456,57 @@ def problems(spec, seen) -> list[str]:
     kind = spec.chart_type
     name = spec.title or spec.chart_type
 
+    # 0. Every plotted series has its line, and the engine's own record of
+    # whose line it is (the line's gid) says the same as the line's data.
+    lines_of = series_lines(spec, seen)
+    for index, series in enumerate(spec.series):
+        plotted = kind == "line" or (kind == "bar_line" and series.axis == "right")
+        if plotted and index not in lines_of:
+            found.append(f"no line plots the values of {series.name!r}")
+    for index, line in lines_of.items():
+        if not line["gid"]:
+            continue
+        marked = line["gid"].split("\t")
+        said = int(marked[1]) if marked[0] == "line" and marked[1].isdigit() else -1
+        if said != index and not (
+            0 <= said < len(spec.series)
+            and list(spec.series[said].values) == list(spec.series[index].values)
+        ):
+            found.append(f"the line of series {index} is marked {line['gid']!r}")
+    # Every plotted point: its series, its category's index, its pixel.
+    points = [
+        (series_index, index, x, y)
+        for series_index, line in lines_of.items()
+        for index, (x, y) in enumerate(line["pixels"])
+    ]
+
+    def text_of(series_index: int, index: int) -> str:
+        number_format = spec.right_number_format if kind == "bar_line" else spec.number_format
+        return written_number(spec.series[series_index].values[index], number_format)
+
+    def candidates(category: str, series: str, number: str) -> list[tuple[int, int]]:
+        """The plotted points a value's description (its gid) can stand for."""
+        return [
+            (series_index, index)
+            for series_index in lines_of
+            for index, label in enumerate(spec.labels)
+            if spec.series[series_index].name == series
+            and label == category
+            and text_of(series_index, index) == number
+        ]
+
+    def twins_of(series_index: int, index: int) -> list[tuple[int, int]]:
+        """Other series' points of the category on the same spot with the same text."""
+        x, y = lines_of[series_index]["pixels"][index]
+        return [
+            (other, index)
+            for other, line in lines_of.items()
+            if other != series_index
+            and abs(line["pixels"][index][0] - x) <= 0.5
+            and abs(line["pixels"][index][1] - y) <= 0.5
+            and text_of(other, index) == text_of(series_index, index)
+        ]
+
     # 1. Every number is drawn once or named in the one warning.
     want = expected(spec)
     roles = {}
@@ -387,6 +514,21 @@ def problems(spec, seen) -> list[str]:
         roles.setdefault((category, series, number), role)
     drawn = Counter(tuple(item["gid"].split("\t")[1:4]) for item in values)
     missing = Counter((c, s, n) for c, s, n, _ in want) - drawn
+    # A point's value is not missing when the same text is written at the
+    # same spot for its twin: that one number is true of both points.
+    for (category, series, number), times in list(missing.items()):
+        if roles[(category, series, number)] != "point":
+            continue
+        spoken = sum(
+            1
+            for series_index, index in candidates(category, series, number)
+            if any(
+                drawn[(category, spec.series[twin].name, number)] > 0
+                for twin, _ in twins_of(series_index, index)
+            )
+        )
+        missing[(category, series, number)] = times - min(times, spoken)
+    missing = +missing
     if drawn - Counter((c, s, n) for c, s, n, _ in want):
         found.append(f"drawn but not a value of the spec: {sorted(drawn - Counter(roles))}")
     left_out = [note for note in seen["warnings"] if "not written in the picture" in note]
@@ -418,6 +560,47 @@ def problems(spec, seen) -> list[str]:
         elif lost and not all(series in said[0] for series in lost):
             found.append(f"the warning does not name every {role}: {lost}")
 
+    def point_problems(place: tuple[int, int], box, key: str) -> list[str]:
+        """What is wrong with the text at `box` as the value of the point `place`."""
+        wrong: list[str] = []
+        own_series, own_index = place
+        centre = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
+        gap = GAP_POINTS * point
+        margin = MARGIN_POINTS * point + 0.5
+        mine = lines_of[own_series]["pixels"][own_index]
+        near = math.hypot(centre[0] - mine[0], centre[1] - mine[1])
+        twins = twins_of(own_series, own_index)
+        # on its own point: centred over or under it, at most 16 pt away
+        if abs(centre[0] - mine[0]) > 1 or max(box[1] - mine[1], mine[1] - box[3], 0) > gap:
+            wrong.append(f"{key}: is not over or under its own point")
+        for other_series, index, x, y in points:
+            if (other_series, index) == (own_series, own_index):
+                continue  # its own point, by series and category
+            away = math.hypot(centre[0] - x, centre[1] - y)
+            if _from_box(box, x, y) == 0:
+                wrong.append(f"{key}: lies over another plotted point")
+            elif index != own_index:
+                if away < near - margin:
+                    wrong.append(f"{key}: another plotted point is nearer than its own")
+            elif (other_series, index) not in twins and away < near + margin - 1:
+                # another series' point of the same category is on the
+                # text's own centre line, or on the very same spot: the
+                # own point is nearer by 3 pt
+                wrong.append(f"{key}: another series' point is as near as its own")
+        # ... its own point is nearer than every bar by the margin (a point
+        # and its category's bar are on one centre line), and nothing lies
+        # between.
+        clearly = MARGIN_POINTS * point - 0.5
+        if any(_from_box(bar, *centre) < near + clearly for bar in every_bar):
+            wrong.append(f"{key}: a bar is as near as its own point")
+        band = _band(box, (mine[0], mine[1], mine[0], mine[1]))
+        own_mark = (lines_of[own_series], own_index)
+        twin_marks = [(lines_of[twin], index) for twin, index in twins]
+        for thing in in_the_band(band, seen, [], own_mark, twin_marks) if band else []:
+            wrong.append(f"{key}: {thing} lies between the value and its own point")
+        return wrong
+
+    written_points: list[tuple[int, int, str]] = []
     for item in values:
         category, series, number = item["gid"].split("\t")[1:4]
         role = roles.get((category, series, number), "?")
@@ -454,70 +637,42 @@ def problems(spec, seen) -> list[str]:
         margin = MARGIN_POINTS * point + 0.5
         if role == "line":
             # A line-end name is nearest to the end of its own line.
+            # Whose end is whose is known by the series, never by where an
+            # end lies; a name can stand for each series its text describes.
             last = len(spec.labels) - 1
-            ends = {
-                item.name: seen["transforms"][0].transform((last, item.values[-1]))[1]
-                for item in spec.series
-            }
-            away = abs(centre[1] - ends[series])
-            if any(
-                abs(end - ends[series]) > 0.5 and abs(centre[1] - end) < away - margin
-                for end in ends.values()
-            ):
+            ends = {index: line["pixels"][last][1] for index, line in lines_of.items()}
+            own_ends = [
+                index
+                for index in ends
+                if spec.series[index].name == series and text_of(index, last) == number
+            ]
+
+            nearest_to_its_own = any(
+                all(
+                    abs(centre[1] - end) >= abs(centre[1] - ends[own]) - margin
+                    for other, end in ends.items()
+                    if other != own
+                )
+                for own in own_ends
+            )
+            if not nearest_to_its_own:
                 found.append(f"{key}: another line ends nearer to this name than its own")
         if role in ("line", "reference", "?"):
             continue
-        every_point = [
-            pixel
-            for line in seen["lines"]
-            if len(line["xdata"]) == len(spec.labels)
-            and not line["dashed"]
-            and line["xdata"] == [float(i) for i in range(len(spec.labels))]
-            for pixel in line["pixels"]
-        ]
+        every_point = [(x, y) for _, _, x, y in points]
         if role == "point":
-            axes = 1 if kind == "bar_line" else 0
-            transform = seen["transforms"][axes]
-            series_values = [s.values for s in spec.series if s.name == series]
-            own_points = [
-                tuple(transform.transform((index, values_of[index])))
-                for values_of in series_values
-                for index, label in enumerate(spec.labels)
-                if label == category
-                and written_number(
-                    values_of[index],
-                    spec.right_number_format if kind == "bar_line" else spec.number_format,
-                )
-                == number
-            ]
-            near = min(math.hypot(centre[0] - x, centre[1] - y) for x, y in own_points)
-            mine = min(own_points, key=lambda p: math.hypot(centre[0] - p[0], centre[1] - p[1]))
-            # on its own point: centred over or under it, at most 16 pt away
-            if abs(centre[0] - mine[0]) > 1 or max(box[1] - mine[1], mine[1] - box[3], 0) > gap:
-                found.append(f"{key}: is not over or under its own point")
-            for x, y in every_point:
-                if any(abs(x - px) <= 0.5 and abs(y - py) <= 0.5 for px, py in own_points):
-                    continue
-                if _from_box(box, x, y) == 0:
-                    found.append(f"{key}: lies over another plotted point")
-                elif math.hypot(centre[0] - x, centre[1] - y) < near - margin:
-                    found.append(f"{key}: another plotted point is nearer than its own")
-                elif (
-                    abs(x - mine[0]) <= 0.5
-                    and math.hypot(centre[0] - x, centre[1] - y) < near + margin - 1
-                ):
-                    # another series' point of the same category is on the
-                    # text's own centre line: the own point is nearer by 3 pt
-                    found.append(f"{key}: another series' point is as near as its own")
-            # ... its own point is nearer than every bar by the margin (a
-            # point and its category's bar are on one centre line), and
-            # nothing lies between.
-            clearly = MARGIN_POINTS * point - 0.5
-            if any(_from_box(bar, *centre) < near + clearly for bar in every_bar):
-                found.append(f"{key}: a bar is as near as its own point")
-            band = _band(box, (mine[0], mine[1], mine[0], mine[1]))
-            for thing in in_the_band(band, seen, [], mine) if band else []:
-                found.append(f"{key}: {thing} lies between the value and its own point")
+            # Its own point: a point its description stands for. Two points can
+            # have the same category, series name and text (two series of one
+            # name that meet); the value is judged as the value of each, and
+            # stands if it stands as the value of one of them.
+            described = candidates(category, series, number)
+            if not described:
+                found.append(f"{key}: has no plotted point")
+                continue
+            judged = [(point_problems(place, box, key), place) for place in described]
+            wrong, place = min(judged, key=lambda item: len(item[0]))
+            found += wrong
+            written_points.append((*place, key))
             continue
         if not own:
             if kind == "range":  # a range of one value: its point
@@ -528,7 +683,7 @@ def problems(spec, seen) -> list[str]:
                 if abs(centre[1] - py) > 1 or max(box[0] - px, px - box[2], 0) > gap:
                     found.append(f"{key}: is not beside its own point")
                 band = _band(box, (px, py, px, py))
-                for thing in in_the_band(band, seen, [], (px, py)) if band else []:
+                for thing in in_the_band(band, seen, []) if band else []:
                     found.append(f"{key}: {thing} lies between the value and its own point")
             else:
                 found.append(f"{key}: has no bar")
@@ -583,6 +738,12 @@ def problems(spec, seen) -> list[str]:
         clearly = MARGIN_POINTS * point - 0.5
         if any(math.hypot(centre[0] - x, centre[1] - y) < near + clearly for x, y in every_point):
             found.append(f"{key}: a plotted point is as near as its own bar")
+
+    # One number for two points on one spot is written once.
+    for first, (series_index, index, key) in enumerate(written_points):
+        for other_series, other_index, _ in written_points[first + 1 :]:
+            if (other_series, other_index) in twins_of(series_index, index):
+                found.append(f"{key}: the same number is written twice at one spot")
 
     # (e) Values beside one stacked bar are not level with each other.
     beside: dict[str, list] = {}
@@ -784,6 +945,12 @@ def test_a_bars_value_is_not_written_beyond_another_series_line(monkeypatch):
     assert len(left_out) == 1 and "2026E, 장기: 16,454.0" in left_out[0]
 
 
+def other_line_from_the_same_spot(band, own_line, point, twin=False) -> list[str]:
+    other = {"pixels": [(60.0, 20.0), point, (130.0, 75.0)], "drawn": True, "radius": 4.0}
+    seen = {"bars": [], "lines": [own_line, other]}
+    return in_the_band(band, seen, [], (own_line, 1), [(other, 1)] if twin else [])
+
+
 def test_the_band_measure_sees_what_lies_between_a_text_and_its_mark():
     """The measure itself, on hand-made geometry (it does not ask the engine)."""
     bar = (100.0, 0.0, 140.0, 50.0)
@@ -794,9 +961,9 @@ def test_the_band_measure_sees_what_lies_between_a_text_and_its_mark():
     def line(pixels, drawn=True, radius=0.0):
         return {"pixels": pixels, "drawn": drawn, "radius": radius}
 
-    def between(lines, bars=(), own_point=None):
+    def between(lines, bars=()):
         seen = {"bars": [("bar\tA\tS", bar), *bars], "lines": lines}
-        return in_the_band(band, seen, [bar], own_point)
+        return in_the_band(band, seen, [bar])
 
     assert between([]) == []
     # a line across the band, a line only beside it, a line along the bar's own edge
@@ -811,12 +978,27 @@ def test_the_band_measure_sees_what_lies_between_a_text_and_its_mark():
     ]
     # another bar in the band; the text's own bar is not
     assert between([], bars=[("bar\tA\tT", (90.0, 55.0, 150.0, 60.0))]) == ["another bar"]
-    # a point's own line is its own mark
+    # Of a point's own line only the two pieces that meet at the point, and
+    # the point's own marker, are its own mark.
     point = (120.0, 40.0)
     above = _band(text, (*point, *point))
     own_line = line([(60.0, 60.0), point, (180.0, 60.0)], radius=4.0)
     seen = {"bars": [], "lines": [own_line, line([(60.0, 60.0), (180.0, 60.0)])]}
-    assert in_the_band(above, seen, [], point) == ["a line"]
+    assert in_the_band(above, seen, [], (own_line, 1)) == ["a line"]
+    assert in_the_band(above, {"bars": [], "lines": [own_line]}, [], (own_line, 1)) == []
+    # Without the record of whose point it is, nothing is the value's own.
+    assert in_the_band(above, {"bars": [], "lines": [own_line]}, []) == [
+        "a line",
+        "a point marker",
+    ]
+    # A later piece of the own line that comes back through the band counts.
+    back = line([(60.0, 60.0), point, (180.0, 45.0), (100.0, 62.0)], radius=4.0)
+    assert in_the_band(above, {"bars": [], "lines": [back]}, [], (back, 1)) == ["a line"]
+    # Fifth review: another series' line that leaves from the very same spot
+    # is between the value and its point, and so is that series' marker there,
+    assert other_line_from_the_same_spot(above, own_line, point) == ["a line", "a point marker"]
+    # unless the number is true of that point too (a twin): then only its line.
+    assert other_line_from_the_same_spot(above, own_line, point, twin=True) == ["a line"]
     # text and mark touching: there is no band
     assert _band((105.0, 50.5, 135.0, 62.0), bar) is None
 
@@ -967,6 +1149,184 @@ def test_a_value_as_high_as_a_whole_other_segment_is_not_drawn(monkeypatch):
     assert "2" not in shown(seen)
     left_out = [note for note in seen["warnings"] if "not written in the picture" in note]
     assert len(left_out) == 1 and "E, 투자: 2" in left_out[0] and "E, 재무: 3" in left_out[0]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# THE FIFTH REVIEW
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Fifth independent review, [4]: at A the two lines start 0.01 apart, on one
+# spot of the picture (0.2 px). `A, Own: 100.00` was written at that spot, as
+# near to the other series' point as to its own, with the other series' line
+# between; the engine's check and this module's measure both let it pass,
+# because each took whatever lay on the value's own point for the value's own.
+SHARED_SPOT = {
+    "type": "line",
+    "title": "Shared point",
+    "number_format": ",.2f",
+    "labels": ["A", "B", "C"],
+    "series": [
+        {"name": "Other", "values": [100.01, 98, 120]},
+        {"name": "Own", "values": [100, 110, 120]},
+    ],
+}
+# Two index lines that both start at 100: the one number is true of both points.
+SHARED_START = {
+    "type": "line",
+    "title": "Index",
+    "number_format": ",.2f",
+    "labels": ["A", "B", "C"],
+    "series": [
+        {"name": "Other", "values": [100, 98, 120]},
+        {"name": "Own", "values": [100, 110, 125]},
+    ],
+}
+# Two lines that both write their values: at A and C they share a spot and a text.
+TWIN_POINTS = {
+    "type": "bar_line",
+    "title": "Twins",
+    "labels": ["A", "B", "C"],
+    "series": [
+        {"name": "Bars", "values": [10, 12, 14]},
+        {"name": "R1", "axis": "right", "values": [5, 6, 9]},
+        {"name": "R2", "axis": "right", "values": [5, 7.5, 9]},
+    ],
+}
+# The same spots with different texts (5.00 and 5.01): neither can be told apart.
+NEAR_POINTS = {
+    "type": "bar_line",
+    "title": "Near",
+    "right_number_format": ",.2f",
+    "labels": ["A", "B", "C"],
+    "series": [
+        {"name": "Bars", "values": [10, 12, 14]},
+        {"name": "R1", "axis": "right", "values": [5, 6, 9]},
+        {"name": "R2", "axis": "right", "values": [5.01, 7.5, 9.01]},
+    ],
+}
+FIFTH_CASES = {
+    "shared-spot": SHARED_SPOT,
+    "shared-start": SHARED_START,
+    "twin-points": TWIN_POINTS,
+    "near-points": NEAR_POINTS,
+}
+WIDTHS = [3.0, 3.5, 4.5, 6.0]
+
+
+@pytest.mark.parametrize("name", FIFTH_CASES)
+@pytest.mark.parametrize("width", WIDTHS)
+def test_the_fifth_reviews_charts_keep_the_rule(monkeypatch, name, width):
+    check(monkeypatch, FIFTH_CASES[name], width)
+
+
+def _spec(data: dict):
+    return parse_chart_spec(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+
+
+@pytest.mark.parametrize("width", WIDTHS)
+def test_a_value_on_a_spot_it_shares_with_another_series_is_named_not_drawn(monkeypatch, width):
+    seen = check(monkeypatch, SHARED_SPOT, width)
+    lines = series_lines(_spec(SHARED_SPOT), seen)
+    other, own = lines[0]["pixels"][0], lines[1]["pixels"][0]
+    # The review's geometry: the two points of A are one spot of the picture.
+    assert math.hypot(other[0] - own[0], other[1] - own[1]) < 1.0
+    assert "100.00" not in shown(seen)
+    left_out = [note for note in seen["warnings"] if "not written in the picture" in note]
+    assert len(left_out) == 1 and "A, Own: 100.00" in left_out[0]
+
+
+def test_the_measure_knows_a_values_own_point_by_its_series_not_by_its_place(monkeypatch):
+    """The measure itself: the review's value, put back over the shared spot, is reported.
+
+    The engine is not asked: a value is added by hand to what the picture
+    holds, over the spot the two points of A share, as the reviewed engine
+    drew it. The old measure left out every point and line on that spot.
+    """
+    spec = _spec(SHARED_SPOT)
+    seen = draw(monkeypatch, spec, 6.0)
+    assert problems(spec, seen) == []
+    own = series_lines(spec, seen)[1]["pixels"][0]
+    point = seen["dpi"] / 72
+    for low, high in ((4 * point, 13 * point), (-13 * point, -4 * point)):  # over, under
+        put_back = dict(seen)
+        put_back["texts"] = [
+            *seen["texts"],
+            {
+                "text": "100.00",
+                "raw": "100.00",
+                "gid": "value\tA\tOwn\t100.00",
+                "box": (own[0] - 15, own[1] + low, own[0] + 15, own[1] + high),
+                "tick": None,
+                "artist": None,
+            },
+        ]
+        found = problems(spec, put_back)
+        assert "A / Own / 100.00: another series' point is as near as its own" in found
+        assert "A / Own / 100.00: a point marker lies between the value and its own point" in found
+
+
+def test_one_number_is_written_once_for_two_points_on_one_spot(monkeypatch):
+    """Same spot, same text: written once, and the value not written is not named."""
+    for width in WIDTHS:
+        seen = check(monkeypatch, TWIN_POINTS, width)
+        assert shown(seen).count("5") == 1 and shown(seen).count("9") == 1
+        assert sorted(shown(seen)) == sorted(["10", "12", "14", "5", "6", "7.5", "9"])
+        assert seen["warnings"] == []
+        # The one number stands over the spot both points share.
+        lines = series_lines(_spec(TWIN_POINTS), seen)
+        assert lines[1]["pixels"][0] == lines[2]["pixels"][0]
+    seen = check(monkeypatch, SHARED_START)
+    assert shown(seen).count("100.00") == 1 and seen["warnings"] == []
+
+
+def test_two_values_that_differ_on_one_spot_are_named_not_drawn(monkeypatch):
+    for width in WIDTHS:
+        seen = check(monkeypatch, NEAR_POINTS, width)
+        assert sorted(shown(seen)) == sorted(["10", "12", "14", "6.00", "7.50"])
+        assert seen["warnings"] == [
+            "Chart 'Near': 4 value(s) not written in the picture for lack of room: "
+            "A, R1: 5.00; C, R1: 9.00; A, R2: 5.01; C, R2: 9.01"
+        ]
+
+
+def test_a_series_line_is_found_by_its_data_and_the_engines_record_agrees(monkeypatch):
+    """Whose line is whose: by the values it plots, checked against the line's gid."""
+    for data in (SHARED_SPOT, TWIN_POINTS, CROSSING_LINES, LINE_ENDS_CLOSE):
+        spec = _spec(data)
+        seen = draw(monkeypatch, spec, 6.0)
+        lines = series_lines(spec, seen)
+        plotted = [
+            index
+            for index, series in enumerate(spec.series)
+            if spec.chart_type == "line" or series.axis == "right"
+        ]
+        assert sorted(lines) == plotted
+        for index, line in lines.items():
+            assert line["ydata"] == [float(value) for value in spec.series[index].values]
+            assert line["gid"] == f"line\t{index}"
+    # A line marked as another series' is reported.
+    spec = _spec(SHARED_SPOT)
+    seen = draw(monkeypatch, spec, 6.0)
+    series_lines(spec, seen)[0]["gid"] = "line\t1"
+    assert "the line of series 0 is marked 'line\\t1'" in problems(spec, seen)
+
+
+# Two series of one name that start on one spot: the value's description
+# (category, series name, text) stands for both points.
+SAME_NAME_TWINS = {
+    "type": "line",
+    "labels": ["A", "B", "C"],
+    "series": [
+        {"name": "S", "values": [10, 12, 14]},
+        {"name": "S", "values": [10, 9, 20]},
+    ],
+}
+
+
+@pytest.mark.parametrize("width", WIDTHS)
+def test_a_value_is_judged_as_each_point_its_description_stands_for(monkeypatch, width):
+    seen = check(monkeypatch, SAME_NAME_TWINS, width)
+    assert shown(seen).count("10") <= 1
 
 
 def _line(values, number_format=None):
@@ -1472,3 +1832,54 @@ def test_many_charts_of_each_type_keep_the_rule(monkeypatch, kind):
     rng = random.Random(f"final-rule-{kind}")
     for index in range(30):
         check(monkeypatch, random_chart(rng, kind), (6.0, 4.5, 3.0, 6.0, 3.5)[index % 5])
+
+
+def meeting_lines_chart(rng: random.Random, kind: str) -> dict:
+    """Two or three plotted series that meet: at some categories their values
+    are equal (one spot, one text) or 0.01 or 0.02 apart (one spot, two texts)."""
+    count = rng.randint(3, 7)
+    base = [round(rng.uniform(80, 120), 1) for _ in range(count)]
+    series = []
+    for name in _names(rng, 2 if kind == "bar_line" else rng.choice([2, 2, 3])):
+        values = []
+        for value in base:
+            pick = rng.random()
+            if pick < 0.4:
+                values.append(value)
+            elif pick < 0.7:
+                values.append(round(value + rng.choice([0.01, -0.01, 0.02]), 2))
+            else:
+                values.append(round(value + rng.uniform(-15, 15), 1))
+        series.append({"name": name, "values": values})
+    number_format = rng.choice([",.2f", ",.2f", ".1f", None])
+    data: dict = {"type": kind, "labels": YEARS[-count:], "series": series}
+    if kind == "line":
+        if number_format:
+            data["number_format"] = number_format
+        return data
+    for item in series:
+        item["axis"] = "right"
+    bars = {"name": "Bars 0", "values": [float(round(rng.uniform(50, 400))) for _ in base]}
+    data["series"] = [bars, *series]
+    if number_format:
+        data["right_number_format"] = number_format
+    return data
+
+
+@pytest.mark.parametrize("kind", ["line", "bar_line"])
+def test_many_charts_whose_lines_meet_keep_the_rule(monkeypatch, kind):
+    """Thirty charts per type from a fixed seed whose series share spots (fifth review)."""
+    rng = random.Random(f"meeting-lines-{kind}")
+    met = 0
+    for index in range(30):
+        data = meeting_lines_chart(rng, kind)
+        seen = check(monkeypatch, data, WIDTHS[index % 4])
+        lines = list(series_lines(_spec(data), seen).values())
+        met += sum(
+            1
+            for first, line in enumerate(lines)
+            for other in lines[first + 1 :]
+            for mine, theirs in zip(line["pixels"], other["pixels"], strict=True)
+            if math.hypot(mine[0] - theirs[0], mine[1] - theirs[1]) <= 0.5
+        )
+    assert met >= 30  # the sample does hold points on one spot

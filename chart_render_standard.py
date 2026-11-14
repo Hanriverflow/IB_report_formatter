@@ -24,6 +24,10 @@ Changelog (E10):
       point marker, reference line and zero line, sit nearest to their own
       mark, and a stacked value beside its bar is centred on its own segment
       (the final rule, `_Drawer.fits`).
+    - FIXED (fifth review, 2026-11-15): a value's own point, line pieces and
+      marker are known by series and category (`_Label.point`,
+      `_Drawer.points`), never by lying where its point lies; two points on
+      one spot written with the same text share one number (`_Drawer.twins`).
 """
 
 import logging
@@ -324,7 +328,10 @@ class _Label:
     """A number the chart type writes: drawn at the first spot that fits, else reported.
 
     `owners` are its own bars (its bar or its stack). `group` is the stack a
-    segment value belongs to. `role` is `line` for a line-end name and
+    segment value belongs to. `point` is the plotted point a point's value or
+    a line-end name belongs to: its series' line and the category's index.
+    Marks are a label's own by this record alone, never because they lie
+    where its mark lies. `role` is `line` for a line-end name and
     `reference` for a reference line's text: a line left without one has no
     name in the picture, which the warning says.
     """
@@ -338,6 +345,7 @@ class _Label:
     role: str = "value"
     # A line-end name: where its own line ends (data x and value).
     end: tuple[float, float] | None = None
+    point: tuple[Any, int] | None = None
 
     @property
     def where(self) -> str:
@@ -623,16 +631,23 @@ class _Drawer:
         self.legend_artist: Any = None
         self.legend_columns = 1
         self.legend_room = max(0.5, width - 0.6)  # inches a legend name may take
-        # Line ends: value, label text, colour, accent, series name.
-        self.ends: list[tuple[float, str, str, bool, str]] = []
+        # Line ends: value, label text, colour, accent, series name, the line.
+        self.ends: list[tuple[float, str, str, bool, str, Any]] = []
         self.labels: list[_Label] = []
         self.bars: list[Any] = []
         self.provisional: list[Any] = []
         self.placed: list[tuple[Any, _Label, _Spot]] = []
         self.axes: list[Any] = [ax]
         self.label_name = spec.title or spec.chart_type
-        # Plotted data points (axes, x, y): the rivals of a point's value.
-        self.points: list[tuple[Any, float, float]] = []
+        # Plotted data points: axes, x, y, the series' line, the category's
+        # index and the value as the picture writes it. Whose a point is, is
+        # read from here, never from where it lies.
+        self.points: list[tuple[Any, float, float, Any, int, str]] = []
+        # The stack (category index) of each stacked segment.
+        self.stack_of: dict[int, int] = {}
+        # Values not written because the same text at the same spot already
+        # speaks for them: (the value, the value that is written).
+        self.shared: list[tuple[_Label, _Label]] = []
         self.scale = 1.0  # see `_safe_scale`
         self.value_axis = False
 
@@ -765,8 +780,11 @@ class _Drawer:
         owners: Sequence[Any] = (),
         group: int | None = None,
         role: str = "value",
+        point: tuple[Any, int] | None = None,
     ) -> None:
-        self.labels.append(_Label(number, category, series, spots, list(owners), group, role))
+        self.labels.append(
+            _Label(number, category, series, spots, list(owners), group, role, point=point)
+        )
 
     def _make(self, spot: _Spot) -> Any:
         axes = spot.axes or self.ax
@@ -975,8 +993,11 @@ class _Drawer:
         transform = self.ax.transData
         last_x = len(self.spec.labels) - 1
         items = sorted(
-            (transform.transform((last_x, value))[1], value, text, color, main, name)
-            for value, text, color, main, name in self.ends
+            (
+                (transform.transform((last_x, value))[1], value, text, color, main, name, line)
+                for value, text, color, main, name, line in self.ends
+            ),
+            key=lambda item: item[:6],
         )
         half = 0.0
         for item in items:  # a long name is broken into lines: the tallest sets the gap
@@ -990,7 +1011,9 @@ class _Drawer:
         positions = placed if placed is not None else [item[0] for item in items]
         inverse = transform.inverted()
         category = self.spec.labels[-1]
-        for pixel_y, (_, value, text, color, main, name) in zip(positions, items, strict=True):
+        for pixel_y, (_, value, text, color, main, name, line) in zip(
+            positions, items, strict=True
+        ):
             y = inverse.transform((0, pixel_y))[1]
             spot = _Spot(
                 (last_x, y),
@@ -1004,23 +1027,40 @@ class _Drawer:
                 rule="free",
             )
             self.labels.append(
-                _Label(self.fmt(value), category, name, [spot], role="line", end=(last_x, value))
+                _Label(
+                    self.fmt(value),
+                    category,
+                    name,
+                    [spot],
+                    role="line",
+                    end=(last_x, value),
+                    point=(line, last_x),
+                )
             )
 
     def _context(self, renderer: Any) -> dict[str, Any]:
         """What every check reads: the picture, the fixed texts and every drawn mark."""
         blocked = [box for _, box in self.fixed_texts(renderer)]
-        segments, discs = self.marks(renderer)
+        segments, discs, segment_owners, disc_owners = self.marks(renderer)
         return {
             "canvas": self.fig.bbox,
             "blocked": blocked,
             "bars": [(bar, bar.get_window_extent(renderer)) for bar in self.bars],
             "segments": segments,
             "discs": discs,
-            "points": [tuple(axes.transData.transform((x, y))) for axes, x, y in self.points],
+            # Whose each line piece and point marker is: (line, index, index)
+            # and (line, index) for a series' line, None for every other line.
+            "segment_owners": segment_owners,
+            "disc_owners": disc_owners,
+            # Every plotted point: pixel x and y, its line, its category's
+            # index and its written value.
+            "points": [
+                (*map(float, axes.transData.transform((x, y))), line, index, text)
+                for axes, x, y, line, index, text in self.points
+            ],
             "ends": [
-                float(self.ax.transData.transform((len(self.spec.labels) - 1, value))[1])
-                for value, *_ in self.ends
+                (float(self.ax.transData.transform((len(self.spec.labels) - 1, value))[1]), line)
+                for value, *_, line in self.ends
             ],
             "floor": self.ax.get_window_extent(renderer).y0,
             "renderer": renderer,
@@ -1028,8 +1068,13 @@ class _Drawer:
 
     def marks(
         self, renderer: Any
-    ) -> tuple[list[tuple[float, float, float, float, float]], list[tuple[float, float, float]]]:
-        """Every drawn line and point marker, in pixels.
+    ) -> tuple[
+        list[tuple[float, float, float, float, float]],
+        list[tuple[float, float, float]],
+        list[tuple[Any, int, int] | None],
+        list[tuple[Any, int] | None],
+    ]:
+        """Every drawn line and point marker, in pixels, and whose each is.
 
         Lines are the series' lines, reference lines, the zero line, waterfall
         connectors and the visible axis lines (spines), each as segments with
@@ -1037,32 +1082,48 @@ class _Drawer:
         marker a disc. Grid lines and the tint of a range's overlap lie
         behind the plot and are not marks.
 
+        A series' line is known by the record of its plotted points
+        (`self.points`): its piece between the points of categories `i` and
+        `i + 1` is owned by `(line, i, i + 1)` and its marker at category `i`
+        by `(line, i)`. Every other line (reference line, zero line,
+        connector, a range's single-value mark, axis line) has no owner.
+
         Returns:
-            Segments `(x0, y0, x1, y1, half_width)` and discs `(x, y, radius)`.
+            Segments `(x0, y0, x1, y1, half_width)`, discs `(x, y, radius)`,
+            and the owner of each segment and of each disc, in step.
         """
         scale = self.fig.dpi / 72
         segments: list[tuple[float, float, float, float, float]] = []
         discs: list[tuple[float, float, float]] = []
+        segment_owners: list[tuple[Any, int, int] | None] = []
+        disc_owners: list[tuple[Any, int] | None] = []
+        series_lines = {id(line) for _, _, _, line, _, _ in self.points}
         for axes in self.axes:
             for line in axes.lines:
                 points = [
                     (float(x), float(y))
                     for x, y in line.get_transform().transform(line.get_xydata())
                 ]
+                owned = id(line) in series_lines
                 half = float(line.get_linewidth()) * scale / 2
                 if line.get_linestyle() not in ("None", "", " "):
-                    for (x0, y0), (x1, y1) in zip(points, points[1:], strict=False):
+                    for index, ((x0, y0), (x1, y1)) in enumerate(
+                        zip(points, points[1:], strict=False)
+                    ):
                         segments.append((x0, y0, x1, y1, half))
+                        segment_owners.append((line, index, index + 1) if owned else None)
                 marker = line.get_marker()
                 if marker in (None, "None", "", " "):
                     continue
                 size = float(line.get_markersize()) * scale
                 edge = float(line.get_markeredgewidth()) * scale
-                for x, y in points:
+                for index, (x, y) in enumerate(points):
                     if marker == "|":
                         segments.append((x, y - size / 2, x, y + size / 2, edge / 2))
+                        segment_owners.append(None)
                     else:
                         discs.append((x, y, size / 2 + edge / 2))
+                        disc_owners.append((line, index) if owned else None)
             place = axes.get_window_extent(renderer)
             ends = {
                 "left": (place.x0, place.y0, place.x0, place.y1),
@@ -1073,7 +1134,42 @@ class _Drawer:
             for side, spine in axes.spines.items():
                 if spine.get_visible() and side in ends:
                     segments.append((*ends[side], float(spine.get_linewidth()) * scale / 2))
-        return segments, discs
+                    segment_owners.append(None)
+        return segments, discs, segment_owners, disc_owners
+
+    def twins(self, label: _Label, context: dict[str, Any]) -> set[tuple[int, int]]:
+        """Other series' points that a point's value is also true of.
+
+        Two series' points of one category that lie on the same spot (within
+        half a pixel) and are written with the same text, as where two index
+        lines both start at 100: the one number names both, so the other
+        point is no rival of the value and its marker does not come between.
+        With different texts (100.00 and 100.01) the other point is a rival
+        like any, however near it lies.
+
+        Returns:
+            `(id(line), category index)` of each such point.
+        """
+        if label.point is None or label.role != "value":
+            return set()
+        line, index = label.point
+        own = [
+            (x, y)
+            for x, y, other_line, other_index, _ in context["points"]
+            if other_line is line and other_index == index
+        ]
+        if not own:
+            return set()
+        own_x, own_y = own[0]
+        return {
+            (id(other_line), other_index)
+            for x, y, other_line, other_index, text in context["points"]
+            if other_line is not line
+            and other_index == index
+            and text == label.number
+            and abs(x - own_x) <= 0.5
+            and abs(y - own_y) <= 0.5
+        }
 
     def fixed_texts(self, renderer: Any) -> list[tuple[Any, Any]]:
         """Axis names and legend entries, with their boxes: texts no check removes."""
@@ -1138,6 +1234,11 @@ class _Drawer:
           bar for a point's value) and than every other series' point of the
           same category by at least `NEAREST_MARGIN`: those are on the
           text's own centre line, so only the distance tells them apart.
+          Whose a point is, is read from the record of the plotted points
+          (series and category), never from where it lies: another series'
+          point of the same category is a rival also when it lies on the
+          value's own point. The one exception is `twins`: on the same spot
+          and written with the same text, the number is true of both.
           Rows of a horizontal chart (`hbar`, `range`) do not overlap
           and their values run sideways from the bar's end, where a longer
           neighbouring bar is always nearer to the text's centre: there the
@@ -1152,10 +1253,13 @@ class _Drawer:
           nothing between: the band from the text to its own mark, as wide
           as the text, holds no other bar or segment, no line, no point and
           no reference line (`_band_is_clear`). Otherwise a bar's value over
-          another series' line reads as that line's value.
+          another series' line reads as that line's value. Only the two
+          pieces of the value's own series' line that meet at its own point
+          are not counted; another series' line is, also when it leaves from
+          the same spot.
 
-        A line-end name sits nearest to its own line's end: no other line
-        ends nearer to its centre's height by more than `NEAREST_MARGIN`.
+        A line-end name sits nearest to its own line's end: no other series'
+        line ends nearer to its centre's height by more than `NEAREST_MARGIN`.
 
         Args:
             label: The value.
@@ -1186,10 +1290,11 @@ class _Drawer:
                 return True
             own_end = float(self.ax.transData.transform(label.end)[1])
             away = abs(centre_y - own_end)
+            own_line = label.point[0] if label.point is not None else None
             return all(
                 abs(centre_y - other) >= away - margin
-                for other in context["ends"]
-                if abs(other - own_end) > tolerance
+                for other, line in context["ends"]
+                if line is not own_line
             )
         anchor = self._anchor_box(spot, renderer)
         if spot.rule == "inside":
@@ -1201,19 +1306,23 @@ class _Drawer:
             if not (anchor.x0 - 1 <= centre_x <= anchor.x1 + 1 and beyond <= gap):
                 return False
             if spot.anchor is None:  # a point: no other plotted point is nearer
+                if label.point is None:
+                    return False  # a point's value is always recorded with its point
+                own_line, own_index = label.point
+                twins = self.twins(label, context)
                 near = math.hypot(centre_x - anchor.x0, centre_y - anchor.y0)
-                rivals = [
-                    math.hypot(centre_x - x, centre_y - y)
-                    for x, y in context["points"]
-                    if abs(x - anchor.x0) > 1.0
-                ]
+                rivals = []
                 # Another series' point of the same category, and every bar,
                 # is on the text's own centre line.
-                others = [
-                    math.hypot(centre_x - x, centre_y - y)
-                    for x, y in context["points"]
-                    if abs(x - anchor.x0) <= 1.0 and abs(y - anchor.y0) > tolerance
-                ]
+                others = []
+                for x, y, line, index, _ in context["points"]:
+                    if line is own_line and index == own_index:
+                        continue  # the value's own point
+                    away = math.hypot(centre_x - x, centre_y - y)
+                    if index != own_index:
+                        rivals.append(away)
+                    elif (id(line), index) not in twins:
+                        others.append(away)
                 others += [_away(bar_box, centre_x, centre_y) for _, bar_box in context["bars"]]
             else:  # a bar: no other bar is nearer than the label's own
                 mine = {id(owner) for owner in label.owners}
@@ -1231,7 +1340,7 @@ class _Drawer:
                     if id(bar) not in mine
                 ]
                 # ... and no plotted point of any series is nearer at all.
-                others = [math.hypot(centre_x - x, centre_y - y) for x, y in context["points"]]
+                others = [math.hypot(centre_x - x, centre_y - y) for x, y, *_ in context["points"]]
             # A mark of the same kind beside the text's own may be nearer by
             # the margin: the text is centred on its own. A mark on the same
             # centre line (a point over its category's bar, two series'
@@ -1260,7 +1369,8 @@ class _Drawer:
         for bar, bar_box in context["bars"]:
             if id(bar) in mine or bar_box.y1 - bar_box.y0 < 1.0:
                 continue
-            same_bar = abs(bar_box.x0 - anchor.x0) <= 1.0 and abs(bar_box.x1 - anchor.x1) <= 1.0
+            # The same bar: a segment of the label's own stack, by the record.
+            same_bar = label.group is not None and self.stack_of.get(id(bar)) == label.group
             if same_bar and bar_box.y0 >= box.y0 - tolerance and bar_box.y1 <= box.y1 + tolerance:
                 return False
         return not any(
@@ -1276,9 +1386,13 @@ class _Drawer:
         beside a row, as high) as the text. It starts one pixel off the mark,
         so a line that runs along the mark's own edge (the baseline under a
         bar of zero, a waterfall connector leaving the bar's end) is not in
-        it, and neither are the two pieces of a point's own line that meet at
-        the point. Every other bar, line, point marker or reference line in
-        it hides which mark the number belongs to.
+        it. For a point's value, the two pieces of its own series' line that
+        meet at its own point are not counted, nor its own marker, nor the
+        marker of a twin (`twins`): these are known by series and category,
+        never by lying where the point lies. Another series' line counts,
+        also when it leaves from the very same spot. Every other bar, line,
+        point marker or reference line in the band hides which mark the
+        number belongs to.
         """
         from matplotlib.transforms import Bbox
 
@@ -1297,18 +1411,35 @@ class _Drawer:
         mine = {id(owner) for owner in label.owners}
         if any(_overlaps(band, bar_box) for bar, bar_box in context["bars"] if id(bar) not in mine):
             return False
-        point = (anchor.x0, anchor.y0) if spot.anchor is None else None
+        point = label.point if spot.anchor is None else None
+        twins = self.twins(label, context) if point is not None else set()
 
-        def own(x: float, y: float) -> bool:
-            return point is not None and abs(x - point[0]) <= 0.5 and abs(y - point[1]) <= 0.5
+        def own_piece(owner: tuple[Any, int, int] | None) -> bool:
+            return (
+                point is not None
+                and owner is not None
+                and owner[0] is point[0]
+                and point[1] in owner[1:]
+            )
 
-        for x0, y0, x1, y1, _ in context["segments"]:
-            if own(x0, y0) or own(x1, y1):
+        def own_marker(owner: tuple[Any, int] | None) -> bool:
+            if point is None or owner is None:
+                return False
+            if owner[0] is point[0] and owner[1] == point[1]:
+                return True
+            return (id(owner[0]), owner[1]) in twins
+
+        for (x0, y0, x1, y1, _), owner in zip(
+            context["segments"], context["segment_owners"], strict=True
+        ):
+            if own_piece(owner):
                 continue
             if _crosses(band, (x0, y0, x1, y1, -INK_MARGIN)):  # the line's centre
                 return False
         return not any(
-            _away(band, x, y) < radius for x, y, radius in context["discs"] if not own(x, y)
+            _away(band, x, y) < radius
+            for (x, y, radius), owner in zip(context["discs"], context["disc_owners"], strict=True)
+            if not own_marker(owner)
         )
 
     def settle(self) -> list[_Label]:
@@ -1320,6 +1451,12 @@ class _Drawer:
         drawn: list[Any] = []
         missing: list[_Label] = []
         for label in self.labels:
+            # The same text at the same spot is written once: a value whose
+            # twin is already written is neither drawn again nor missing.
+            speaker = self._speaker(label, context)
+            if speaker is not None:
+                self.shared.append((label, speaker))
+                continue
             for spot in label.spots:
                 artist = self._make(spot)
                 box = artist.get_window_extent(renderer)
@@ -1338,7 +1475,39 @@ class _Drawer:
                 artist.remove()
             else:
                 missing.append(label)
-        return missing
+        return self._spoken_for(missing, context)
+
+    def _speaker(self, label: _Label, context: dict[str, Any]) -> _Label | None:
+        """The written value of a twin of `label` (`twins`), if there is one."""
+        twins = self.twins(label, context)
+        if not twins:
+            return None
+        return next(
+            (
+                other
+                for _, other, _ in self.placed
+                if other.point is not None
+                and other.role == "value"
+                and (id(other.point[0]), other.point[1]) in twins
+            ),
+            None,
+        )
+
+    def _spoken_for(self, missing: list[_Label], context: dict[str, Any]) -> list[_Label]:
+        """The values of `missing` that no written twin speaks for.
+
+        A value with no place of its own is not missing when its twin's
+        value is written: the same text at the same spot is true of both
+        points. It is kept in `shared` with the value that speaks for it.
+        """
+        still: list[_Label] = []
+        for label in missing:
+            speaker = self._speaker(label, context)
+            if speaker is None:
+                still.append(label)
+            else:
+                self.shared.append((label, speaker))
+        return still
 
     def verify(self) -> list[_Label]:
         """Check the drawn picture again (principle N3) and remove a value that fails.
@@ -1367,7 +1536,12 @@ class _Drawer:
                 kept.remove(index)
                 missing.append(label)
         self.placed = [self.placed[index] for index in kept]
-        return missing
+        # A value that stood for its twin is gone: the twin is not written
+        # either, unless another twin still is.
+        gone = {id(label) for label in missing}
+        missing += [label for label, speaker in self.shared if id(speaker) in gone]
+        self.shared = [pair for pair in self.shared if id(pair[1]) not in gone]
+        return self._spoken_for(missing, context)
 
     def check_fixed_texts(self) -> None:
         """Warn when an axis name or legend entry leaves the picture or overlaps another."""
@@ -1488,6 +1662,7 @@ class _Drawer:
             self.bars.extend(patches)
             for i, (value, patch) in enumerate(zip(series.values, patches, strict=True)):
                 stacks[i].append(patch)
+                self.stack_of[id(patch)] = i
                 self.mark([patch], spec.labels[i], series.name)
                 if value == 0:
                     continue
@@ -1613,10 +1788,11 @@ class _Drawer:
         xs = list(range(points))
         markers = points <= MANY_POINTS
         order = [i for i in range(count) if i != accent] + [accent]
+        lines: dict[int, Any] = {}
         for index in order:
             series = spec.series[index]
             main = index == accent
-            ax.plot(
+            (lines[index],) = ax.plot(
                 xs,
                 series.values,
                 color=tones[index],
@@ -1625,7 +1801,11 @@ class _Drawer:
                 markersize=4 if main else 3,
                 zorder=4 if main else 3,
             )
-            self.points.extend((ax, x, value) for x, value in zip(xs, series.values, strict=True))
+            lines[index].set_gid(f"line\t{index}")
+            self.points.extend(
+                (ax, x, value, lines[index], x, self.fmt(value))
+                for x, value in zip(xs, series.values, strict=True)
+            )
         main_values = spec.series[accent].values
         others = [s.values for i, s in enumerate(spec.series) if i != accent]
         # The last value is written with the line's name at its end.
@@ -1641,7 +1821,9 @@ class _Drawer:
                 i, value, text, not below, VALUE_SIZE, self.tones.accent, True, 4.0
             )
             spots = [first, flipped, self.outward(first, below)]
-            self.add_label(text, spec.labels[i], spec.series[accent].name, spots)
+            self.add_label(
+                text, spec.labels[i], spec.series[accent].name, spots, point=(lines[accent], i)
+            )
         for line in spec.reference_lines:
             # Over the points only, so that it does not run through the
             # line-end names beside the last point.
@@ -1674,12 +1856,13 @@ class _Drawer:
                 tones[i],
                 i == accent,
                 spec.series[i].name,
+                lines[i],
             )
             for i in range(count)
         ]
         # Reserve the line ends' width beside the plot until they are settled.
         last_x = points - 1
-        for value, text, _, main, _ in self.ends:
+        for value, text, _, main, _, _ in self.ends:
             spot = _Spot((last_x, value), text, (6.0, 0.0), "left", "center", bold=main)
             self.provisional.append(self._make(spot))
 
@@ -1759,11 +1942,15 @@ class _Drawer:
         band = (hi - lo) or abs(hi) or 1.0
         right.set_ylim(lo - band * 2.2, hi + band * 0.45)
         for series, tone in zip(lines, line_tones, strict=True):
-            right.plot(
+            (drawn,) = right.plot(
                 positions, series.values, color=tone, linewidth=2.0, marker="o", markersize=4
             )
+            # The series' place in the specification, as for a line chart.
+            place = next(i for i, other in enumerate(spec.series) if other is series)
+            drawn.set_gid(f"line\t{place}")
             self.points.extend(
-                (right, x, value) for x, value in zip(positions, series.values, strict=True)
+                (right, x, value, drawn, x, self.fmt(value, right=True))
+                for x, value in zip(positions, series.values, strict=True)
             )
             for x, value, label in zip(positions, series.values, spec.labels, strict=True):
                 text = self.fmt(value, right=True)
@@ -1774,7 +1961,7 @@ class _Drawer:
                     x, value, text, True, VALUE_SIZE + 0.5, tone, True, 4.0, right
                 )
                 spots = [above, below, self.outward(above, False)]
-                self.add_label(text, label, series.name, spots)
+                self.add_label(text, label, series.name, spots, point=(drawn, x))
         right.set_yticks([])
         for side in ("top", "right", "left", "bottom"):
             right.spines[side].set_visible(False)
