@@ -1,5 +1,6 @@
 """Document styles, the generator signature and table styling for rendered documents."""
 
+import logging
 import re
 from collections.abc import Mapping
 from copy import deepcopy
@@ -23,6 +24,8 @@ from docx.shared import Inches, Pt, RGBColor
 from ib_render_fonts import FontStyler
 from ooxml_order import insert_ordered
 from render_styles import STYLE
+
+logger = logging.getLogger("ib_renderer")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DOCUMENT SIGNATURE
@@ -195,6 +198,10 @@ class GeneratorSignatureWriter:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+# Word (and python-docx) keep at most this many characters in a core property.
+CORE_PROPERTY_LIMIT = 255
+
+
 def write_core_properties(doc: DocxDocument, title: str) -> None:
     """Replace python-docx's template file information with this document's.
 
@@ -204,8 +211,19 @@ def write_core_properties(doc: DocxDocument, title: str) -> None:
 
     Args:
         doc: Document being composed.
-        title: Document title for the file properties; "" leaves it empty.
+        title: Document title for the file properties; "" leaves it empty. A
+            title longer than 255 characters is shortened there, with a warning.
     """
+    if len(title) > CORE_PROPERTY_LIMIT:
+        # Word keeps at most 255 characters in a file property; the document's own
+        # text keeps the full title, so this is a note, not a rejection.
+        logger.warning(
+            "File-properties title shortened to %d characters (the title has %d); "
+            "the document text keeps the full title",
+            CORE_PROPERTY_LIMIT,
+            len(title),
+        )
+        title = title[:CORE_PROPERTY_LIMIT]
     properties = doc.core_properties
     now = datetime.now(UTC).replace(tzinfo=None, microsecond=0)
     properties.author = ""

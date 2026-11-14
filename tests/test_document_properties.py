@@ -401,3 +401,36 @@ def test_placeholder_title_is_not_written_as_the_file_title(tmp_path, profile, s
     output = _render(source, profile, tmp_path / "out.docx")
 
     assert _core(output).title == ""
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INDEPENDENT REVIEW FINDINGS (2026-11-14)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _document_text(docx: Path) -> str:
+    with zipfile.ZipFile(docx) as package:
+        root = etree.fromstring(package.read("word/document.xml"))
+    return "".join(node.text or "" for node in root.iter(f"{{{W}}}t"))
+
+
+@pytest.mark.parametrize("length", [256, 1000])
+@pytest.mark.parametrize("strict", [True, False])
+@pytest.mark.parametrize("profile", ["plain", "ib-report"])
+def test_long_title_saves_and_is_shortened_only_in_file_properties(
+    tmp_path, caplog, length, strict, profile
+):
+    """Saved before E8 in both modes; Word keeps 255 characters in a file property."""
+    title = ("가나다라마바사아자차" * 100)[:length]
+    # The H1 puts the full title in the body of every profile (ib-report also on its cover).
+    source = f"---\nprofile: {profile}\ntitle: {title}\n---\n# {title}\n\n가상 본문입니다.\n"
+    model = MarkdownParser(profile=profile).parse(source)
+    document = IBDocumentRenderer(options=RenderOptions(profile=profile, strict=strict)).render(
+        model
+    )
+    output = tmp_path / "out.docx"
+    document.save(str(output))
+
+    assert _core(output).title == title[:255]
+    assert title in _document_text(output)
+    assert "File-properties title shortened to 255 characters" in caplog.text
