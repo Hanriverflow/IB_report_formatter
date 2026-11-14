@@ -82,7 +82,7 @@
       <w:pPr>
         <w:keepNext/>
         <w:spacing w:after="40"/>
-        <w:jc w:val="center"/>
+        <w:jc w:val="left"/>
       </w:pPr>
       <w:bookmarkStart w:id="1" w:name="_ibrep_CHART_RANDOM"/>
       <w:r>
@@ -209,7 +209,7 @@
       <w:pPr>
         <w:keepNext/>
         <w:spacing w:after="40"/>
-        <w:jc w:val="center"/>
+        <w:jc w:val="left"/>
       </w:pPr>
       <w:bookmarkStart w:id="3" w:name="_ibrep_CHART_RANDOM"/>
       <w:r>
@@ -336,7 +336,7 @@
       <w:pPr>
         <w:keepNext/>
         <w:spacing w:after="40"/>
-        <w:jc w:val="center"/>
+        <w:jc w:val="left"/>
       </w:pPr>
       <w:bookmarkStart w:id="5" w:name="_ibrep_CHART_RANDOM"/>
       <w:r>

@@ -417,7 +417,8 @@ class ChartRenderer:
                 self._chart_run(line, subtitle, STYLE.SMALL_SIZE, STYLE.MEDIUM_GRAY)
             picture = self.doc.add_paragraph()
             added.append(picture)
-            picture.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            # Flush left under the title, as the text above and below it.
+            picture.alignment = WD_ALIGN_PARAGRAPH.LEFT
             if below:
                 picture.paragraph_format.keep_with_next = True
                 picture.paragraph_format.space_after = Pt(2)
