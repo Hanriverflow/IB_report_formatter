@@ -332,7 +332,7 @@ Charts are **off by default for all seven profiles**. Enable with `--charts`, `R
 ````markdown
 ```chart
 chart_type: stacked_bar
-title: 2028 maturities are the largest at KRW 470bn
+title: 2028 maturities are the largest at KRW 400bn
 subtitle: "Maturities by year, KRW 100m"
 labels: ["2026", "2027", "2028"]
 series:
@@ -375,6 +375,8 @@ source: Company data (fictional)
 | `axis` (in a series) | `bar_line` | `right` for the line series |
 
 A key on a type it does not apply to, a missing or misplaced key, and any invalid value are chart specification errors. `number_format` adds `number` (the default), `percent`, `bps`, `multiple`, or fixed-point formats such as `',.2f'` / `'.1f'`. Formats never rescale values: `12.5` with `percent` displays `12.5%`. The only numbers the engine works out are the waterfall's running total and, with `totals: true`, stack totals. Waterfalls start at zero, cumulatively add **every** supplied value, then append a total: `[100, -30, 20]` ends at `90`. Do not supply a precomputed total as another delta. More than four compared series still draw, with a rendering warning, because they cannot be told apart in black and white.
+
+**Every value is written or reported.** Each number a chart writes (bar, segment and point values, stack and waterfall totals, line ends, range bounds, reference values) is drawn whole inside the picture, clear of the other numbers, the legend and the axis names; none is cut off. A stacked segment's value goes inside the segment when its text fits there, otherwise beside the bar, right then left, moved by up to four lines of 11.5 pt up and then down to stay clear of other values and bars and above the baseline; a segment of 0 has no height and no value. Line-end names are spread at least 11.5 pt apart between the bottom of the plot and the top of the picture, and a line chart is at least (series × 11.5 pt + 0.75 in) high, up to 9 in. Other values try their usual place, then one line (11.5 pt) further out or the other side of the mark, or inside the end of their own bar. A value that still finds no room is left out and named, with its label and series, in one rendering warning per chart (`IBDocumentRenderer.warnings`); it never rejects a document.
 
 The words before the note and source and the default total label follow the profile family: `Note`, `Source`, `Total` in the IB profiles, `주`, `자료`, `합계` in the general profiles and the `mono` theme. A theme file can set `CHART_NOTE_LABEL`, `CHART_SOURCE_LABEL` and `CHART_TOTAL_LABEL`. Chart texts are plain text, not Markdown; a `@tbl-…`/`@fig-…` written in a chart title, subtitle, note or source stays text and is reported (strict mode rejects).
 
