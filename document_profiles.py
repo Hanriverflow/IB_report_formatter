@@ -14,6 +14,10 @@ Changelog (captions):
 Changelog (IB table rules):
     - NEW: explicit `total_rows` / `subtotal_rows` body-row lists in every profile.
     - NEW: per-table `negative` style (paren, minus, triangle) for `type: financial` tables.
+
+Changelog (charts, E10):
+    - NEW: `chart_style` (standard | classic) option and frontmatter key; chart
+      source, note and total words follow the profile family like TOC_TITLE.
 """
 
 import math
@@ -171,6 +175,7 @@ class RenderOptions:
     strict: bool | None = None
     confidential: bool | None = None
     charts: bool | None = None
+    chart_style: str | None = None
     preset: str | None = None
     house: str | None = None
     term_tags: bool | None = None
@@ -178,6 +183,11 @@ class RenderOptions:
     asset_roots: tuple[str | Path, ...] = ()
     # None inherits the parsed model's policy, never frontmatter or house/theme data.
     limits: InputLimits | None = None
+
+
+# `standard` is the IB/consulting chart style (E10, the default since
+# 2026-11-14); `classic` draws the first three chart types as before it.
+CHART_STYLES = ("standard", "classic")
 
 
 PRESETS: Mapping[str, RenderOptions] = MappingProxyType(
@@ -227,6 +237,7 @@ class ResolvedOptions:
     charts: bool
     house: str | None = None
     term_tags: bool = True
+    chart_style: str = "standard"
 
 
 def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> ResolvedOptions:
@@ -282,6 +293,14 @@ def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> Resol
     with document_validation(options.charts is None):
         if not isinstance(charts, bool):
             raise ValueError("charts must be true or false")
+    chart_style = (
+        options.chart_style
+        if options.chart_style is not None
+        else metadata.extra.get("chart_style", "standard")
+    )
+    with document_validation(options.chart_style is None):
+        if chart_style not in CHART_STYLES:
+            raise ValueError("chart_style must be " + " or ".join(CHART_STYLES))
     house = options.house if options.house is not None else metadata.extra.get("house")
     with document_validation(options.house is None):
         if house is not None and (not isinstance(house, str) or not house.strip()):
@@ -304,6 +323,7 @@ def resolve_options(metadata: DocumentMetadata, options: RenderOptions) -> Resol
         charts=charts,
         house=house,
         term_tags=term_tags,
+        chart_style=chart_style,
     )
 
 
@@ -352,6 +372,9 @@ def load_style(profile: DocumentProfile, theme: str | None = None) -> IBStyle:
             PAGE_LABEL="",
             PAGE_OF_LABEL=" / ",
             CHART_NEGATIVE_COLOR=RGBColor(64, 64, 64),
+            CHART_SOURCE_LABEL="자료",
+            CHART_NOTE_LABEL="주",
+            CHART_TOTAL_LABEL="합계",
         )
     if profile.name == "office-letter":
         style = replace(style, BODY_LINE_SPACING=1.45, BODY_SPACE_AFTER=Pt(8))

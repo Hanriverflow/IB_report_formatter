@@ -225,6 +225,11 @@ class IBStyle:
     TOC_TITLE: str = "TABLE OF CONTENTS"
     PAGE_LABEL: str = "Page "
     PAGE_OF_LABEL: str = " of "
+    # Words the chart style puts before a chart's source and note and on a
+    # waterfall's total bar (E10); the general profiles and mono use Korean.
+    CHART_SOURCE_LABEL: str = "Source"
+    CHART_NOTE_LABEL: str = "Note"
+    CHART_TOTAL_LABEL: str = "Total"
 
 
 _DEFAULT_STYLE = IBStyle()

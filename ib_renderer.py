@@ -647,6 +647,7 @@ class IBDocumentRenderer:
         # Rendering notes that never reject a document, strict or not.
         self.warnings: list[str] = []
         self.charts = False
+        self.chart_style = "standard"
         self.term_sheet_texts: TermSheetTexts | None = None
         self._term_sheet = False
         self._reset_document()
@@ -822,6 +823,7 @@ class IBDocumentRenderer:
         )
         self.separator_mode = resolved.separator_mode
         self.charts = resolved.charts
+        self.chart_style = resolved.chart_style
         with document_validation(
             self.options.theme is None, errors=(ValueError, OSError, yaml.YAMLError)
         ):
@@ -1379,8 +1381,8 @@ class IBDocumentRenderer:
             chart = cast(Chart, element.content)
             if self.charts:
                 try:
-                    self.chart_renderer.render(chart)
-                    self._add_semantic_bookmark(self.doc.paragraphs[-1], ElementType.CHART.name)
+                    picture = self.chart_renderer.render(chart, self.chart_style)
+                    self._add_semantic_bookmark(picture, ElementType.CHART.name)
                     return
                 except Exception as exc:
                     message = f"{chart.label}: {exc}"

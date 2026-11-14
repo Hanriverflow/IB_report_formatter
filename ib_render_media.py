@@ -10,13 +10,15 @@ import re
 from collections.abc import Sequence
 from io import BytesIO
 from pathlib import Path
+from typing import cast
 
 from docx.document import Document as DocxDocument
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.shared import Inches
+from docx.text.paragraph import Paragraph
 
-from document_model import CaptionNumber, Chart, TextRun
+from document_model import CaptionNumber, Chart, ChartSpec, TextRun
 from ib_render_fonts import FontStyler
 from input_safety import (
     DEFAULT_LIMITS,
@@ -318,16 +320,24 @@ class ChartRenderer:
     def __init__(self, doc: DocxDocument) -> None:
         self.doc = doc
 
-    def render(self, chart: Chart) -> None:
+    def render(self, chart: Chart, style: str = "standard") -> Paragraph:
         """Render an enabled chart; the orchestrator handles diagnostic fallbacks.
+
+        `classic` draws a chart that uses only the keys and types the engine
+        had before the IB/consulting style exactly as before; every other chart
+        is drawn in the `standard` style.
 
         Args:
             chart: Parsed specification and original fence source.
+            style: The document's chart style, `standard` or `classic`.
+
+        Returns:
+            The paragraph holding the picture.
 
         Raises:
             ValueError: Invalid chart data or unusable page geometry.
         """
-        from chart_renderer import render_chart_png
+        from chart_renderer import is_classic_spec, render_chart_png
 
         if chart.error or chart.spec is None:
             raise ValueError(chart.error or "chart specification is missing")
@@ -339,6 +349,8 @@ class ChartRenderer:
         width = min(6.0, (page_width - left_margin - right_margin) / 914400)
         if width <= 0:
             raise ValueError("chart requires a positive content width")
+        if style != "classic" or not is_classic_spec(chart.spec):
+            return self._render_standard(chart, width)
         png = render_chart_png(chart.spec, width_inches=width)
         paragraph = self.doc.add_paragraph()
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -349,6 +361,25 @@ class ChartRenderer:
         except Exception:
             paragraph._p.getparent().remove(paragraph._p)
             raise
+        return paragraph
+
+    def _render_standard(self, chart: Chart, width: float) -> Paragraph:
+        """Insert a chart drawn in the IB/consulting style."""
+        from chart_render_standard import render_standard_chart_png
+
+        spec = cast(ChartSpec, chart.spec)
+        warnings = getattr(self.doc.part, "_ib_render_warnings", None)
+        png = render_standard_chart_png(spec, width_inches=width, warnings=warnings)
+        paragraph = self.doc.add_paragraph()
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        try:
+            with BytesIO(png) as buffer:
+                shape = paragraph.add_run().add_picture(buffer, width=Inches(width))
+            ImageRenderer._apply_alt_text(shape, spec.title or chart.label)
+        except Exception:
+            paragraph._p.getparent().remove(paragraph._p)
+            raise
+        return paragraph
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

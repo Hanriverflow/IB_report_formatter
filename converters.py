@@ -210,6 +210,7 @@ class DocxOutputConverter(OutputConverter):
                 "strict",
                 "confidential",
                 "charts",
+                "chart_style",
                 "preset",
                 "house",
                 "term_tags",

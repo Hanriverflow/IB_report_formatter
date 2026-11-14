@@ -55,6 +55,7 @@ build-backend = "hatchling.build"
 only-include = [
     "input_safety.py",
     "chart_renderer.py", "converted_md_cleaner.py",
+    "chart_render_standard.py",
     "cli_utils.py", "converters.py", "deep_md_cleaner.py", "diagram_renderer.py",
     "document_model.py", "document_profiles.py", "docx_audit.py", "ib_renderer.py",
     "md_formatter.py", "md_parser.py", "md_to_word.py", "numeric_checks.py", "office_layout.py",
@@ -77,6 +78,7 @@ only-include = [
 include = [
     "/input_safety.py",
     "/chart_renderer.py", "/converted_md_cleaner.py",
+    "/chart_render_standard.py",
     "/cli_utils.py", "/converters.py", "/deep_md_cleaner.py", "/diagram_renderer.py",
     "/document_model.py", "/document_profiles.py", "/docx_audit.py", "/ib_renderer.py",
     "/md_formatter.py", "/md_parser.py", "/md_to_word.py", "/numeric_checks.py", "/office_layout.py",
@@ -126,6 +128,7 @@ ignore = [
 known-first-party = [
     "input_safety",
     "chart_renderer",
+    "chart_render_standard",
     "cli_utils",
     "converted_md_cleaner",
     "deep_md_cleaner",

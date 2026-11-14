@@ -455,12 +455,16 @@ def test_corpus_recursively_discovers_sources_and_keeps_variants_distinct(tmp_pa
     chart = tmp_path / sample_corpus.CHARTS_SAMPLE
     chart.write_text("# 예시 차트\n", encoding="utf-8")
     cases = sample_corpus.sample_cases(tmp_path)
-    assert len(cases) == 5
-    assert len({case.output_relative for case in cases}) == 5
-    assert cases[-1] == sample_corpus.SampleCase(sample_corpus.CHARTS_SAMPLE, charts=True)
+    assert len(cases) == 6
+    assert len({case.output_relative for case in cases}) == 6
+    assert cases[-2] == sample_corpus.SampleCase(sample_corpus.CHARTS_SAMPLE, charts=True)
+    assert cases[-1] == sample_corpus.SampleCase(
+        sample_corpus.CHARTS_SAMPLE, charts=True, chart_style="classic"
+    )
     assert all(case.options.strict is True and case.options.profile is None for case in cases)
-    assert all(case.options.charts is None for case in cases[:-1])
-    assert cases[-1].options.charts is True
+    assert all(case.options.charts is None for case in cases[:-2])
+    assert cases[-2].options.charts is True and cases[-2].options.chart_style is None
+    assert cases[-1].options.charts is True and cases[-1].options.chart_style == "classic"
 
 
 def test_corpus_requires_samples_and_charts(tmp_path):
@@ -481,8 +485,8 @@ def test_shared_corpus_really_renders_all_samples_strictly(tmp_path):
         for directory in sample_corpus.SAMPLE_DIRECTORIES
         for path in (sample_corpus.PROJECT_ROOT / "samples" / directory).rglob("*.md")
     }
-    assert {case.source for case in cases[:-1]} == discovered
-    assert len(cases) == len(discovered) + 1
+    assert {case.source for case in cases[:-2]} == discovered
+    assert len(cases) == len(discovered) + 2
     outputs = sample_corpus.render_corpus(tmp_path / "corpus")
     assert len(outputs) == len(cases)
     for case, output in zip(cases, outputs, strict=True):
