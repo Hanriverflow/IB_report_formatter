@@ -19,6 +19,9 @@ Changelog (hardening):
 Changelog (captions):
     - A REF/PAGEREF field whose bookmark is missing is an issue; a REF result or
       SEQ number that no longer matches (fields not updated) is a warning.
+    - Review fixes: quoted bookmark names are unquoted, a field nested in another
+      field's instruction keeps its own result, and SEQ order is judged only for
+      sequences with no switch or `\\* ARABIC` alone. Only the main body is read.
 """
 
 import argparse
@@ -467,19 +470,25 @@ def inspect_document_issues(doc: DocxDocument) -> list[str]:
 
 
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
-_REFERENCE_FIELD_RE = re.compile(r"^(REF|PAGEREF)\s+(\S+)(.*)$", re.IGNORECASE | re.DOTALL)
-_SEQ_FIELD_RE = re.compile(r"^SEQ\s+(\S+)(.*)$", re.IGNORECASE | re.DOTALL)
+# The bookmark argument may be quoted (`REF "_Ref123" \h`).
+_REFERENCE_FIELD_RE = re.compile(
+    r'^(REF|PAGEREF)\s+(?:"([^"]*)"|(\S+))(.*)$', re.IGNORECASE | re.DOTALL
+)
+_SEQ_FIELD_RE = re.compile(r'^SEQ\s+(?:"([^"]*)"|(\S+))(.*)$', re.IGNORECASE | re.DOTALL)
 # A REF switch that changes what is shown (paragraph number, position, ...).
 _REF_SHOWN_SWITCH_RE = re.compile(r"\\[nprwtfd]\b", re.IGNORECASE)
-# A SEQ switch other than the number format (repeat, reset, hide, next).
-_SEQ_ORDER_SWITCH_RE = re.compile(r"\\[crsnh]\b", re.IGNORECASE)
+# The SEQ forms whose order is checked: no switch, or Arabic numbers as the
+# engine and Word's Insert Caption write them. A sequence with any other
+# switch (restart, repeat, hide, chapter, another number format) is not judged.
+_SEQ_CHECKED_SWITCHES = frozenset({"", "\\* arabic"})
 
 
 def _body_fields(doc: DocxDocument) -> tuple[dict[str, str], list[tuple[str, str]]]:
     """Read bookmarks and fields of the main document in order.
 
     Text counts as visible unless it is a field instruction, so a bookmark
-    around `표 ` and a `SEQ` field reads `표 1`.
+    around `표 ` and a `SEQ` field reads `표 1`. A field nested in another
+    field's instruction still has its own cached result.
 
     Args:
         doc: Open document.
@@ -514,11 +523,16 @@ def _body_fields(doc: DocxDocument) -> tuple[dict[str, str], list[tuple[str, str
         elif tag == _W + "fldSimple":
             result = "".join(text.text or "" for text in node.iter(_W + "t"))
             found.append(((node.get(qn("w:instr")) or "").strip(), result))
-        elif tag == _W + "t" and all(state["shown"] for state in stack):
-            for name in open_marks.values():
-                marks[name].append(node.text or "")
-            for state in stack:
+        elif tag == _W + "t":
+            # Text belongs to the result of every open field from the innermost
+            # outwards while each of them is past its separator.
+            for state in reversed(stack):
+                if not state["shown"]:
+                    break
                 state["result"].append(node.text or "")
+            if all(state["shown"] for state in stack):
+                for name in open_marks.values():
+                    marks[name].append(node.text or "")
     return {name: "".join(parts) for name, parts in marks.items()}, found
 
 
@@ -538,11 +552,12 @@ def _cross_reference_findings(doc: DocxDocument) -> tuple[list[str], list[str]]:
     marks, found = _body_fields(doc)
     issues: list[str] = []
     warnings: list[str] = []
-    counts: dict[str, int] = {}
+    sequences: dict[str, list[tuple[str, str]]] = {}
     for code, result in found:
         reference = _REFERENCE_FIELD_RE.match(code)
         if reference is not None:
-            kind, name, switches = reference.groups()
+            kind, quoted, bare, switches = reference.groups()
+            name = quoted if quoted is not None else bare
             target = marks.get(name.casefold())
             if target is None:
                 issue = f"Cross-reference field {kind.upper()} {name} has no bookmark named {name}"
@@ -561,17 +576,19 @@ def _cross_reference_findings(doc: DocxDocument) -> tuple[list[str], list[str]]:
         sequence = _SEQ_FIELD_RE.match(code)
         if sequence is None:
             continue
-        name, switches = sequence.groups()
-        if _SEQ_ORDER_SWITCH_RE.search(switches):
+        quoted, bare, switches = sequence.groups()
+        name = quoted if quoted is not None else bare
+        sequences.setdefault(name, []).append((" ".join(switches.split()).casefold(), result))
+    for name, entries in sequences.items():
+        if any(switches not in _SEQ_CHECKED_SWITCHES for switches, _ in entries):
             continue
-        counts[name] = counts.get(name, 0) + 1
-        if result.strip() != str(counts[name]):
-            message = (
+        if [result.strip() for _, result in entries] != [
+            str(number) for number in range(1, len(entries) + 1)
+        ]:
+            warnings.append(
                 f"Caption numbers SEQ {name} are not 1, 2, 3... in document order; "
                 "update fields in Word (select all, F9)"
             )
-            if message not in warnings:
-                warnings.append(message)
     return issues, warnings
 
 

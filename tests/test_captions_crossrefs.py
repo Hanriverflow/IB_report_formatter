@@ -788,3 +788,88 @@ def test_inline_image_description_reference_is_reported(tmp_path: Path) -> None:
 def test_escaped_reference_in_an_inline_image_description_is_text(tmp_path: Path) -> None:
     _, errors = render(write(tmp_path, "prefix ![Alt \\@tbl-missing](s.png) suffix"))
     assert errors == []
+
+
+# [9]–[11] Audit: nested and quoted fields, and SEQ forms the engine does not write.
+def _field(instruction: str, result: str) -> str:
+    return (
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        f'<w:r><w:instrText xml:space="preserve"> {instruction} </w:instrText></w:r>'
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        f"<w:r><w:t>{result}</w:t></w:r>"
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+    )
+
+
+def _audit_document(*paragraphs: str) -> DocxDocument:
+    from docx import Document
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+
+    document = Document()
+    for inner in paragraphs:
+        document.element.body.append(parse_xml(f"<w:p {nsdecls('w')}>{inner}</w:p>"))
+    return document
+
+
+TARGET = (
+    '<w:bookmarkStart w:id="1" w:name="_Ref123456"/><w:r><w:t>Alpha</w:t></w:r>'
+    '<w:bookmarkEnd w:id="1"/>'
+)
+
+
+def test_audit_reads_the_result_of_a_field_nested_in_an_instruction() -> None:
+    from docx_audit import inspect_document
+
+    nested = (
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        '<w:r><w:instrText xml:space="preserve"> IF </w:instrText></w:r>'
+        + _field("REF _Ref123456", "Alpha")
+        + '<w:r><w:instrText xml:space="preserve"> = "Alpha" "YES" "NO" </w:instrText></w:r>'
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        "<w:r><w:t>YES</w:t></w:r>"
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+    )
+    audit = inspect_document(_audit_document(TARGET, nested))
+    assert audit.issues == [] and audit.warnings == []
+
+
+@pytest.mark.parametrize("kind", ["REF", "PAGEREF"])
+def test_audit_reads_a_quoted_bookmark_name(kind: str) -> None:
+    from docx_audit import inspect_document
+
+    audit = inspect_document(_audit_document(TARGET, _field(f'{kind} "_Ref123456" \\h', "Alpha")))
+    assert audit.issues == [] and audit.warnings == []
+    missing = inspect_document(_audit_document(_field(f'{kind} "_RefMissing" \\h', "x")))
+    assert missing.issues == [
+        f"Cross-reference field {kind} _RefMissing has no bookmark named _RefMissing"
+    ]
+
+
+@pytest.mark.parametrize(
+    "sequence",
+    [
+        [("SEQ Figure \\* ROMAN", "I"), ("SEQ Figure \\* ROMAN", "II")],
+        [("SEQ Figure \\r 5", "5"), ("SEQ Figure", "6")],
+        [("SEQ Figure \\c", "1"), ("SEQ Figure", "1")],
+        [("SEQ Figure \\s 1", "1"), ("SEQ Figure", "1")],
+        [("SEQ Figure \\h", ""), ("SEQ Figure", "2")],
+    ],
+)
+def test_audit_does_not_judge_sequences_with_other_switches(
+    sequence: list[tuple[str, str]],
+) -> None:
+    from docx_audit import inspect_document
+
+    paragraphs = [_field(instruction, result) for instruction, result in sequence]
+    assert inspect_document(_audit_document(*paragraphs)).warnings == []
+
+
+def test_audit_still_judges_plain_and_arabic_sequences() -> None:
+    from docx_audit import inspect_document
+
+    paragraphs = [_field("SEQ 표 \\* ARABIC", "1"), _field("SEQ 표", "3")]
+    assert inspect_document(_audit_document(*paragraphs)).warnings == [
+        "Caption numbers SEQ 표 are not 1, 2, 3... in document order; "
+        "update fields in Word (select all, F9)"
+    ]
