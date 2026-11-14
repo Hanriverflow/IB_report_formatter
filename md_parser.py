@@ -240,20 +240,6 @@ from term_variables import (
 
 logger = logging.getLogger(__name__)
 
-# True while a document is read a second way only to keep that reading (see
-# `MarkdownParser._parse_content`): what the parser logs was already logged.
-_SILENT_READING: ContextVar[bool] = ContextVar("md_parser_silent_reading", default=False)
-
-
-class _SilentReadingFilter(logging.Filter):
-    """Drops the parser's log records while `_SILENT_READING` is set."""
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        return not _SILENT_READING.get()
-
-
-logger.addFilter(_SilentReadingFilter())
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MARKDOWN PARSER (MAIN)
@@ -262,6 +248,11 @@ logger.addFilter(_SilentReadingFilter())
 
 class MarkdownParser:
     """Main parser for markdown documents"""
+
+    # True while a document is read a second way only to keep that reading (see
+    # `_parse_content`): what the parser logs was already logged, so the log
+    # filter registered below the class drops its records.
+    _SILENT_READING: ContextVar[bool] = ContextVar("md_parser_silent_reading", default=False)
 
     # ── Heading patterns ────────────────────────────────────────────────────
     H1_PATTERN = re.compile(r"^#\s+(.+)$")
@@ -468,11 +459,11 @@ class MarkdownParser:
                 logger.warning("%s", message)
             return model
         if targets[not drawn]:
-            token = _SILENT_READING.set(True)
+            token = self._SILENT_READING.set(True)
             try:
                 other, other_found = read(targets[not drawn])
             finally:
-                _SILENT_READING.reset(token)
+                self._SILENT_READING.reset(token)
         else:
             other, other_found = first, first_found
         other_messages = finish(other, other_found)
@@ -1832,6 +1823,9 @@ class MarkdownParser:
         )
 
 
+logger.addFilter(lambda record: not MarkdownParser._SILENT_READING.get())
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # ENCODING UTILITIES (ENHANCED v3)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1922,9 +1916,59 @@ def parse_markdown_file(
     parsed = parser._parse_content(
         content, infer_metadata=True, frontmatter_present=frontmatter_present
     )
+
+    def localise(model: DocumentModel) -> None:
+        """Resolve the theme, house, logo and image paths of a parsed file against its folder."""
+        from stream_utils import is_stream
+
+        if not is_stream(source) and model.metadata.extra.get("theme") not in {
+            None,
+            "default",
+            "mono",
+        }:
+            theme_path = Path(model.metadata.extra["theme"])
+            if not theme_path.is_absolute():
+                model.metadata.extra["theme"] = str(Path(str(source)).resolve().parent / theme_path)
+
+        house = model.metadata.extra.get("house")
+        if not is_stream(source) and isinstance(house, str) and house.strip():
+            house_path = Path(house)
+            if not house_path.is_absolute():
+                model.metadata.extra["house"] = str(
+                    (Path(str(source)).resolve().parent / house_path).resolve()
+                )
+
+        style = model.metadata.extra.get("style")
+        if base_dir is not None and isinstance(style, dict) and isinstance(style.get("logo"), str):
+            logo = style["logo"].strip()
+            if logo and not logo.lower().startswith("data:") and not Path(logo).is_absolute():
+                # Anchor the written destination without following links yet: the
+                # asset helper must resolve written and decoded candidates separately.
+                with document_validation(errors=(ValueError, OSError)):
+                    model.metadata.extra["style"] = {
+                        **style,
+                        "logo": str(Path(str(base_dir / logo)).absolute()),
+                    }
+
+        if not is_stream(source):
+            source_dir = Path(str(source)).resolve().parent
+            for element in model.elements:
+                if isinstance(element.content, Image):
+                    image = element.content
+                    if (
+                        image.path
+                        and not image.base64_data
+                        and not re.match(
+                            r"^(?:[a-zA-Z][a-zA-Z0-9+.-]*://|data:)", image.path, re.IGNORECASE
+                        )
+                    ):
+                        image_path = Path(image.path)
+                        if not image_path.is_absolute():
+                            image.path = str(source_dir / image_path)
+
     # A document with chart IDs has two readings; each gets the file's folders.
     for model in chart_readings(parsed):
-        _localise(model, source, base_dir)
+        localise(model)
     model = parsed
     logger.info(
         "Parsed %s: %d elements, %d footnotes, latex_blocks=%d, images=%d",
@@ -1936,49 +1980,3 @@ def parse_markdown_file(
     )
 
     return model
-
-
-def _localise(model: DocumentModel, source: "str | BinaryIO", base_dir: Path | None) -> None:
-    """Resolve the theme, house, logo and image paths of a parsed file against its folder."""
-    from stream_utils import is_stream
-
-    if not is_stream(source) and model.metadata.extra.get("theme") not in {None, "default", "mono"}:
-        theme_path = Path(model.metadata.extra["theme"])
-        if not theme_path.is_absolute():
-            model.metadata.extra["theme"] = str(Path(str(source)).resolve().parent / theme_path)
-
-    house = model.metadata.extra.get("house")
-    if not is_stream(source) and isinstance(house, str) and house.strip():
-        house_path = Path(house)
-        if not house_path.is_absolute():
-            model.metadata.extra["house"] = str(
-                (Path(str(source)).resolve().parent / house_path).resolve()
-            )
-
-    style = model.metadata.extra.get("style")
-    if base_dir is not None and isinstance(style, dict) and isinstance(style.get("logo"), str):
-        logo = style["logo"].strip()
-        if logo and not logo.lower().startswith("data:") and not Path(logo).is_absolute():
-            # Anchor the written destination without following links yet: the
-            # asset helper must resolve written and decoded candidates separately.
-            with document_validation(errors=(ValueError, OSError)):
-                model.metadata.extra["style"] = {
-                    **style,
-                    "logo": str(Path(str(base_dir / logo)).absolute()),
-                }
-
-    if not is_stream(source):
-        source_dir = Path(str(source)).resolve().parent
-        for element in model.elements:
-            if isinstance(element.content, Image):
-                image = element.content
-                if (
-                    image.path
-                    and not image.base64_data
-                    and not re.match(
-                        r"^(?:[a-zA-Z][a-zA-Z0-9+.-]*://|data:)", image.path, re.IGNORECASE
-                    )
-                ):
-                    image_path = Path(image.path)
-                    if not image_path.is_absolute():
-                        image.path = str(source_dir / image_path)
