@@ -6,7 +6,8 @@ Changelog (letter closing):
       (`letter_partial_table_row`). Without the setting the output is unchanged.
       A blank cell is one Word shows nothing in, judged on parsed runs (line
       breaks and spaces are blank; text, images, equations are not); header
-      rows are never the target.
+      rows are never the target. The mark goes first in the cell, ahead of any
+      line break, so it sits on the cell's first line.
     - Attachments follow the administrative handbook: one attachment is a single
       unnumbered line `붙임⇥항목.  끝.`; several start on the `붙임⇥1.` line of a
       native list whose other numbers align under `1.` (`render_attachments`).
@@ -264,7 +265,9 @@ def _mark_partial_table(doc, row_index: int) -> None:
     """Write 이하 빈칸 into the first cell of a row of the last rendered table.
 
     The table renderer creates one Word row per model row, so the model index
-    addresses the Word row. The mark is left-aligned even in a number column.
+    addresses the Word row. The mark is left-aligned even in a number column,
+    and it goes first in the cell, ahead of any line break the blank cell holds,
+    so it sits on the cell's first line.
     """
     table = doc.element.body.findall(qn("w:tbl"))[-1]
     cell = table.findall(qn("w:tr"))[row_index].findall(qn("w:tc"))[0]
@@ -274,6 +277,9 @@ def _mark_partial_table(doc, row_index: int) -> None:
     run.font.name = STYLE.BODY_FONT
     run.font.size = STYLE.TABLE_BODY_SIZE
     run._element.get_or_add_rPr().get_or_add_rFonts().set(qn("w:eastAsia"), STYLE.KOREAN_FONT)
+    p = paragraph._p
+    p.remove(run._element)
+    p.insert(1 if p.pPr is not None else 0, run._element)
 
 
 def render_office_opening(doc, metadata: DocumentMetadata) -> bool:

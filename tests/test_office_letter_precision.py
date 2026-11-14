@@ -217,6 +217,19 @@ def test_first_of_several_blank_rows_gets_the_mark_even_with_line_breaks():
     assert "이하 빈칸" not in "".join(rows[4])
 
 
+@pytest.mark.parametrize("cell", ["<br>", "<br><br>", " "])
+def test_mark_comes_before_what_the_blank_cell_holds(cell):
+    """Word showed the mark below the break when it followed the cell's break."""
+    doc = render(letter(FULL_TABLE + f"| {cell} | | |\n", PARTIAL))
+    tc = last_table(doc).findall(qn("w:tr"))[3].findall(qn("w:tc"))[0]
+    runs = tc.findall(qn("w:p"))[0].findall(qn("w:r"))
+    assert "".join(t.text or "" for t in runs[0].iter(qn("w:t"))) == "이하 빈칸"
+    assert runs[0].find(qn("w:br")) is None
+    # What the cell held is still there, after the mark.
+    breaks = sum(len(r.findall(qn("w:br"))) for r in runs[1:])
+    assert breaks == cell.count("<br>")
+
+
 def test_image_only_row_is_written():
     image_row = f"| ![도장]({PNG}) | | |\n"
     with pytest.raises(StrictValidationError, match="blank row"):
