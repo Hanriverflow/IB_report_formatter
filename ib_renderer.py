@@ -84,7 +84,6 @@ import re
 import time
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from copy import deepcopy
 from pathlib import Path
 from typing import (
     Any,
@@ -109,6 +108,8 @@ from document_model import (
     DefaultTitle,
     InferredText,
     caption_bookmark_name,
+    chart_setting_reading,
+    copy_without_chart_record,
     model_images,
     numbered_items,
 )
@@ -647,6 +648,7 @@ class IBDocumentRenderer:
         # Rendering notes that never reject a document, strict or not.
         self.warnings: list[str] = []
         self.charts = False
+        self.chart_style = "standard"
         self.term_sheet_texts: TermSheetTexts | None = None
         self._term_sheet = False
         self._reset_document()
@@ -733,9 +735,23 @@ class IBDocumentRenderer:
         self.term_sheet_texts = None
         limits = limits or self.options.limits or model.limits
         self._check_model_limits(model, limits)
-        model = deepcopy(model)
+        # A document with chart IDs was read both with and without its charts
+        # (principle V3). The render draws the model it was given; only when
+        # its chart setting is the other one and the model is still as parsed
+        # does it draw the other reading, whole. A model changed since parsing
+        # is drawn as given and reported (`chart_setting_reading`, G2 to G4).
+        # The diagnostics only the drawn reading has are logged here (the
+        # parser logged the rest).
+        charts_drawn = resolve_options(model.metadata, self.options).charts
+        reading, unlogged, changed = chart_setting_reading(model, charts_drawn)
+        model = copy_without_chart_record(reading)
         roots = resolve_asset_roots((*model.asset_roots, *self.options.asset_roots, *asset_roots))
         resolved = resolve_options(model.metadata, self.options)
+        for message in unlogged:
+            logging.getLogger("md_parser").warning("%s", message)
+        if changed is not None:
+            logger.warning("%s", changed)
+            model.warnings.append(changed)
         if model.parsed_profile is not None and model.parsed_profile != resolved.profile.name:
             raise ValueError(
                 f"Document was parsed with profile {model.parsed_profile!r}; "
@@ -822,6 +838,7 @@ class IBDocumentRenderer:
         )
         self.separator_mode = resolved.separator_mode
         self.charts = resolved.charts
+        self.chart_style = resolved.chart_style
         with document_validation(
             self.options.theme is None, errors=(ValueError, OSError, yaml.YAMLError)
         ):
@@ -1122,7 +1139,7 @@ class IBDocumentRenderer:
         numbers = CaptionNumbers(next_bookmark_id=self._next_bookmark_id, errors=self.errors)
         counts = dict.fromkeys(CAPTION_LABELS, 0)
         reported = set(self.errors)  # the parser may have said so
-        for content, kind, problem in numbered_items(model.elements):
+        for content, kind, problem in numbered_items(model.elements, self.charts):
             if problem is not None:
                 if "Reference id " + problem not in reported:
                     reported.add("Reference id " + problem)
@@ -1379,8 +1396,10 @@ class IBDocumentRenderer:
             chart = cast(Chart, element.content)
             if self.charts:
                 try:
-                    self.chart_renderer.render(chart)
-                    self._add_semantic_bookmark(self.doc.paragraphs[-1], ElementType.CHART.name)
+                    picture = self.chart_renderer.render(
+                        chart, self.chart_style, caption_prefix(chart)
+                    )
+                    self._add_semantic_bookmark(picture, ElementType.CHART.name)
                     return
                 except Exception as exc:
                     message = f"{chart.label}: {exc}"

@@ -23,7 +23,8 @@ downloaded archive; `validator` identifies the temporary executable when verifie
 exception file. The output directory must not already exist. The shared
 `scripts.sample_corpus.sample_cases` definition discovers every `*.md` recursively
 under the three sample directories. `render_corpus` preserves each source's
-settings, forces strict mode, and adds a separate charts-on run. Its immutable
+settings, forces strict mode, and adds a separate charts-on run and a
+`chart_style: classic` run of the charts sample. Its immutable
 cases expose the source, render options, and output-relative path for reuse by
 snapshot tests. Even if the charts sample already enables charts in frontmatter,
 both requested cases are retained.

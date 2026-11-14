@@ -17,21 +17,28 @@ class SampleCase:
 
     source: Path
     charts: bool | None = None
+    chart_style: str | None = None
 
     @property
     def options(self) -> RenderOptions:
-        """Preserve source settings except strict mode and the extra charts run."""
-        return RenderOptions(strict=True, charts=self.charts)
+        """Preserve source settings except strict mode and the extra chart runs."""
+        return RenderOptions(strict=True, charts=self.charts, chart_style=self.chart_style)
 
     @property
     def output_relative(self) -> Path:
-        """Keep default and charts-on outputs in separate namespaces."""
-        variant = "charts-on" if self.charts else "default"
+        """Keep default, charts-on and classic-chart outputs in separate namespaces."""
+        if self.chart_style == "classic":
+            variant = "classic-charts"
+        else:
+            variant = "charts-on" if self.charts else "default"
         return Path(variant) / self.source.relative_to("samples").with_suffix(".docx")
 
 
 def sample_cases(root: Path = PROJECT_ROOT) -> tuple[SampleCase, ...]:
-    """Discover every Markdown sample, then add the charts-on variant.
+    """Discover every Markdown sample, then add the charts-on and classic variants.
+
+    The classic variant pins `chart_style: classic` to the chart output the
+    engine made before the IB/consulting chart style (E10).
 
     Args:
         root: Source checkout containing the three sample directories.
@@ -49,6 +56,7 @@ def sample_cases(root: Path = PROJECT_ROOT) -> tuple[SampleCase, ...]:
         raise ValueError(f"Missing charts sample: {CHARTS_SAMPLE}")
     return tuple(SampleCase(path) for path in sorted(sources)) + (
         SampleCase(CHARTS_SAMPLE, charts=True),
+        SampleCase(CHARTS_SAMPLE, charts=True, chart_style="classic"),
     )
 
 

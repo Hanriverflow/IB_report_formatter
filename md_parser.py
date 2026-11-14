@@ -83,6 +83,7 @@ Dependencies:
 import logging
 import re
 from collections.abc import Callable, Sequence
+from contextvars import ContextVar
 from dataclasses import replace
 from pathlib import Path
 from re import Match
@@ -91,7 +92,8 @@ from typing import (
     cast,
 )
 
-from chart_renderer import ChartSpecError, parse_chart_spec
+from chart_renderer import ChartSpecError, parse_chart
+from chart_renderer import parse_chart_spec as parse_chart_spec
 from document_model import (
     Blockquote as Blockquote,
 )
@@ -110,8 +112,11 @@ from document_model import (
     MarkedBlockquote,
     MarkedHeading,
     figure_id_problem,
+    fold_chart_reading,
     numbered_items,
     numbered_targets,
+    pair_chart_readings,
+    pending_chart_reading,
 )
 from document_model import (
     Diagram as Diagram,
@@ -156,6 +161,7 @@ from document_model import (
 from document_model import (
     ListItem as ListItem,
 )
+from document_model import NumberedChart as NumberedChart
 from document_model import (
     NumberedList as NumberedList,
 )
@@ -244,6 +250,11 @@ logger = logging.getLogger(__name__)
 class MarkdownParser:
     """Main parser for markdown documents"""
 
+    # True while a document is read a second way only to keep that reading (see
+    # `_parse_content`): what the parser logs was already logged, so the log
+    # filter registered below the class drops its records.
+    _SILENT_READING: ContextVar[bool] = ContextVar("md_parser_silent_reading", default=False)
+
     # ── Heading patterns ────────────────────────────────────────────────────
     H1_PATTERN = re.compile(r"^#\s+(.+)$")
     H2_PATTERN = re.compile(r"^##\s+(.+)$")
@@ -323,6 +334,7 @@ class MarkdownParser:
         base_dir: Path | None = None,
         asset_roots: Sequence[str | Path] = (),
         limits: InputLimits = DEFAULT_LIMITS,
+        charts: bool | None = None,
     ):
         """
         Initialize parser behavior flags.
@@ -335,9 +347,14 @@ class MarkdownParser:
             base_dir: Base for relative destinations; does not itself grant asset access.
             asset_roots: Operator-supplied folders carried to rendering. Text has no default.
             limits: Immutable caller policy carried to rendering; text size uses UTF-8.
+            charts: The caller's `charts` override, as given to the renderer;
+                None follows the frontmatter. It only chooses which reading of
+                a document with chart IDs is returned (the renderer takes the
+                reading for its own setting either way).
         """
         self.preserve_trailing_double_space_break = preserve_trailing_double_space_break
         self.profile = profile
+        self.charts = charts
         # Folder of the source file: relative link paths are resolved against it
         # when the document is saved (see `rebase_local_links`).
         self.base_dir = base_dir
@@ -366,7 +383,9 @@ class MarkdownParser:
             A DocumentModel with all parsed elements
         """
         self.limits.check(RejectionCode.LIMIT_INPUT_BYTES, len(content.encode("utf-8")))
-        return self._parse_content(content)
+        model = self._parse_content(content)
+        fold_chart_reading(model)
+        return model
 
     def _parse_content(
         self, content: str, infer_metadata: bool = False, frontmatter_present: bool = False
@@ -382,6 +401,18 @@ class MarkdownParser:
         again in a scope holding their IDs. Only resolvable references split
         runs; every other one is reported.
 
+        A chart's `id` is a target only when charts are drawn (principle V3:
+        with charts off a chart block is a code block in every respect).
+        Whether they are drawn is settled at render time, so when the two
+        sets of targets differ the document is read both ways. The reading
+        for this parser's own setting is returned with the other one pending
+        (`pair_chart_readings`); the public entry points keep it in one
+        record on the returned model (`fold_chart_reading`), and the renderer
+        draws the given model or, when its setting is the other one and the
+        model is still as parsed, the other reading. The second reading
+        logs nothing, and a diagnostic only one reading has is logged by the
+        renderer that uses that reading.
+
         Args:
             content: The decoded text.
             infer_metadata: Fill IB metadata from the body, as the file and
@@ -390,32 +421,64 @@ class MarkdownParser:
             frontmatter_present: The file opens with frontmatter; without it an
                 IB profile may read the company from the title.
         """
-        # Ordered and without repeats; the dictionary keeps the order.
-        found: dict[str, None] = {}
 
-        def report(message: str) -> None:
-            found.setdefault(message)
+        def read(targets: frozenset[str]) -> tuple[DocumentModel, list[str]]:
+            # Ordered and without repeats; the dictionary keeps the order.
+            found: dict[str, None] = {}
 
-        with TextParser.reference_scope(ReferenceScope(report=report)):
-            model = self._parse_document(content, infer_metadata, frontmatter_present)
-        targets = numbered_targets(model.elements)
-        if targets:
-            found.clear()
-            with TextParser.reference_scope(ReferenceScope(targets=targets, report=report)):
+            def report(message: str) -> None:
+                found.setdefault(message)
+
+            scope = ReferenceScope(targets=targets, report=report) if targets else None
+            with TextParser.reference_scope(scope or ReferenceScope(report=report)):
                 model = self._parse_document(content, infer_metadata, frontmatter_present)
-        # An ID that numbers nothing leaves its references without a target;
-        # say why first (the renderer reports the same when nothing refers to it).
-        problems = [
-            "Reference id " + problem
-            for _, _, problem in numbered_items(model.elements)
-            if problem is not None
-        ]
-        reported = set(model.warnings)
-        for message in [*problems, *found]:
-            if message not in reported:
-                reported.add(message)
-                model.warnings.append(message)
+            return model, list(found)
+
+        def finish(model: DocumentModel, found: list[str]) -> list[str]:
+            # An ID that numbers nothing leaves its references without a target;
+            # say why first (the renderer reports the same when nothing refers to it).
+            # A chart's ID problem is the renderer's to report, when it draws
+            # the chart: with charts off the block is a code panel.
+            problems = [
+                "Reference id " + problem
+                for item, _, problem in numbered_items(model.elements)
+                if problem is not None and not isinstance(item, NumberedChart)
+            ]
+            added = []
+            reported = set(model.warnings)
+            for message in [*problems, *found]:
+                if message not in reported:
+                    reported.add(message)
+                    model.warnings.append(message)
+                    added.append(message)
+            return added
+
+        first, first_found = read(frozenset())
+        drawn = self.charts
+        if drawn is None:
+            drawn = first.metadata.extra.get("charts") is True
+        targets = {flag: numbered_targets(first.elements, flag) for flag in (True, False)}
+        model, found = read(targets[drawn]) if targets[drawn] else (first, first_found)
+        messages = finish(model, found)
+        if targets[True] == targets[False]:
+            for message in messages:
                 logger.warning("%s", message)
+            return model
+        if targets[not drawn]:
+            token = self._SILENT_READING.set(True)
+            try:
+                other, other_found = read(targets[not drawn])
+            finally:
+                self._SILENT_READING.reset(token)
+        else:
+            other, other_found = first, first_found
+        other_messages = finish(other, other_found)
+        for message in messages:
+            if message in other_messages:
+                logger.warning("%s", message)
+        own = [message for message in messages if message not in other_messages]
+        other_own = [message for message in other_messages if message not in messages]
+        pair_chart_readings(model, other, drawn, own, other_own)
         return model
 
     def _parse_document(
@@ -897,7 +960,10 @@ class MarkdownParser:
                     chart_number += 1
                     chart = Chart(code=code_text, label=f"Chart {chart_number}")
                     try:
-                        chart.spec = parse_chart_spec(code_text)
+                        spec, ref_id = parse_chart(code_text)
+                        if ref_id is not None:
+                            chart = NumberedChart(code=code_text, label=chart.label, ref_id=ref_id)
+                        chart.spec = spec
                         if chart.spec.title:
                             chart.label += f" ({chart.spec.title})"
                     except ChartSpecError as exc:
@@ -1760,6 +1826,9 @@ class MarkdownParser:
         )
 
 
+logger.addFilter(lambda record: not MarkdownParser._SILENT_READING.get())
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # ENCODING UTILITIES (ENHANCED v3)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1804,6 +1873,7 @@ def parse_markdown_file(
     *,
     asset_roots: Sequence[str | Path] = (),
     limits: InputLimits = DEFAULT_LIMITS,
+    charts: bool | None = None,
 ) -> DocumentModel:
     """
     Parse a markdown file or stream into a DocumentModel.
@@ -1816,6 +1886,8 @@ def parse_markdown_file(
         source: Path to the markdown file, or a readable binary stream.
         asset_roots: Operator-supplied folders added to the source-file folder.
         limits: Immutable caller policy; the original bytes are checked before decoding.
+        charts: The caller's `charts` override, as given to the renderer (see
+            `MarkdownParser`); None follows the frontmatter.
 
     Returns:
         A DocumentModel containing all parsed content
@@ -1840,52 +1912,71 @@ def parse_markdown_file(
 
     base_dir = None if is_stream(source) else Path(str(source)).resolve().parent
     roots = (*((base_dir,) if base_dir is not None else ()), *asset_roots)
-    parser = MarkdownParser(profile=profile, base_dir=base_dir, asset_roots=roots, limits=limits)
+    parser = MarkdownParser(
+        profile=profile, base_dir=base_dir, asset_roots=roots, limits=limits, charts=charts
+    )
     # IB metadata is filled from the body inside the parse, where references are judged.
-    model = parser._parse_content(
+    parsed = parser._parse_content(
         content, infer_metadata=True, frontmatter_present=frontmatter_present
     )
-    if not is_stream(source) and model.metadata.extra.get("theme") not in {None, "default", "mono"}:
-        theme_path = Path(model.metadata.extra["theme"])
-        if not theme_path.is_absolute():
-            model.metadata.extra["theme"] = str(Path(str(source)).resolve().parent / theme_path)
 
-    house = model.metadata.extra.get("house")
-    if not is_stream(source) and isinstance(house, str) and house.strip():
-        house_path = Path(house)
-        if not house_path.is_absolute():
-            model.metadata.extra["house"] = str(
-                (Path(str(source)).resolve().parent / house_path).resolve()
-            )
+    def localise(model: DocumentModel) -> None:
+        """Resolve the theme, house, logo and image paths of a parsed file against its folder."""
+        from stream_utils import is_stream
 
-    style = model.metadata.extra.get("style")
-    if base_dir is not None and isinstance(style, dict) and isinstance(style.get("logo"), str):
-        logo = style["logo"].strip()
-        if logo and not logo.lower().startswith("data:") and not Path(logo).is_absolute():
-            # Anchor the written destination without following links yet: the
-            # asset helper must resolve written and decoded candidates separately.
-            with document_validation(errors=(ValueError, OSError)):
-                model.metadata.extra["style"] = {
-                    **style,
-                    "logo": str(Path(str(base_dir / logo)).absolute()),
-                }
+        if not is_stream(source) and model.metadata.extra.get("theme") not in {
+            None,
+            "default",
+            "mono",
+        }:
+            theme_path = Path(model.metadata.extra["theme"])
+            if not theme_path.is_absolute():
+                model.metadata.extra["theme"] = str(Path(str(source)).resolve().parent / theme_path)
 
-    if not is_stream(source):
-        source_dir = Path(str(source)).resolve().parent
-        for element in model.elements:
-            if isinstance(element.content, Image):
-                image = element.content
-                if (
-                    image.path
-                    and not image.base64_data
-                    and not re.match(
-                        r"^(?:[a-zA-Z][a-zA-Z0-9+.-]*://|data:)", image.path, re.IGNORECASE
-                    )
-                ):
-                    image_path = Path(image.path)
-                    if not image_path.is_absolute():
-                        image.path = str(source_dir / image_path)
+        house = model.metadata.extra.get("house")
+        if not is_stream(source) and isinstance(house, str) and house.strip():
+            house_path = Path(house)
+            if not house_path.is_absolute():
+                model.metadata.extra["house"] = str(
+                    (Path(str(source)).resolve().parent / house_path).resolve()
+                )
 
+        style = model.metadata.extra.get("style")
+        if base_dir is not None and isinstance(style, dict) and isinstance(style.get("logo"), str):
+            logo = style["logo"].strip()
+            if logo and not logo.lower().startswith("data:") and not Path(logo).is_absolute():
+                # Anchor the written destination without following links yet: the
+                # asset helper must resolve written and decoded candidates separately.
+                with document_validation(errors=(ValueError, OSError)):
+                    model.metadata.extra["style"] = {
+                        **style,
+                        "logo": str(Path(str(base_dir / logo)).absolute()),
+                    }
+
+        if not is_stream(source):
+            source_dir = Path(str(source)).resolve().parent
+            for element in model.elements:
+                if isinstance(element.content, Image):
+                    image = element.content
+                    if (
+                        image.path
+                        and not image.base64_data
+                        and not re.match(
+                            r"^(?:[a-zA-Z][a-zA-Z0-9+.-]*://|data:)", image.path, re.IGNORECASE
+                        )
+                    ):
+                        image_path = Path(image.path)
+                        if not image_path.is_absolute():
+                            image.path = str(source_dir / image_path)
+
+    # A document with chart IDs was read two ways; each reading gets the
+    # file's folders before the second is kept with the first.
+    localise(parsed)
+    other = pending_chart_reading(parsed)
+    if other is not None:
+        localise(other)
+    fold_chart_reading(parsed)
+    model = parsed
     logger.info(
         "Parsed %s: %d elements, %d footnotes, latex_blocks=%d, images=%d",
         label,

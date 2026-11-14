@@ -47,13 +47,48 @@
     </w:p>
     <w:p>
       <w:pPr>
-        <w:jc w:val="center"/>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="0" w:before="120"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="202020"/>
+          <w:sz w:val="22"/>
+        </w:rPr>
+        <w:t>가상기업 부문별 매출</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="40" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>백만원</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:keepNext/>
+        <w:spacing w:after="40"/>
+        <w:jc w:val="left"/>
       </w:pPr>
       <w:bookmarkStart w:id="1" w:name="_ibrep_CHART_RANDOM"/>
       <w:r>
         <w:drawing>
           <wp:inline xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
-            <wp:extent cx="5486400" cy="2926080"/>
+            <wp:extent cx="5486400" cy="2651760"/>
             <wp:docPr descr="가상기업 부문별 매출" id="1" name="Picture 1" title="가상기업 부문별 매출"/>
             <wp:cNvGraphicFramePr>
               <a:graphicFrameLocks noChangeAspect="1"/>
@@ -74,7 +109,7 @@
                   <pic:spPr>
                     <a:xfrm>
                       <a:off x="0" y="0"/>
-                      <a:ext cx="5486400" cy="2926080"/>
+                      <a:ext cx="5486400" cy="2651760"/>
                     </a:xfrm>
                     <a:prstGeom prst="rect"/>
                   </pic:spPr>
@@ -85,6 +120,21 @@
         </w:drawing>
       </w:r>
       <w:bookmarkEnd w:id="1"/>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="160" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>자료: 기능 검증용 가상 자료</w:t>
+      </w:r>
     </w:p>
     <w:p>
       <w:bookmarkStart w:id="2" w:name="_ibrep_SEPARATOR_RANDOM"/>
@@ -124,13 +174,48 @@
     </w:p>
     <w:p>
       <w:pPr>
-        <w:jc w:val="center"/>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="0" w:before="120"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="202020"/>
+          <w:sz w:val="22"/>
+        </w:rPr>
+        <w:t>가상기업 분기별 이익률</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="40" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>이익률</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:keepNext/>
+        <w:spacing w:after="40"/>
+        <w:jc w:val="left"/>
       </w:pPr>
       <w:bookmarkStart w:id="3" w:name="_ibrep_CHART_RANDOM"/>
       <w:r>
         <w:drawing>
           <wp:inline xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
-            <wp:extent cx="5486400" cy="2926080"/>
+            <wp:extent cx="5486400" cy="2651760"/>
             <wp:docPr descr="가상기업 분기별 이익률" id="2" name="Picture 2" title="가상기업 분기별 이익률"/>
             <wp:cNvGraphicFramePr>
               <a:graphicFrameLocks noChangeAspect="1"/>
@@ -151,7 +236,7 @@
                   <pic:spPr>
                     <a:xfrm>
                       <a:off x="0" y="0"/>
-                      <a:ext cx="5486400" cy="2926080"/>
+                      <a:ext cx="5486400" cy="2651760"/>
                     </a:xfrm>
                     <a:prstGeom prst="rect"/>
                   </pic:spPr>
@@ -162,6 +247,21 @@
         </w:drawing>
       </w:r>
       <w:bookmarkEnd w:id="3"/>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="160" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>자료: 기능 검증용 가상 자료</w:t>
+      </w:r>
     </w:p>
     <w:p>
       <w:bookmarkStart w:id="4" w:name="_ibrep_SEPARATOR_RANDOM"/>
@@ -201,13 +301,48 @@
     </w:p>
     <w:p>
       <w:pPr>
-        <w:jc w:val="center"/>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="0" w:before="120"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="202020"/>
+          <w:sz w:val="22"/>
+        </w:rPr>
+        <w:t>가상기업 현금 증감</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="40" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>백만원</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:keepNext/>
+        <w:spacing w:after="40"/>
+        <w:jc w:val="left"/>
       </w:pPr>
       <w:bookmarkStart w:id="5" w:name="_ibrep_CHART_RANDOM"/>
       <w:r>
         <w:drawing>
           <wp:inline xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
-            <wp:extent cx="5486400" cy="2926080"/>
+            <wp:extent cx="5486400" cy="2651760"/>
             <wp:docPr descr="가상기업 현금 증감" id="3" name="Picture 3" title="가상기업 현금 증감"/>
             <wp:cNvGraphicFramePr>
               <a:graphicFrameLocks noChangeAspect="1"/>
@@ -228,7 +363,7 @@
                   <pic:spPr>
                     <a:xfrm>
                       <a:off x="0" y="0"/>
-                      <a:ext cx="5486400" cy="2926080"/>
+                      <a:ext cx="5486400" cy="2651760"/>
                     </a:xfrm>
                     <a:prstGeom prst="rect"/>
                   </pic:spPr>
@@ -239,6 +374,21 @@
         </w:drawing>
       </w:r>
       <w:bookmarkEnd w:id="5"/>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="160" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>자료: 기능 검증용 가상 자료</w:t>
+      </w:r>
     </w:p>
     <w:sectPr w:rsidR="REVISION" w:rsidRPr="REVISION" w:rsidSect="REVISION">
       <w:headerReference r:id="rId12" w:type="default"/>

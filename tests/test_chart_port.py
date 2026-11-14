@@ -143,23 +143,28 @@ def test_chart_invalid_fallback_and_strict_save_safety(spec, diagnostic, tmp_pat
     assert not disabled.errors and len(code_doc.tables) == 1
 
 
+@pytest.mark.parametrize("chart_style", ["standard", "classic"])
 @pytest.mark.parametrize("failure", ["png", "insertion"])
-def test_chart_render_failure_has_visible_code_and_diagnostic(monkeypatch, failure):
+def test_chart_render_failure_has_visible_code_and_diagnostic(monkeypatch, failure, chart_style):
+    import chart_render_standard
     import chart_renderer
 
     def fail(*args, **kwargs):
         raise OSError("injected failure")
 
-    if failure == "png":
+    if failure == "png" and chart_style == "classic":
         monkeypatch.setattr(chart_renderer, "render_chart_png", fail)
+    elif failure == "png":
+        monkeypatch.setattr(chart_render_standard, "render_standard_chart_png", fail)
     else:
         monkeypatch.setattr("docx.text.run.Run.add_picture", fail)
-    _, renderer, doc = render(charts=True)
+    _, renderer, doc = render(charts=True, chart_style=chart_style)
     assert "injected failure" in renderer.errors[0]
     assert SPEC.rstrip() == doc.tables[0].cell(0, 0).text
     assert not doc.inline_shapes
+    assert len(doc.paragraphs) == len(render(charts=False)[2].paragraphs)
     with pytest.raises(ValueError, match="Chart.*injected failure"):
-        render(charts=True, strict=True)
+        render(charts=True, strict=True, chart_style=chart_style)
 
 
 def test_waterfall_arithmetic_and_formats_do_not_rescale():

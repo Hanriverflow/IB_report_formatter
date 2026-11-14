@@ -21,6 +21,12 @@ Changelog (captions):
       `reference_groups` give the runs as written, so a resolved reference
       changes nothing else (P6); `InferredText` marks an IB value read from a
       body paragraph with the references that resolved there.
+
+Changelog (charts, E10):
+    - Chart specifications carry the IB/consulting style keys (subtitle, note,
+      highlight, accent series, reference lines, totals, start total, range
+      bounds, right-axis format, overlap) and a series axis for bar_line.
+    - `NumberedChart` (`id: fig-…`) is numbered as a figure by `numbered_items`.
 """
 
 import re
@@ -215,11 +221,26 @@ class ChartSeries:
 
     name: str
     values: list[float]
+    # bar_line only: "right" draws the series as a line on the right axis.
+    axis: str = "left"
+
+
+@dataclass
+class ChartReferenceLine:
+    """A named reference value drawn across a line or range chart."""
+
+    name: str
+    value: float
 
 
 @dataclass
 class ChartSpec:
-    """Validated chart data; waterfall values are deltas from zero."""
+    """Validated chart data; waterfall values are deltas from zero.
+
+    The fields after `number_format` came with the IB/consulting chart style
+    (E10); a chart that leaves them at their defaults and uses one of the
+    first three types can still be drawn in the classic style.
+    """
 
     chart_type: str
     title: str | None
@@ -230,6 +251,17 @@ class ChartSpec:
     total_label: str | None = None
     unit: str | None = None
     number_format: str | None = None
+    subtitle: str | None = None
+    note: str | None = None
+    highlight: list[str] = field(default_factory=list)
+    accent_series: str | None = None
+    reference_lines: list[ChartReferenceLine] = field(default_factory=list)
+    totals: bool = False
+    start_total: bool = False
+    low: list[float] = field(default_factory=list)
+    high: list[float] = field(default_factory=list)
+    right_number_format: str | None = None
+    show_overlap: bool = False
 
 
 @dataclass
@@ -244,6 +276,16 @@ class Chart:
     spec: ChartSpec | None = None
     error: str | None = None
     label: str = "Chart"
+
+
+@dataclass
+class NumberedChart(Chart):
+    """A chart whose spec has `id: fig-…`; numbered as a figure in its title line.
+
+    Only a valid specification makes one; the chart's title is the caption.
+    """
+
+    ref_id: str = ""
 
 
 @dataclass
@@ -480,18 +522,25 @@ def table_is_drawn(table: "Table") -> bool:
 
 def numbered_items(
     elements: Sequence["Element"],
-) -> Iterator[tuple["NumberedTable | Figure", str, str | None]]:
-    """Each table and figure with a reference ID, in document order.
+    charts_drawn: bool = True,
+) -> Iterator[tuple["NumberedTable | Figure | NumberedChart", str, str | None]]:
+    """Each table, figure and chart with a reference ID, in document order.
 
     The parser takes the IDs that resolve from here and the renderer numbers
-    the same items, so both agree on what a reference can point to.
+    the same items, so both agree on what a reference can point to. A chart
+    is a figure (`SEQ 그림`) captioned by its title. Whether charts are drawn
+    is a render option; a chart that is not drawn is skipped altogether: it
+    is a code panel, so its ID is neither numbered nor checked and no
+    reference resolves to it (principle V3). The parser reads a document
+    both ways when the two differ (`fold_chart_reading`).
 
     Args:
         elements: Document elements.
+        charts_drawn: Charts are rendered as pictures (not code panels).
 
     Yields:
-        The table or figure, its kind (`tbl` or `fig`) and why it gets no
-        number (None when it is numbered).
+        The table, figure or chart, its kind (`tbl` or `fig`) and why it gets
+        no number (None when it is numbered).
     """
     for element in elements:
         content = element.content
@@ -499,6 +548,11 @@ def numbered_items(
             kind, caption = "tbl", content.caption
         elif element.element_type == ElementType.IMAGE and isinstance(content, Figure):
             kind, caption = "fig", content.alt_text
+        elif element.element_type == ElementType.CHART and isinstance(content, NumberedChart):
+            if not charts_drawn:
+                continue
+            kind = "fig"
+            caption = (content.spec.title or "") if content.spec is not None else ""
         else:
             continue
         problem = reference_id_problem(content.ref_id, kind)
@@ -511,10 +565,18 @@ def numbered_items(
         yield content, kind, problem
 
 
-def numbered_targets(elements: Sequence["Element"]) -> frozenset[str]:
-    """IDs that a reference can resolve to: those of numbered tables and figures."""
+def numbered_targets(elements: Sequence["Element"], charts_drawn: bool = True) -> frozenset[str]:
+    """IDs that a reference can resolve to: those of numbered tables and figures.
+
+    Args:
+        elements: Document elements.
+        charts_drawn: Charts are rendered as pictures; otherwise no chart ID
+            is a target.
+    """
     return frozenset(
-        item.ref_id for item, _, problem in numbered_items(elements) if problem is None
+        item.ref_id
+        for item, _, problem in numbered_items(elements, charts_drawn)
+        if problem is None
     )
 
 
@@ -662,6 +724,137 @@ class DocumentModel:
     # Trusted caller context, deliberately separate from frontmatter metadata.
     asset_roots: tuple[Path, ...] = ()
     limits: InputLimits = DEFAULT_LIMITS
+
+
+# ── chart setting (principle V3) ─────────────────────────────────────────────
+#
+# With charts off a chart block is a code block in every respect: its `id`
+# names nothing, so a `@fig-…` written for it is read exactly as in a document
+# without that chart. Whether charts are drawn is settled only at render time
+# (frontmatter, CLI or API), so when the two readings differ the parser reads
+# the document both ways. The contract (fifth independent review, 2026-11-15;
+# it replaces the part-by-part exchange of the fourth):
+#
+# - G1. The record (the parser's setting X, the model read for the other
+#   setting, a copy of the model as parsed) is kept on the model object alone,
+#   in a plain attribute. Elements and metadata carry nothing. Two readings
+#   that are equal leave no record. It is not a dataclass field: a document
+#   without a chart ID has none, and the pinned model of every sample is
+#   unchanged. `copy.deepcopy` and pickle keep it; `dataclasses.replace`
+#   makes a model without it, like one built by hand.
+# - G2. A render with setting Y == X, or of a model without a record, draws
+#   the model it is given.
+# - G3. With Y != X and the model equal in value to its copy as parsed
+#   (dataclass `==`, diagnostics included; identity is not looked at), the
+#   render draws the other reading, whole.
+# - G4. With Y != X and the model changed since parsing, the render draws the
+#   model it is given and reports it, once for the document: its references
+#   to chart IDs were read for the other setting. Strict mode rejects. The
+#   report does not depend on what was changed.
+#
+# A caller who overrides the chart setting passes the same setting to the
+# parser, as with the profile. A NaN is not equal to itself, but a model as
+# parsed and its copy share the one number object, which a list or dict
+# comparison takes for equal: such a model counts as parsed (G3). After
+# pickling the two hold separate NaNs, the model compares unequal to its copy
+# and takes G4. Either way nothing is silent.
+
+_PENDING = "_chart_reading_pending"
+_SETTING = "_chart_setting"
+
+
+def pair_chart_readings(
+    model: "DocumentModel",
+    other: "DocumentModel",
+    drawn: bool,
+    own_only: Sequence[str],
+    other_only: Sequence[str],
+) -> None:
+    """Hold the other reading of `model` until `fold_chart_reading`.
+
+    Args:
+        model: The document read for the parser's own chart setting.
+        other: The same document read for the opposite setting.
+        drawn: The parser's setting: charts are drawn (their IDs are targets).
+        own_only: Diagnostics only `model` has.
+        other_only: Diagnostics only `other` has.
+    """
+    setattr(model, _PENDING, (other, drawn, tuple(own_only), tuple(other_only)))
+
+
+def pending_chart_reading(model: "DocumentModel") -> "DocumentModel | None":
+    """The other reading not yet folded into `model` (it needs the same finishing)."""
+    pending = getattr(model, _PENDING, None)
+    return None if pending is None else pending[0]
+
+
+def fold_chart_reading(model: "DocumentModel") -> None:
+    """Keep the other reading of `model` in one record on the model (G1).
+
+    Two readings that are equal leave no record.
+    """
+    from copy import deepcopy
+
+    pending = model.__dict__.pop(_PENDING, None)
+    if pending is None:
+        return
+    other, drawn, own_only, other_only = pending
+    if model == other and not own_only and not other_only:
+        return
+    parsed = deepcopy(model)  # before the record is set: the copy has none
+    setattr(
+        model,
+        _SETTING,
+        {
+            "drawn": drawn,
+            "other": other,
+            "parsed": parsed,
+            "own_only": own_only,
+            "other_only": other_only,
+        },
+    )
+
+
+def chart_setting_reading(
+    model: "DocumentModel", charts_drawn: bool
+) -> "tuple[DocumentModel, list[str], str | None]":
+    """The model a render with `charts_drawn` draws (G2 to G4). `model` is not changed.
+
+    Args:
+        model: The model the render was given.
+        charts_drawn: The render's setting.
+
+    Returns:
+        The model to draw (the given one, or the other reading), the parser
+        diagnostics of that reading still to be logged, and the report of a
+        model changed after parsing (None without one).
+    """
+    record = getattr(model, _SETTING, None)
+    if record is None:
+        return model, [], None
+    if record["drawn"] == charts_drawn:
+        return model, list(record["own_only"]), None
+    if model == record["parsed"]:
+        return record["other"], list(record["other_only"]), None
+    read, now = ("on", "off") if record["drawn"] else ("off", "on")
+    return (
+        model,
+        list(record["own_only"]),
+        f"The document was changed after it was parsed with charts {read}; this render has "
+        f"charts {now}, so references to chart IDs are drawn as parsed. Parse it again with "
+        f"charts={charts_drawn}",
+    )
+
+
+def copy_without_chart_record(model: "DocumentModel") -> "DocumentModel":
+    """A deep copy of `model` for one render, without its record of the other reading."""
+    from copy import deepcopy
+
+    record = getattr(model, _SETTING, None)
+    # The memo answers for the record, so that it is not copied with the model.
+    copy = deepcopy(model, {id(record): None} if record is not None else {})
+    copy.__dict__.pop(_SETTING, None)
+    return copy
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

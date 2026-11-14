@@ -323,7 +323,7 @@ uv run md-format converted.md term-sheet.md --converted-term-sheet
 
 ```sh
 md-to-word report.md report.docx --charts --strict
-md-to-word samples/qa/charts.md charts.docx --strict
+md-to-word samples/qa/charts-dcm.md charts-dcm.docx --strict
 md-to-word report.md code-panels.docx --no-charts
 ```
 
@@ -331,23 +331,67 @@ Charts are **off by default for all seven profiles**. Enable with `--charts`, `R
 
 ````markdown
 ```chart
-chart_type: bar
-title: 가상 매출
-labels: [상반기, 하반기]
+chart_type: stacked_bar
+title: 2028 maturities are the largest at KRW 400bn
+subtitle: "Maturities by year, KRW 100m"
+labels: ["2026", "2027", "2028"]
 series:
-  - name: 매출
-    values: [100, 120]
-y_label: 백만원
-source: 기능 검증용 가상 자료
-number_format: ',.1f'
+  - name: Public bonds
+    values: [1200, 2500, 3100]
+  - name: Bank loans
+    values: [300, 500, 900]
+totals: true
+number_format: ',.0f'
+note: Balances at the end of September 2026
+source: Company data (fictional)
 ```
 ````
 
-Supported types are `bar` (grouped series), `line`, and `waterfall` (exactly one series). PR #5's `chart_type`, `y_label`, `title`, `labels`, `series`, `source`, and `total_label` fields remain supported. `type` aliases `chart_type`; conflicting values are rejected. Optional `unit` supplies the axis label when `y_label` is absent. `number_format` adds `number` (the legacy default), `percent`, `bps`, `multiple`, or fixed-point formats such as `',.2f'` / `'.1f'`. Formats never rescale values: `12.5` with `percent` displays `12.5%`.
+**Changed appearance (2026-11-14).** Charts are drawn in an IB/consulting style by default (`chart_style: standard`): the theme's primary colour as the one accent with greys, values written on the bars instead of a value axis (a line chart keeps a value axis), a zero baseline without a frame, the legend above the plot (one row, more when the names do not fit in one), line names at the line ends, hatched decreases, and tones chosen so that series stay apart when printed in black and white. The title and subtitle are Word paragraphs above the picture and the note and source Word paragraphs below it, kept on one page with the picture. Documents written before this change look different. To keep the earlier look, set frontmatter `chart_style: classic` (or `RenderOptions(chart_style="classic")`): it draws `bar`, `line` and `waterfall` charts that use only the earlier keys exactly as before; any chart using a newer type or key is drawn in the standard style.
 
-Each series needs a text `name` and finite numeric `values` matching the label count. Labels accept text or numbers; booleans are rejected. Waterfalls start at zero, cumulatively add **every** supplied value, then append a total: `[100, -30, 20]` ends at `90`. Negative totals work; `total_label` names the appended bar. Do not supply a precomputed total as another delta.
+| Type | Draws | Series |
+|---|---|---|
+| `bar` | Grouped vertical bars | one or more |
+| `line` | Lines, names at the line ends | one or more |
+| `waterfall` | Running total from zero plus a total bar | exactly one |
+| `stacked_bar` | Stacked bars (maturity profile, funding mix) | one to four; values not negative |
+| `bar_line` | Bars on the left axis and lines (`axis: right`) on the right axis, values written, axes hidden | one or two each |
+| `range` | Horizontal bars from `low` to `high` (valuation football field, rate band) | none: `low` and `high` lists |
+| `hbar` | Horizontal bars in the written order (rankings) | exactly one |
 
-Invalid YAML/specifications and rendering failures name the chart in diagnostics. Strict mode rejects before creating/replacing the output; non-strict mode displays the original code panel and logs a warning. Disabled charts remain ordinary code panels even if their YAML is invalid. Charts are PNG images, sized to the page content width, with request-local colors and Korean font policy. Korean text needs the configured font installed (Windows default: Malgun Gothic). See the [fictional three-chart sample](samples/qa/charts.md).
+| Key | Types | Meaning |
+|---|---|---|
+| `title`, `labels`, `series`, `source`, `number_format`, `total_label` | all as before | `type` aliases `chart_type` |
+| `subtitle` | all | Line under the title, as written. Without it, `y_label` or `unit` is shown there as written; the engine adds no words |
+| `note` | all | Line above the source |
+| `highlight` | `bar` (one series), `hbar` | Labels drawn in the accent colour, the rest grey |
+| `accent_series` | `bar`, `line` | Series in the accent colour; default the last series ("later is darker") |
+| `reference` | `line`, `range` | Up to two `{name, value}` reference lines |
+| `totals` | `stacked_bar` | `true` writes each stack's total above it: the exact sum of the numbers as written, rounded once. Off by default |
+| `start_total` | `waterfall` | `true` draws the first value as a balance, like the total bar |
+| `low`, `high` | `range` | Bounds per label; `low` must not exceed `high` |
+| `show_overlap` | `range` | `true` shades the span where every range overlaps |
+| `right_number_format` | `bar_line` | Format of the right-axis lines, as `number_format` |
+| `axis` (in a series) | `bar_line` | `right` for the line series |
+
+A key on a type it does not apply to, a missing or misplaced key, and any invalid value are chart specification errors. `number_format` adds `number` (the default), `percent`, `bps`, `multiple`, or fixed-point formats such as `',.2f'` / `'.1f'`. Formats never rescale values: `12.5` with `percent` displays `12.5%`. The only numbers the engine works out are the waterfall's running total and, with `totals: true`, stack totals; each is the exact sum of the numbers as written (`[0.3, -0.1, -0.2]` totals `0`), rounded once. Waterfalls start at zero, cumulatively add **every** supplied value, then append a total: `[100, -30, 20]` ends at `90`. Do not supply a precomputed total as another delta. More than four compared series still draw, with a rendering warning, because they cannot be told apart in black and white.
+
+**Rounding (owner decision 2026-11-14).** The decimal places depend on the format and are the same in both styles: without a format and with `number`, `percent`, `bps` and `multiple`, a whole number is written without decimals and any other number with one decimal; a fixed-point format writes its own (`',.2f'` two, `',.0f'` none). The two styles round differently:
+
+| Style | A 5 is rounded | `4.125` as `',.2f'` | `2.5` as `',.0f'` | `0.25` (no format) | `2.675` as `'.2f'` |
+|---|---|---|---|---|---|
+| `standard` | away from zero, as a spreadsheet's `ROUND` does, on the decimal as written | `4.13` | `3` | `0.3` | `2.68` |
+| `classic` | as before: to the even digit, on the binary number the computer holds | `4.12` | `2` | `0.2` | `2.67` |
+
+In a standard chart this holds for every number in the picture (values, totals, line ends, reference values and the value-axis numbers of a line chart), and a negative amount that rounds to zero is written without parentheses (`-0.04` is `0.0`). Numbers are read with about 15 to 17 significant digits; a longer one is written as the nearest number the computer can hold (`9007199254740993` as `9,007,199,254,740,992`). A line chart's value axis writes a number only where the text, read as a decimal, is exactly the tick's position, with no tolerance (a tick at 1,000,000,000.5 is not written `1,000,000,001`), and only when no other tick has the same text; with fewer than two such ticks it writes none, and the values at the points remain. A `$` in a name is drawn as written and never starts mathematical notation.
+
+**Every value is written on its own mark or reported.** Each number a chart writes (bar, segment and point values, stack and waterfall totals, line ends, range bounds, reference values) is drawn only where all of the following hold (the final rule, 2026-11-14): (a) whole inside the picture; (b) clear of every other text; (c) clear of every mark it is not written in: other bars and segments, every line with its width and every point marker (its own series' included), reference lines, the zero line and a waterfall's connectors; only a value written inside its own bar or segment lies on a mark; (d) on its own mark (inside its bar or segment, centred over or under its bar or point within 16 pt, or level with its row within 16 pt), and its own mark is the nearest to the text's centre, bars and plotted points taken together: no other bar (for a bar's value) and no other point (for a point's value) is nearer than its own by more than 3 pt, and its own mark is nearer by at least 3 pt than every mark on the text's own centre line, where only the distance tells them apart: every mark of the other kind (a point of any series for a bar's value, a bar for a point's value) and, for a point's value, every other series' point of the same category. Whose a mark is, is known by its series and category, never by where it lies: another series' point of the same category is a rival also when it lies on the value's own point. The one exception: two series' points of one category on the same spot (within half a pixel) that are written with the same text, as where two index lines both start at 100. That number is true of both points, so it is written once and the value that is not written is not listed as missing; with different texts (100.00 and 100.01) the value is left out and named. **Exception to (d) for horizontal charts (`hbar`, `range`), approved in the fourth review:** there a value runs sideways from the end of its bar, so a longer bar in the next row is always nearer to the text's centre; instead of the nearest-mark test, the text's centre must lie within its own row's height, at most 16 pt beside the bar, and (f) applies as everywhere; (e) a stacked segment's value goes inside the segment when its text fits there, otherwise beside the bar (right, then left), inside the category's own column, above the baseline, with the text's centre within its own segment's height, not level with another value beside the same bar, and not as high as a whole other segment of that bar (two thin segments level with one number cannot be told apart); a segment of 0 has no height and no value; (f) a value written outside its mark (over, under or beside it) has nothing between: the band from the text to its own mark (the rectangle joining the two, as wide or as high as the text) holds no other bar or segment, no line, no point marker and no reference line. Only the two pieces of the value's own series' line that meet at its own point, and its own point's marker, are not counted; another series' line is, also when it leaves from the very same spot. Line-end names and reference-line texts follow (a) to (c), and a line-end name is nearest to the end of its own line (no other line ends nearer to it by more than 3 pt); when one is left out, a second warning says which line or reference line is drawn without a name. A line-end name wider than 40 % of the picture is broken into lines. Line ends are spread 11.5 pt apart where the picture has room (closer ones are kept only if they do not overlap), and a line chart is at least (series × 11.5 pt + 0.75 in) high, up to 9 in. After the values are placed the drawn picture is checked again and a value that fails is removed. No place is tried beyond these and no leader line is drawn, so crowded charts lose values (the verification record gives the share by chart type). A value with no such place is left out and named, with its category and series, in one warning per chart: it is logged (so `md-to-word` prints it) and listed in `IBDocumentRenderer.warnings`, the registry's `render_warnings` and `scripts/agent_render.py`'s `render_warnings`; it never rejects a document. Long legend and category names are broken into lines; an axis name or legend entry that still leaves the picture or overlaps another is named in a warning.
+
+A standard chart's picture is at most the body width (6 in at most) and at most the section's body height (page height less the top and bottom margins) less 1.1 in for its title, subtitle, note and source; a taller picture is narrowed in proportion, so its text gets smaller. Where the body is too short for that, the picture keeps 0.5 in but is never taller than the body itself. The 1.1 in is a fixed allowance: a title, subtitle, note or source that runs over several lines can still push the picture to the next page. Classic charts keep their earlier size.
+
+The words before the note and source and the default total label follow the profile family: `Note`, `Source`, `Total` in the IB profiles, `주`, `자료`, `합계` in the general profiles and the `mono` theme. A theme file can set `CHART_NOTE_LABEL`, `CHART_SOURCE_LABEL` and `CHART_TOTAL_LABEL`. Chart texts are plain text, not Markdown; a `@tbl-…`/`@fig-…` written in a chart title, subtitle, note or source stays text and is reported (strict mode rejects).
+
+Invalid YAML/specifications and rendering failures name the chart in diagnostics. Strict mode rejects before creating/replacing the output; non-strict mode displays the original code panel and logs a warning. Disabled charts remain ordinary code panels even if their YAML is invalid: with charts off (frontmatter, `--no-charts` or the API option) a chart block is a code block in every respect, whatever it holds. Its `id` numbers nothing and is no reference target, so a document converts exactly as it did before chart IDs existed, and a `@fig-…` that names such a chart is reported like any reference to an unknown ID. **A caller who overrides the chart setting passes the same setting to the parser** (`MarkdownParser(charts=…)`, `parse_markdown_file(charts=…)`), as with the profile; `md-to-word` and the registry do. Where the two settings differ, a document with chart IDs follows four rules (fifth review, 2026-11-15). (G1) The parser keeps a record of the other reading on the model object alone: its own setting, the model read for the other setting and a copy of the model as parsed. Elements and metadata carry nothing, and two readings that are equal leave no record. `copy.deepcopy` and pickle keep the record. A model made with `dataclasses.replace` has none, like a model built by hand, and is drawn as given; to draw it with another chart setting, give the parser that setting. (G2) A render with the parser's setting, or of a model without a record, draws the model it is given. (G3) A render with the other setting of a model that is equal in value to its copy as parsed draws the other reading, whole: with charts on its charts are drawn and numbered and the references to them resolve, with charts off the document is the one without chart IDs. (G4) A render with the other setting of a model that was changed after parsing draws the model it is given and adds one diagnostic for the document (`The document was changed after it was parsed with charts off; this render has charts on, so references to chart IDs are drawn as parsed. Parse it again with charts=True`); strict mode rejects before saving. The diagnostic does not depend on what was changed, and the parser's own diagnostics are kept. A model that holds a NaN can compare unequal to its own copy (it always does after pickling) and then follows G4. Charts are PNG images up to 6 inches wide (the content width if narrower), with request-local colors and Korean font policy. Korean text needs the configured font installed (Windows default: Malgun Gothic). Samples: [every chart type in a fictional DCM review](samples/qa/charts-dcm.md) and [the three original types](samples/qa/charts.md).
 
 ## Section presets
 
@@ -382,7 +426,7 @@ The six existing lowercase theme keys remain supported. YAML themes also accept 
 | Point sizes | `H1_SIZE`–`H4_SIZE`, `BODY_SIZE`, `SMALL_SIZE`, `TABLE_HEADER_SIZE`, `TABLE_BODY_SIZE` |
 | Point spacing | `H1_SPACE_BEFORE/AFTER`, `H2_SPACE_BEFORE/AFTER`, `H3_SPACE_BEFORE/AFTER`, `BODY_SPACE_AFTER`, `BULLET_SPACE_AFTER` |
 | Inch lengths | `TOP_MARGIN`, `BOTTOM_MARGIN`, `LEFT_MARGIN`, `RIGHT_MARGIN`, `BULLET_INDENT`, `DEEP_LIST_INDENT`, `MAX_LIST_INDENT` |
-| Other | `BODY_LINE_SPACING` (positive multiplier), `FULL_LIST_INDENT_LEVELS` (integer 0–9), `BULLET_CHAR`, `TABLE_ZEBRA`, `BODY_JUSTIFY`, `HEADING_BORDER` (booleans), `TOC_TITLE`, `PAGE_LABEL`, `PAGE_OF_LABEL` (text) |
+| Other | `BODY_LINE_SPACING` (positive multiplier), `FULL_LIST_INDENT_LEVELS` (integer 0–9), `BULLET_CHAR`, `TABLE_ZEBRA`, `BODY_JUSTIFY`, `HEADING_BORDER` (booleans), `TOC_TITLE`, `PAGE_LABEL`, `PAGE_OF_LABEL`, `CHART_NOTE_LABEL`, `CHART_SOURCE_LABEL`, `CHART_TOTAL_LABEL` (text) |
 
 ```yaml
 NAVY: "234567"
@@ -397,7 +441,7 @@ TABLE_ZEBRA: false
 
 Quote six-digit hex colors (`"#234567"` also works). Numeric colors, booleans used as sizes, nonfinite numbers, unknown fields and conflicting aliases are rejected before saving. Sizes allow 1–144 pt; spacing allows 0–144 pt; inch lengths allow 0–3; line spacing allows greater than 0 through 5. The existing `body_size` alias retains its 6–30 pt range and `margin_mm` retains 5–60 mm. Font names must be nonempty. Internal `STYLE_*` identifiers and the profile's `NATIVE_NUMBERING` policy are not theme fields.
 
-RGB/hex color pairs are synchronized when only one is supplied; both may be set independently. `NAVY` also colors IB table headers unless `TABLE_HEADER_BG` is specified. `RED` supplies the waterfall negative color unless `CHART_NEGATIVE_COLOR` is specified. General/mono charts use a neutral palette by default. Headings, callouts, code panels and charts read the immutable style for the current request; `default` and `mono` retain their existing document output.
+RGB/hex color pairs are synchronized when only one is supplied; both may be set independently. `NAVY` also colors IB table headers unless `TABLE_HEADER_BG` is specified. `RED` supplies the waterfall negative color unless `CHART_NEGATIVE_COLOR` is specified. `NAVY` is the charts' one accent colour; the other series get greys (and, in stacks, tints of `NAVY`) chosen for their grayscale distance from it, so general/mono charts stay neutral. Headings, callouts, code panels and charts read the immutable style for the current request; `default` and `mono` retain their existing document output.
 
 ## Explicit financial tables
 
@@ -455,7 +499,7 @@ tables:
 @tbl-results에서 보듯 매출이 늘었다. 구조는 @fig-structure 참조.
 ```
 
-- Tables take `id: tbl-…` in their table spec and need a `caption`. Figures take `{#fig-…}` at the end of an image file line of its own and need a description. A `{#…}` after an image inside a paragraph, list or table cell, or on an embedded Base64 image, numbers nothing and is reported. Charts and diagrams are not numbered.
+- Tables take `id: tbl-…` in their table spec and need a `caption`. Figures take `{#fig-…}` at the end of an image file line of its own and need a description. A `{#…}` after an image inside a paragraph, list or table cell, or on an embedded Base64 image, numbers nothing and is reported. A chart takes `id: fig-…` in its chart block and needs a `title`: the title line becomes `그림 2. …` and charts share the figure count with images. A chart that is not drawn (charts off) gets no number and references to it are reported. Diagrams are not numbered.
 - Tables and figures are counted separately from the start of the document, and only those actually drawn; there are no chapter numbers (`표 2-1`). The labels are `표` and `그림` in every profile.
 - `@tbl-…` and `@fig-…` become cross-references in paragraphs, lists, quotes, headings, table cells (HTML tables included) and table caption/unit/source/note text.
 - Reference grammar:
