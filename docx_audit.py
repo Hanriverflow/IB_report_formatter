@@ -28,6 +28,8 @@ Changelog (captions):
 Changelog (alt text):
     - A picture in the main body without a description (alt text) is a warning,
       unless Word marks it as decorative. It is never an issue.
+    - Review fix: of each `mc:AlternateContent` only the first Choice (or the
+      Fallback without one) is checked, so a picture is reported once.
 """
 
 import argparse
@@ -125,7 +127,7 @@ _PLACEHOLDER_PATH = qn("w:sdtPr") + "/" + qn("w:showingPlcHdr")
 _INDICATIVE_RE = re.compile(r"\[[^\[\]]*\]")
 _PICTURE_URI = "http://schemas.openxmlformats.org/drawingml/2006/picture"
 _DECORATIVE = "{http://schemas.microsoft.com/office/drawing/2017/decorative}decorative"
-_FALLBACK = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback"
+_MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
 
 
 _PAGINATION_FLAGS = (
@@ -429,7 +431,8 @@ def _undescribed_pictures(doc: DocxDocument) -> list[str]:
 
     The saved file does not say who made a picture, so engine-made equations,
     diagrams and logos are reported too. A picture Word marks as decorative needs
-    no description; deleted pictures and Office's fallback copies are not counted.
+    no description; deleted pictures are not counted, and of each
+    `mc:AlternateContent` only the branch read is checked (`_unread_branch`).
 
     Args:
         doc: Open document to read.
@@ -446,7 +449,7 @@ def _undescribed_pictures(doc: DocxDocument) -> list[str]:
             continue
         if (doc_pr.get("descr") or "").strip() or _is_removed(doc_pr):
             continue
-        if any(ancestor.tag == _FALLBACK for ancestor in doc_pr.iterancestors()):
+        if any(_unread_branch(ancestor) for ancestor in doc_pr.iterancestors()):
             continue
         if any(mark.get("val") in ("1", "true") for mark in doc_pr.iter(_DECORATIVE)):
             continue
@@ -454,6 +457,21 @@ def _undescribed_pictures(doc: DocxDocument) -> list[str]:
             f"Picture without a description (alt text): Word name '{doc_pr.get('name')}'"
         )
     return warnings
+
+
+def _unread_branch(node: Any) -> bool:
+    """Whether a node is an `mc:AlternateContent` branch other than the one read.
+
+    The first `mc:Choice` is read; without a Choice, the `mc:Fallback`.
+    """
+    if node.tag not in (_MC + "Choice", _MC + "Fallback"):
+        return False
+    parent = node.getparent()
+    branches = [] if parent is None else list(parent)
+    choices = [branch for branch in branches if branch.tag == _MC + "Choice"]
+    fallbacks = [branch for branch in branches if branch.tag == _MC + "Fallback"]
+    read = choices[0] if choices else (fallbacks[0] if fallbacks else None)
+    return node is not read
 
 
 def audit_to_dict(result: DocumentAudit, terms: TermAudit | None = None) -> dict[str, Any]:

@@ -10,8 +10,11 @@ Every test parses Markdown with the real parser and renders through
 
 import base64
 import logging
+import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 import yaml
@@ -311,4 +314,169 @@ def test_an_anchored_picture_is_audited_too(tmp_path: Path) -> None:
     reopened = Document(str(saved))
     assert [w for w in inspect_document(reopened).warnings if AUDIT_WARNING in w] == [
         f"{AUDIT_WARNING}: Word name '{picture.get('name')}'"
+    ]
+
+
+# ── Independent review (2026-11-14) ──────────────────────────────────────────
+
+
+def _folder_free(warning: str, *folders: str) -> None:
+    """A warning names the file only: no folder, drive, separator or encoding."""
+    shown = warning.split(": ", 1)[1].split(", Word name")[0]
+    for folder in folders:
+        assert folder not in warning
+    assert "/" not in shown and "\\" not in shown and ":" not in shown and ".." not in shown
+
+
+@pytest.mark.parametrize("inline", [False, True], ids=["block", "inline"])
+@pytest.mark.parametrize(
+    ("written", "stored", "shown"),
+    [
+        ("가상폴더%2Fpic.png", ("가상폴더", "pic.png"), "pic.png"),
+        ("가상폴더%2F..%2Fpic.png", ("pic.png",), "pic.png"),
+        ("my%20pic.png", ("my pic.png",), "my pic.png"),
+        ("pic%41.png", ("pic%41.png",), "pic%41.png"),
+    ],
+    ids=["encoded-slash", "encoded-dots", "encoded-space", "literal-percent"],
+)
+def test_the_warning_names_the_loaded_file_not_the_written_path(
+    tmp_path: Path, written: str, stored: tuple[str, ...], shown: str, inline: bool
+) -> None:
+    # Review finding [1]: the name comes from the file actually loaded.
+    (tmp_path / "가상폴더").mkdir()
+    body = f"앞 ![]({written}) 뒤" if inline else f"![]({written})"
+    source = write_source(tmp_path, body)
+    tmp_path.joinpath(*stored).write_bytes(PNG)
+    doc, renderer = render(source)
+    (picture,) = pictures(doc)
+    (warning,) = renderer.warnings
+    assert f"{RENDER_WARNING}: '{shown}', Word name '{picture.get('name')}'" in warning
+    _folder_free(warning, "가상폴더", str(tmp_path), tmp_path.name)
+
+
+# An encoded absolute path loads only inside text: a block image line is joined to
+# the source folder before decoding and is rejected as outside (existing behaviour).
+@pytest.mark.parametrize(
+    ("absolute", "inline"),
+    [(True, True), (False, False), (False, True)],
+    ids=["absolute-inline", "relative-block", "relative-inline"],
+)
+def test_an_encoded_backslash_path_shows_no_folder(
+    tmp_path: Path, inline: bool, absolute: bool
+) -> None:
+    folder = tmp_path / "가상 딜 폴더"
+    folder.mkdir()
+    if os.name == "nt":
+        (folder / "pic.png").write_bytes(PNG)
+    else:  # POSIX has no backslash separator: the decoded name is one file name.
+        (tmp_path / "가상 딜 폴더\\pic.png").write_bytes(PNG)
+    written = str(folder) + "\\pic.png" if absolute else "가상 딜 폴더\\pic.png"
+    destination = quote(written, safe="")
+    body = f"앞 ![]({destination}) 뒤" if inline else f"![]({destination})"
+    doc, renderer = render(write_source(tmp_path, body))
+    assert len(pictures(doc)) == 1
+    (warning,) = renderer.warnings
+    assert f"{RENDER_WARNING}: 'pic.png', Word name" in warning
+    _folder_free(warning, "가상 딜 폴더", "%5C", "%3A", str(tmp_path), tmp_path.name)
+
+
+def _alternate(doc, branches: list[tuple[str, str | None]]) -> None:
+    """Replace the only picture run's drawing with an mc:AlternateContent copy."""
+    mc = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+    (picture,) = pictures(doc)
+    drawing = next(a for a in picture.iterancestors() if a.tag == qn("w:drawing"))
+    run = drawing.getparent()
+    alternate = etree.SubElement(run, f"{{{mc}}}AlternateContent")
+    for kind, description in branches:
+        branch = etree.SubElement(alternate, f"{{{mc}}}{kind}")
+        if kind == "Choice":
+            branch.set("Requires", "wps")
+        copy = etree.fromstring(etree.tostring(drawing))
+        if description is not None:
+            next(copy.iter(qn("wp:docPr"))).set("descr", description)
+        branch.append(copy)
+    run.remove(drawing)
+
+
+@pytest.mark.parametrize(
+    ("branches", "warned"),
+    [
+        ([("Choice", None), ("Choice", None), ("Fallback", None)], 1),
+        ([("Choice", "가상 그림"), ("Choice", None), ("Fallback", None)], 0),
+        ([("Choice", None), ("Choice", "가상 그림"), ("Fallback", "가상 그림")], 1),
+        ([("Fallback", None)], 1),
+        ([("Fallback", "가상 그림")], 0),
+    ],
+    ids=["two-choices", "first-described", "first-undescribed", "fallback-only", "fallback-ok"],
+)
+def test_the_audit_reads_one_branch_of_alternate_content(
+    tmp_path: Path, branches: list[tuple[str, str | None]], warned: int
+) -> None:
+    # Review finding [2]: only the first Choice (or the Fallback without one) is read.
+    doc, _ = render(write_source(tmp_path, "![](pic.png)"))
+    _alternate(doc, branches)
+    audit = [w for w in inspect_document(doc).warnings if AUDIT_WARNING in w]
+    assert audit == [f"{AUDIT_WARNING}: Word name 'Picture 1'"] * warned
+
+
+def test_one_renderer_keeps_no_warnings_from_an_earlier_document(tmp_path: Path) -> None:
+    first, second = tmp_path / "a", tmp_path / "b"
+    first.mkdir()
+    second.mkdir()
+    renderer = IBDocumentRenderer(options=RenderOptions(strict=True))
+    renderer.render(parse_markdown_file(str(write_source(first, "![](pic.png)\n\n![](pic.png)"))))
+    assert len(renderer.warnings) == 2
+    renderer.render(parse_markdown_file(str(write_source(second, "![가상 그림](pic.png)"))))
+    assert renderer.warnings == []
+
+
+def test_concurrent_conversions_keep_their_own_warnings(tmp_path: Path) -> None:
+    def job(number: int) -> tuple[int, list[str]]:
+        folder = tmp_path / f"job{number}"
+        folder.mkdir()
+        (folder / f"job{number}.png").write_bytes(PNG)
+        body = "\n\n".join([f"![](job{number}.png)"] * (number % 3 + 1))
+        _, renderer = render(write_source(folder, body))
+        return number, renderer.warnings
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(job, range(16)))
+    for number, warnings in results:
+        assert len(warnings) == number % 3 + 1
+        assert all(f"'job{number}.png'" in warning for warning in warnings)
+
+
+@pytest.mark.parametrize(
+    ("body", "metadata"),
+    [
+        ("## 가상 제목 ![](pic.png)\n\n본문", {}),
+        ("> **참고** 가상 내용 ![](pic.png)", {}),
+        (
+            "| 구분 | 값 |\n|---|---|\n| 가 | 1 |",
+            {"tables": [{"caption": "가상 표 ![](pic.png)"}]},
+        ),
+    ],
+    ids=["heading", "callout", "table-caption"],
+)
+def test_an_image_in_a_heading_callout_or_caption_warns_per_picture(
+    tmp_path: Path, body: str, metadata: dict
+) -> None:
+    doc, renderer = render(write_source(tmp_path, body, **metadata))
+    undescribed = [p.get("name") for p in pictures(doc) if not p.get("descr")]
+    assert undescribed
+    assert [w.split("Word name '")[1].split("'")[0] for w in renderer.warnings] == undescribed
+    assert all(f"{RENDER_WARNING}: 'pic.png'" in w for w in renderer.warnings)
+    assert renderer.errors == []
+
+
+def test_an_image_after_a_failed_element_still_warns(tmp_path: Path) -> None:
+    broken = "```chart\ntype: bar\nlabels: [A]\nseries: not-a-list\n```"
+    doc, renderer = render(
+        write_source(tmp_path, broken + "\n\n![](pic.png)"), strict=False, charts=True
+    )
+    assert renderer.errors and not any(RENDER_WARNING in e for e in renderer.errors)
+    (picture,) = [p for p in pictures(doc) if not p.get("descr")]
+    assert renderer.warnings == [
+        f"{RENDER_WARNING}: 'pic.png', Word name '{picture.get('name')}'. "
+        'Write one as ![description](...) or <img alt="...">.'
     ]

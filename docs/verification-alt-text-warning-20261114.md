@@ -15,7 +15,7 @@
 | `docx_audit.py` | `inspect_document`가 본문의 그림 가운데 `docPr/@descr`가 없거나 공백뿐인 것마다 warning을 더한다. issue는 더하지 않는다 |
 | `converters.py` | DOCX 출력 변환기가 호출자가 준 `render_warnings` 목록에 렌더러 경고를 더한다 |
 | `scripts/agent_render.py` | `result.json`에 `render_warnings`(렌더러 경고 전부)를 싣는다. `ok`는 바꾸지 않는다 |
-| `tests/test_alt_text_warning.py` | 새 테스트 61개 |
+| `tests/test_alt_text_warning.py` | 새 테스트 83개(독립 검토 뒤 22개 추가) |
 | 문서 | `README.md`, `README.ko.md`, `CHANGELOG.md`, `AGENTS.md`, 로드맵 "뒤로 미루는 것"의 E9 항목, 이 문서 |
 
 **결과.** 표 1의 작성자 그림 11가지 모두에서 경고가 그림마다 한 번 나오고, strict 모드에서 저장된다. 설명이 있는 그림 8가지와 저장소 샘플 17건(16개 파일과 차트를 켠 변형 1건)에서는 경고가 0건이다. 경고를 끈 렌더와 켠 렌더의 XML 파트가 같고, 기존 스냅숏 367개는 바뀌지 않았다.
@@ -59,7 +59,7 @@ Windows 11(10.0.26300), Python 3.12.12, pytest 9.0.2, python-docx 1.2.0, lxml 6.
 
 **변환 때는 작성자가 설명을 줄 수 있는 그림만 경고한다.** 수식·도식·로고에는 Markdown이나 house 파일에 설명을 적을 자리가 없다. 경고해도 작성자가 할 수 있는 일이 없고, 그 그림에 설명을 넣으려면 산출 문서가 바뀌므로 이번 범위(산출 문서 불변)를 넘는다.
 
-**`docx-audit`는 본문의 그림을 모두 본다.** 저장된 파일에는 그림을 누가 만들었는지 적혀 있지 않고, 표시를 더하면 산출 문서가 바뀐다. `docx-audit`는 Word에서 고친 파일도 읽으며, Word에서는 어느 그림에든 대체 텍스트를 넣을 수 있다. 그래서 수식·도식·로고도 audit warning으로 나온다(표 1). 다음은 세지 않는다: Word가 장식용으로 표시한 그림(`adec:decorative val="1"`), 삭제 추적 안의 그림(`w:del`·`w:moveFrom`), `mc:Fallback` 안의 사본, 그림이 아닌 도형. 머리글·바닥글은 읽지 않는다(다른 audit 검사와 같이 본문만). 엔진은 머리글에 그림을 넣지 않는다(DRAFT 워터마크는 VML 도형이라 `docPr`이 없다).
+**`docx-audit`는 본문의 그림을 모두 본다.** 저장된 파일에는 그림을 누가 만들었는지 적혀 있지 않고, 표시를 더하면 산출 문서가 바뀐다. `docx-audit`는 Word에서 고친 파일도 읽으며, Word에서는 어느 그림에든 대체 텍스트를 넣을 수 있다. 그래서 수식·도식·로고도 audit warning으로 나온다(표 1). 다음은 세지 않는다: Word가 장식용으로 표시한 그림(`adec:decorative val="1"`), 삭제 추적 안의 그림(`w:del`·`w:moveFrom`), `mc:AlternateContent`에서 읽히지 않는 분기(첫 `mc:Choice`만 읽고, Choice가 없으면 `mc:Fallback`), 그림이 아닌 도형(독립 검토 [2]로 고침, 7절). 머리글·바닥글은 읽지 않는다(다른 audit 검사와 같이 본문만). 엔진은 머리글에 그림을 넣지 않는다(DRAFT 워터마크는 VML 도형이라 `docPr`이 없다).
 
 **경고 통로.** strict 거부로 이어지는 `model.warnings`·`IBDocumentRenderer.errors`는 쓰지 않았다. 변환 경고는 E6이 만든 `IBDocumentRenderer.warnings`(매 `render` 호출마다 초기화)와 로그 `[WARNING]`에, audit 경고는 `DocumentAudit.warnings`에 들어간다. 렌더러가 부르는 `inspect_document_issues`는 issue만 보므로 audit warning은 strict에 영향이 없다. 거부 코드(6개)는 더하지 않았고, 경고 문장에 `[code] ` 접두어를 붙이지 않았다. 로드맵 본문 E9 절의 완료 기준은 "`docx_audit` JSON에 경고 코드 추가"였으나, audit JSON의 warnings는 문자열 목록이고 거부 코드는 6개로 고정돼 있어(AGENTS.md) 코드 대신 문장으로 넣었다.
 
@@ -69,10 +69,10 @@ Windows 11(10.0.26300), Python 3.12.12, pytest 9.0.2, python-docx 1.2.0, lxml 6.
 
 **경고 문구.**
 
-- 변환: `Image without a description (alt text): 'pic.png', Word name 'Picture 1'. Write one as ![description](...) or <img alt="...">.` Base64·`data:` 그림은 `'pic.png'` 자리에 `embedded image`가 온다. 경로는 마지막 이름만 쓰고, 그림 데이터는 넣지 않는다(테스트로 확인).
+- 변환: `Image without a description (alt text): 'pic.png', Word name 'Picture 1'. Write one as ![description](...) or <img alt="...">.` Base64·`data:` 그림은 `'pic.png'` 자리에 `embedded image`가 온다. 이름은 실제로 불러온 파일의 마지막 이름이며, 적힌 주소에서 다시 계산하지 않는다(독립 검토 [1]로 고침, 7절). 폴더 경로와 그림 데이터는 넣지 않는다(테스트로 확인).
 - audit: `Picture without a description (alt text): Word name 'Picture 1'`.
 
-## 3. 테스트 (`tests/test_alt_text_warning.py`, 61개)
+## 3. 테스트 (`tests/test_alt_text_warning.py`, 처음 61개, 독립 검토 뒤 83개)
 
 모두 실제 파서(`parse_markdown_file`)와 `IBDocumentRenderer.render`를 거친다.
 
@@ -117,3 +117,30 @@ Windows 11(10.0.26300), Python 3.12.12, pytest 9.0.2, python-docx 1.2.0, lxml 6.
 - Word의 접근성 검사기와 결과를 대조하지 않았다. 장식용 표시의 XML은 Office 확장 이름(`http://schemas.microsoft.com/office/drawing/2017/decorative`)으로 넣었고, 이 기기의 Word로 장식용 표시를 해 저장한 문서와 대조하지 않았다.
 - `.agents/skills/ib-document/SKILL.md`와 `skills/ib-document/SKILL.md`에 `render_warnings`를 읽으라는 문장을 더하지 않았다(대체 텍스트 audit 경고는 기존 `audit` 안에 실린다).
 - 독립 검토는 하지 않았다.
+
+## 6. 2단계 게이트 (독립 검토 반영 뒤)
+
+| 명령 | 종료 코드 | 결과 |
+|---|---|---|
+| `uv run --no-sync ruff check .` | 0 | `All checks passed!` |
+| `uv run --no-sync ruff format --check .` | 0 | 106개 파일 형식 맞음 |
+| `uv run --no-sync mypy .` | 0 | 소스 43개, 오류 0건 |
+| `uv run --no-sync pytest tests/test_alt_text_warning.py …` | 0 | 83 통과 |
+| `uv run --no-sync pytest tests/ -q -p no:cacheprovider --basetemp <새 임시 폴더> -W ignore` | 0 | 3532 통과(1단계보다 22개 많음), 5 건너뜀, 1 xfail, 478초. 스냅숏 367개 통과 |
+| `git diff --name-status c97841c -- tests/__snapshots__` | 0 | 0줄(스냅숏 변경 0건) |
+| 고치기 전 소스(`git archive 426b377`) + 최종 테스트 파일 | 1 | 83개 중 12개 실패, 71개 통과 (7절) |
+
+## 7. 독립 검토 (2026-11-14)
+
+Codex(읽기 전용)가 커밋 `426b377`을 검토해 병합을 막는 지적 1건과 막지 않는 지적 1건을 냈다. 둘 다 고친 커밋은 `426b377` 다음의 새 커밋이다(amend 없음).
+
+| 번호 | 지적 | 처분 | 회귀 테스트 |
+|---|---|---|---|
+| [1] (병합 차단) | 퍼센트 인코딩된 경로(`가상폴더%2Fpic.png`, `C%3A%5C…%5Cpic.png`)가 경고에 통째로 나온다. 로더는 디코딩한 경로로 그림을 넣는데, 경고는 적힌 주소에서 마지막 이름을 구했다 | 고침. `warn_missing_description`이 실제로 불러온 파일(`image_source`가 돌려준 경로)을 받아 그 마지막 이름만 쓴다. Base64·`data:`은 `embedded image`. 이름은 Windows 규칙(`PureWindowsPath`)으로 잘라 어느 운영체제에서도 `/`·`\`·드라이브가 남지 않는다. 이름 자체에 든 실제 `%`(`pic%41.png`)는 그대로 보인다 | `test_the_warning_names_the_loaded_file_not_the_written_path`(인코딩된 `/`, 인코딩된 `..`, `%20`, 실제 `%` × 블록·인라인), `test_an_encoded_backslash_path_shows_no_folder`(인코딩된 절대 경로 인라인, 인코딩된 `\` 상대 경로 블록·인라인). 경고에 폴더 이름·임시 폴더 경로·`%5C`·`%3A`·`/`·`\`·`:`·`..`이 없음을 단언 |
+| [2] (참고) | `docx_audit`가 `mc:AlternateContent`에서 Fallback만 빼고 모든 `mc:Choice`를 검사해, Choice가 둘이면 같은 그림을 두 번 경고하거나 읽히지 않는 Choice 때문에 잘못 경고한다 | 고침. 한 `AlternateContent`에서는 첫 Choice만, Choice가 없으면 Fallback만 검사한다(`_unread_branch`). 이전에는 Choice 없이 Fallback만 있는 그림을 세지 않았으나 이제 센다 | `test_the_audit_reads_one_branch_of_alternate_content`(Choice 2개+Fallback, 첫 Choice에만 설명, 둘째 Choice에만 설명, Fallback만, 설명 있는 Fallback만) |
+
+검토자가 빠졌다고 한 회귀 테스트도 더했다: `test_one_renderer_keeps_no_warnings_from_an_earlier_document`(한 렌더러로 다른 문서 두 개), `test_concurrent_conversions_keep_their_own_warnings`(스레드 8개로 변환 16개, 문서마다 그림 수와 파일 이름이 다름), `test_an_image_in_a_heading_callout_or_caption_warns_per_picture`(제목·콜아웃·표 캡션), `test_an_image_after_a_failed_element_still_warns`(비strict에서 잘못된 차트가 실패한 뒤의 그림).
+
+**고치기 전 코드에서 새 테스트가 실패하는지.** `git archive 426b377`로 고치기 전 소스를 임시 폴더에 풀고 최종 테스트 파일만 넣어 같은 가상 환경으로 실행했다: 83개 중 12개 실패, 71개 통과(종료 코드 1). 실패한 12개는 [1]의 9개(인코딩된 `/`·`..`·`%20` × 2, 인코딩된 절대 경로·`\` 3개)와 [2]의 3개(Choice 2개, 첫 Choice에만 설명, Fallback만)다. 나머지 새 테스트 10개(실제 `%` 이름 2개, 둘째 Choice에만 설명, 설명 있는 Fallback만, 렌더러 재사용, 동시 변환, 제목·콜아웃·캡션 3개, 실패 요소 뒤)는 고치기 전에도 통과한다. 이것들은 결함 재현이 아니라 검토자가 요청한 회귀 범위다. 고친 뒤에는 83개 모두 통과한다.
+
+**찾았지만 바꾸지 않은 것.** 같은 원인(적힌 주소를 그대로 쓰는 문구)은 이 변경이 더한 경고에만 있었고, 그것을 고쳤다. 기존 로그·오류 문구는 지시대로 바꾸지 않았다. 적힌 주소를 그대로 보여 주는 기존 문구는 다음과 같다: `Image file not found: %s — inserting placeholder`(로그), 인라인 그림의 `Image could not be rendered: <설명 또는 주소>`(오류), `Inserted file image: %s`(디버그 로그), `[asset_outside_root] Image or logo is outside allowed folders: <경로>`(거부 문구). 이것들은 그림이 들어가지 않았거나 거부된 경우의 진단이며, 경로 노출을 줄이려면 별도 판단이 필요하다. 또 블록 그림 줄에 인코딩된 절대 경로(`![](C%3A%5C…)`)를 쓰면 기존 로더가 원본 폴더에 이어 붙인 뒤 디코딩해 `asset_outside_root`로 거부한다(인라인 그림은 불러온다). 이 차이도 이번에 바꾸지 않았다.
