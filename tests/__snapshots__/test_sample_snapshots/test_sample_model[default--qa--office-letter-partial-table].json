@@ -600,6 +600,9 @@
         "label_columns": null,
         "note": "",
         "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
         "schedule": null
       },
       "raw_text": "| 구분 | 회신 기한 | 담당 |\n|---|---|---|\n| 운영실적 | 2026. 11. 28. | 업무지원팀 |\n| 설비 운영계획 | 2026. 12. 5. | 업무지원팀 |\n| | | |\n| | | |",
