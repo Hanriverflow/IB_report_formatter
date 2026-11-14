@@ -191,6 +191,75 @@ def test_partial_table_before_explicit_appendix():
     assert len(doc.element.xpath('.//w:br[@w:type="page"]')) == 1
 
 
+# A 4x4 red PNG as a data URI: images in cells need no file.
+PNG = (
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAEUlEQVR4nGM8"
+    "wYAATEhsPBwAKNwA0IanwBQAAAAASUVORK5CYII="
+)
+
+
+def has_table_header(table, row: int) -> bool:
+    tr = table.findall(qn("w:tr"))[row]
+    return tr.find(qn("w:trPr") + "/" + qn("w:tblHeader")) is not None
+
+
+def test_row_of_line_breaks_is_blank_and_receives_the_mark():
+    doc = render(letter(FULL_TABLE + "| <br> | <br><br> | \u00a0 |\n", PARTIAL))
+    rows = row_texts(last_table(doc))
+    assert len(rows) == 4
+    assert rows[3][0].startswith("이하 빈칸")
+
+
+def test_first_of_several_blank_rows_gets_the_mark_even_with_line_breaks():
+    doc = render(letter(FULL_TABLE + "| <br> | | |\n| | | |\n", PARTIAL))
+    rows = row_texts(last_table(doc))
+    assert rows[3][0].startswith("이하 빈칸")
+    assert "이하 빈칸" not in "".join(rows[4])
+
+
+def test_image_only_row_is_written():
+    image_row = f"| ![도장]({PNG}) | | |\n"
+    with pytest.raises(StrictValidationError, match="blank row"):
+        render(letter(FULL_TABLE + image_row, PARTIAL))
+    doc = render(letter(FULL_TABLE + image_row + "| | | |\n", PARTIAL))
+    table = last_table(doc)
+    assert table.findall(qn("w:tr"))[3].findall(".//" + qn("w:drawing"))
+    assert "이하 빈칸" not in "".join(row_texts(table)[3])
+    assert row_texts(table)[4][0] == "이하 빈칸"
+
+
+@pytest.mark.parametrize("cell", ["`<br>`", r"\<br>", "$x$", "&nbsp;"])
+def test_cells_that_show_characters_are_written(cell):
+    """Code, escaped markup, equations and text Word prints (here `&nbsp;` printed as is)."""
+    with pytest.raises(StrictValidationError, match="blank row"):
+        render(letter(FULL_TABLE + f"| {cell} | | |\n", PARTIAL))
+
+
+def test_html_table_cells_with_no_break_space_or_break_are_blank():
+    source = (
+        "<table><tr><th>구분</th><th>일자</th></tr>"
+        "<tr><td>납입</td><td>2026. 12. 8.</td></tr>"
+        "<tr><td>&nbsp;</td><td><br></td></tr></table>\n"
+    )
+    doc = render(letter(source, PARTIAL))
+    assert row_texts(last_table(doc))[2][0] == "이하 빈칸"
+
+
+def test_blank_header_rows_are_never_the_target():
+    source = "| 구분 | 일자 |\n|---|---|\n| | |\n| | |\n"
+    doc = render(letter(source, "tables:\n  - header_rows: 2\n" + PARTIAL))
+    table = last_table(doc)
+    rows = row_texts(table)
+    assert has_table_header(table, 1) and not has_table_header(table, 2)
+    assert "이하 빈칸" not in "".join(rows[1])
+    assert rows[2][0] == "이하 빈칸"
+
+
+def test_table_with_no_body_rows_is_rejected():
+    with pytest.raises(StrictValidationError, match="blank row"):
+        render(letter("| 구분 | 일자 |\n|---|---|\n", PARTIAL))
+
+
 @pytest.mark.parametrize("strict", [True, False])
 @pytest.mark.parametrize(
     "body, extra, message",

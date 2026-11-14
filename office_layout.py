@@ -4,6 +4,9 @@ Changelog (letter closing):
     - `letter.table_end: partial` writes 이하 빈칸 in the first blank row after the
       last written row of the table that ends the letter body, instead of "끝."
       (`letter_partial_table_row`). Without the setting the output is unchanged.
+      A blank cell is one Word shows nothing in, judged on parsed runs (line
+      breaks and spaces are blank; text, images, equations are not); header
+      rows are never the target.
     - Attachments follow the administrative handbook: one attachment is a single
       unnumbered line `붙임⇥항목.  끝.`; several start on the `붙임⇥1.` line of a
       native list whose other numbers align under `1.` (`render_attachments`).
@@ -42,7 +45,9 @@ from document_model import (
     Heading,
     ListItem,
     Table,
+    TableCell,
     TableRow,
+    TextRun,
 )
 from document_profiles import string_list
 from ooxml_order import insert_ordered
@@ -175,25 +180,48 @@ def letter_appendix_index(model: DocumentModel) -> int | None:
 PARTIAL_TABLE_MARK = "이하 빈칸"
 
 
-def _blank_row(row: TableRow) -> bool:
-    """A row with nothing written: empty cells, or cells merged into one to the left.
+def _visible_run(run: TextRun) -> bool:
+    """Whether a parsed run prints something in Word.
 
-    A cell merged into the row above (`^^`) continues written content, so its row
-    is not blank.
+    Spaces, no-break spaces and line breaks (`<br>`, already turned into newlines)
+    print nothing. Any other character does, including `<br>` shown as text by a
+    code span or an escape, as do images, equations and footnote marks.
     """
-    return all(
-        cell.merge == "left" or (cell.merge is None and not cell.content.strip())
-        for cell in row.cells
+    return (
+        run.image is not None
+        or run.footnote_id is not None
+        or (run.is_latex and bool(run.text))
+        or bool(run.text.strip())
     )
+
+
+def _blank_cell(cell: TableCell) -> bool:
+    """A cell with nothing visible, judged on its parsed runs, not its source text."""
+    if cell.merge == "left":
+        # Merged into the cell to its left: it shows that cell's content.
+        return True
+    if cell.merge == "up":
+        # Merged into the cell above, which continues written content.
+        return False
+    if cell.runs:
+        return not any(_visible_run(run) for run in cell.runs)
+    return not cell.content.strip()
+
+
+def _blank_row(row: TableRow) -> bool:
+    """A row whose cells show nothing in Word."""
+    return all(_blank_cell(cell) for cell in row.cells)
 
 
 def letter_partial_table_row(model: DocumentModel, appendix_index: int | None) -> int | None:
     """Resolve where `letter.table_end: partial` writes 이하 빈칸, before any output.
 
     The setting declares that the table ending the letter body is filled only
-    partway. The mark goes in the first cell of the first blank row after the last
-    written row. Blank rows alone never trigger it: a reply form may keep blank
-    rows for the recipient.
+    partway. The mark goes in the first cell of the first blank body row after the
+    last written body row (the first body row when no body row is written). A row
+    is blank when Word shows nothing in it; header rows are never the target.
+    Blank rows alone never trigger it: a reply form may keep blank rows for the
+    recipient.
 
     Args:
         model: Render copy of the document model, title H1 already removed.
@@ -218,9 +246,13 @@ def letter_partial_table_row(model: DocumentModel, appendix_index: int | None) -
         or not isinstance(last.content, Table)
     ):
         raise ValueError("letter.table_end requires the letter body to end with a table")
-    rows = last.content.rows
-    written = [index for index, row in enumerate(rows) if not _blank_row(row)]
-    target = written[-1] + 1 if written else 0
+    table = last.content
+    rows = table.rows
+    # Header rows are drawn and repeated as the header (as the table renderer
+    # counts them); the mark belongs to the body rows below them.
+    first_body = min(table.header_rows, len(rows))
+    written = [index for index in range(first_body, len(rows)) if not _blank_row(rows[index])]
+    target = written[-1] + 1 if written else first_body
     if target >= len(rows):
         raise ValueError(
             "letter.table_end requires a blank row after the last written row of the final table"
