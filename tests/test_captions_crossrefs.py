@@ -1472,3 +1472,34 @@ def test_many_distinct_diagnostics_are_reported_once_in_order(tmp_path: Path) ->
     renderer = IBDocumentRenderer(options=RenderOptions(strict=False))
     renderer.render(model)
     assert [e for e in renderer.errors if e.startswith("Cross-reference")] == expected
+
+
+# [25] A term value is never read as a reference, wherever it is inserted,
+# including a heading that becomes the document title.
+@pytest.mark.parametrize(
+    ("profile", "body", "shown"),
+    [
+        ("business-report", "# {{x}}\n\nbody", True),
+        ("business-report", "# 제목 @{{x}} \\@tbl-a\n\nbody", True),
+        ("business-report", "## {{x}}\n\n{{x}} and (@{{x}})\n\n- {{x}}\n\n> {{x}}", True),
+        (
+            "business-report",
+            "| {{x}} |\n|---|\n| 1 |\n\n<table><tr><td>{{x}}</td></tr></table>",
+            True,
+        ),
+        ("business-report", "![{{x}}](s.png)\n\ntext[^1]\n\n[^1]: {{x}}", False),
+        ("ib-report", "**1. 개요 {{x}}**\n\n본문", True),
+        ("ib-report", "**1. 개요 \\@tbl-a {{x}}**\n\n본문", True),
+    ],
+)
+def test_term_values_are_never_read_as_references(
+    tmp_path: Path, profile: str, body: str, shown: bool
+) -> None:
+    shutil.copy(SAMPLE_IMAGE, tmp_path / "s.png")
+    path = tmp_path / "doc.md"
+    front = f"---\nprofile: {profile}\n{PROFILE_FRONTMATTER.get(profile, '')}"
+    path.write_text(front + 'terms:\n  x: "@tbl-missing"\n---\n\n' + body, encoding="utf-8")
+    document, errors = render(path)
+    assert errors == []
+    assert references(document) == []
+    assert ("@tbl-missing" in all_text(document)) is shown

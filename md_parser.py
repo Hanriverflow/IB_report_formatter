@@ -330,6 +330,9 @@ class MarkdownParser:
         # Term runs of a heading whose references resolve, read without them,
         # for the title when that heading becomes it.
         self._title_runs: dict[int, list[TextRun]] = {}
+        # The text of a heading with term values, as written (values as tokens),
+        # and the offsets there of its escaped `@`: the title is judged on it.
+        self._title_sources: dict[int, tuple[str, tuple[int, ...]]] = {}
 
     def parse(self, content: str) -> DocumentModel:
         """
@@ -397,6 +400,7 @@ class MarkdownParser:
         self._term_sheet = metadata.profile == "term-sheet"
         self._parse_warnings = []
         self._title_runs = {}
+        self._title_sources = {}
         # An empty mapping enables checking: every reference is then undefined.
         with document_validation():
             self._terms = (
@@ -502,13 +506,21 @@ class MarkdownParser:
             ):
                 metadata.title = first_heading.text
                 if metadata.profile != "plain":  # where the heading becomes the title
+                    # Judged as written: a term value is never read as a reference.
+                    source, escaped_ats = self._title_sources.get(
+                        id(first_heading),
+                        (
+                            first_heading.text,
+                            first_heading.escaped_ats
+                            if isinstance(first_heading, MarkedHeading)
+                            else (),
+                        ),
+                    )
                     TextParser.check_text(
-                        first_heading.text,
+                        source,
                         "document title",
                         markdown=metadata.profile == "term-sheet",
-                        escaped_ats=first_heading.escaped_ats
-                        if isinstance(first_heading, MarkedHeading)
-                        else (),
+                        escaped_ats=escaped_ats,
                     )
                 if first_heading.runs:
                     metadata.display_runs["title"] = [
@@ -593,6 +605,7 @@ class MarkdownParser:
                 with TextParser.reference_scope(None):
                     plain = TextParser.parse_runs(text)
                 self._title_runs[id(heading)] = split_term_runs(plain, tokens)
+            self._title_sources[id(heading)] = (tokenized, escaped_ats)
         return element
 
     def _check_metadata_references(self, metadata: DocumentMetadata) -> None:
