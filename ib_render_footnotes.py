@@ -1,7 +1,17 @@
-"""Footnotes, the native footnotes part and local link rebasing for rendered documents."""
+"""Footnotes, the native footnotes part and local link rebasing for rendered documents.
 
+Changelog (repeated references):
+    - FIXED: a note referenced more than once made a document Word does not
+      open (two `w:footnoteReference` elements with one ID). The first
+      reference stays native inside a hidden `_Ref_fn_<n>` bookmark; every
+      later one is `NOTEREF _Ref_fn_<n> \\f \\h` with the shown number cached,
+      as Word's own footnote cross-reference writes it.
+"""
+
+from collections.abc import Callable
+from copy import deepcopy
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from docx.document import Document as DocxDocument
 from docx.opc.constants import CONTENT_TYPE as CT
@@ -18,12 +28,23 @@ from ooxml_order import insert_ordered
 from render_styles import STYLE
 from term_variables import is_term_run
 
+# Hidden bookmark around the first reference of a note referenced again; the
+# number is the note's shown number, so the name stays within Word's 40 characters.
+FOOTNOTE_BOOKMARK_PREFIX = "_Ref_fn_"
+
 
 class FootnoteRenderer:
     """Renders footnotes section"""
 
-    def __init__(self, doc: DocxDocument):
+    def __init__(self, doc: DocxDocument, next_bookmark_id: Callable[[], int] | None = None):
+        """
+        Args:
+            doc: Document being rendered.
+            next_bookmark_id: The document's bookmark ID allocator. Without one,
+                IDs continue after the highest bookmark ID in the document.
+        """
         self.doc = doc
+        self._next_bookmark_id = next_bookmark_id
 
     def render(self, footnotes: dict, allow_legacy_refs: bool = True):
         """Render footnotes natively when possible, else fall back to an ENDNOTES section."""
@@ -53,7 +74,94 @@ class FootnoteRenderer:
         for run, number in run_refs:
             self._replace_with_native_reference(run, number)
 
+        self._link_repeated_references()
         return True
+
+    def _link_repeated_references(self) -> None:
+        """Write every reference after a note's first as Word's footnote cross-reference.
+
+        Word does not open a document in which two `w:footnoteReference`
+        elements name the same note. Word's own Insert Cross-reference >
+        Footnote number (formatted) keeps the first reference, puts a hidden
+        `_Ref` bookmark around its run and writes `NOTEREF <bookmark> \\f \\h`.
+        The cached result is the note's shown number, so the document reads
+        correctly before any field update. A note referenced once is untouched.
+        """
+        references = self.doc.element.body.xpath(".//w:footnoteReference")
+        shown: dict[str, int] = {}
+        first: dict[str, object] = {}
+        repeats: list[tuple[object, str]] = []
+        for reference in references:
+            note = reference.get(qn("w:id"))
+            if note in shown:
+                repeats.append((reference, note))
+            else:
+                # Word numbers notes in the order of their references.
+                shown[note] = len(shown) + 1
+                first[note] = reference
+        if not repeats:
+            return
+
+        repeated = {note for _, note in repeats}
+        bookmarks: dict[str, str] = {}
+        for note, reference in first.items():  # document order
+            if note not in repeated:
+                continue
+            bookmarks[note] = f"{FOOTNOTE_BOOKMARK_PREFIX}{shown[note]}"
+            run = cast(Any, reference).getparent()
+            bookmark_id = str(self._allocate_bookmark_id())
+            start = OxmlElement("w:bookmarkStart")
+            start.set(qn("w:id"), bookmark_id)
+            start.set(qn("w:name"), bookmarks[note])
+            end = OxmlElement("w:bookmarkEnd")
+            end.set(qn("w:id"), bookmark_id)
+            run.addprevious(start)
+            run.addnext(end)
+
+        for reference, note in repeats:
+            self._replace_with_note_reference(
+                cast(Any, reference).getparent(), bookmarks[note], str(shown[note])
+            )
+
+    def _allocate_bookmark_id(self) -> int:
+        """Return a bookmark ID no other bookmark of the document uses."""
+        if self._next_bookmark_id is not None:
+            return self._next_bookmark_id()
+        used = [
+            int(value)
+            for value in self.doc.element.body.xpath(".//w:bookmarkStart/@w:id")
+            if str(value).isdigit()
+        ]
+        return max(used, default=0) + 1
+
+    @staticmethod
+    def _replace_with_note_reference(run, bookmark: str, number: str) -> None:
+        """Replace a footnote reference run with a `NOTEREF` field showing `number`.
+
+        Every field run keeps the reference run's formatting (footnote
+        reference style, superscript, fonts), so the number looks like the
+        first reference before and after Word updates the field.
+        """
+        r_pr = run.find(qn("w:rPr"))
+        for kind in ("begin", "instr", "separate", "result", "end"):
+            field_run = OxmlElement("w:r")
+            if r_pr is not None:
+                field_run.append(deepcopy(r_pr))
+            if kind == "instr":
+                code = OxmlElement("w:instrText")
+                code.set(qn("xml:space"), "preserve")
+                code.text = f" NOTEREF {bookmark} \\f \\h "
+                field_run.append(code)
+            elif kind == "result":
+                text = OxmlElement("w:t")
+                text.text = number
+                field_run.append(text)
+            else:
+                char = OxmlElement("w:fldChar")
+                char.set(qn("w:fldCharType"), kind)
+                field_run.append(char)
+            run.addprevious(field_run)
+        run.getparent().remove(run)
 
     def _render_endnotes(self, footnotes: dict):
         """Render footnotes as a plain ENDNOTES section when native refs are unavailable."""

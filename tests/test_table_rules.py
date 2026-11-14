@@ -1108,8 +1108,10 @@ def test_pieces_around_an_amount_in_every_order(kind: str, style: str) -> None:
 def test_review_five_footnote_then_line_break(style: str) -> None:
     # Fifth check: a line break after a footnote marker hid the split warning and
     # stopped an unsplit amount from being restyled.
-    body = one_column_table("다섯", ["-1200**.50**[^1]<br>", "**-1300** [^1]<br>"]) + (
-        "\n[^1]: 가상 주석입니다.\n"
+    # Two notes: one note referenced twice is written as a NOTEREF field the
+    # second time (tests/test_footnote_rereference.py), not as a second marker.
+    body = one_column_table("다섯", ["-1200**.50**[^1]<br>", "**-1300** [^2]<br>"]) + (
+        "\n[^1]: 가상 주석입니다.\n[^2]: 가상 주석 둘입니다.\n"
     )
     spec = {"type": "financial", "columns": ["text", "money"], "negative": style}
     doc, renderer = render_noting(markdown(body, "ib-memo", tables=[spec]))
