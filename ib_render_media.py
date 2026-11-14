@@ -398,6 +398,8 @@ class ChartRenderer:
 
         if chart.error or chart.spec is None:
             raise ValueError(chart.error or "chart specification is missing")
+        # Before the style branch: classic draws the same texts into its picture.
+        self.check_visible_texts(chart.spec)
         section = self.doc.sections[-1]
         page_width = section.page_width
         left_margin, right_margin = section.left_margin, section.right_margin
@@ -421,6 +423,30 @@ class ChartRenderer:
             raise
         return paragraph
 
+    @staticmethod
+    def check_visible_texts(spec: ChartSpec) -> None:
+        """Report a `@tbl-…` / `@fig-…` in a chart text the reader sees.
+
+        The title, the subtitle (or, without one, `y_label`/`unit`), the note
+        and the source are plain text in both styles (Word paragraphs in the
+        standard style, drawn into the picture in the classic style). A
+        reference there cannot become a field (the title is also the
+        picture's description, where E5 allows none), so it stays text and is
+        reported (`TextParser.check_text`); strict mode rejects. The check
+        writes nothing to the document.
+        """
+        from md_parse_text import TextParser
+
+        subtitle = spec.subtitle if spec.subtitle is not None else (spec.y_label or spec.unit)
+        for place, text in (
+            ("chart title", spec.title),
+            ("chart subtitle", subtitle),
+            ("chart note", spec.note),
+            ("chart source", spec.source),
+        ):
+            if text:
+                TextParser.check_text(text, place, markdown=False)
+
     def _render_standard(
         self, chart: Chart, width: float, caption_prefix: Sequence[TextRun] = ()
     ) -> Paragraph:
@@ -433,29 +459,19 @@ class ChartRenderer:
         are kept on the picture's page with keep-with-next.
 
         These texts are plain text, as the classic style drew them, not
-        inline Markdown. A `@tbl-…` / `@fig-…` in them cannot become a field
-        (the title is also the picture's description, where E5 allows none),
-        so it stays text and is reported (`TextParser.check_text`).
+        inline Markdown; `check_visible_texts` has reported any reference in
+        them before the style was chosen.
 
         Returns:
             The picture paragraph.
         """
         from chart_render_standard import render_standard_chart_png
         from ib_render_text import TextRenderer
-        from md_parse_text import TextParser
 
         spec = cast(ChartSpec, chart.spec)
         warnings = getattr(self.doc.part, "_ib_render_warnings", None)
         png = render_standard_chart_png(spec, width_inches=width, warnings=warnings)
         subtitle = spec.subtitle if spec.subtitle is not None else (spec.y_label or spec.unit)
-        for place, text in (
-            ("chart title", spec.title),
-            ("chart subtitle", subtitle),
-            ("chart note", spec.note),
-            ("chart source", spec.source),
-        ):
-            if text:
-                TextParser.check_text(text, place, markdown=False)
         below = [
             f"{label}: {text}"
             for label, text in (

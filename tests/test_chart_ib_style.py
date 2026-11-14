@@ -600,10 +600,45 @@ def test_a_reference_in_chart_text_stays_text_and_is_reported(place):
         render_doc(markdown, "business-report", strict=True)
 
 
-def test_classic_chart_text_is_drawn_and_not_read_for_references():
-    spec = CLASSIC_BAR.replace("source: 가상 자료", "source: '@tbl-plan 참고'")
-    renderer, doc, _ = render_doc(
-        TABLE_WITH_ID + fence(spec), "business-report", chart_style="classic", strict=True
+# Principle R (independent review, 2026-11-14): the texts a reader sees are checked
+# once, before the style is chosen. This replaces the earlier pin that classic
+# chart text was never read for references, which let an unresolved reference
+# pass strict mode silently in the classic style.
+CLASSIC_KEY = {"title": "title", "subtitle": "y_label", "note": "note", "source": "source"}
+
+
+@pytest.mark.parametrize("target", ["@tbl-plan", "@fig-missing"])
+@pytest.mark.parametrize("place", ["title", "subtitle", "note", "source"])
+@pytest.mark.parametrize("chart_style", ["standard", "classic"])
+def test_a_reference_in_a_visible_chart_text_is_reported_in_both_styles(
+    monkeypatch, chart_style, place, target
+):
+    from ib_render_media import ChartRenderer
+
+    key = CLASSIC_KEY[place] if chart_style == "classic" else place
+    texts = {"title": "가상 매출", "source": "가상 자료"}
+    texts[key] = f"'{target} 참고'"
+    spec = "chart_type: bar\nlabels: [a]\nseries:\n  - name: x\n    values: [1]\n" + "".join(
+        f"{name}: {value}\n" for name, value in texts.items()
     )
-    assert not renderer.errors
-    assert not any("@tbl-plan" in p.text for p in doc.paragraphs)
+    markdown = TABLE_WITH_ID + fence(spec)
+    renderer, _, data = render_doc(markdown, "business-report", chart_style=chart_style)
+    message = ";".join(renderer.errors)
+    assert f"chart {place}" in message and target in message
+    with pytest.raises(ValueError, match=f"chart {place}"):
+        render_doc(markdown, "business-report", chart_style=chart_style, strict=True)
+    # Only a diagnostic is added: the document is the one drawn without the check.
+    monkeypatch.setattr(ChartRenderer, "check_visible_texts", staticmethod(lambda spec: None))
+    unchecked, _, same = render_doc(markdown, "business-report", chart_style=chart_style)
+    assert not any("chart " in error for error in unchecked.errors)
+    assert _document_xml(data) == _document_xml(same)
+    if chart_style == "classic" and place != "note":
+        # Still the classic picture: no Word text paragraphs around it.
+        assert not any(target in p.text for p in Document(BytesIO(data)).paragraphs)
+
+
+def _document_xml(data: bytes) -> str:
+    from tests.snapshot_helpers import XMLNormalizer
+
+    with ZipFile(BytesIO(data)) as package:
+        return XMLNormalizer.normalize(package.read("word/document.xml"), "word/document.xml")
