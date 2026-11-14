@@ -4,8 +4,9 @@ The enforcement rule of the Korean administrative-document regulation (Art. 4(5)
 writes "끝" one character in from the left margin below a table that is filled
 to its last row. A table filled only partway gets "이하 빈칸" in the cell after
 the last written row instead; the letter declares that with
-`letter.table_end: partial`, and the engine never infers it. These tests pin both
-through parsing, rendering and a saved Word package.
+`letter.table_end: partial`, and the engine never infers it. Attachments and
+item symbols follow the same rule and the 2025 administrative handbook. These
+tests pin all of it through parsing, rendering and a saved Word package.
 """
 
 import sys
@@ -316,3 +317,99 @@ def test_attachments_still_close_the_letter_before_an_explicit_appendix():
     closing = texts.index("확인서 1부.  끝.")
     assert closing < texts.index("가상금융 주식회사 대표이사") < texts.index("붙임 1")
     assert len(doc.element.xpath('.//w:br[@w:type="page"]')) == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ITEM SYMBOLS: 1. 가. 1) 가) (1) (가) ① IN OFFICE LETTERS ONLY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+SYMBOLS = ["1.", "가.", "1)", "가)", "(1)", "(가)", "①"]
+
+
+def nested_list(depth: int) -> str:
+    """One numbered item per level, nested with four spaces per level."""
+    return "".join("    " * level + f"1. {level + 1}단계 항목\n" for level in range(depth))
+
+
+def body_list_levels(doc) -> list[tuple[str, str]]:
+    """(numFmt, lvlText) of each level of the body list's abstract definition."""
+    paragraph = next(p for p in doc.paragraphs if p.text == "1단계 항목")
+    definition = num_definition(doc, num_id(paragraph))
+    abstract_id = definition.find(qn("w:abstractNumId")).get(qn("w:val"))
+    numbering = doc.part.numbering_part.element
+    abstract = next(
+        a
+        for a in numbering.findall(qn("w:abstractNum"))
+        if a.get(qn("w:abstractNumId")) == abstract_id
+    )
+    return [
+        (lvl.find(qn("w:numFmt")).get(qn("w:val")), lvl.find(qn("w:lvlText")).get(qn("w:val")))
+        for lvl in abstract.findall(qn("w:lvl"))
+    ]
+
+
+def test_office_letter_numbers_seven_levels_with_the_administrative_symbols():
+    doc = render(letter(nested_list(7)))
+    levels = body_list_levels(doc)
+    assert levels[:7] == [
+        ("decimal", "%1."),
+        ("ganada", "%2."),
+        ("decimal", "%3)"),
+        ("ganada", "%4)"),
+        ("decimal", "(%5)"),
+        ("ganada", "(%6)"),
+        ("decimalEnclosedCircle", "%7"),
+    ]
+    items = [p for p in doc.paragraphs if "단계 항목" in p.text]
+    levels_used = [
+        int(p._p.find(qn("w:pPr") + "/" + qn("w:numPr") + "/" + qn("w:ilvl")).get(qn("w:val")))
+        for p in items
+    ]
+    assert levels_used == list(range(7))
+
+
+def test_parenthesised_levels_get_room_for_their_wider_symbols():
+    doc = render(letter(nested_list(7)))
+    hanging = {
+        p.text.replace("  끝.", ""): round(-p.paragraph_format.first_line_indent.inches, 4)
+        for p in doc.paragraphs
+        if "단계 항목" in p.text
+    }
+    assert hanging["5단계 항목"] == hanging["6단계 항목"] == 0.3125
+    assert {hanging[f"{n}단계 항목"] for n in (1, 2, 3, 4, 7)} == {0.25}
+
+
+@pytest.mark.parametrize("depth", [8, 10])
+def test_eighth_level_is_rejected_in_strict_mode(depth):
+    with pytest.raises(StrictValidationError, match="level 8 is deeper than the 7 levels"):
+        render(letter(nested_list(depth)))
+
+
+def test_eighth_level_renders_with_ganada_and_a_warning_outside_strict_mode():
+    model = MarkdownParser(profile="office-letter").parse(letter(nested_list(8)))
+    renderer = IBDocumentRenderer(options=RenderOptions(strict=False))
+    doc = renderer.render(model)
+    assert [e for e in renderer.errors if "level 8" in e]
+    assert body_list_levels(doc)[7] == ("ganada", "%8")
+    assert not model.warnings  # the caller's model is untouched
+
+
+@pytest.mark.parametrize("profile", ["plain", "business-report", "meeting-minutes"])
+def test_other_general_profiles_keep_their_numbering(profile):
+    source = f"---\nprofile: {profile}\ntitle: 가상 문서\n---\n# 가상 문서\n\n" + nested_list(8)
+    model = MarkdownParser(profile=profile).parse(source)
+    renderer = IBDocumentRenderer(options=RenderOptions(strict=True))
+    doc = renderer.render(model)
+    assert body_list_levels(doc)[:4] == [
+        ("decimal", "%1."),
+        ("ganada", "%2."),
+        ("decimal", "(%3)"),
+        ("decimal", "%4."),
+    ]
+    assert not renderer.errors
+    first_lines = {
+        round(-p.paragraph_format.first_line_indent.inches, 4)
+        for p in doc.paragraphs
+        if "단계 항목" in p.text
+    }
+    assert first_lines == {0.25}

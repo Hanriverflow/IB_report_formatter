@@ -141,6 +141,7 @@ from numeric_checks import CHECKS_PROPERTY, checks_to_json, parse_checks
 from office_layout import (
     add_text,
     letter_appendix_index,
+    letter_numbering_warnings,
     letter_partial_table_row,
     render_office_closing,
     render_office_opening,
@@ -744,6 +745,7 @@ class IBDocumentRenderer:
         with document_validation():
             appendix_index = letter_appendix_index(model)
             partial_table_row = letter_partial_table_row(model, appendix_index)
+        model.warnings.extend(letter_numbering_warnings(model))
         if resolved.strict and model.warnings:
             raise StrictValidationError("Input validation failed: ", model.warnings)
         # Strict mode rejects such a character anywhere in the model. Otherwise the
@@ -753,6 +755,8 @@ class IBDocumentRenderer:
         self.errors = list(model.warnings)
         self._term_sheet = term_sheet
         self._reset_document()
+        # Office letters number items with the administrative symbols (1. 가. 1) ...).
+        self.list_renderer.numbering.legal = resolved.profile.name == "office-letter"
         # Inline images (table cells, text) resolve relative paths against the source.
         cast(Any, self.doc.part)._ib_source_dir = model.source_dir
         cast(Any, self.doc.part)._ib_asset_roots = roots

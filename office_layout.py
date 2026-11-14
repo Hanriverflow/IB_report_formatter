@@ -7,6 +7,10 @@ Changelog (letter closing):
     - Attachments follow the administrative handbook: one attachment is a single
       unnumbered line `붙임⇥항목.  끝.`; several start on the `붙임⇥1.` line of a
       native list whose other numbers align under `1.` (`render_attachments`).
+    - Office-letter numbered lists use the administrative symbols 1. 가. 1) 가)
+      (1) (가) ① (`LEGAL_LEVELS`); other profiles keep 1. 가. (1). Word has no
+      format for the eighth symbol ㉮, so deeper items are reported
+      (`letter_numbering_warnings`): strict mode rejects them, otherwise 가 is used.
 
 Changelog (Korean language):
     - Every profile other than term-sheet declares `ko-KR` as the East Asian
@@ -28,10 +32,18 @@ from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Pt
+from docx.shared import Inches, Pt
 from docx.text.paragraph import Paragraph
 
-from document_model import DocumentMetadata, DocumentModel, ElementType, Heading, Table, TableRow
+from document_model import (
+    DocumentMetadata,
+    DocumentModel,
+    ElementType,
+    Heading,
+    ListItem,
+    Table,
+    TableRow,
+)
 from document_profiles import string_list
 from ooxml_order import insert_ordered
 from render_styles import STYLE
@@ -383,12 +395,77 @@ def render_office_closing(
         add_text(doc, "담당\t" + contact, style_name="Office Contact")
 
 
-class NativeNumbering:
-    """One numbering state per document; supports Korean multilevel lists."""
+# Item symbols of the Korean administrative-document rule (enforcement rule
+# Art. 2(1)): 1. 가. 1) 가) (1) (가) ① ㉮. Word has no automatic circled-Hangul
+# format (㉮); see `LEGAL_LEVELS` and `letter_numbering_warnings`.
+LEGAL_LEVELS = (
+    ("decimal", "%1."),
+    ("ganada", "%2."),
+    ("decimal", "%3)"),
+    ("ganada", "%4)"),
+    ("decimal", "(%5)"),
+    ("ganada", "(%6)"),
+    ("decimalEnclosedCircle", "%7"),
+    # Stand-ins for ㉮ and anything deeper, reported by `letter_numbering_warnings`.
+    ("ganada", "%8"),
+    ("ganada", "%9"),
+)
+# Levels supported with the legal symbol; deeper office-letter items are reported.
+LEGAL_LEVEL_COUNT = 7
+# Hanging indent of the parenthesised levels, whose symbols ((10), (가)) are
+# wider than the 0.25in used elsewhere.
+LEGAL_WIDE_HANGING = Inches(0.3125)
 
-    def __init__(self, doc) -> None:
+
+def letter_numbering_warnings(model: DocumentModel) -> list[str]:
+    """Report office-letter numbered items deeper than the seven automatic levels.
+
+    Word numbers 1. 가. 1) 가) (1) (가) ① automatically but has no format for
+    the eighth symbol ㉮ (it neither offers one nor keeps a custom one). Strict
+    mode rejects such items through these warnings; otherwise they render with
+    가, 나, 다.
+
+    Args:
+        model: Render copy of the document model.
+
+    Returns:
+        One warning per numbered item at level eight or deeper.
+    """
+    if model.metadata.profile != "office-letter":
+        return []
+    warnings = []
+    for element in model.elements:
+        content = element.content
+        if element.element_type != ElementType.NUMBERED_LIST or not isinstance(content, tuple):
+            continue
+        item = content[1]
+        if isinstance(item, ListItem) and item.indent_level >= LEGAL_LEVEL_COUNT:
+            warnings.append(
+                f"Office-letter numbered item at level {item.indent_level + 1} is deeper "
+                f"than the {LEGAL_LEVEL_COUNT} levels Word numbers automatically "
+                "(1. 가. 1) 가) (1) (가) ①); ㉮ has no Word number format, so 가 is used: "
+                f"{item.text[:40]}"
+            )
+    return warnings
+
+
+class NativeNumbering:
+    """One numbering state per document; supports Korean multilevel lists.
+
+    With `legal` set (office letters), numbered lists use the administrative
+    symbols in `LEGAL_LEVELS`; other profiles keep 1. 가. (1) repeating.
+    """
+
+    def __init__(self, doc, legal: bool = False) -> None:
         self.doc = doc
+        self.legal = legal
         self.ids: dict[tuple[int, str], int] = {}
+
+    def hanging(self, level: int) -> Inches:
+        """Hanging indent for a numbered item, wider for the legal (1) and (가) levels."""
+        if self.legal and level in (4, 5):
+            return LEGAL_WIDE_HANGING
+        return Inches(STYLE.BULLET_INDENT.inches)
 
     def reset(self) -> None:
         """Start a fresh list after a non-list block."""
@@ -467,8 +544,13 @@ class NativeNumbering:
         for level in range(9):
             lvl = OxmlElement("w:lvl")
             lvl.set(qn("w:ilvl"), str(level))
-            number_format = "bullet" if bullet else ("ganada" if level % 3 == 1 else "decimal")
-            label = "•" if bullet else ("(%{})" if level % 3 == 2 else "%{}.").format(level + 1)
+            if bullet:
+                number_format, label = "bullet", "•"
+            elif self.legal:
+                number_format, label = LEGAL_LEVELS[level]
+            else:
+                number_format = "ganada" if level % 3 == 1 else "decimal"
+                label = ("(%{})" if level % 3 == 2 else "%{}.").format(level + 1)
             for tag, value in [
                 ("start", "1"),
                 ("numFmt", number_format),
