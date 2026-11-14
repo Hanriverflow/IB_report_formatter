@@ -21,6 +21,11 @@ Changelog (captions):
       `reference_groups` give the runs as written, so a resolved reference
       changes nothing else (P6); `InferredText` marks an IB value read from a
       body paragraph with the references that resolved there.
+
+Changelog (charts, E10):
+    - Chart specifications carry the IB/consulting style keys (subtitle, note,
+      highlight, accent series, reference lines, totals, start total, range
+      bounds, right-axis format, overlap) and a series axis for bar_line.
 """
 
 import re
@@ -215,11 +220,26 @@ class ChartSeries:
 
     name: str
     values: list[float]
+    # bar_line only: "right" draws the series as a line on the right axis.
+    axis: str = "left"
+
+
+@dataclass
+class ChartReferenceLine:
+    """A named reference value drawn across a line or range chart."""
+
+    name: str
+    value: float
 
 
 @dataclass
 class ChartSpec:
-    """Validated chart data; waterfall values are deltas from zero."""
+    """Validated chart data; waterfall values are deltas from zero.
+
+    The fields after `number_format` came with the IB/consulting chart style
+    (E10); a chart that leaves them at their defaults and uses one of the
+    first three types can still be drawn in the classic style.
+    """
 
     chart_type: str
     title: str | None
@@ -230,6 +250,17 @@ class ChartSpec:
     total_label: str | None = None
     unit: str | None = None
     number_format: str | None = None
+    subtitle: str | None = None
+    note: str | None = None
+    highlight: list[str] = field(default_factory=list)
+    accent_series: str | None = None
+    reference_lines: list[ChartReferenceLine] = field(default_factory=list)
+    totals: bool = False
+    start_total: bool = False
+    low: list[float] = field(default_factory=list)
+    high: list[float] = field(default_factory=list)
+    right_number_format: str | None = None
+    show_overlap: bool = False
 
 
 @dataclass

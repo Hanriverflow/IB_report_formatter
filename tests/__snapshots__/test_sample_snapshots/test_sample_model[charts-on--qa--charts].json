@@ -80,7 +80,8 @@
                 120.0,
                 80.0,
                 60.0
-              ]
+              ],
+              "axis": "left"
             },
             {
               "name": "당기",
@@ -88,14 +89,26 @@
                 150.0,
                 95.0,
                 75.0
-              ]
+              ],
+              "axis": "left"
             }
           ],
           "y_label": "백만원",
           "source": "기능 검증용 가상 자료",
           "total_label": null,
           "unit": null,
-          "number_format": ",.0f"
+          "number_format": ",.0f",
+          "subtitle": null,
+          "note": null,
+          "highlight": [],
+          "accent_series": null,
+          "reference_lines": [],
+          "totals": false,
+          "start_total": false,
+          "low": [],
+          "high": [],
+          "right_number_format": null,
+          "show_overlap": false
         },
         "error": null,
         "label": "Chart 1 (가상기업 부문별 매출)"
@@ -166,7 +179,8 @@
                 13.0,
                 13.5,
                 14.0
-              ]
+              ],
+              "axis": "left"
             },
             {
               "name": "실적",
@@ -175,14 +189,26 @@
                 13.5,
                 12.8,
                 14.2
-              ]
+              ],
+              "axis": "left"
             }
           ],
           "y_label": null,
           "source": "기능 검증용 가상 자료",
           "total_label": null,
           "unit": "이익률",
-          "number_format": "percent"
+          "number_format": "percent",
+          "subtitle": null,
+          "note": null,
+          "highlight": [],
+          "accent_series": null,
+          "reference_lines": [],
+          "totals": false,
+          "start_total": false,
+          "low": [],
+          "high": [],
+          "right_number_format": null,
+          "show_overlap": false
         },
         "error": null,
         "label": "Chart 2 (가상기업 분기별 이익률)"
@@ -251,14 +277,26 @@
                 100.0,
                 -30.0,
                 20.0
-              ]
+              ],
+              "axis": "left"
             }
           ],
           "y_label": "백만원",
           "source": "기능 검증용 가상 자료",
           "total_label": "기말",
           "unit": null,
-          "number_format": null
+          "number_format": null,
+          "subtitle": null,
+          "note": null,
+          "highlight": [],
+          "accent_series": null,
+          "reference_lines": [],
+          "totals": false,
+          "start_total": false,
+          "low": [],
+          "high": [],
+          "right_number_format": null,
+          "show_overlap": false
         },
         "error": null,
         "label": "Chart 3 (가상기업 현금 증감)"
