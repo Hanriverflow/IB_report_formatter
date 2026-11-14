@@ -1126,14 +1126,21 @@ class TextParser:
                 continue
             values = {name: getattr(run, name) for name in TEXT_RUN_FIELDS if name != "text"}
             cursor = 0
+            pieces: list[TextRun] = []
             for candidate in by_run[index]:
                 if candidate.start > cursor:
-                    result.append(replace(run, text=run.text[cursor : candidate.start]))
+                    pieces.append(replace(run, text=run.text[cursor : candidate.start]))
                 text = run.text[candidate.start : candidate.end]
-                result.append(CrossReference(text=text, **values, target=candidate.target))
+                pieces.append(CrossReference(text=text, **values, target=candidate.target))
                 cursor = candidate.end
             if cursor < len(run.text):
-                result.append(replace(run, text=run.text[cursor:]))
+                pieces.append(replace(run, text=run.text[cursor:]))
+            # Every piece comes from this run: each reference is joined to its neighbours.
+            for position, piece in enumerate(pieces):
+                if isinstance(piece, CrossReference):
+                    piece.joined_before = position > 0
+                    piece.joined_after = position < len(pieces) - 1
+            result.extend(pieces)
         return result
 
     @classmethod

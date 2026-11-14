@@ -101,8 +101,10 @@ class TOCRenderer:
 
             level = max(1, min(element.content.level, 4))
             # A heading whose references resolve shows them as their cached
-            # numbers, read from the runs the heading itself renders.
-            preview = reference_preview_text(HeadingRenderer.source_runs(element.content))
+            # numbers in its text as written; nothing else changes.
+            preview = reference_preview_text(
+                element.content.text, HeadingRenderer.source_runs(element.content)
+            )
             text = preview.strip() if preview is not None else element.content.text.strip()
             if text:
                 entries.append((level, text))

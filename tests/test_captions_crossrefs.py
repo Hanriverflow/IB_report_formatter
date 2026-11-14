@@ -9,6 +9,7 @@ import re
 import shutil
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from docx.document import Document as DocxDocument
@@ -1446,8 +1447,10 @@ def test_private_use_characters_in_a_numbered_heading_are_kept(tmp_path: Path) -
     body = "**1. 개요 \ue010 \\@tbl-a @tbl-a \ue011**\n\n본문"
     document, errors = render(write(tmp_path, body + TABLE_ONLY, DEFINED_A, "ib-report"))
     assert errors == []
-    heading = next(p.text for p in document.paragraphs if "개요" in p.text)
+    # The static TOC preview comes first and keeps the heading as written (P6).
+    preview, heading = [p.text for p in document.paragraphs if "개요" in p.text]
     assert heading == "1. 개요 \ue010 @tbl-a 표 1 \ue011"
+    assert preview == "**1. 개요 \ue010 @tbl-a 표 1 \ue011**"
     assert references(document) == [(REF_INSTRUCTION.format("tbl_a"), "표 1")]
 
 
@@ -1733,3 +1736,477 @@ def test_a_written_document_title_stays_and_is_the_one_judged(
         assert model.metadata.title == "개요 @tbl-a"
         with pytest.raises(StrictValidationError, match="@tbl-a in the document title stays text"):
             render(path)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FOURTH CHECK [27]: METADATA AN IB PROFILE READS FROM THE BODY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+BACKSLASH = chr(92)
+TITLE_HEADINGS = {
+    "missing": "# Review @tbl-missing",
+    "escaped": "# Review " + BACKSLASH + "@tbl-missing",
+    "term": "# {{x}}",
+    "defined": "# Review @tbl-a",
+    "plain": "# Review",
+}
+TERM_X = 'terms:\n  x: "@tbl-missing"\n'
+
+
+def _entry_point_source(profile: str, frontmatter: bool, titled: bool, heading: str) -> str:
+    """One input of the entry-point table."""
+    body = TITLE_HEADINGS[heading] + "\n\n본문입니다." + TABLE_ONLY
+    if not frontmatter:
+        return body
+    front = f"---\nprofile: {profile}\n" + ("title: Written\n" if titled else "")
+    front += TERM_X + "tables:\n" + DEFINED_A
+    return front + "---\n\n" + body
+
+
+def _outcomes(path: Path, profile: str | None) -> dict[str, tuple]:
+    """Diagnostics, strict result and output of one input through every entry point.
+
+    `file`, `stream`, `registry` and `cli` all reach `parse_markdown_file`;
+    `text` is `MarkdownParser.parse`.
+    """
+    import io
+
+    from converters import get_default_registry
+    from md_parser import MarkdownParser
+    from md_to_word import IBReportConverter
+
+    source = path.read_text(encoding="utf-8")
+    models = {
+        "file": lambda: parse_markdown_file(str(path), profile=profile),
+        "stream": lambda: parse_markdown_file(io.BytesIO(source.encode("utf-8")), profile=profile),
+        "registry": lambda: get_default_registry().convert(path, profile=profile),
+        "text": lambda: MarkdownParser(profile=profile).parse(source),
+    }
+    result: dict[str, tuple] = {}
+    for name, make in models.items():
+        model = make()
+        renderer = IBDocumentRenderer(options=RenderOptions(strict=False))
+        document = renderer.render(model)
+        diagnostics = renderer.errors  # the model's warnings first, then the render's
+        try:
+            IBDocumentRenderer(options=RenderOptions(strict=True)).render(make())
+            strict = "saved"
+        except StrictValidationError as error:
+            strict = str(error)
+        result[name] = (
+            str(model.metadata.title),
+            diagnostics,
+            strict,
+            document_xml(document),
+            {key: str(value) for key, value in model.metadata.extra.items()},
+        )
+    options = RenderOptions(strict=True, profile=profile) if profile else RenderOptions(strict=True)
+    try:
+        IBReportConverter(str(path), str(path.with_suffix(".docx")), options).convert()
+        result["cli"] = ("saved",)
+    except RuntimeError as error:
+        # The converter wraps a strict rejection; it stays reachable as the cause.
+        assert isinstance(error.__cause__, StrictValidationError)
+        result["cli"] = (str(error.__cause__),)
+    return result
+
+
+ENTRY_POINT_CASES = [
+    (profile, frontmatter, titled, heading)
+    for profile in ("ib-report", "ib-memo", "business-report")
+    for frontmatter in (True, False)
+    for titled in ((True, False) if frontmatter else (False,))
+    for heading in TITLE_HEADINGS
+    if frontmatter or heading not in {"term", "defined"}  # both need frontmatter
+]
+
+
+@pytest.mark.parametrize(("profile", "frontmatter", "titled", "heading"), ENTRY_POINT_CASES)
+def test_entry_points_judge_an_inferred_title_alike(
+    tmp_path: Path, profile: str, frontmatter: bool, titled: bool, heading: str
+) -> None:
+    path = tmp_path / "doc.md"
+    path.write_text(_entry_point_source(profile, frontmatter, titled, heading), encoding="utf-8")
+    outcomes = _outcomes(path, None if frontmatter else profile)
+    file = outcomes["file"]
+    # Every entry point that reads a file or stream gives one result.
+    assert outcomes["stream"] == file
+    assert outcomes["registry"] == file
+    assert outcomes["cli"] == (file[2],)
+    title, diagnostics, strict = file[:3]
+    if heading in {"escaped", "term", "plain"}:
+        assert strict == "saved"  # nothing to report: never a false rejection
+        assert diagnostics == []
+    is_ib = profile != "business-report"
+    if is_ib and frontmatter and not titled:
+        # E8 pins the difference: the file parser takes the first H1 as the
+        # title; the text parser keeps the profile's stand-in, and the H1 stays
+        # a heading where a reference can resolve.
+        assert title == TITLE_HEADINGS[heading][2:].replace("{{x}}", "@tbl-missing")
+        text_title, text_diagnostics, text_strict = outcomes["text"][:3]
+        assert text_title == "IB Report"
+        if heading in {"missing", "defined"}:
+            assert diagnostics == [
+                "Cross-reference @tbl-a in the document title stays text"
+                if heading == "defined"
+                else "Cross-reference @tbl-missing in the document title stays text"
+            ] + (
+                ["Cross-reference @tbl-missing has no table or figure with that id"]
+                if heading == "missing" and profile == "ib-report"
+                else []
+            )
+            assert strict != "saved"
+        if heading == "missing":
+            assert text_strict != "saved"
+        else:
+            assert text_strict == "saved" and text_diagnostics == []
+    else:
+        assert outcomes["text"] == file
+
+
+LABEL_VALUES = {
+    "term": ("{{x}}", "@tbl-missing", None),
+    "escaped": (BACKSLASH + "@tbl-missing", "@tbl-missing", None),
+    "code": ("`@tbl-missing`", "@tbl-missing", None),
+    "defined": ("@tbl-a", "@tbl-a", "Cross-reference @tbl-a in the frontmatter {} stays text"),
+}
+
+
+@pytest.mark.parametrize("profile", ["ib-report", "ib-memo"])
+@pytest.mark.parametrize("value", sorted(LABEL_VALUES))
+@pytest.mark.parametrize(("label", "key"), [("작성자", "analyst"), ("작성일", "date")])
+def test_label_values_read_from_the_body_are_judged_where_they_stand(
+    tmp_path: Path, profile: str, value: str, label: str, key: str
+) -> None:
+    written, shown, problem = LABEL_VALUES[value]
+    front = f"---\nprofile: {profile}\ntitle: Written\n{TERM_X}tables:\n{DEFINED_A}---\n\n"
+    path = tmp_path / "doc.md"
+    path.write_text(front + f"**{label}:** {written}\n\n본문입니다." + TABLE_ONLY, encoding="utf-8")
+    outcomes = _outcomes(path, None)
+    _, diagnostics, strict, _, extra = outcomes["file"]
+    model = parse_markdown_file(str(path))
+    assert (model.metadata.analyst if key == "analyst" else extra["date"]) == shown
+    if problem is None:
+        # A term value, an escaped `@` and code are not references, there or here.
+        assert diagnostics == [] and strict == "saved"
+    else:
+        # It resolves in the body paragraph; where the value is shown it cannot.
+        assert diagnostics == [problem.format(key)]
+        assert problem.format(key) in strict
+    # The text parser reads no label values; the paragraph is body text.
+    assert outcomes["text"][2] == "saved"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FOURTH CHECK [28], P6: A RESOLVED REFERENCE CHANGES NOTHING BUT ITS OWN TEXT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _format_key(element: Any) -> str:
+    """Tags and attributes of an element and its descendants, in order."""
+    if element is None:
+        return ""
+    return " ".join(
+        node.tag.split("}")[1] + repr(sorted(node.attrib.items())) for node in element.iter()
+    )
+
+
+def _p6_view(document: DocxDocument) -> list[tuple[bool, str, list[tuple[str, str]]]]:
+    """Each body paragraph as (caption?, paragraph and cell format, [(text, run format)]).
+
+    A `REF` field is read back as the `@id` it was written as, with the
+    format of its result. A cached number shown as plain text (the static
+    TOC preview) is read back the same way. Adjacent text with one format is
+    joined, so where runs are cut makes no difference.
+    """
+    view = []
+    for paragraph in document.element.body.iter(f"{W}p"):
+        items: list[tuple[str, str]] = []
+        depth, reference, caption = 0, None, False
+        for run in paragraph.iter(f"{W}r"):
+            char = run.find(f"{W}fldChar")
+            kind = char.get(qn("w:fldCharType")) if char is not None else None
+            code = run.find(f"{W}instrText")
+            if kind == "begin":
+                depth += 1
+            elif code is not None:
+                words = (code.text or "").split()
+                caption = caption or words[:1] == ["SEQ"]
+                if depth == 1 and words[:1] == ["REF"]:
+                    reference = ["@" + words[1][len("_Ref_") :].replace("_", "-"), ""]
+            elif kind == "end":
+                depth -= 1
+                if depth == 0 and reference is not None:
+                    items.append((reference[0], reference[1]))
+                    reference = None
+            elif kind is None:
+                text = "".join(node.text or "" for node in run.iter(f"{W}t"))
+                if run.find(f"{W}footnoteReference") is not None:
+                    text += "[footnote]"
+                if reference is not None:
+                    reference[1] = reference[1] or _format_key(run.find(f"{W}rPr"))
+                else:
+                    items.append((text.replace("표 1", "@tbl-a"), _format_key(run.find(f"{W}rPr"))))
+        joined: list[tuple[str, str]] = []
+        for text, run_format in items:
+            if joined and joined[-1][1] == run_format:
+                joined[-1] = (joined[-1][0] + text, run_format)
+            elif text:
+                joined.append((text, run_format))
+        cell = paragraph.getparent()
+        shading = cell.find(f"{W}tcPr/{W}shd") if cell.tag == f"{W}tc" else None
+        layout = _format_key(paragraph.find(f"{W}pPr")) + " | " + _format_key(shading)
+        view.append((caption, layout, joined))
+    return view
+
+
+def _p6_differences(defined: str, undefined: str) -> list[str]:
+    """Paragraphs that differ between a document and the same one without the ID.
+
+    Caption paragraphs are left out: only the defined table is numbered.
+    Column widths may differ (the cached number is shorter than `@tbl-a`)
+    and are not compared.
+    """
+    import io
+
+    views = []
+    for markdown in (defined, undefined):
+        renderer = IBDocumentRenderer(options=RenderOptions(strict=False))
+        views.append(_p6_view(renderer.render(parse_markdown_file(io.BytesIO(markdown.encode())))))
+    left, right = views
+    assert len(left) == len(right)
+    return [
+        f"{a!r} != {b!r}"
+        for (caption, *a), (_, *b) in zip(left, right, strict=True)
+        if not caption and a != b
+    ]
+
+
+def test_a_reference_in_an_amount_cell_keeps_the_amount_as_written(tmp_path: Path) -> None:
+    """The fourth check's cells: no amount is formatted because a reference was cut out."""
+    front = (
+        "---\nprofile: business-report\ntitle: Review\ntables:\n  - id: tbl-a\n    caption: A\n"
+        "    type: financial\n    columns: [text, money, percent]\n    negative: paren\n---\n\n"
+    )
+    path = tmp_path / "doc.md"
+    path.write_text(
+        front + "| Item | Amount | Rate |\n|---|---|---|\n| A | -001200 @tbl-a | -1 @tbl-a |\n",
+        encoding="utf-8",
+    )
+    document, errors = render(path)
+    assert errors == []
+    assert [cell.text for cell in document.tables[0].rows[1].cells] == [
+        "A",
+        "-001200 표 1",
+        "-1 표 1",
+    ]
+    assert references(document) == [(REF_INSTRUCTION.format("tbl_a"), "표 1")] * 2
+
+
+P6_CELLS = [
+    "-001200 @tbl-a",
+    "-1 @tbl-a",
+    "@tbl-a -1",
+    "1200 @tbl-a",
+    "(900) @tbl-a",
+    "@tbl-a",
+    "3.5 @tbl-a",
+    "-1,200 @tbl-a",
+    "**-800** @tbl-a",
+    "-800 **@tbl-a**",
+    "1200",
+    "-800",
+]
+
+
+def _p6_table(profile: str, role: str, negative: bool, defined: bool) -> str:
+    spec = ("  - id: tbl-a\n    caption: A\n" if defined else "  - caption: A\n") + (
+        f"    type: financial\n    columns: [text, {role}]\n"
+    )
+    spec += "    negative: paren\n" if negative else ""
+    rows = "\n".join(f"| r{index} | {cell} |" for index, cell in enumerate(P6_CELLS))
+    return (
+        f"---\nprofile: {profile}\ntitle: T\n{PROFILE_FRONTMATTER.get(profile, '')}"
+        f"tables:\n{spec}---\n\n본문 @tbl-a\n\n| 구분 | 값 |\n|---|---|\n{rows}\n"
+    )
+
+
+@pytest.mark.parametrize("negative", [False, True])
+@pytest.mark.parametrize("profile", ["business-report", "ib-report", "term-sheet"])
+@pytest.mark.parametrize("role", ["money", "percent", "bps", "multiple", "text", "date", "code"])
+def test_a_reference_in_a_cell_changes_nothing_else_in_the_table(
+    profile: str, role: str, negative: bool
+) -> None:
+    differences = _p6_differences(
+        _p6_table(profile, role, negative, True), _p6_table(profile, role, negative, False)
+    )
+    assert differences == []
+
+
+P6_FRAGMENTS = [
+    " ",
+    " ",
+    " ",
+    "본문",
+    "text",
+    "a",
+    "1",
+    "-001200",
+    "1200",
+    "(900)",
+    "-1",
+    "3.5",
+    "%",
+    "bp",
+    "x",
+    "억원",
+    "1,200",
+    "△",
+    "합계",
+    "요약",
+    ":",
+    "Note",
+    "-",
+    ".",
+    "(",
+    ")",
+    "@tbl-a",
+    "@tbl-a",
+    "@tbl-a",
+    " @tbl-a",
+    "(@tbl-a)",
+    "-001200 @tbl-a",
+    "-1 @tbl-a",
+    "1200 @tbl-a",
+    BACKSLASH + "@tbl-a",
+    "@tbl-missing",
+    "**",
+    "**",
+    "*",
+    "`",
+    "<br>",
+    "^",
+    "~",
+    "{{x}}",
+    "&#64;",
+    "[^1]",
+    "$x$",
+    "  ",
+    BACKSLASH + "*",
+    "[",
+    "](https://x.example)",
+    "가.",
+    "1.",
+    "①",
+]
+
+
+def _p6_random_document(seed: int, blocks: int, defined: bool) -> str:
+    """A random document with one numbered table, with or without its ID."""
+    rng = random.Random(seed)
+
+    def inline() -> str:
+        return "".join(rng.choice(P6_FRAGMENTS) for _ in range(rng.randint(2, 10)))
+
+    profile = ["business-report", "ib-report", "term-sheet"][seed % 3]
+    spec = "  - id: tbl-a\n    caption: A\n" if defined else "  - caption: A\n"
+    spec += "    type: financial\n    columns: [text, money, percent]\n"
+    spec += "    negative: paren\n" if seed % 2 else ""
+    # The numbered table's amount columns: an amount next to a reference in one run.
+    rows = [
+        "| " + " | ".join(inline().replace("|", "/") for _ in range(3)) + " |" for _ in range(8)
+    ]
+    lines = ["| 구분 | 금액 | 비율 |\n|---|---|---|\n" + "\n".join(rows)]
+    for _ in range(blocks):
+        text = inline()
+        kind = rng.choice(
+            ["paragraph", "heading", "h3", "list", "numbered", "quote", "callout", "table"]
+            + ["html", "label", "numbered-heading"]
+        )
+        if kind == "heading":
+            lines.append("## " + text)
+        elif kind == "h3":
+            lines.append("### " + text)
+        elif kind == "numbered-heading":
+            lines.append("**1. 개요 " + text + "**")
+        elif kind == "list":
+            # Every item holds text: a marker followed by spaces only never ends
+            # the parse on main either (reported apart from E5).
+            lines.append("- 항목" + text + "\n    - 항목" + inline())
+        elif kind == "numbered":
+            lines.append("1. 항목" + text + "\n2. 항목" + inline())
+        elif kind == "quote":
+            lines.append("> " + text)
+        elif kind == "callout":
+            lines.append("> **" + rng.choice(["요약", "Note", "주의", "시사점"]) + "**: " + text)
+        elif kind == "label":
+            lines.append("**" + rng.choice(["작성자", "작성일", "기관"]) + ":** " + text)
+        elif kind == "table":
+            row = [inline().replace("|", "/") for _ in range(4)]
+            lines.append(f"| {row[0]} | {row[1]} |\n|---|---|\n| {row[2]} | {row[3]} |")
+        elif kind == "html":
+            lines.append(f"<table><tr><td>{text}</td><td>{inline()}</td></tr></table>")
+        else:
+            lines.append(text)
+    lines.append("[^1]: 각주")
+    front = (
+        f"---\nprofile: {profile}\ntitle: 시험 문서\n{PROFILE_FRONTMATTER.get(profile, '')}"
+        f'terms:\n  x: "VAL"\ntables:\n{spec}---\n\n'
+    )
+    return front + "\n\n".join(lines) + "\n"
+
+
+@pytest.mark.parametrize("seed", range(9))
+def test_random_text_renders_alike_with_and_without_its_target(seed: int) -> None:
+    """P6 over paragraphs, headings, lists, quotes, callouts, labels and both table kinds."""
+    defined = _p6_random_document(seed, 40, True)
+    undefined = _p6_random_document(seed, 40, False)
+    assert defined.count("@tbl-a") > 20  # many references, most of them resolving
+    assert _p6_differences(defined, undefined) == []
+
+
+def test_toc_preview_changes_only_the_references_of_the_heading_as_written(
+    tmp_path: Path,
+) -> None:
+    heading = "## **@tbl-a** " + BACKSLASH + "@tbl-a `@tbl-a` <br> x @tbl-a"
+    document, errors = render(write(tmp_path, heading + TABLE_ONLY, DEFINED_A, "ib-report"))
+    assert errors == []
+    expected = "**표 1** " + BACKSLASH + "@tbl-a `@tbl-a` <br> x 표 1"
+    assert expected in body_text(document)  # the preview line keeps its Markdown as before
+
+
+def test_a_numbered_financial_table_with_references_in_its_amount_columns(
+    tmp_path: Path,
+) -> None:
+    """Interaction ① with references in the money and percent columns."""
+    table = (
+        "| 구분 | 2025 | 2026 | 비율 |\n|---|---|---|---|\n"
+        "| 매출 | 1000 @tbl-pl | 1200 | 3.5 @tbl-pl |\n"
+        "| 비용 | -800 @tbl-pl | (900) | -1 @tbl-pl |\n"
+        "| 이익 | 200 | -1100 | -0.5 |\n"
+    )
+    spec = (
+        "    type: financial\n    columns: [text, money, money, percent]\n"
+        "    caption: 가상 손익\n    unit: 백만원\n    total_rows: [3]\n    negative: paren\n"
+    )
+    front = "---\nprofile: ib-memo\ntitle: 시험 문서\ntables:\n"
+    defined = front + "  - id: tbl-pl\n" + spec + "---\n\n본문은 @tbl-pl에서 본다.\n\n" + table
+    undefined = front + "  - " + spec[4:] + "---\n\n본문은 @tbl-pl에서 본다.\n\n" + table
+    path = tmp_path / "doc.md"
+    path.write_text(defined, encoding="utf-8")
+    document, errors = render(path)
+    assert errors == []
+    rows = [[cell.text for cell in row.cells] for row in document.tables[0].rows]
+    assert rows[1:] == [
+        ["매출", "1000 표 1", "1,200", "3.5 표 1"],
+        ["비용", "-800 표 1", "(900)", "-1 표 1"],
+        ["이익", "200", "(1,100)", "(0.5%)"],
+    ]
+    assert len(references(document)) == 5
+    total = document.tables[0].rows[3]._tr.xpath("./w:tc/w:tcPr/w:tcBorders/w:bottom/@w:val")
+    assert total and set(total) == {"double"}
+    differences = _p6_differences(
+        defined.replace("@tbl-pl", "@tbl-a").replace("tbl-pl", "tbl-a"),
+        undefined.replace("@tbl-pl", "@tbl-a"),
+    )
+    assert differences == []

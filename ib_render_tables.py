@@ -15,7 +15,7 @@ from docx.oxml.ns import qn
 from docx.shared import Emu, Inches, Pt, RGBColor
 from docx.text.font import Font
 
-from document_model import table_is_drawn
+from document_model import reference_groups, table_is_drawn
 from ib_render_document_style import TableStyler
 from ib_render_fonts import FontStyler
 from ib_render_text import TextRenderer, caption_prefix
@@ -1193,12 +1193,22 @@ class TableRenderer:
             # Semantic runs are independent of the amount. In particular, a
             # footnote's displayed number must never enter numeric formatting,
             # and a term value keeps the exact text written in `terms:`.
-            display_runs = [
-                run
-                if self._is_semantic_run(run)
-                else replace(run, text=self._format_numeric_text(run.text, role))
-                for run in display_runs
-            ]
+            # Each run is judged as written: the pieces of a run that held a
+            # resolvable reference are judged together with its `@…`, which
+            # no amount pattern accepts, so they keep their text exactly as
+            # the run does when the reference does not resolve.
+            formatted: list[TextRun] = []
+            for group in reference_groups(display_runs):
+                if len(group) > 1:
+                    formatted.extend(display_runs[group.start : group.stop])
+                    continue
+                run = display_runs[group.start]
+                formatted.append(
+                    run
+                    if self._is_semantic_run(run)
+                    else replace(run, text=self._format_numeric_text(run.text, role))
+                )
+            display_runs = formatted
         return display_content, display_runs
 
     @classmethod

@@ -349,7 +349,9 @@ class MarkdownParser:
         self.limits.check(RejectionCode.LIMIT_INPUT_BYTES, len(content.encode("utf-8")))
         return self._parse_content(content)
 
-    def _parse_content(self, content: str) -> DocumentModel:
+    def _parse_content(
+        self, content: str, infer_metadata: bool = False, frontmatter_present: bool = False
+    ) -> DocumentModel:
         """Parse text after the public text/file/stream boundary checked original bytes.
 
         Every document is parsed in a reference scope in which no reference
@@ -360,6 +362,14 @@ class MarkdownParser:
         that parse finds numbered tables or figures, the document is parsed
         again in a scope holding their IDs. Only resolvable references split
         runs; every other one is reported.
+
+        Args:
+            content: The decoded text.
+            infer_metadata: Fill IB metadata from the body, as the file and
+                stream parser (`parse_markdown_file`) does; the text parser
+                (`parse`) keeps the profile's stand-in title (E8 pins both).
+            frontmatter_present: The file opens with frontmatter; without it an
+                IB profile may read the company from the title.
         """
         # Ordered and without repeats; the dictionary keeps the order.
         found: dict[str, None] = {}
@@ -368,12 +378,12 @@ class MarkdownParser:
             found.setdefault(message)
 
         with TextParser.reference_scope(ReferenceScope(report=report)):
-            model = self._parse_document(content)
+            model = self._parse_document(content, infer_metadata, frontmatter_present)
         targets = numbered_targets(model.elements)
         if targets:
             found.clear()
             with TextParser.reference_scope(ReferenceScope(targets=targets, report=report)):
-                model = self._parse_document(content)
+                model = self._parse_document(content, infer_metadata, frontmatter_present)
         # An ID that numbers nothing leaves its references without a target;
         # say why first (the renderer reports the same when nothing refers to it).
         problems = [
@@ -389,8 +399,16 @@ class MarkdownParser:
                 logger.warning("%s", message)
         return model
 
-    def _parse_document(self, content: str) -> DocumentModel:
-        """Parse the document once under the active reference scope."""
+    def _parse_document(
+        self, content: str, infer_metadata: bool, frontmatter_present: bool
+    ) -> DocumentModel:
+        """Parse the document once under the active reference scope.
+
+        With `infer_metadata` an IB profile fills metadata from the body here,
+        inside the scope, so the title it infers is judged like any other
+        (`_check_inferred_title`) and a value read from a body paragraph
+        carries the references that resolve in it (`InferredText`).
+        """
         lines = content.replace("\r\n", "\n").replace("\r", "\n").split("\n")
 
         # Parse frontmatter
@@ -511,22 +529,7 @@ class MarkdownParser:
             ):
                 metadata.title = first_heading.text
                 if metadata.profile != "plain":  # where the heading becomes the title
-                    # Judged as written: a term value is never read as a reference.
-                    source, escaped_ats = self._title_sources.get(
-                        id(first_heading),
-                        (
-                            first_heading.text,
-                            first_heading.escaped_ats
-                            if isinstance(first_heading, MarkedHeading)
-                            else (),
-                        ),
-                    )
-                    TextParser.check_text(
-                        source,
-                        "document title",
-                        markdown=metadata.profile == "term-sheet",
-                        escaped_ats=escaped_ats,
-                    )
+                    self._check_inferred_title(first_heading, metadata.profile)
                 if first_heading.runs:
                     metadata.display_runs["title"] = [
                         replace(run)
@@ -556,7 +559,32 @@ class MarkdownParser:
             unused = self._terms.unused()
             if unused:
                 logger.info("Unused terms (defined but never referenced): %s", ", ".join(unused))
+        if infer_metadata and self._financial_rules:
+            title_heading = _infer_metadata_from_elements(
+                model, allow_company_inference=not frontmatter_present
+            )
+            if title_heading is not None:
+                self._check_inferred_title(title_heading, metadata.profile)
         return model
+
+    def _check_inferred_title(self, heading: Heading, profile: str) -> None:
+        """Report the references in a heading that became the document title.
+
+        The title cannot hold a field. It is judged as written: a term value is
+        never read as a reference, and neither is an escaped `@`.
+
+        Args:
+            heading: The first H1, as parsed.
+            profile: The document's profile; a term sheet shows its title as
+                inline Markdown, the others as plain text.
+        """
+        source, escaped_ats = self._title_sources.get(
+            id(heading),
+            (heading.text, heading.escaped_ats if isinstance(heading, MarkedHeading) else ()),
+        )
+        TextParser.check_text(
+            source, "document title", markdown=profile == "term-sheet", escaped_ats=escaped_ats
+        )
 
     # ── Term substitution ───────────────────────────────────────────────────
 
@@ -1723,9 +1751,10 @@ def parse_markdown_file(
     base_dir = None if is_stream(source) else Path(str(source)).resolve().parent
     roots = (*((base_dir,) if base_dir is not None else ()), *asset_roots)
     parser = MarkdownParser(profile=profile, base_dir=base_dir, asset_roots=roots, limits=limits)
-    model = parser._parse_content(content)
-    if get_profile(model.metadata.profile).is_ib:
-        _infer_metadata_from_elements(model, allow_company_inference=not frontmatter_present)
+    # IB metadata is filled from the body inside the parse, where references are judged.
+    model = parser._parse_content(
+        content, infer_metadata=True, frontmatter_present=frontmatter_present
+    )
     if not is_stream(source) and model.metadata.extra.get("theme") not in {None, "default", "mono"}:
         theme_path = Path(model.metadata.extra["theme"])
         if not theme_path.is_absolute():

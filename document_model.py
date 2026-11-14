@@ -17,6 +17,10 @@ Changelog (captions):
     - Second review: a `CrossReference` is made only for a reference that
       resolves, so nothing is joined back; `numbered_items` is the one list of
       numbered tables and figures for the parser and the renderer.
+    - Fourth check: `CrossReference.joined_before`/`joined_after` and
+      `reference_groups` give the runs as written, so a resolved reference
+      changes nothing else (P6); `InferredText` marks an IB value read from a
+      body paragraph with the references that resolved there.
 """
 
 import re
@@ -110,9 +114,54 @@ class CrossReference(TextRun):
     that stands where a Word field can go (`TextParser._read_references`);
     `text` is the `@…` as written and `target` the ID. The renderer writes it
     as a `REF` field. Text that is not such a reference keeps its run.
+
+    The text around it keeps its run's formatting in runs of its own;
+    `joined_before` and `joined_after` say that the run before or after it
+    was cut from the same run. Whatever is decided from a run's text (number
+    formatting above all) is decided on that run as written
+    (`reference_groups`), so a reference changes nothing but its own text.
     """
 
     target: str = ""
+    joined_before: bool = False
+    joined_after: bool = False
+
+
+def reference_groups(runs: Sequence[TextRun]) -> list[range]:
+    """Index ranges of `runs` that were one run before references were cut out.
+
+    A run that held no resolvable reference is a range of its own. A run
+    that held one is the range of its pieces and its `CrossReference` runs;
+    joining their texts gives the run as written.
+
+    Args:
+        runs: Parsed runs.
+
+    Returns:
+        Consecutive ranges covering every index once, in order.
+    """
+    groups: list[range] = []
+    start = 0
+    for index in range(1, len(runs) + 1):
+        previous = runs[index - 1]
+        current = runs[index] if index < len(runs) else None
+        # A piece keeps every format of its run; a neighbour that differs was never part of it.
+        joined = (
+            current is not None
+            and (
+                (isinstance(previous, CrossReference) and previous.joined_after)
+                or (isinstance(current, CrossReference) and current.joined_before)
+            )
+            and all(
+                getattr(previous, name) == getattr(current, name)
+                for name in TEXT_RUN_FIELDS
+                if name != "text"
+            )
+        )
+        if not joined:
+            groups.append(range(start, index))
+            start = index
+    return groups
 
 
 TEXT_RUN_FIELDS = tuple(item.name for item in fields(TextRun))
@@ -556,6 +605,28 @@ class DefaultTitle(str):
     Any title read from frontmatter or the body is a plain `str`, even when its
     text equals the stand-in, so a renderer can tell the two apart.
     """
+
+
+class InferredText(str):
+    """A metadata value an IB profile read from a leading body paragraph.
+
+    The parser judged that paragraph where it stands: escapes, code, math
+    and term values in it are not references, and a reference that does not
+    resolve there was already reported. `references` holds the ones that
+    resolve in the body (as written); where the value is shown it cannot hold
+    a field, so the renderer reports these instead of reading the plain text
+    again. Its text is the value exactly as before; a plain `str` is a value
+    the document gave in frontmatter.
+    """
+
+    references: tuple[str, ...] = ()
+
+    @classmethod
+    def read(cls, text: str, references: tuple[str, ...] = ()) -> "InferredText":
+        """The value `text`, holding the given resolvable references."""
+        value = cls(text)
+        value.references = references
+        return value
 
 
 @dataclass

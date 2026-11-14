@@ -105,6 +105,7 @@ from document_model import (
     Chart,
     ConfirmationBlock,
     DefaultTitle,
+    InferredText,
     caption_bookmark_name,
     model_images,
     numbered_items,
@@ -1161,7 +1162,9 @@ class IBDocumentRenderer:
         and the term-sheet texts and footer. Values are read as the text they
         are shown as, except term-sheet texts, which are inline Markdown. The
         cover's `report_type` is shown in capitals, which the grammar never
-        reads as a reference.
+        reads as a reference. A value an IB profile read from a body paragraph
+        (`InferredText`, the date included) was judged where it stands; only
+        the references that resolve there are reported where it is shown.
 
         Args:
             metadata: The render's metadata.
@@ -1217,10 +1220,16 @@ class IBDocumentRenderer:
             "analyst": metadata.analyst,
             **{f"sender.{key}": value for key, value in sender.items()},
         }
+        if profile != "plain":
+            shown.append("date")  # an inferred date; a written one is checked by the parser
         for key in dict.fromkeys(shown):
             value = values[key] if key in values else extra.get(key)
             for text in value if isinstance(value, list) else [value]:
-                if isinstance(text, str):
+                if isinstance(text, InferredText):
+                    TextParser.check_text(
+                        " ".join(text.references), f"frontmatter {key}", markdown=False
+                    )
+                elif isinstance(text, str) and key != "date":
                     TextParser.check_text(text, f"frontmatter {key}", markdown=False)
         if not parsed:
             # A model built without the parser: its title, subtitle and date as they stand.

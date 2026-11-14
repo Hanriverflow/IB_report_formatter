@@ -159,19 +159,41 @@ def report_stray_figure_id(image: Image, following: str) -> None:
 _FIGURE_ID_AFTER_IMAGE_RE = re.compile(r"\{#([^{}\s]*)\}")
 
 
-def reference_preview_text(runs: list[TextRun]) -> str | None:
-    """Plain text of `runs` with resolvable references as their `표 1`, or None.
+def reference_preview_text(text: str, runs: list[TextRun]) -> str | None:
+    """`text` as written with its resolvable references as their `표 1`, or None.
 
-    Returns None when no reference resolves, so callers keep the text they
-    showed before.
+    `text` is what a caller showed before (a heading's text as written, with
+    its Markdown) and `runs` what that text renders as. Only the references
+    change. Markdown removes no `@` that it shows and adds none, so the n-th
+    `@` of the runs is the n-th `@` of `text`, and each `CrossReference` is
+    replaced there; escaped, code and other `@` keep their place. When the
+    two do not hold the same `@` (an entity that becomes one, one in a link
+    destination or an image description), none can be matched for certain.
+
+    Returns:
+        The text, or None when no reference resolves or none can be matched,
+        so callers keep the text they showed before.
     """
     if not any(isinstance(run, CrossReference) for run in runs):
         return None
-    pieces = []
+    if "".join(run.text for run in runs).count("@") != text.count("@"):
+        return None
+    at_signs = [index for index, char in enumerate(text) if char == "@"]
+    replacements: list[tuple[int, int, str]] = []
+    seen = 0  # `@` in the runs before the current one
     for run in runs:
         number = resolve_cross_reference(run, False) if isinstance(run, CrossReference) else None
-        pieces.append(number.text if number is not None else run.text)
-    return "".join(pieces)
+        if number is not None:
+            start = at_signs[seen]
+            if text[start : start + len(run.text)] != run.text:
+                return None
+            replacements.append((start, start + len(run.text), number.text))
+        seen += run.text.count("@")
+    if not replacements:
+        return None
+    for start, end, shown in reversed(replacements):
+        text = text[:start] + shown + text[end:]
+    return text
 
 
 class TextRenderer:
