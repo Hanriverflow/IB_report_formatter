@@ -24,6 +24,7 @@ IB table rules (roadmap E6: totals/subtotal rows, per-table negative style, owne
 Document properties and DRAFT watermark (roadmap E8): verification `docs/verification-document-properties-20261114.md`.
 Office-letter precision (roadmap E7: attachments, `이하 빈칸`, item symbols): verification `docs/verification-office-letter-20261114.md`.
 Table and figure numbers and cross-references (roadmap E5): verification `docs/verification-captions-crossrefs-20261114.md`.
+IB/consulting chart style (roadmap E10): verification `docs/verification-charts-20261114.md`.
 
 ## Quick reference
 
@@ -80,6 +81,8 @@ Existing `md_to_word.py` and `ib-report` remain entry points. On Windows, use a 
 | `converters.py` | Registry with Markdown input and DOCX output only |
 | `md_formatter.py`, `deep_md_cleaner.py` | Optional input cleanup |
 | `converted_md_cleaner.py` | Opt-in MD→MD cleanup of HWP/Word-converted term sheets (`--converted-term-sheet`); reports every change |
+| `chart_renderer.py` | Chart specification validation and the classic chart drawing (unchanged since before E10) |
+| `chart_render_standard.py` | IB/consulting chart drawing (`chart_style: standard`) and grayscale tone choice |
 | `diagram_renderer.py` | Existing diagram rendering |
 | `cli_utils.py`, `stream_utils.py` | Shared I/O helpers |
 
@@ -180,6 +183,14 @@ Regression coverage is in `tests/test_md_parser.py` (soft wrap merge, hard-break
 - Only drawn captions are numbered: `table_is_drawn` decides for the numbering and the table renderer alike. After composition, `_check_caption_order` compares the caption numbers actually written with the numbers worked out and reports a difference. A `{#…}` after an image that is not a numbered figure line is reported at render time (`figure_id_problem`), wherever the image stands.
 - `docx-audit` reports a REF/PAGEREF field without its bookmark as an issue and a stale cached reference or caption number as a warning. It reads quoted bookmark names and nested fields, judges numbering order only for `SEQ` sequences with no switch or `\* ARABIC` alone, and checks the main body only (not headers, footers or footnotes).
 - Tests: `tests/test_captions_crossrefs.py`; sample `samples/qa/captions.md`.
+
+### Charts (E10, 2026-11)
+
+- Owner decisions 2026-11-14: the IB/consulting style is the default for every chart (`chart_style: standard`); `chart_style: classic` draws a `bar`, `line` or `waterfall` that uses only the pre-E10 keys exactly as before, and every other chart in the standard style. Do not change `render_chart_png` or the classic path: the `classic-charts` corpus snapshots and the figure-element snapshot in `tests/test_chart_ib_style.py` pin them.
+- The picture holds only the plot. Title and subtitle (else `y_label`/`unit`) are Word paragraphs above it, note and source below, with keep-with-next on those paragraphs only. Texts are written as given and are plain text, not Markdown; the engine adds only the profile's `CHART_NOTE_LABEL`, `CHART_SOURCE_LABEL` and default `CHART_TOTAL_LABEL`. A reference in them is reported, never a field.
+- Numbers the engine works out: the waterfall running total and, only with `totals: true`, stack totals (summed before rounding). Never rescale values; `format_value` is the one formatter.
+- One accent (the theme's `NAVY`) and greys chosen by grayscale distance (`ChartTones`): 2 tones at least 60, 3 at least 50, 4 at least 40, waterfall balances 45 from the accent (0–255 luma). The Hypothesis test checks any accent colour; if a change misses a gap, fix the choice rule, never the threshold. More than four compared series is a rendering warning, not a rejection; `stacked_bar` takes at most four.
+- A key on a type it does not apply to is a chart specification error. Spec errors keep the existing rule: strict rejects, non-strict keeps the code panel with a diagnostic. No new rejection codes.
 
 ## Dependencies
 

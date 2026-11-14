@@ -323,7 +323,7 @@ uv run md-format converted.md term-sheet.md --converted-term-sheet
 
 ```sh
 md-to-word report.md report.docx --charts --strict
-md-to-word samples/qa/charts.md charts.docx --strict
+md-to-word samples/qa/charts-dcm.md charts-dcm.docx --strict
 md-to-word report.md code-panels.docx --no-charts
 ```
 
@@ -331,23 +331,54 @@ Charts are **off by default for all seven profiles**. Enable with `--charts`, `R
 
 ````markdown
 ```chart
-chart_type: bar
-title: 가상 매출
-labels: [상반기, 하반기]
+chart_type: stacked_bar
+title: 2028 maturities are the largest at KRW 470bn
+subtitle: "Maturities by year, KRW 100m"
+labels: ["2026", "2027", "2028"]
 series:
-  - name: 매출
-    values: [100, 120]
-y_label: 백만원
-source: 기능 검증용 가상 자료
-number_format: ',.1f'
+  - name: Public bonds
+    values: [1200, 2500, 3100]
+  - name: Bank loans
+    values: [300, 500, 900]
+totals: true
+number_format: ',.0f'
+note: Balances at the end of September 2026
+source: Company data (fictional)
 ```
 ````
 
-Supported types are `bar` (grouped series), `line`, and `waterfall` (exactly one series). PR #5's `chart_type`, `y_label`, `title`, `labels`, `series`, `source`, and `total_label` fields remain supported. `type` aliases `chart_type`; conflicting values are rejected. Optional `unit` supplies the axis label when `y_label` is absent. `number_format` adds `number` (the legacy default), `percent`, `bps`, `multiple`, or fixed-point formats such as `',.2f'` / `'.1f'`. Formats never rescale values: `12.5` with `percent` displays `12.5%`.
+**Changed appearance (2026-11-14).** Charts are drawn in an IB/consulting style by default (`chart_style: standard`): the theme's primary colour as the one accent with greys, values written on the bars instead of a value axis, a zero baseline without a frame, the legend in one row above the plot, line names at the line ends, hatched decreases, and tones chosen so that series stay apart when printed in black and white. The title and subtitle are Word paragraphs above the picture and the note and source Word paragraphs below it, kept on one page with the picture. Documents written before this change look different. To keep the earlier look, set frontmatter `chart_style: classic` (or `RenderOptions(chart_style="classic")`): it draws `bar`, `line` and `waterfall` charts that use only the earlier keys exactly as before; any chart using a newer type or key is drawn in the standard style.
 
-Each series needs a text `name` and finite numeric `values` matching the label count. Labels accept text or numbers; booleans are rejected. Waterfalls start at zero, cumulatively add **every** supplied value, then append a total: `[100, -30, 20]` ends at `90`. Negative totals work; `total_label` names the appended bar. Do not supply a precomputed total as another delta.
+| Type | Draws | Series |
+|---|---|---|
+| `bar` | Grouped vertical bars | one or more |
+| `line` | Lines, names at the line ends | one or more |
+| `waterfall` | Running total from zero plus a total bar | exactly one |
+| `stacked_bar` | Stacked bars (maturity profile, funding mix) | one to four; values not negative |
+| `bar_line` | Bars on the left axis and lines (`axis: right`) on the right axis, values written, axes hidden | one or two each |
+| `range` | Horizontal bars from `low` to `high` (valuation football field, rate band) | none: `low` and `high` lists |
+| `hbar` | Horizontal bars in the written order (rankings) | exactly one |
 
-Invalid YAML/specifications and rendering failures name the chart in diagnostics. Strict mode rejects before creating/replacing the output; non-strict mode displays the original code panel and logs a warning. Disabled charts remain ordinary code panels even if their YAML is invalid. Charts are PNG images, sized to the page content width, with request-local colors and Korean font policy. Korean text needs the configured font installed (Windows default: Malgun Gothic). See the [fictional three-chart sample](samples/qa/charts.md).
+| Key | Types | Meaning |
+|---|---|---|
+| `title`, `labels`, `series`, `source`, `number_format`, `total_label` | all as before | `type` aliases `chart_type` |
+| `subtitle` | all | Line under the title, as written. Without it, `y_label` or `unit` is shown there as written; the engine adds no words |
+| `note` | all | Line above the source |
+| `highlight` | `bar` (one series), `hbar` | Labels drawn in the accent colour, the rest grey |
+| `accent_series` | `bar`, `line` | Series in the accent colour; default the last series ("later is darker") |
+| `reference` | `line`, `range` | Up to two `{name, value}` reference lines |
+| `totals` | `stacked_bar` | `true` writes each stack's total above it, added before rounding. Off by default |
+| `start_total` | `waterfall` | `true` draws the first value as a balance, like the total bar |
+| `low`, `high` | `range` | Bounds per label; `low` must not exceed `high` |
+| `show_overlap` | `range` | `true` shades the span where every range overlaps |
+| `right_number_format` | `bar_line` | Format of the right-axis lines, as `number_format` |
+| `axis` (in a series) | `bar_line` | `right` for the line series |
+
+A key on a type it does not apply to, a missing or misplaced key, and any invalid value are chart specification errors. `number_format` adds `number` (the default), `percent`, `bps`, `multiple`, or fixed-point formats such as `',.2f'` / `'.1f'`. Formats never rescale values: `12.5` with `percent` displays `12.5%`. The only numbers the engine works out are the waterfall's running total and, with `totals: true`, stack totals. Waterfalls start at zero, cumulatively add **every** supplied value, then append a total: `[100, -30, 20]` ends at `90`. Do not supply a precomputed total as another delta. More than four compared series still draw, with a rendering warning, because they cannot be told apart in black and white.
+
+The words before the note and source and the default total label follow the profile family: `Note`, `Source`, `Total` in the IB profiles, `주`, `자료`, `합계` in the general profiles and the `mono` theme. A theme file can set `CHART_NOTE_LABEL`, `CHART_SOURCE_LABEL` and `CHART_TOTAL_LABEL`. Chart texts are plain text, not Markdown; a `@tbl-…`/`@fig-…` written in a chart title, subtitle, note or source stays text and is reported (strict mode rejects).
+
+Invalid YAML/specifications and rendering failures name the chart in diagnostics. Strict mode rejects before creating/replacing the output; non-strict mode displays the original code panel and logs a warning. Disabled charts remain ordinary code panels even if their YAML is invalid. Charts are PNG images up to 6 inches wide (the content width if narrower), with request-local colors and Korean font policy. Korean text needs the configured font installed (Windows default: Malgun Gothic). Samples: [every chart type in a fictional DCM review](samples/qa/charts-dcm.md) and [the three original types](samples/qa/charts.md).
 
 ## Section presets
 
@@ -382,7 +413,7 @@ The six existing lowercase theme keys remain supported. YAML themes also accept 
 | Point sizes | `H1_SIZE`–`H4_SIZE`, `BODY_SIZE`, `SMALL_SIZE`, `TABLE_HEADER_SIZE`, `TABLE_BODY_SIZE` |
 | Point spacing | `H1_SPACE_BEFORE/AFTER`, `H2_SPACE_BEFORE/AFTER`, `H3_SPACE_BEFORE/AFTER`, `BODY_SPACE_AFTER`, `BULLET_SPACE_AFTER` |
 | Inch lengths | `TOP_MARGIN`, `BOTTOM_MARGIN`, `LEFT_MARGIN`, `RIGHT_MARGIN`, `BULLET_INDENT`, `DEEP_LIST_INDENT`, `MAX_LIST_INDENT` |
-| Other | `BODY_LINE_SPACING` (positive multiplier), `FULL_LIST_INDENT_LEVELS` (integer 0–9), `BULLET_CHAR`, `TABLE_ZEBRA`, `BODY_JUSTIFY`, `HEADING_BORDER` (booleans), `TOC_TITLE`, `PAGE_LABEL`, `PAGE_OF_LABEL` (text) |
+| Other | `BODY_LINE_SPACING` (positive multiplier), `FULL_LIST_INDENT_LEVELS` (integer 0–9), `BULLET_CHAR`, `TABLE_ZEBRA`, `BODY_JUSTIFY`, `HEADING_BORDER` (booleans), `TOC_TITLE`, `PAGE_LABEL`, `PAGE_OF_LABEL`, `CHART_NOTE_LABEL`, `CHART_SOURCE_LABEL`, `CHART_TOTAL_LABEL` (text) |
 
 ```yaml
 NAVY: "234567"
@@ -397,7 +428,7 @@ TABLE_ZEBRA: false
 
 Quote six-digit hex colors (`"#234567"` also works). Numeric colors, booleans used as sizes, nonfinite numbers, unknown fields and conflicting aliases are rejected before saving. Sizes allow 1–144 pt; spacing allows 0–144 pt; inch lengths allow 0–3; line spacing allows greater than 0 through 5. The existing `body_size` alias retains its 6–30 pt range and `margin_mm` retains 5–60 mm. Font names must be nonempty. Internal `STYLE_*` identifiers and the profile's `NATIVE_NUMBERING` policy are not theme fields.
 
-RGB/hex color pairs are synchronized when only one is supplied; both may be set independently. `NAVY` also colors IB table headers unless `TABLE_HEADER_BG` is specified. `RED` supplies the waterfall negative color unless `CHART_NEGATIVE_COLOR` is specified. General/mono charts use a neutral palette by default. Headings, callouts, code panels and charts read the immutable style for the current request; `default` and `mono` retain their existing document output.
+RGB/hex color pairs are synchronized when only one is supplied; both may be set independently. `NAVY` also colors IB table headers unless `TABLE_HEADER_BG` is specified. `RED` supplies the waterfall negative color unless `CHART_NEGATIVE_COLOR` is specified. `NAVY` is the charts' one accent colour; the other series get greys (and, in stacks, tints of `NAVY`) chosen for their grayscale distance from it, so general/mono charts stay neutral. Headings, callouts, code panels and charts read the immutable style for the current request; `default` and `mono` retain their existing document output.
 
 ## Explicit financial tables
 

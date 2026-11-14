@@ -300,7 +300,7 @@ uv run md-format converted.md term-sheet.md --converted-term-sheet
 
 ```sh
 md-to-word report.md report.docx --charts --strict
-md-to-word samples/qa/charts.md charts.docx --strict
+md-to-word samples/qa/charts-dcm.md charts-dcm.docx --strict
 md-to-word report.md code-panels.docx --no-charts
 ```
 
@@ -308,25 +308,54 @@ md-to-word report.md code-panels.docx --no-charts
 
 ````markdown
 ```chart
-chart_type: bar
-title: 가상 매출
-labels: [상반기, 하반기]
+chart_type: stacked_bar
+title: 2027~2028년에 만기가 몰리며, 2028년 차환 부담이 가장 크다
+subtitle: "연도별 만기 도래액, 단위: 억원"
+labels: ["2026", "2027", "2028"]
 series:
-  - name: 매출
-    values: [100, 120]
-y_label: 백만원
-source: 기능 검증용 가상 자료
-number_format: ',.1f'
+  - name: 공모 회사채
+    values: [1200, 2500, 3100]
+  - name: 은행 차입
+    values: [300, 500, 900]
+totals: true
+number_format: ',.0f'
+note: 2026년 9월 말 잔액 기준
+source: 회사 제시 자료(가상)
 ```
 ````
 
-`bar`는 계열별 묶은 막대, `line`은 선, `waterfall`은 누적 증감 차트입니다. PR #5의 `chart_type`, `y_label`, `title`, `labels`, `series`, `source`, `total_label` 문법을 유지합니다. `type`도 `chart_type` 대신 사용할 수 있으며 두 값이 충돌하면 오류입니다. `unit`은 `y_label`이 없을 때 세로축 라벨로 사용합니다.
+**모양이 바뀌었습니다(2026-11-14).** 차트는 기본으로 IB·컨설팅 형식(`chart_style: standard`)으로 그립니다. 테마 주색 하나를 강조색으로 쓰고 나머지는 회색, 세로축 대신 막대에 값을 직접 적고, 테두리 없이 0 기준선만 긋고, 범례는 그림 위 한 줄, 선 이름은 선 끝에 적고, 감소 막대는 빗금을 칩니다. 흑백으로 인쇄해도 계열이 구분되도록 색의 밝기를 고릅니다. 제목과 부제는 그림 위 Word 문단, 주와 출처는 그림 아래 Word 문단이며 그림과 한 쪽에 붙어 있습니다. 이전에 만든 문서의 차트 모양도 바뀝니다. 예전 모양을 유지하려면 frontmatter에 `chart_style: classic`(또는 `RenderOptions(chart_style="classic")`)을 씁니다. 예전 키만 쓴 `bar`, `line`, `waterfall` 차트는 이전과 똑같이 그리고, 새 종류나 새 키를 쓴 차트는 새 모양으로 그립니다.
 
-계열마다 문자열 `name`과 라벨 수에 맞는 유한 숫자 `values`가 필요합니다. 라벨은 문자열·숫자를 지원하며 불리언은 거부합니다. `number_format`은 `number`(기존 기본 형식), `percent`, `bps`, `multiple`, `',.2f'`나 `'.1f'` 같은 고정소수점 형식을 지원합니다. **수치를 환산하지 않으므로** `12.5`는 `percent` 형식에서 `12.5%`입니다.
+| 종류 | 그리는 것 | 계열 |
+|---|---|---|
+| `bar` | 묶은 세로 막대 | 1개 이상 |
+| `line` | 선, 선 끝에 이름 | 1개 이상 |
+| `waterfall` | 0부터 누적한 증감과 합계 막대 | 정확히 1개 |
+| `stacked_bar` | 누적 막대(만기 구조, 조달 구성) | 1~4개, 음수 불가 |
+| `bar_line` | 왼쪽 축 막대와 오른쪽 축 선(`axis: right`). 값을 적고 축은 숨김 | 각각 1~2개 |
+| `range` | `low`~`high` 가로 막대(밸류에이션 football field, 금리 밴드) | 없음: `low`·`high` 목록 |
+| `hbar` | 쓴 순서대로 위에서 아래로 가로 막대(순위) | 정확히 1개 |
 
-Waterfall은 계열 하나만 지원하며 0부터 모든 값을 차례로 더합니다. `[100, -30, 20]`이면 마지막에 합계 `90` 막대를 추가합니다. 음수 합계도 지원하고 `total_label`로 합계 라벨을 지정합니다. 이미 계산한 합계를 증감값에 다시 넣지 마십시오.
+| 키 | 종류 | 뜻 |
+|---|---|---|
+| `title`, `labels`, `series`, `source`, `number_format`, `total_label` | 모두(이전과 같음) | `type`도 `chart_type` 대신 쓸 수 있음 |
+| `subtitle` | 모두 | 제목 아래 줄, 쓴 그대로. 없으면 `y_label` 또는 `unit`을 쓴 그대로 표시하고 엔진이 단어를 덧붙이지 않음 |
+| `note` | 모두 | 출처 위 `주:` 줄 |
+| `highlight` | `bar`(계열 1개), `hbar` | 강조색으로 그릴 항목, 나머지는 회색 |
+| `accent_series` | `bar`, `line` | 강조색 계열. 기본은 마지막 계열(최근일수록 진하게) |
+| `reference` | `line`, `range` | `{name, value}` 기준선 2개까지 |
+| `totals` | `stacked_bar` | `true`이면 막대 위에 합계(반올림 전 값으로 계산). 기본은 적지 않음 |
+| `start_total` | `waterfall` | `true`이면 첫 값을 잔액으로 보고 합계 막대와 같은 색 |
+| `low`, `high` | `range` | 항목별 하단·상단. `low`가 `high`보다 크면 오류 |
+| `show_overlap` | `range` | `true`이면 모든 범위가 겹치는 구간을 옅게 칠함 |
+| `right_number_format` | `bar_line` | 오른쪽 축 선의 숫자 형식(`number_format`과 같은 값) |
+| `axis`(계열 안) | `bar_line` | 선 계열에 `right` |
 
-잘못된 YAML·차트 사양·렌더 실패는 차트를 식별하는 진단을 남깁니다. Strict 모드는 새 파일 생성이나 기존 파일 교체 전에 거부하고, 일반 모드는 경고와 함께 원문 코드 패널을 표시합니다. 비활성 상태에서는 잘못된 YAML도 기존 코드 패널로 출력합니다. 차트는 본문 폭에 맞춘 PNG이며 요청별 색상과 한글 글꼴 정책을 사용합니다. 한글 출력에는 지정 글꼴이 설치되어 있어야 합니다(Windows 기본: 맑은 고딕). [가상 자료 예제](samples/qa/charts.md)는 세 차트 유형을 모두 포함합니다.
+적용되지 않는 종류에 쓴 키, 빠진 키, 잘못된 값은 모두 차트 사양 오류입니다. `number_format`은 `number`(기본), `percent`, `bps`, `multiple`, `',.2f'`나 `'.1f'` 같은 고정소수점 형식을 지원합니다. **수치를 환산하지 않으므로** `12.5`는 `percent` 형식에서 `12.5%`입니다. 엔진이 계산해서 적는 숫자는 waterfall 누적 합계와 `totals: true`일 때의 누적 막대 합계뿐입니다. Waterfall은 0부터 모든 값을 차례로 더하고 마지막에 합계 막대를 붙입니다(`[100, -30, 20]`이면 `90`). 이미 계산한 합계를 증감값에 다시 넣지 마십시오. 비교 계열이 4개를 넘으면 그리기는 하지만, 흑백에서 구분되지 않는다는 렌더링 경고를 남깁니다.
+
+주·출처 앞말과 합계 기본 이름은 프로필 계열을 따릅니다. IB 프로필은 `Note`, `Source`, `Total`, 일반 프로필과 `mono` 테마는 `주`, `자료`, `합계`입니다. 테마 파일에서 `CHART_NOTE_LABEL`, `CHART_SOURCE_LABEL`, `CHART_TOTAL_LABEL`로 바꿀 수 있습니다. 차트의 글자는 Markdown이 아닌 일반 글자입니다. 차트 제목·부제·주·출처에 쓴 `@tbl-…`/`@fig-…`는 글자로 남고 진단을 남깁니다(strict 모드는 거부).
+
+잘못된 YAML·차트 사양·렌더 실패는 차트를 식별하는 진단을 남깁니다. Strict 모드는 새 파일 생성이나 기존 파일 교체 전에 거부하고, 일반 모드는 경고와 함께 원문 코드 패널을 표시합니다. 비활성 상태에서는 잘못된 YAML도 기존 코드 패널로 출력합니다. 차트는 폭 6인치(본문이 더 좁으면 본문 폭)의 PNG이며 요청별 색상과 한글 글꼴 정책을 사용합니다. 한글 출력에는 지정 글꼴이 설치되어 있어야 합니다(Windows 기본: 맑은 고딕). 예제: [가상 DCM 검토 문서의 모든 차트 종류](samples/qa/charts-dcm.md), [처음 세 종류](samples/qa/charts.md).
 
 ## 문서 구성 프리셋
 
@@ -361,7 +390,7 @@ md-to-word notes.md notes.docx --profile plain --preset lecture-note --no-cover
 | 크기(pt) | `H1_SIZE`–`H4_SIZE`, `BODY_SIZE`, `SMALL_SIZE`, `TABLE_HEADER_SIZE`, `TABLE_BODY_SIZE` |
 | 간격(pt) | `H1_SPACE_BEFORE/AFTER`, `H2_SPACE_BEFORE/AFTER`, `H3_SPACE_BEFORE/AFTER`, `BODY_SPACE_AFTER`, `BULLET_SPACE_AFTER` |
 | 길이(inch) | `TOP_MARGIN`, `BOTTOM_MARGIN`, `LEFT_MARGIN`, `RIGHT_MARGIN`, `BULLET_INDENT`, `DEEP_LIST_INDENT`, `MAX_LIST_INDENT` |
-| 기타 | `BODY_LINE_SPACING`(양수 배수), `FULL_LIST_INDENT_LEVELS`(0–9 정수), `BULLET_CHAR`, `TABLE_ZEBRA`, `BODY_JUSTIFY`, `HEADING_BORDER`(불리언), `TOC_TITLE`, `PAGE_LABEL`, `PAGE_OF_LABEL`(문자열) |
+| 기타 | `BODY_LINE_SPACING`(양수 배수), `FULL_LIST_INDENT_LEVELS`(0–9 정수), `BULLET_CHAR`, `TABLE_ZEBRA`, `BODY_JUSTIFY`, `HEADING_BORDER`(불리언), `TOC_TITLE`, `PAGE_LABEL`, `PAGE_OF_LABEL`, `CHART_NOTE_LABEL`, `CHART_SOURCE_LABEL`, `CHART_TOTAL_LABEL`(문자열) |
 
 ```yaml
 NAVY: "234567"
@@ -376,7 +405,7 @@ TABLE_ZEBRA: false
 
 색상은 따옴표로 감싼 6자리 16진 문자열입니다(`"#234567"`도 허용). 숫자 색상, 크기의 불리언 값, 비유한 숫자, 알 수 없는 키, 별칭 충돌은 저장 전에 거부합니다. 크기는 1–144pt, 간격은 0–144pt, inch 길이는 0–3, 줄 간격은 0 초과 5 이하입니다. 기존 `body_size`는 6–30pt, `margin_mm`는 5–60mm 범위를 유지합니다. 글꼴 이름은 비어 있을 수 없습니다. 내부 `STYLE_*` 식별자와 프로파일의 `NATIVE_NUMBERING` 정책은 테마 키가 아닙니다.
 
-RGB/hex 쌍은 한쪽만 지정하면 함께 반영되며, 양쪽을 명시하면 각각 적용합니다. `NAVY`는 별도 `TABLE_HEADER_BG`가 없을 때 IB 표 머리 배경에도 적용합니다. `RED`는 별도 `CHART_NEGATIVE_COLOR`가 없을 때 waterfall 음수 색상에도 적용합니다. 일반/mono 차트의 기본 색상은 무채색입니다. 제목·콜아웃·코드 패널·차트는 요청별 불변 스타일을 읽으며 기존 `default`·`mono` 문서 출력은 유지합니다.
+RGB/hex 쌍은 한쪽만 지정하면 함께 반영되며, 양쪽을 명시하면 각각 적용합니다. `NAVY`는 별도 `TABLE_HEADER_BG`가 없을 때 IB 표 머리 배경에도 적용합니다. `RED`는 별도 `CHART_NEGATIVE_COLOR`가 없을 때 waterfall 음수 색상에도 적용합니다. `NAVY`는 차트의 유일한 강조색이고, 나머지 계열은 흑백 밝기 차이를 계산해 고른 회색(누적 막대는 `NAVY`의 옅은 색 포함)이므로 일반/mono 차트는 무채색입니다. 제목·콜아웃·코드 패널·차트는 요청별 불변 스타일을 읽으며 기존 `default`·`mono` 문서 출력은 유지합니다.
 
 ## IB 금융표 고도화
 

@@ -6,6 +6,16 @@ All notable changes to this project are documented in this file.
 
 Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Beta)** and the plugin stays **0.1.0**; nothing here has been tagged or published. Verification: `docs/verification-20261110.md`.
 
+### Charts in the IB/consulting style (roadmap E10)
+Existing documents with `charts: true` change appearance. Owner decisions 2026-11-14. Verification: `docs/verification-charts-20261114.md`.
+- **Changed appearance:** charts are drawn in an IB/consulting style by default (`chart_style: standard`): the theme's primary colour as the one accent with greys, values on the bars instead of a value axis, a zero baseline without a frame, the legend in one row above the plot, line names and last values at the line ends, hatched decreases, and tones chosen so that series stay apart when printed in black and white. Pictures are 2.9 in high instead of 3.2 in (horizontal charts by their rows) and flush left.
+- **Changed appearance:** the chart title and subtitle are Word paragraphs above the picture and the note and source Word paragraphs below it, kept on the picture's page. Without `subtitle`, the `y_label` or `unit` is shown there as written. The words before the note and source follow the profile (`Note`/`Source` in the IB profiles, `주`/`자료` in the general profiles and `mono`), as does a waterfall's default total label (`Total`/`합계`; it was always `Total`). Theme keys `CHART_NOTE_LABEL`, `CHART_SOURCE_LABEL`, `CHART_TOTAL_LABEL`.
+- `chart_style: classic` (frontmatter or `RenderOptions(chart_style=...)`) keeps the earlier drawing and document XML for `bar`, `line` and `waterfall` charts that use only the earlier keys; a chart with a newer type or key is drawn in the standard style. An invalid `chart_style` is rejected in both modes.
+- New types `stacked_bar` (up to four series, no negatives), `bar_line` (bars and `axis: right` lines), `range` (`low`/`high`, football field or rate band) and `hbar` (written order). New keys `subtitle`, `note`, `highlight`, `accent_series`, `reference`, `totals`, `start_total`, `show_overlap`, `right_number_format`, each only on the types it applies to; anything else is a chart specification error (strict rejects, non-strict keeps the code panel). Stack totals are written only with `totals: true` and are added before rounding. Values are never rescaled.
+- More than four compared series draw with a rendering warning (`IBDocumentRenderer.warnings`), not a rejection.
+- A `@tbl-…`/`@fig-…` in a chart's title, subtitle, note or source stays text and is reported; strict mode rejects. Chart texts are plain text, not Markdown.
+- New sample `samples/qa/charts-dcm.md`; the snapshot corpus adds it and a `chart_style: classic` run of `samples/qa/charts.md`.
+
 ### Office letters: attachments, tables at the end and item symbols (roadmap E7)
 Existing office letters change appearance where they have attachments or items nested three or more levels deep. Verification: `docs/verification-office-letter-20261114.md`.
 - A letter body that ends with a full table keeps `끝.` below the table; this is now pinned by tests (no output change).
