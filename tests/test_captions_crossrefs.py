@@ -1233,21 +1233,73 @@ def test_term_values_in_table_texts_are_not_references(tmp_path: Path) -> None:
 # Private-use characters, including those the engine uses internally, and the
 # ordinary symbols (same East Asian width, not word characters) that stand in.
 _PROBES = {
-    "": "§",
-    "": "¶",
-    "": "※",
-    "": "†",
-    "": "‡",
+    "\ue000": "§",
+    "\ue001": "¶",
+    "\ue010": "※",
+    "\ue011": "†",
+    "\ue012": "‡",
     "\U000f0000": "‖",
 }
 _FRAGMENTS = [
-    " ", " ", " ", "본문", "text", "a", "x", "1", "@", "@", "@", "tbl-", "fig-", "tbl", "-",
-    "-", "a1", ".", ".com", "x.example", "(", ")", "「", "」", "**", "**", "*", "_", "~", "^",
-    "`", "`", "``", "\\@", "\\@", "\\$", "\\*", "\\\\", "\\-", "\\`", "[", "]",
-    "](https://x.example/@tbl-a)", "](s.png)", "![", "![alt @tbl-q](s.png)",
-    '<span style="color:#C00000">', "</span>", "<br>", "&#64;", "&amp;", "{{x}}", "{{y}}",
-    "@tbl-a", "@fig-b", "@tbl-missing", "user@tbl-x.example", "[^1]",
-]  # fmt: skip
+    " ",
+    " ",
+    " ",
+    "본문",
+    "text",
+    "a",
+    "x",
+    "1",
+    "@",
+    "@",
+    "@",
+    "tbl-",
+    "fig-",
+    "tbl",
+    "-",
+    "-",
+    "a1",
+    ".",
+    ".com",
+    "x.example",
+    "(",
+    ")",
+    "「",
+    "」",
+    "**",
+    "**",
+    "*",
+    "_",
+    "~",
+    "^",
+    "`",
+    "`",
+    "``",
+    "\\@",
+    "\\@",
+    "\\$",
+    "\\*",
+    "\\\\",
+    "\\-",
+    "\\`",
+    "[",
+    "]",
+    "](https://x.example/@tbl-a)",
+    "](s.png)",
+    "![",
+    "![alt @tbl-q](s.png)",
+    '<span style="color:#C00000">',
+    "</span>",
+    "<br>",
+    "&#64;",
+    "&amp;",
+    "{{x}}",
+    "{{y}}",
+    "@tbl-a",
+    "@fig-b",
+    "@tbl-missing",
+    "user@tbl-x.example",
+    "[^1]",
+]
 _DOLLARS = ["$", "$", "$x^2$", "$@tbl-a$", "\\$"]
 _P1_TERMS = 'terms:\n  x: "@tbl-missing"\n  y: "값 \\ue010 \\U000f0000 @fig-b"\n'
 
@@ -1295,7 +1347,7 @@ def _random_document(seed: int, blocks: int) -> tuple[str, str]:
             )
         else:
             lines.append(text)
-    lines.append("[^1]: 각주 @tbl-missing  \\@tbl-a")
+    lines.append("[^1]: 각주 @tbl-missing \ue010 \\@tbl-a")
     front = f"---\nprofile: {profile}\ntitle: 시험 문서\n{_P1_TERMS}---\n\n"
     return front + "\n\n".join(lines) + "\n", profile
 
