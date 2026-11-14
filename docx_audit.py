@@ -25,6 +25,12 @@ Changelog (captions):
     - Second review: a `w:fldSimple` result skips the instruction text of a
       complex field nested in it, as complex fields do.
 
+Changelog (alt text):
+    - A picture in the main body without a description (alt text) is a warning,
+      unless Word marks it as decorative. It is never an issue.
+    - Review fix: of each `mc:AlternateContent` only the first Choice (or the
+      Fallback without one) is checked, so a picture is reported once.
+
 Changelog (repeated footnote references):
     - A NOTEREF field whose bookmark is missing is an issue, as for REF; a
       NOTEREF result that is not the shown number of the footnote its bookmark
@@ -124,6 +130,9 @@ _REMOVED_CONTENT = frozenset({qn("w:del"), qn("w:moveFrom")})
 _TERM_TAG_PATH = qn("w:sdtPr") + "/" + qn("w:tag")
 _PLACEHOLDER_PATH = qn("w:sdtPr") + "/" + qn("w:showingPlcHdr")
 _INDICATIVE_RE = re.compile(r"\[[^\[\]]*\]")
+_PICTURE_URI = "http://schemas.openxmlformats.org/drawingml/2006/picture"
+_DECORATIVE = "{http://schemas.microsoft.com/office/drawing/2017/decorative}decorative"
+_MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
 
 
 _PAGINATION_FLAGS = (
@@ -233,6 +242,7 @@ def inspect_document(doc: DocxDocument) -> DocumentAudit:
                 "Possible rendering placeholder (may be literal user text): " + text
             )
     result.warnings.extend(_cross_reference_findings(doc)[1])
+    result.warnings.extend(_undescribed_pictures(doc))
     terms = inspect_terms(doc)
     if terms is not None:
         result.warnings.extend(_term_warnings(terms))
@@ -419,6 +429,54 @@ def _term_warnings(terms: TermAudit) -> list[str]:
     )
     warnings.extend(terms.failed_checks or [])
     return warnings
+
+
+def _undescribed_pictures(doc: DocxDocument) -> list[str]:
+    """Warn for each picture in the main body without a description (alt text).
+
+    The saved file does not say who made a picture, so engine-made equations,
+    diagrams and logos are reported too. A picture Word marks as decorative needs
+    no description; deleted pictures are not counted, and of each
+    `mc:AlternateContent` only the branch read is checked (`_unread_branch`).
+
+    Args:
+        doc: Open document to read.
+
+    Returns:
+        One warning per picture, naming it as Word does (`Picture 3`).
+    """
+    warnings = []
+    for doc_pr in doc.element.body.iter(qn("wp:docPr")):
+        drawing = doc_pr.getparent()
+        if drawing is None or drawing.tag not in (qn("wp:inline"), qn("wp:anchor")):
+            continue
+        if not drawing.xpath(f"./a:graphic/a:graphicData[@uri='{_PICTURE_URI}']"):
+            continue
+        if (doc_pr.get("descr") or "").strip() or _is_removed(doc_pr):
+            continue
+        if any(_unread_branch(ancestor) for ancestor in doc_pr.iterancestors()):
+            continue
+        if any(mark.get("val") in ("1", "true") for mark in doc_pr.iter(_DECORATIVE)):
+            continue
+        warnings.append(
+            f"Picture without a description (alt text): Word name '{doc_pr.get('name')}'"
+        )
+    return warnings
+
+
+def _unread_branch(node: Any) -> bool:
+    """Whether a node is an `mc:AlternateContent` branch other than the one read.
+
+    The first `mc:Choice` is read; without a Choice, the `mc:Fallback`.
+    """
+    if node.tag not in (_MC + "Choice", _MC + "Fallback"):
+        return False
+    parent = node.getparent()
+    branches = [] if parent is None else list(parent)
+    choices = [branch for branch in branches if branch.tag == _MC + "Choice"]
+    fallbacks = [branch for branch in branches if branch.tag == _MC + "Fallback"]
+    read = choices[0] if choices else (fallbacks[0] if fallbacks else None)
+    return node is not read
 
 
 def audit_to_dict(result: DocumentAudit, terms: TermAudit | None = None) -> dict[str, Any]:

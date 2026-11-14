@@ -6,6 +6,14 @@ All notable changes to this project are documented in this file.
 
 Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Beta)** and the plugin stays **0.1.0**; nothing here has been tagged or published. Verification: `docs/verification-20261110.md`.
 
+### Images without alt text are reported (roadmap E9, alt text only)
+Output documents are unchanged. Verification: `docs/verification-alt-text-warning-20261114.md`.
+- An author image inserted without a description (`![](a.png)`, `<img>` without `alt`, a blank description, Base64 and `data:` images, block or inside a paragraph, list or table cell) adds one rendering warning per picture: `IBDocumentRenderer.warnings` and the log. It names the file actually loaded (or `embedded image`) and the picture's Word name (`Picture 3`), never a folder path (percent-encoded or not) or the image data. It never rejects, in strict mode either.
+- Equations, diagrams and logos are drawn by the engine and have no description an author can write; they add no rendering warning. Charts always have one (their title, or `Chart N`).
+- `docx-audit` adds a warning, never an issue, for each picture in the main body whose alt text is missing or blank, unless Word marks it as decorative. It cannot tell who made a picture, so engine-drawn equations, diagrams and logos are reported there too.
+- `scripts/agent_render.py` adds `render_warnings` to `result.json`: the renderer's warnings, including the split-amount warnings of explicit negative styles, which did not reach it before. They never change `ok`. The registry's DOCX output converter takes a `render_warnings` list for this.
+- Colour-contrast diagnostics (the other half of roadmap E9) are not included.
+
 ### Fixed: a footnote referenced more than once
 - A document that referenced the same footnote in two or more places passed strict conversion and schema validation, but Word reported it as corrupt and did not open it (seen with Word 16.0.20527). The footnote's first reference stays a native footnote mark; every later one is now a footnote cross-reference field (`NOTEREF … \f \h`) that shows the same superscript number, as Word's own Insert Cross-reference > Footnote number (formatted) writes it. The number follows after F9 when a footnote is inserted earlier. This applies in paragraphs, headings, table cells, lists, quotes and callouts, and to IB `^1^` markers.
 - Documents that reference each footnote once are unchanged.
