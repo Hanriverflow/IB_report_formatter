@@ -9,6 +9,7 @@ or not, to a code panel, in strict mode too.
 import math
 from io import BytesIO
 
+import pytest
 import yaml
 from docx import Document
 from hypothesis import HealthCheck, example, given, seed, settings
@@ -171,3 +172,54 @@ def test_numbers_too_long_to_print_are_spec_errors():
         except ChartSpecError:
             continue
         raise AssertionError("a 5,000-digit number validated")
+
+
+# Principle V2 (second independent review): with charts off, a chart's `id`
+# is never checked; only a reference to it from the body is reported.
+ID_CHART = "```chart\ntype: bar\n{id}title: {title}\nlabels: [A]\nseries: [{{name: S, values: [1]}}]\n```\n"
+
+
+def _charts_off(body: str, strict: bool = True) -> list[str]:
+    model = MarkdownParser(profile="plain").parse("# 차트\n\n" + body)
+    renderer = IBDocumentRenderer(
+        options=RenderOptions(profile="plain", charts=False, strict=strict)
+    )
+    doc = renderer.render(model)
+    buffer = BytesIO()
+    doc.save(buffer)
+    assert not Document(BytesIO(buffer.getvalue())).inline_shapes
+    return renderer.errors
+
+
+@pytest.mark.parametrize(
+    "blocks",
+    [
+        [("id: fig-test\n", "Test")],
+        [("id: fig_bad\n", "Test")],
+        [("id: tbl-test\n", "Test")],
+        [("id: fig-test\n", "''")],
+        [("id: fig-test\n", "Test"), ("id: fig-test\n", "Again")],
+        [("id: 12\n", "Test")],
+    ],
+    ids=["valid", "underscore", "table-prefix", "no-title", "repeated", "not-text"],
+)
+def test_charts_off_never_checks_a_chart_id(blocks):
+    body = "\n".join(ID_CHART.format(id=ref_id, title=title) for ref_id, title in blocks)
+    assert _charts_off(body) == []
+
+
+def test_charts_off_reports_only_a_reference_to_a_chart_id():
+    body = "@fig-test 참고\n\n" + ID_CHART.format(id="id: fig-test\n", title="Test")
+    errors = _charts_off(body, strict=False)
+    assert "Reference id 'fig-test' is on a chart, and charts are off, so it is not drawn" in errors
+    assert "Cross-reference @fig-test has no table or figure with that id" in errors
+    with pytest.raises(ValueError, match="charts are off"):
+        _charts_off(body)
+
+
+def test_a_chart_with_a_spec_error_has_its_id_ignored_like_an_undrawn_chart():
+    body = "```chart\ntype: bar\nid: fig_bad\ntitle: T\nlabels: [A]\nseries: [{name: S, values: [x]}]\n```\n"
+    model = MarkdownParser(profile="plain").parse("# 차트\n\n" + body)
+    renderer = IBDocumentRenderer(options=RenderOptions(profile="plain", charts=True))
+    renderer.render(model)
+    assert len(renderer.errors) == 1 and "must be numeric" in renderer.errors[0]

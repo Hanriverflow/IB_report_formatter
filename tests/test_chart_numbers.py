@@ -109,9 +109,15 @@ def test_a_chart_that_is_not_drawn_gets_no_number_and_its_references_are_reporte
     assert "Cross-reference @fig-sales" in message
     assert fields(document) == [] and not document.inline_shapes
     assert any("@fig-sales 참고" in p.text for p in document.paragraphs)
-    # The CLI/API switch decides, not only the frontmatter.
-    document, errors = render(write(tmp_path, chart()), strict=False, charts=False)
-    assert any("charts are off" in error for error in errors)
+    # The CLI/API switch decides, not only the frontmatter. Without a reference
+    # the chart is a code panel and nothing is reported (principle V2, second
+    # independent review): this replaces the earlier pin that the ID alone was
+    # reported, which rejected such documents in strict mode.
+    path = write(tmp_path, chart())
+    document, errors = render(path, strict=False, charts=False)
+    assert errors == [] and not document.inline_shapes
+    document, errors = render(path, charts=False)
+    assert errors == []
 
 
 @pytest.mark.parametrize(

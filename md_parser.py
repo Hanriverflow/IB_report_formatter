@@ -388,10 +388,13 @@ class MarkdownParser:
                 model = self._parse_document(content, infer_metadata, frontmatter_present)
         # An ID that numbers nothing leaves its references without a target;
         # say why first (the renderer reports the same when nothing refers to it).
+        # A chart's ID problem depends on the render's charts setting: with
+        # charts off the block is a code panel and its ID is not checked, so
+        # the renderer reports it (when it draws the chart), not the parser.
         problems = [
             "Reference id " + problem
-            for _, _, problem in numbered_items(model.elements)
-            if problem is not None
+            for item, _, problem in numbered_items(model.elements)
+            if problem is not None and not isinstance(item, NumberedChart)
         ]
         reported = set(model.warnings)
         for message in [*problems, *found]:

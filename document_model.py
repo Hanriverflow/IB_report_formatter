@@ -530,8 +530,10 @@ def numbered_items(
     the same items, so both agree on what a reference can point to. A chart
     is a figure (`SEQ 그림`) captioned by its title. Whether charts are drawn
     is a render option, so the parser counts them as drawn and the renderer
-    passes its own setting; a chart that is not drawn gets no number and
-    references to it have no target (reported).
+    passes its own setting. A chart that is not drawn is skipped altogether:
+    its ID is neither numbered nor checked, so a document with charts off
+    converts every chart block to a code panel; only a reference to it is
+    reported (it has no target).
 
     Args:
         elements: Document elements.
@@ -548,6 +550,8 @@ def numbered_items(
         elif element.element_type == ElementType.IMAGE and isinstance(content, Figure):
             kind, caption = "fig", content.alt_text
         elif element.element_type == ElementType.CHART and isinstance(content, NumberedChart):
+            if not charts_drawn:
+                continue
             kind = "fig"
             caption = (content.spec.title or "") if content.spec is not None else ""
         else:
@@ -559,9 +563,16 @@ def numbered_items(
             # The renderer skips a table without rows or columns, so it gets
             # no number and references to it have no target.
             problem = f"{content.ref_id!r} is on a table with no columns, which is not drawn"
-        if problem is None and isinstance(content, NumberedChart) and not charts_drawn:
-            problem = f"{content.ref_id!r} is on a chart, and charts are off, so it is not drawn"
         yield content, kind, problem
+
+
+def undrawn_chart_ids(elements: Sequence["Element"]) -> list[str]:
+    """IDs of charts with an ID, for a render whose charts are off (code panels)."""
+    return [
+        element.content.ref_id
+        for element in elements
+        if element.element_type == ElementType.CHART and isinstance(element.content, NumberedChart)
+    ]
 
 
 def numbered_targets(elements: Sequence["Element"]) -> frozenset[str]:

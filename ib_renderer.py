@@ -111,6 +111,7 @@ from document_model import (
     caption_bookmark_name,
     model_images,
     numbered_items,
+    undrawn_chart_ids,
 )
 from document_profiles import (
     RenderOptions,
@@ -1122,6 +1123,12 @@ class IBDocumentRenderer:
             allocator and diagnostic sink.
         """
         numbers = CaptionNumbers(next_bookmark_id=self._next_bookmark_id, errors=self.errors)
+        if not self.charts:
+            numbers.undrawn = {
+                ref_id: f"Reference id {ref_id!r} is on a chart, and charts are off, "
+                "so it is not drawn"
+                for ref_id in undrawn_chart_ids(model.elements)
+            }
         counts = dict.fromkeys(CAPTION_LABELS, 0)
         reported = set(self.errors)  # the parser may have said so
         for content, kind, problem in numbered_items(model.elements, self.charts):
