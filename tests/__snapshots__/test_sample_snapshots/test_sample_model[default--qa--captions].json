@@ -1,0 +1,1237 @@
+{
+  "metadata": {
+    "title": "표·그림 번호 검증",
+    "subtitle": "",
+    "company": "",
+    "ticker": "",
+    "sector": "",
+    "analyst": "홍길동",
+    "extra": {
+      "date": "2026-11-14",
+      "sender": {
+        "organization": "주식회사 예시",
+        "department": "문서표준화 TF"
+      },
+      "tables": [
+        {
+          "id": "tbl-results",
+          "caption": "연도별 가상 실적",
+          "unit": "억원",
+          "columns": [
+            "text",
+            "money",
+            "money"
+          ]
+        },
+        {
+          "caption": "번호를 붙이지 않은 표"
+        },
+        {
+          "id": "tbl-funding",
+          "caption": "가상 조달 구성",
+          "unit": "억원",
+          "columns": [
+            "text",
+            "money",
+            "percent"
+          ]
+        }
+      ]
+    },
+    "profile": "business-report",
+    "display_runs": {}
+  },
+  "sections": [],
+  "elements": [
+    {
+      "element_type": "HEADING_1",
+      "content": {
+        "level": 1,
+        "text": "표·그림 번호 검증",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "# 표·그림 번호 검증",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "1. 개요",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 1. 개요",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "이 문서는 표와 그림 번호가 Word 필드로 들어가는지 확인하는 가상 예시다. 번호를 붙일 표에는 표 사양에 `id`를 주고, 그림에는 그림 줄 끝에 `{#fig-…}`를 단다. 실적은 @tbl-results에서, 조달 구성은 @tbl-funding에서, 거래 구조는 @fig-structure에서 볼 수 있다.",
+        "runs": [
+          {
+            "text": "이 문서는 표와 그림 번호가 Word 필드로 들어가는지 확인하는 가상 예시다. 번호를 붙일 표에는 표 사양에 ",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "id",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": true,
+            "image": null
+          },
+          {
+            "text": "를 주고, 그림에는 그림 줄 끝에 ",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "{#fig-…}",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": true,
+            "image": null
+          },
+          {
+            "text": "를 단다. 실적은 ",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "@tbl-results",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null,
+            "target": "tbl-results",
+            "joined_before": true,
+            "joined_after": true
+          },
+          {
+            "text": "에서, 조달 구성은 ",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "@tbl-funding",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null,
+            "target": "tbl-funding",
+            "joined_before": true,
+            "joined_after": true
+          },
+          {
+            "text": "에서, 거래 구조는 ",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "@fig-structure",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null,
+            "target": "fig-structure",
+            "joined_before": true,
+            "joined_after": true
+          },
+          {
+            "text": "에서 볼 수 있다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "이 문서는 표와 그림 번호가 Word 필드로 들어가는지 확인하는 가상 예시다. 번호를 붙일 표에는 표 사양에 `id`를 주고, 그림에는 그림 줄 끝에 `{#fig-…}`를 단다. 실적은 @tbl-results에서, 조달 구성은 @tbl-funding에서, 거래 구조는 @fig-structure에서 볼 수 있다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "TABLE",
+      "content": {
+        "rows": [
+          {
+            "cells": [
+              {
+                "content": "구분",
+                "runs": [
+                  {
+                    "text": "구분",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2025",
+                "runs": [
+                  {
+                    "text": "2025",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "2026",
+                "runs": [
+                  {
+                    "text": "2026",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": true,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": true
+          },
+          {
+            "cells": [
+              {
+                "content": "매출",
+                "runs": [
+                  {
+                    "text": "매출",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "1,200",
+                "runs": [
+                  {
+                    "text": "1,200",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "1,350",
+                "runs": [
+                  {
+                    "text": "1,350",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "영업이익",
+                "runs": [
+                  {
+                    "text": "영업이익",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "130",
+                "runs": [
+                  {
+                    "text": "130",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "150",
+                "runs": [
+                  {
+                    "text": "150",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          }
+        ],
+        "table_type": "GENERIC",
+        "col_count": 3,
+        "alignments": [
+          "left",
+          "right",
+          "right"
+        ],
+        "column_types": [
+          "text",
+          "money",
+          "money"
+        ],
+        "caption": "연도별 가상 실적",
+        "unit": "억원",
+        "source": "",
+        "as_of": "",
+        "landscape": false,
+        "warnings": [],
+        "spans": null,
+        "label_columns": null,
+        "note": "",
+        "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
+        "schedule": null,
+        "ref_id": "tbl-results"
+      },
+      "raw_text": "| 구분 | 2025 | 2026 |\n|---|---:|---:|\n| 매출 | 1,200 | 1,350 |\n| 영업이익 | 130 | 150 |",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "번호를 붙이지 않은 표는 지금과 같이 제목만 나온다.",
+        "runs": [
+          {
+            "text": "번호를 붙이지 않은 표는 지금과 같이 제목만 나온다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "번호를 붙이지 않은 표는 지금과 같이 제목만 나온다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "TABLE",
+      "content": {
+        "rows": [
+          {
+            "cells": [
+              {
+                "content": "항목",
+                "runs": [
+                  {
+                    "text": "항목",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "내용",
+                "runs": [
+                  {
+                    "text": "내용",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": true
+          },
+          {
+            "cells": [
+              {
+                "content": "작성 부서",
+                "runs": [
+                  {
+                    "text": "작성 부서",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "문서표준화 TF",
+                "runs": [
+                  {
+                    "text": "문서표준화 TF",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "검토 상태",
+                "runs": [
+                  {
+                    "text": "검토 상태",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "초안",
+                "runs": [
+                  {
+                    "text": "초안",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          }
+        ],
+        "table_type": "GENERIC",
+        "col_count": 2,
+        "alignments": [
+          "left",
+          "left"
+        ],
+        "column_types": [],
+        "caption": "번호를 붙이지 않은 표",
+        "unit": "",
+        "source": "",
+        "as_of": "",
+        "landscape": false,
+        "warnings": [],
+        "spans": null,
+        "label_columns": null,
+        "note": "",
+        "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
+        "schedule": null
+      },
+      "raw_text": "| 항목 | 내용 |\n|---|---|\n| 작성 부서 | 문서표준화 TF |\n| 검토 상태 | 초안 |",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "2. 구조와 조달",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 2. 구조와 조달",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "IMAGE",
+      "content": {
+        "alt_text": "가상 거래 구조도",
+        "path": "captions-structure.png",
+        "base64_data": null,
+        "mime_type": "image/png",
+        "ref_id": "fig-structure"
+      },
+      "raw_text": "![가상 거래 구조도](captions-structure.png){#fig-structure}",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "IMAGE",
+      "content": {
+        "alt_text": "번호를 붙이지 않은 그림",
+        "path": "captions-structure.png",
+        "base64_data": null,
+        "mime_type": "image/png"
+      },
+      "raw_text": "![번호를 붙이지 않은 그림](captions-structure.png)",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "TABLE",
+      "content": {
+        "rows": [
+          {
+            "cells": [
+              {
+                "content": "조달원",
+                "runs": [
+                  {
+                    "text": "조달원",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "금액",
+                "runs": [
+                  {
+                    "text": "금액",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "비중",
+                "runs": [
+                  {
+                    "text": "비중",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": true,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": true
+          },
+          {
+            "cells": [
+              {
+                "content": "가상은행",
+                "runs": [
+                  {
+                    "text": "가상은행",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "500",
+                "runs": [
+                  {
+                    "text": "500",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "62.5%",
+                "runs": [
+                  {
+                    "text": "62.5%",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          },
+          {
+            "cells": [
+              {
+                "content": "예시캐피탈",
+                "runs": [
+                  {
+                    "text": "예시캐피탈",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "left",
+                "is_header": false,
+                "is_numeric": false,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "300",
+                "runs": [
+                  {
+                    "text": "300",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              },
+              {
+                "content": "37.5%",
+                "runs": [
+                  {
+                    "text": "37.5%",
+                    "bold": false,
+                    "italic": false,
+                    "superscript": false,
+                    "subscript": false,
+                    "color_hex": null,
+                    "is_latex": false,
+                    "hyperlink": null,
+                    "footnote_id": null,
+                    "term_key": null,
+                    "code": false,
+                    "image": null
+                  }
+                ],
+                "alignment": "right",
+                "is_header": false,
+                "is_numeric": true,
+                "is_negative": false,
+                "is_base_case": false,
+                "risk_level": null,
+                "merge": null,
+                "literal": false
+              }
+            ],
+            "is_header": false
+          }
+        ],
+        "table_type": "GENERIC",
+        "col_count": 3,
+        "alignments": [
+          "left",
+          "right",
+          "right"
+        ],
+        "column_types": [
+          "text",
+          "money",
+          "percent"
+        ],
+        "caption": "가상 조달 구성",
+        "unit": "억원",
+        "source": "",
+        "as_of": "",
+        "landscape": false,
+        "warnings": [],
+        "spans": null,
+        "label_columns": null,
+        "note": "",
+        "header_rows": 1,
+        "total_rows": [],
+        "subtotal_rows": [],
+        "negative": null,
+        "schedule": null,
+        "ref_id": "tbl-funding"
+      },
+      "raw_text": "| 조달원 | 금액 | 비중 |\n|---|---:|---:|\n| 가상은행 | 500 | 62.5% |\n| 예시캐피탈 | 300 | 37.5% |",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "BULLET_LIST",
+      "content": {
+        "text": "@tbl-funding의 합계 800억원은 @tbl-results의 2026년 매출보다 작다.",
+        "runs": [
+          {
+            "text": "@tbl-funding",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null,
+            "target": "tbl-funding",
+            "joined_before": false,
+            "joined_after": true
+          },
+          {
+            "text": "의 합계 800억원은 ",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "@tbl-results",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null,
+            "target": "tbl-results",
+            "joined_before": true,
+            "joined_after": true
+          },
+          {
+            "text": "의 2026년 매출보다 작다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "indent_level": 0
+      },
+      "raw_text": "- @tbl-funding의 합계 800억원은 @tbl-results의 2026년 매출보다 작다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "BULLET_LIST",
+      "content": {
+        "text": "담당자 연락처(doc-team@tbl-example.com)와 코드 `@tbl-results`, 이스케이프한 \\@tbl-results는 참조가 아니다.",
+        "runs": [
+          {
+            "text": "담당자 연락처(doc-team@tbl-example.com)와 코드 ",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          },
+          {
+            "text": "@tbl-results",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": true,
+            "image": null
+          },
+          {
+            "text": ", 이스케이프한 @tbl-results는 참조가 아니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "indent_level": 0
+      },
+      "raw_text": "- 담당자 연락처(doc-team@tbl-example.com)와 코드 `@tbl-results`, 이스케이프한 \\@tbl-results는 참조가 아니다.",
+      "inferred_subtitle": false
+    }
+  ],
+  "footnotes": {},
+  "warnings": [],
+  "parsed_profile": "business-report",
+  "source_dir": ".",
+  "asset_roots": [
+    "."
+  ],
+  "limits": {
+    "max_input_bytes": 16777216,
+    "max_table_cells": 50000,
+    "max_list_depth": 32,
+    "max_image_bytes": 20971520,
+    "max_image_pixels": 50000000
+  }
+}

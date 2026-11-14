@@ -1,4 +1,8 @@
-"""Image, chart and LaTeX equation rendering for rendered documents."""
+"""Image, chart and LaTeX equation rendering for rendered documents.
+
+Changelog (captions):
+    - A figure with an ID gets its caption number before the description.
+"""
 
 import logging
 import os
@@ -12,7 +16,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.shared import Inches
 
-from document_model import Chart
+from document_model import CaptionNumber, Chart, TextRun
 from ib_render_fonts import FontStyler
 from input_safety import (
     DEFAULT_LIMITS,
@@ -139,12 +143,14 @@ class ImageRenderer:
                             extent.set("cx", str(limit))
                             extent.set("cy", str(height))
 
-    def render(self, image: Image) -> bool:
+    def render(self, image: Image, caption_prefix: Sequence[TextRun] = ()) -> bool:
         """
         Render an image to the Word document.
 
         Args:
             image: Image object with either base64_data or path
+            caption_prefix: The caption number of a figure with an ID, written
+                before the description in the caption line.
 
         Attempts to insert actual image; falls back to placeholder on failure.
 
@@ -174,7 +180,7 @@ class ImageRenderer:
                     temp_file_path = f.name
 
                 # Insert into document
-                self._insert_image(temp_file_path, image.alt_text)
+                self._insert_image(temp_file_path, image.alt_text, caption_prefix)
                 inserted = True
                 logger.debug("Inserted Base64 image: %s", image.alt_text)
 
@@ -193,7 +199,7 @@ class ImageRenderer:
                         image.path,
                     )
                 else:
-                    self._insert_image(source, image.alt_text)
+                    self._insert_image(source, image.alt_text, caption_prefix)
                     inserted = True
                     logger.debug("Inserted file image: %s", image.path[:80])
 
@@ -225,13 +231,16 @@ class ImageRenderer:
                 errors.append(message)
         return inserted
 
-    def _insert_image(self, file_path: str | BytesIO, alt_text: str):
+    def _insert_image(
+        self, file_path: str | BytesIO, alt_text: str, caption_prefix: Sequence[TextRun] = ()
+    ):
         """
         Insert image file into document with proper sizing.
 
         Args:
             file_path: Path to image file, or its bytes
             alt_text: Alt text for caption
+            caption_prefix: Caption number runs written before the alt text.
         """
         # Add image with max width constraint
         paragraph = self.doc.add_paragraph()
@@ -241,7 +250,23 @@ class ImageRenderer:
         self._apply_alt_text(inline_shape, alt_text)
 
         # Add caption below image
-        if alt_text:
+        if alt_text and caption_prefix:
+            from ib_render_text import TextRenderer
+
+            caption_para = self.doc.add_paragraph()
+            caption_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            def style(run) -> None:
+                FontStyler.apply_run_style(
+                    run, font_size=STYLE.SMALL_SIZE, italic=True, color=STYLE.DARK_GRAY
+                )
+
+            for piece in [*caption_prefix, TextRun(text=alt_text)]:
+                if isinstance(piece, CaptionNumber):
+                    TextRenderer.write_caption_number(caption_para, piece, style)
+                else:
+                    style(caption_para.add_run(piece.text))
+        elif alt_text:
             caption_para = self.doc.add_paragraph()
             caption_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             caption_run = caption_para.add_run(alt_text)

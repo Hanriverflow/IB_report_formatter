@@ -1,4 +1,13 @@
-"""Block element rendering: table of contents, headings, paragraphs, lists and callouts."""
+"""Block element rendering: table of contents, headings, paragraphs, lists and callouts.
+
+Changelog (captions):
+    - The static TOC preview shows a heading's `@tbl-…` references as `표 1`.
+    - Review fixes: the preview reads the runs the heading renders
+      (`HeadingRenderer.source_runs`), and headings and callouts unescaped at
+      parse time keep an escaped `@` from becoming a reference.
+    - Second review: a heading's references are judged on its source with the
+      bold markers it is rendered without (`TextParser.parse_judged_runs`).
+"""
 
 import re
 from dataclasses import replace
@@ -8,9 +17,10 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
+from document_model import MarkedBlockquote, MarkedHeading, TextRun
 from ib_render_document_style import TableStyler
 from ib_render_fonts import FontStyler
-from ib_render_text import TextRenderer
+from ib_render_text import TextRenderer, reference_preview_text
 from md_parser import (
     Blockquote,
     DocumentModel,
@@ -90,7 +100,12 @@ class TOCRenderer:
                 continue
 
             level = max(1, min(element.content.level, 4))
-            text = element.content.text.strip()
+            # A heading whose references resolve shows them as their cached
+            # numbers in its text as written; nothing else changes.
+            preview = reference_preview_text(
+                element.content.text, HeadingRenderer.source_runs(element.content)
+            )
+            text = preview.strip() if preview is not None else element.content.text.strip()
             if text:
                 entries.append((level, text))
 
@@ -136,17 +151,24 @@ class HeadingRenderer:
     def __init__(self, doc: DocxDocument):
         self.doc = doc
 
+    @classmethod
+    def source_runs(cls, heading: Heading) -> list[TextRun]:
+        """The runs a heading renders; parse-time term runs are used as is."""
+        if heading.runs:
+            return heading.runs
+        source = heading.text
+        # Drop bold markers outside code spans and escapes, then parse once:
+        # unescaping before the parse turned escaped punctuation into syntax.
+        clean_text = cls._BOLD_MARKER_RE.sub(
+            lambda match: "" if match.group(0) == "**" else match.group(0), source
+        )
+        # References are judged like body text, on the source with its markers.
+        escaped_ats = heading.escaped_ats if isinstance(heading, MarkedHeading) else ()
+        return TextParser.parse_judged_runs(clean_text.strip(), source, escaped_ats)
+
     def render(self, heading: Heading):
         """Render a heading with appropriate level; parse-time term runs are used as is."""
-        if heading.runs:
-            source_runs = heading.runs
-        else:
-            # Drop bold markers outside code spans and escapes, then parse once:
-            # unescaping before the parse turned escaped punctuation into syntax.
-            clean_text = self._BOLD_MARKER_RE.sub(
-                lambda match: "" if match.group(0) == "**" else match.group(0), heading.text
-            )
-            source_runs = TextParser.parse_runs(clean_text.strip())
+        source_runs = self.source_runs(heading)
 
         # Clamp level to 1-4 (Word supports Heading 1-9, but we style 1-4)
         level = max(1, min(heading.level, 4))
@@ -352,13 +374,16 @@ class CalloutRenderer:
             )
         elif content_text:
             content_para = cell.add_paragraph()
-
             TextRenderer.render_text_with_formatting(
                 content_para,
                 content_text,
                 font_name=STYLE.BODY_FONT,
                 font_size=STYLE.BODY_SIZE,
                 default_color=content_color,
+                source=blockquote.text,
+                escaped_ats=(
+                    blockquote.escaped_ats if isinstance(blockquote, MarkedBlockquote) else ()
+                ),
             )
 
         # Apply border styling

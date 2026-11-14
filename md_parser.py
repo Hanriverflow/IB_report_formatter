@@ -3,6 +3,15 @@ MD Parser Module for IB Style Word Report Converter
 Handles parsing of Markdown files including frontmatter, elements, tables,
 LaTeX equations, Base64 images, and footnotes.
 
+Changelog (captions):
+    - NEW: `![설명](파일){#fig-…}` is a numbered figure; an unusable `{#…}` ending
+      keeps the line as text and is reported by the renderer wherever it stands.
+    - Callouts and numbered headings, unescaped here, keep escaped `@` apart.
+    - Second review: a document that may hold references is parsed a second
+      time once its numbered tables and figures are known, so only resolvable
+      references split runs; title, subtitle, date, image descriptions and
+      footnotes are checked as text that cannot hold a field.
+
 Changelog (property-test regressions):
     - Use documented rejections for malformed declared YAML and invalid footnote IDs.
     - Diagnose XML-incompatible input before strict rendering reaches metadata.
@@ -84,7 +93,16 @@ from document_model import (
     CodeBlock as CodeBlock,
 )
 from document_model import ConfirmationBlock as ConfirmationBlock
-from document_model import DefaultTitle
+from document_model import (
+    CrossReference,
+    DefaultTitle,
+    Figure,
+    MarkedBlockquote,
+    MarkedHeading,
+    figure_id_problem,
+    numbered_items,
+    numbered_targets,
+)
 from document_model import (
     Diagram as Diagram,
 )
@@ -188,6 +206,7 @@ from md_parse_tables import TableSpanResolver as TableSpanResolver
 from md_parse_text import _DRIVE_PATH_RE as _DRIVE_PATH_RE
 from md_parse_text import _URI_DRIVE_PATH_RE as _URI_DRIVE_PATH_RE
 from md_parse_text import _URI_SCHEME_RE as _URI_SCHEME_RE
+from md_parse_text import ReferenceScope as ReferenceScope
 from md_parse_text import TextParser as TextParser
 from md_parse_text import _document_int as _document_int
 from md_parse_text import _parse_term_runs as _parse_term_runs
@@ -239,6 +258,8 @@ class MarkdownParser:
         r"^!\[(.*?)\]\(\s*(?:<([^>\n]+)>|([^\s]+?))"
         r"(?:\s+(?:\"[^\"\n]*\"|'[^'\n]*'))?\s*\)$"
     )
+    # The `{#…}` ending of a figure line; IMAGE_PATTERN then reads what precedes it.
+    _FIGURE_ID_RE = re.compile(r"\{#([^{}\s]*)\}$")
     TABLE_START_PATTERN = re.compile(r"^\|")
     _HTML_IMAGE_LINE_RE = re.compile(r"^<img\b[^<>]*>$", re.IGNORECASE)
     SEPARATOR_PATTERN = re.compile(r"^(---|## ---)$")
@@ -308,6 +329,12 @@ class MarkdownParser:
         self._parse_warnings: list[str] = []
         # Per-parse `terms:` state; None keeps `{{...}}` ordinary text.
         self._terms: TermResolver | None = None
+        # Term runs of a heading whose references resolve, read without them,
+        # for the title when that heading becomes it.
+        self._title_runs: dict[int, list[TextRun]] = {}
+        # The text of a heading with term values, as written (values as tokens),
+        # and the offsets there of its escaped `@`: the title is judged on it.
+        self._title_sources: dict[int, tuple[str, tuple[int, ...]]] = {}
 
     def parse(self, content: str) -> DocumentModel:
         """
@@ -322,8 +349,66 @@ class MarkdownParser:
         self.limits.check(RejectionCode.LIMIT_INPUT_BYTES, len(content.encode("utf-8")))
         return self._parse_content(content)
 
-    def _parse_content(self, content: str) -> DocumentModel:
-        """Parse text after the public text/file/stream boundary checked original bytes."""
+    def _parse_content(
+        self, content: str, infer_metadata: bool = False, frontmatter_present: bool = False
+    ) -> DocumentModel:
+        """Parse text after the public text/file/stream boundary checked original bytes.
+
+        Every document is parsed in a reference scope in which no reference
+        resolves yet, so the recognizer reads exactly the text the parser
+        produces (emphasis removed, HTML entities and YAML escapes decoded); no
+        test on the raw Markdown decides whether it runs. In such a scope text
+        renders as outside one, and text without `@` costs nothing more. When
+        that parse finds numbered tables or figures, the document is parsed
+        again in a scope holding their IDs. Only resolvable references split
+        runs; every other one is reported.
+
+        Args:
+            content: The decoded text.
+            infer_metadata: Fill IB metadata from the body, as the file and
+                stream parser (`parse_markdown_file`) does; the text parser
+                (`parse`) keeps the profile's stand-in title (E8 pins both).
+            frontmatter_present: The file opens with frontmatter; without it an
+                IB profile may read the company from the title.
+        """
+        # Ordered and without repeats; the dictionary keeps the order.
+        found: dict[str, None] = {}
+
+        def report(message: str) -> None:
+            found.setdefault(message)
+
+        with TextParser.reference_scope(ReferenceScope(report=report)):
+            model = self._parse_document(content, infer_metadata, frontmatter_present)
+        targets = numbered_targets(model.elements)
+        if targets:
+            found.clear()
+            with TextParser.reference_scope(ReferenceScope(targets=targets, report=report)):
+                model = self._parse_document(content, infer_metadata, frontmatter_present)
+        # An ID that numbers nothing leaves its references without a target;
+        # say why first (the renderer reports the same when nothing refers to it).
+        problems = [
+            "Reference id " + problem
+            for _, _, problem in numbered_items(model.elements)
+            if problem is not None
+        ]
+        reported = set(model.warnings)
+        for message in [*problems, *found]:
+            if message not in reported:
+                reported.add(message)
+                model.warnings.append(message)
+                logger.warning("%s", message)
+        return model
+
+    def _parse_document(
+        self, content: str, infer_metadata: bool, frontmatter_present: bool
+    ) -> DocumentModel:
+        """Parse the document once under the active reference scope.
+
+        With `infer_metadata` an IB profile fills metadata from the body here,
+        inside the scope, so the title it infers is judged like any other
+        (`_check_inferred_title`) and a value read from a body paragraph
+        carries the references that resolve in it (`InferredText`).
+        """
         lines = content.replace("\r\n", "\n").replace("\r", "\n").split("\n")
 
         # Parse frontmatter
@@ -334,6 +419,8 @@ class MarkdownParser:
         self._financial_rules = get_profile(metadata.profile).is_ib
         self._term_sheet = metadata.profile == "term-sheet"
         self._parse_warnings = []
+        self._title_runs = {}
+        self._title_sources = {}
         # An empty mapping enables checking: every reference is then undefined.
         with document_validation():
             self._terms = (
@@ -384,13 +471,16 @@ class MarkdownParser:
                     input_warnings.append(f"Duplicate footnote definition: {number}")
                 footnotes[number] = match.group(2)
             else:
+                # A raw line is only scanned for footnote marks here.
+                with TextParser.reference_scope(None):
+                    runs = TextParser.parse_runs(scan_lines[index])
                 explicit_references.update(
-                    run.footnote_id
-                    for run in TextParser.parse_runs(scan_lines[index])
-                    if run.footnote_id is not None
+                    run.footnote_id for run in runs if run.footnote_id is not None
                 )
                 content_lines.append(raw_line)
         remaining_lines = content_lines
+        for text in footnotes.values():
+            TextParser.check_text(text, "footnote")
 
         # Parse elements
         elements = self._parse_elements(remaining_lines)
@@ -406,7 +496,9 @@ class MarkdownParser:
         )
         # Title inference follows what the author wrote, not a substituted value.
         written_title = metadata.title
-        self._substitute_metadata(metadata)
+        self._check_metadata_references(metadata)
+        with TextParser.reference_scope(None):  # metadata never holds a field
+            self._substitute_metadata(metadata)
         with document_validation():
             validate_term_sheet_metadata(metadata)
         model = DocumentModel(
@@ -436,8 +528,13 @@ class MarkdownParser:
                 and first_heading.text
             ):
                 metadata.title = first_heading.text
+                if metadata.profile != "plain":  # where the heading becomes the title
+                    self._check_inferred_title(first_heading, metadata.profile)
                 if first_heading.runs:
-                    metadata.display_runs["title"] = [replace(run) for run in first_heading.runs]
+                    metadata.display_runs["title"] = [
+                        replace(run)
+                        for run in self._title_runs.get(id(first_heading), first_heading.runs)
+                    ]
         with document_validation(errors=(ValueError, TypeError)):
             apply_table_specs(model)
         # Span markers are classified on raw cell source, before term text changes.
@@ -462,7 +559,32 @@ class MarkdownParser:
             unused = self._terms.unused()
             if unused:
                 logger.info("Unused terms (defined but never referenced): %s", ", ".join(unused))
+        if infer_metadata and self._financial_rules:
+            title_heading = _infer_metadata_from_elements(
+                model, allow_company_inference=not frontmatter_present
+            )
+            if title_heading is not None:
+                self._check_inferred_title(title_heading, metadata.profile)
         return model
+
+    def _check_inferred_title(self, heading: Heading, profile: str) -> None:
+        """Report the references in a heading that became the document title.
+
+        The title cannot hold a field. It is judged as written: a term value is
+        never read as a reference, and neither is an escaped `@`.
+
+        Args:
+            heading: The first H1, as parsed.
+            profile: The document's profile; a term sheet shows its title as
+                inline Markdown, the others as plain text.
+        """
+        source, escaped_ats = self._title_sources.get(
+            id(heading),
+            (heading.text, heading.escaped_ats if isinstance(heading, MarkedHeading) else ()),
+        )
+        TextParser.check_text(
+            source, "document title", markdown=profile == "term-sheet", escaped_ats=escaped_ats
+        )
 
     # ── Term substitution ───────────────────────────────────────────────────
 
@@ -490,21 +612,57 @@ class MarkdownParser:
         if self._terms is None or not isinstance(heading, Heading):
             return element
         tokens: TokenMap = {}
+        escaped_ats: tuple[int, ...] = ()
         if element.element_type == ElementType.NUMBERED_HEADING:
             # Its text is already unescaped, so substitute from the source line.
-            tokenized = TextParser.cleanup_text(
-                TextParser.tokenize_terms(element.raw_text, self._terms, tokens)
-            )
+            source = TextParser.tokenize_terms(element.raw_text, self._terms, tokens)
+            tokenized = TextParser.cleanup_text(source)
+            escaped_ats = TextParser.escaped_ats(source)
         else:
             tokenized = TextParser.tokenize_terms(heading.text, self._terms, tokens)
         if tokens:
+            if isinstance(heading, MarkedHeading):
+                # Its offsets are those of the text without values; the runs
+                # made here carry what they protected.
+                heading = Heading(
+                    level=heading.level, text=heading.text, is_numbered=heading.is_numbered
+                )
+                element.content = heading
             heading.text = restore_terms(tokenized, tokens)
-            # HeadingRenderer drops bold markers because it bolds every run.
-            heading.runs = split_term_runs(
-                TextParser.parse_runs(tokenized.replace("**", "").strip()),
-                tokens,
-            )
+            # HeadingRenderer drops bold markers because it bolds every run; the
+            # references are judged on the text with them, as in body text.
+            text = tokenized.replace("**", "").strip()
+            runs = TextParser.parse_judged_runs(text, tokenized, escaped_ats)
+            heading.runs = split_term_runs(runs, tokens)
+            if any(isinstance(run, CrossReference) for run in runs):
+                with TextParser.reference_scope(None):
+                    plain = TextParser.parse_runs(text)
+                self._title_runs[id(heading)] = split_term_runs(plain, tokens)
+            self._title_sources[id(heading)] = (tokenized, escaped_ats)
         return element
+
+    def _check_metadata_references(self, metadata: DocumentMetadata) -> None:
+        """Report references in the title, subtitle and date, as written.
+
+        These values cannot hold a field and may take term values, which are
+        never read as references, so they are checked here before substitution.
+        The title and subtitle are always checked; the date wherever a profile
+        shows it (every profile but `plain`). A term sheet reads them as inline
+        Markdown, the other profiles show them as plain text.
+
+        Args:
+            metadata: Frontmatter metadata before term substitution.
+        """
+        markdown = metadata.profile == "term-sheet"
+        places: list[tuple[str, object]] = [
+            ("document title", metadata.title),
+            ("subtitle", metadata.subtitle),
+        ]
+        if metadata.profile != "plain":
+            places.append(("frontmatter date", metadata.extra.get("date")))
+        for place, value in places:
+            if isinstance(value, str):
+                TextParser.check_text(value, place, markdown=markdown)
 
     def _substitute_metadata(self, metadata: DocumentMetadata) -> None:
         """Substitute title, subtitle and date, keeping their runs for display."""
@@ -885,6 +1043,9 @@ class MarkdownParser:
             match = self.BLOCKQUOTE_PATTERN.match(line)
             if match:
                 bq_lines: list[str] = []
+                # The callout body is unescaped here and parsed again when
+                # rendered, so where it held an escaped `@` is kept apart.
+                sources: list[str] = []
                 quote_tokens: TokenMap = {}
                 while i < len(lines):
                     bq_match = self.BLOCKQUOTE_PATTERN.match(lines[i].strip())
@@ -899,15 +1060,25 @@ class MarkdownParser:
                                 latex=False,
                             )
                         bq_lines.append(TextParser.cleanup_text(source))
+                        sources.append(source)
                         i += 1
                     else:
                         break
 
                 title, body = self._extract_blockquote_title(bq_lines)
-                quote = Blockquote(text=body, title=title)
+                escaped_ats = self._quote_escaped_ats(sources)
+                quote: Blockquote
                 if quote_tokens:
-                    quote.text = restore_terms(body, quote_tokens)
-                    quote.runs = split_term_runs(TextParser.parse_runs_plain(body), quote_tokens)
+                    # The runs made here carry what the offsets protected.
+                    quote = Blockquote(text=restore_terms(body, quote_tokens), title=title)
+                    quote.runs = split_term_runs(
+                        TextParser.parse_judged_runs(body, body, escaped_ats, plain=True),
+                        quote_tokens,
+                    )
+                elif escaped_ats:
+                    quote = MarkedBlockquote(text=body, title=title, escaped_ats=escaped_ats)
+                else:
+                    quote = Blockquote(text=body, title=title)
                 elements.append(
                     Element(
                         element_type=ElementType.BLOCKQUOTE,
@@ -962,11 +1133,10 @@ class MarkdownParser:
 
             # ── Numbered heading fallback (e.g. "1. 서론") ─────────────────
             if match and self._is_numbered_heading(line):
-                full_text = TextParser.cleanup_text(line)
                 elements.append(
                     Element(
                         element_type=ElementType.NUMBERED_HEADING,
-                        content=Heading(level=2, text=full_text, is_numbered=True),
+                        content=self._numbered_heading(line, 2),
                         raw_text=line,
                     )
                 )
@@ -980,7 +1150,14 @@ class MarkdownParser:
                 file_image = Image(alt_text=match.group(1), path=match.group(2) or match.group(3))
             elif self._HTML_IMAGE_LINE_RE.match(line):
                 file_image = HtmlTableParser.image(line)
+            else:
+                # A `{#…}` that cannot number this image keeps the line as text;
+                # the renderer reports it wherever such an image is written.
+                file_image = self._parse_figure_line(line)
             if file_image is not None:
+                if match or isinstance(file_image, Figure):
+                    # The description is a caption line that cannot hold a field.
+                    TextParser.check_text(file_image.alt_text, "image description")
                 elements.append(
                     Element(element_type=ElementType.IMAGE, content=file_image, raw_text=line)
                 )
@@ -1055,8 +1232,36 @@ class MarkdownParser:
             or self.BULLET_PATTERN.match(line)
             or self.NUMBERED_LIST_PATTERN.match(line)
             or self.IMAGE_PATTERN.match(line)
+            or self._parse_figure_line(line) is not None
             or self._is_reference_header(line)
         )
+
+    @classmethod
+    def _parse_figure_line(cls, line: str) -> Figure | None:
+        """Read an image line ending in a Quarto-style ID, `![설명](파일){#fig-…}`.
+
+        Only an ID that `figure_id_problem` accepts makes a figure. Any other
+        `{#…}` ending keeps today's reading of the line as text; the renderer
+        reports an image followed by `{#…}` wherever it stands, so the result
+        does not depend on the lines around it.
+
+        Args:
+            line: One stripped source line.
+
+        Returns:
+            The figure, or None.
+        """
+        attribute = cls._FIGURE_ID_RE.search(line)
+        if attribute is None:
+            return None
+        image = cls.IMAGE_PATTERN.match(line[: attribute.start()])
+        if image is None:
+            return None
+        ref_id = attribute.group(1)
+        path = image.group(2) or image.group(3)
+        if figure_id_problem(ref_id, path, image.group(1)) is not None:
+            return None
+        return Figure(alt_text=image.group(1), path=path, ref_id=ref_id)
 
     def _normalize_paragraph_line(self, raw_line: str) -> tuple[str, bool]:
         """Normalize one paragraph source line and detect hard line breaks."""
@@ -1128,15 +1333,23 @@ class MarkdownParser:
 
     # ── Heading parsing helpers ─────────────────────────────────────────────
 
+    @staticmethod
+    def _numbered_heading(line: str, level: int) -> Heading:
+        """A numbered heading, whose text is unescaped here (see `MarkedHeading`)."""
+        text = TextParser.cleanup_text(line)
+        escaped_ats = TextParser.escaped_ats(line)
+        if escaped_ats:
+            return MarkedHeading(level=level, text=text, is_numbered=True, escaped_ats=escaped_ats)
+        return Heading(level=level, text=text, is_numbered=True)
+
     def _try_parse_heading(self, line: str) -> Element | None:
         """Try to parse line as a heading"""
 
         # Numbered heading (**1. Title**)
         if self._financial_rules and self.NUMBERED_HEADING_PATTERN.match(line):
-            text = TextParser.cleanup_text(line)
             return Element(
                 element_type=ElementType.NUMBERED_HEADING,
-                content=Heading(level=1, text=text, is_numbered=True),
+                content=self._numbered_heading(line, 1),
                 raw_text=line,
             )
 
@@ -1428,6 +1641,34 @@ class MarkdownParser:
         body = " ".join(body_lines).strip()
         return title, body
 
+    @classmethod
+    def _quote_escaped_ats(cls, sources: list[str]) -> tuple[int, ...]:
+        """Offsets in a callout body of each `@` its lines escape.
+
+        As in `TextParser.escaped_ats`, the lines are unescaped and joined twice
+        with an escaped `@` written as two different characters; the offsets
+        where the two bodies differ are those `@`.
+
+        Args:
+            sources: The callout's lines as written (after `> `).
+
+        Returns:
+            The offsets in the body `_extract_blockquote_title` makes, in order.
+        """
+        if not any("\\@" in source for source in sources):
+            return ()
+        _, first = cls._extract_blockquote_title(
+            [TextParser.cleanup_text(source, at_as="0") for source in sources]
+        )
+        _, second = cls._extract_blockquote_title(
+            [TextParser.cleanup_text(source, at_as="1") for source in sources]
+        )
+        return tuple(
+            index
+            for index, (one, other) in enumerate(zip(first, second, strict=True))
+            if one != other
+        )
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ENCODING UTILITIES (ENHANCED v3)
@@ -1510,9 +1751,10 @@ def parse_markdown_file(
     base_dir = None if is_stream(source) else Path(str(source)).resolve().parent
     roots = (*((base_dir,) if base_dir is not None else ()), *asset_roots)
     parser = MarkdownParser(profile=profile, base_dir=base_dir, asset_roots=roots, limits=limits)
-    model = parser._parse_content(content)
-    if get_profile(model.metadata.profile).is_ib:
-        _infer_metadata_from_elements(model, allow_company_inference=not frontmatter_present)
+    # IB metadata is filled from the body inside the parse, where references are judged.
+    model = parser._parse_content(
+        content, infer_metadata=True, frontmatter_present=frontmatter_present
+    )
     if not is_stream(source) and model.metadata.extra.get("theme") not in {None, "default", "mono"}:
         theme_path = Path(model.metadata.extra["theme"])
         if not theme_path.is_absolute():

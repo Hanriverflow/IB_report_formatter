@@ -15,6 +15,15 @@ Changelog (term variables):
 Changelog (hardening):
     - Index styles once per audit and separate render validation from observations.
     - Treat placeholder-like text as warnings and validate native numbering references.
+
+Changelog (captions):
+    - A REF/PAGEREF field whose bookmark is missing is an issue; a REF result or
+      SEQ number that no longer matches (fields not updated) is a warning.
+    - Review fixes: quoted bookmark names are unquoted, a field nested in another
+      field's instruction keeps its own result, and SEQ order is judged only for
+      sequences with no switch or `\\* ARABIC` alone. Only the main body is read.
+    - Second review: a `w:fldSimple` result skips the instruction text of a
+      complex field nested in it, as complex fields do.
 """
 
 import argparse
@@ -218,6 +227,7 @@ def inspect_document(doc: DocxDocument) -> DocumentAudit:
             result.warnings.append(
                 "Possible rendering placeholder (may be literal user text): " + text
             )
+    result.warnings.extend(_cross_reference_findings(doc)[1])
     terms = inspect_terms(doc)
     if terms is not None:
         result.warnings.extend(_term_warnings(terms))
@@ -457,7 +467,159 @@ def inspect_document_issues(doc: DocxDocument) -> list[str]:
         if relation and relation not in doc.part.rels:
             issues.append("Hyperlink relationship is missing")
     issues.extend(_numbering_issues(doc))
+    issues.extend(_cross_reference_findings(doc)[0])
     return issues
+
+
+_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+# The bookmark argument may be quoted (`REF "_Ref123" \h`).
+_REFERENCE_FIELD_RE = re.compile(
+    r'^(REF|PAGEREF)\s+(?:"([^"]*)"|(\S+))(.*)$', re.IGNORECASE | re.DOTALL
+)
+_SEQ_FIELD_RE = re.compile(r'^SEQ\s+(?:"([^"]*)"|(\S+))(.*)$', re.IGNORECASE | re.DOTALL)
+# A REF switch that changes what is shown (paragraph number, position, ...).
+_REF_SHOWN_SWITCH_RE = re.compile(r"\\[nprwtfd]\b", re.IGNORECASE)
+# The SEQ forms whose order is checked: no switch, or Arabic numbers as the
+# engine and Word's Insert Caption write them. A sequence with any other
+# switch (restart, repeat, hide, chapter, another number format) is not judged.
+_SEQ_CHECKED_SWITCHES = frozenset({"", "\\* arabic"})
+
+
+def _body_fields(doc: DocxDocument) -> tuple[dict[str, str], list[tuple[str, str]]]:
+    """Read bookmarks and fields of the main document in order.
+
+    Text counts as visible unless it is a field instruction, so a bookmark
+    around `표 ` and a `SEQ` field reads `표 1`. A field nested in another
+    field's instruction still has its own cached result.
+
+    Args:
+        doc: Open document.
+
+    Returns:
+        Visible text of each bookmark by casefolded name, and each field's
+        instruction and cached result in document order.
+    """
+    marks: dict[str, list[str]] = {}
+    open_marks: dict[str, str] = {}
+    stack: list[dict[str, Any]] = []
+    found: list[tuple[str, str]] = []
+    for node in doc.element.body.iter():
+        tag = node.tag
+        if tag == _W + "bookmarkStart":
+            name = (node.get(qn("w:name")) or "").casefold()
+            open_marks[node.get(qn("w:id")) or ""] = name
+            marks.setdefault(name, [])
+        elif tag == _W + "bookmarkEnd":
+            open_marks.pop(node.get(qn("w:id")) or "", None)
+        elif tag == _W + "fldChar":
+            kind = node.get(qn("w:fldCharType"))
+            if kind == "begin":
+                stack.append({"code": [], "result": [], "shown": False})
+            elif kind == "separate" and stack:
+                stack[-1]["shown"] = True
+            elif kind == "end" and stack:
+                field_state = stack.pop()
+                found.append(("".join(field_state["code"]).strip(), "".join(field_state["result"])))
+        elif tag == _W + "instrText" and stack and not stack[-1]["shown"]:
+            stack[-1]["code"].append(node.text or "")
+        elif tag == _W + "fldSimple":
+            found.append(((node.get(qn("w:instr")) or "").strip(), _simple_field_result(node)))
+        elif tag == _W + "t":
+            # Text belongs to the result of every open field from the innermost
+            # outwards while each of them is past its separator.
+            for state in reversed(stack):
+                if not state["shown"]:
+                    break
+                state["result"].append(node.text or "")
+            if all(state["shown"] for state in stack):
+                for name in open_marks.values():
+                    marks[name].append(node.text or "")
+    return {name: "".join(parts) for name, parts in marks.items()}, found
+
+
+def _simple_field_result(field: Any) -> str:
+    """Visible text of a `w:fldSimple` result, by the rule for complex fields.
+
+    Text inside the instruction of a complex field nested in the result (such
+    as the result of a field nested in that instruction) is not shown.
+
+    Args:
+        field: The `w:fldSimple` element.
+
+    Returns:
+        The text Word shows for the field.
+    """
+    shown: list[bool] = []
+    parts: list[str] = []
+    for node in field.iter(_W + "fldChar", _W + "t"):
+        if node.tag == _W + "t":
+            if all(shown):
+                parts.append(node.text or "")
+            continue
+        kind = node.get(qn("w:fldCharType"))
+        if kind == "begin":
+            shown.append(False)
+        elif kind == "separate" and shown:
+            shown[-1] = True
+        elif kind == "end" and shown:
+            shown.pop()
+    return "".join(parts)
+
+
+def _cross_reference_findings(doc: DocxDocument) -> tuple[list[str], list[str]]:
+    """Check REF/PAGEREF targets and cached results, and SEQ numbering order.
+
+    A reference whose bookmark is missing (its caption was deleted in Word) is
+    an issue. A reference or caption number whose cached result no longer
+    matches (fields not updated after an edit) is a warning.
+
+    Args:
+        doc: Open document.
+
+    Returns:
+        Issues and warnings.
+    """
+    marks, found = _body_fields(doc)
+    issues: list[str] = []
+    warnings: list[str] = []
+    sequences: dict[str, list[tuple[str, str]]] = {}
+    for code, result in found:
+        reference = _REFERENCE_FIELD_RE.match(code)
+        if reference is not None:
+            kind, quoted, bare, switches = reference.groups()
+            name = quoted if quoted is not None else bare
+            target = marks.get(name.casefold())
+            if target is None:
+                issue = f"Cross-reference field {kind.upper()} {name} has no bookmark named {name}"
+                if issue not in issues:
+                    issues.append(issue)
+            elif (
+                kind.upper() == "REF"
+                and not _REF_SHOWN_SWITCH_RE.search(switches)
+                and result.strip() != target.strip()
+            ):
+                warnings.append(
+                    f"Cross-reference REF {name} shows {result.strip()!r} but its target reads "
+                    f"{target.strip()!r}; update fields in Word (select all, F9)"
+                )
+            continue
+        sequence = _SEQ_FIELD_RE.match(code)
+        if sequence is None:
+            continue
+        quoted, bare, switches = sequence.groups()
+        name = quoted if quoted is not None else bare
+        sequences.setdefault(name, []).append((" ".join(switches.split()).casefold(), result))
+    for name, entries in sequences.items():
+        if any(switches not in _SEQ_CHECKED_SWITCHES for switches, _ in entries):
+            continue
+        if [result.strip() for _, result in entries] != [
+            str(number) for number in range(1, len(entries) + 1)
+        ]:
+            warnings.append(
+                f"Caption numbers SEQ {name} are not 1, 2, 3... in document order; "
+                "update fields in Word (select all, F9)"
+            )
+    return issues, warnings
 
 
 def _numbering_issues(doc: DocxDocument) -> list[str]:

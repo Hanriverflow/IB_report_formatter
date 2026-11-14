@@ -6,9 +6,26 @@ Changelog (quality hardening):
     - Retain original confirmation fences for lossless term-sheet fallback.
     - Carry an optional table note rendered below the table in every profile.
     - Carry explicit totals/subtotal body rows and a per-table negative-number style.
+
+Changelog (captions):
+    - Tables and figures with a reference ID (`NumberedTable`, `Figure`) and the
+      render-time caption number run; subclasses keep models without IDs unchanged.
+    - `CrossReference` runs for `@tbl-…` / `@fig-…` in body text.
+    - Review fixes: `MarkedHeading` and `MarkedBlockquote` keep escaped `@`
+      apart in text that was unescaped at parse time; `table_is_drawn` and
+      `figure_id_problem` are the one rule for what gets a number.
+    - Second review: a `CrossReference` is made only for a reference that
+      resolves, so nothing is joined back; `numbered_items` is the one list of
+      numbered tables and figures for the parser and the renderer.
+    - Fourth check: `CrossReference.joined_before`/`joined_after` and
+      `reference_groups` give the runs as written, so a resolved reference
+      changes nothing else (P6); `InferredText` marks an IB value read from a
+      body paragraph with the references that resolved there.
 """
 
-from dataclasses import dataclass, field
+import re
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Optional, Union
@@ -73,6 +90,81 @@ class TextRun:
     term_key: str | None = None  # set when the text is a substituted {{term}} value
     code: bool = False  # inline code span content (rendered monospace, without backticks)
     image: Optional["Image"] = None  # inline image (e.g. in a table cell); the text is empty
+
+
+@dataclass
+class CaptionNumber(TextRun):
+    """The `표 1` at the start of a numbered caption, built at render time.
+
+    `text` holds the label and number as displayed; the renderer writes the
+    label, a `SEQ` field whose cached result is `number`, and a hidden bookmark
+    around both.
+    """
+
+    label: str = ""
+    number: int = 0
+    bookmark: str = ""
+
+
+@dataclass
+class CrossReference(TextRun):
+    """A `@tbl-…` / `@fig-…` that resolves to a numbered table or figure.
+
+    The parser makes one only for a reference whose target is numbered and
+    that stands where a Word field can go (`TextParser._read_references`);
+    `text` is the `@…` as written and `target` the ID. The renderer writes it
+    as a `REF` field. Text that is not such a reference keeps its run.
+
+    The text around it keeps its run's formatting in runs of its own;
+    `joined_before` and `joined_after` say that the run before or after it
+    was cut from the same run. Whatever is decided from a run's text (number
+    formatting above all) is decided on that run as written
+    (`reference_groups`), so a reference changes nothing but its own text.
+    """
+
+    target: str = ""
+    joined_before: bool = False
+    joined_after: bool = False
+
+
+def reference_groups(runs: Sequence[TextRun]) -> list[range]:
+    """Index ranges of `runs` that were one run before references were cut out.
+
+    A run that held no resolvable reference is a range of its own. A run
+    that held one is the range of its pieces and its `CrossReference` runs;
+    joining their texts gives the run as written.
+
+    Args:
+        runs: Parsed runs.
+
+    Returns:
+        Consecutive ranges covering every index once, in order.
+    """
+    groups: list[range] = []
+    start = 0
+    for index in range(1, len(runs) + 1):
+        previous = runs[index - 1]
+        current = runs[index] if index < len(runs) else None
+        # A piece keeps every format of its run; a neighbour that differs was never part of it.
+        joined = (
+            current is not None
+            and (
+                (isinstance(previous, CrossReference) and previous.joined_after)
+                or (isinstance(current, CrossReference) and current.joined_before)
+            )
+            and all(
+                getattr(previous, name) == getattr(current, name)
+                for name in TEXT_RUN_FIELDS
+                if name != "text"
+            )
+        )
+        if not joined:
+            groups.append(range(start, index))
+            start = index
+    return groups
+
+
+TEXT_RUN_FIELDS = tuple(item.name for item in fields(TextRun))
 
 
 @dataclass
@@ -226,6 +318,17 @@ class Table:
 
 
 @dataclass
+class NumberedTable(Table):
+    """A table whose specification gives a reference ID (`tables[].id`).
+
+    A subclass rather than a field, so tables without an ID keep their model
+    exactly as before.
+    """
+
+    ref_id: str = ""
+
+
+@dataclass
 class Heading:
     """A heading element"""
 
@@ -233,6 +336,18 @@ class Heading:
     text: str
     is_numbered: bool = False
     runs: list[TextRun] = field(default_factory=list)  # set only when terms are substituted
+
+
+@dataclass
+class MarkedHeading(Heading):
+    """A heading whose `text` was unescaped at parse time and held an escaped `@`.
+
+    `escaped_ats` are the offsets in `text` of each `@` that was escaped in the
+    Markdown (`TextParser.escaped_ats`), so a `\\@tbl-…` is never read as a
+    reference.
+    """
+
+    escaped_ats: tuple[int, ...] = ()
 
 
 @dataclass
@@ -277,6 +392,13 @@ class Blockquote:
 
 
 @dataclass
+class MarkedBlockquote(Blockquote):
+    """A callout whose source held an escaped `@` (see `MarkedHeading`)."""
+
+    escaped_ats: tuple[int, ...] = ()
+
+
+@dataclass
 class Image:
     """An image reference — supports file paths and Base64 (v3)"""
 
@@ -284,6 +406,151 @@ class Image:
     path: str
     base64_data: str | None = None  # NEW (v3): Base64-encoded image data
     mime_type: str = "image/png"  # NEW (v3): MIME type for Base64
+
+
+@dataclass
+class Figure(Image):
+    """An image line with a reference ID (`![설명](파일){#fig-…}`), numbered in its caption."""
+
+    ref_id: str = ""
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CAPTION NUMBERS AND REFERENCE IDS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Word's caption labels, the same in every profile (owner decision 2026-11-14).
+CAPTION_LABELS = {"tbl": "표", "fig": "그림"}
+# Lowercase ASCII words joined by hyphens: the ID maps one-to-one onto a Word
+# bookmark name (`-` becomes `_`), and a Korean particle may follow it directly.
+REFERENCE_ID_RE = re.compile(r"(tbl|fig)-[a-z0-9]+(?:-[a-z0-9]+)*")
+# Word allows 40 characters in a bookmark name; `_Ref_` takes five.
+REFERENCE_ID_MAX_LENGTH = 35
+
+
+def reference_id_problem(ref_id: str, kind: str) -> str | None:
+    """Explain why `ref_id` cannot name a table or figure, or return None.
+
+    Args:
+        ref_id: The ID as written, without `#` or `@`.
+        kind: `tbl` for a table, `fig` for a figure.
+
+    Returns:
+        A diagnostic sentence, or None for a usable ID.
+    """
+    match = REFERENCE_ID_RE.fullmatch(ref_id)
+    if match is None or match.group(1) != kind:
+        return (
+            f"{ref_id!r} is not a {'table' if kind == 'tbl' else 'figure'} id: write {kind}- "
+            "followed by lowercase letters and digits, words joined by hyphens"
+        )
+    if len(ref_id) > REFERENCE_ID_MAX_LENGTH:
+        return f"{ref_id!r} is longer than {REFERENCE_ID_MAX_LENGTH} characters"
+    return None
+
+
+def caption_bookmark_name(ref_id: str) -> str:
+    """Return the hidden Word bookmark around a caption's label and number."""
+    return "_Ref_" + ref_id.replace("-", "_")
+
+
+def figure_id_problem(ref_id: str, path: str, description: str) -> str | None:
+    """Explain why an image with `{#ref_id}` cannot be a numbered figure, or None.
+
+    Args:
+        ref_id: The ID as written after `#`.
+        path: The image destination.
+        description: The image description (alt text).
+
+    Returns:
+        A diagnostic starting with the ID, or None when the image can be numbered.
+    """
+    problem = reference_id_problem(ref_id, "fig")
+    if problem is None and path.startswith("data:"):
+        problem = f"{ref_id!r} is on an embedded image; figure ids need an image file"
+    if problem is None and not description.strip():
+        problem = f"{ref_id!r} needs an image description: its number is written before it"
+    return problem
+
+
+def table_is_drawn(table: "Table") -> bool:
+    """Whether the renderer draws `table` (and so whether its caption gets a number)."""
+    return bool(table.rows) and table.col_count > 0
+
+
+def numbered_items(
+    elements: Sequence["Element"],
+) -> Iterator[tuple["NumberedTable | Figure", str, str | None]]:
+    """Each table and figure with a reference ID, in document order.
+
+    The parser takes the IDs that resolve from here and the renderer numbers
+    the same items, so both agree on what a reference can point to.
+
+    Args:
+        elements: Document elements.
+
+    Yields:
+        The table or figure, its kind (`tbl` or `fig`) and why it gets no
+        number (None when it is numbered).
+    """
+    for element in elements:
+        content = element.content
+        if element.element_type == ElementType.TABLE and isinstance(content, NumberedTable):
+            kind, caption = "tbl", content.caption
+        elif element.element_type == ElementType.IMAGE and isinstance(content, Figure):
+            kind, caption = "fig", content.alt_text
+        else:
+            continue
+        problem = reference_id_problem(content.ref_id, kind)
+        if problem is None and not caption.strip():
+            problem = f"{content.ref_id!r} has no caption to number"
+        if problem is None and isinstance(content, NumberedTable) and not table_is_drawn(content):
+            # The renderer skips a table without rows or columns, so it gets
+            # no number and references to it have no target.
+            problem = f"{content.ref_id!r} is on a table with no columns, which is not drawn"
+        yield content, kind, problem
+
+
+def numbered_targets(elements: Sequence["Element"]) -> frozenset[str]:
+    """IDs that a reference can resolve to: those of numbered tables and figures."""
+    return frozenset(
+        item.ref_id for item, _, problem in numbered_items(elements) if problem is None
+    )
+
+
+def model_images(elements: Sequence["Element"]) -> list["Image"]:
+    """Every image of the elements in document order, wherever it stands.
+
+    An image element, and an image run of a paragraph, heading, list item,
+    callout or table cell, are all found; each object once.
+
+    Args:
+        elements: The document's elements.
+
+    Returns:
+        The images.
+    """
+    found: list[Image] = []
+    seen: set[int] = set()
+    pending: list[object] = list(reversed(elements))
+    while pending:
+        item = pending.pop()
+        if isinstance(item, (str, bytes, int, float, Enum)) or item is None or id(item) in seen:
+            continue
+        seen.add(id(item))
+        if isinstance(item, Image):
+            found.append(item)
+            continue
+        if is_dataclass(item) and not isinstance(item, type):
+            children = [getattr(item, name.name) for name in fields(item)]
+        elif isinstance(item, dict):
+            children = list(item.values())
+        elif isinstance(item, (list, tuple)):
+            children = list(item)
+        else:
+            continue
+        pending.extend(reversed(children))
+    return found
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -338,6 +605,28 @@ class DefaultTitle(str):
     Any title read from frontmatter or the body is a plain `str`, even when its
     text equals the stand-in, so a renderer can tell the two apart.
     """
+
+
+class InferredText(str):
+    """A metadata value an IB profile read from a leading body paragraph.
+
+    The parser judged that paragraph where it stands: escapes, code, math
+    and term values in it are not references, and a reference that does not
+    resolve there was already reported. `references` holds the ones that
+    resolve in the body (as written); where the value is shown it cannot hold
+    a field, so the renderer reports these instead of reading the plain text
+    again. Its text is the value exactly as before; a plain `str` is a value
+    the document gave in frontmatter.
+    """
+
+    references: tuple[str, ...] = ()
+
+    @classmethod
+    def read(cls, text: str, references: tuple[str, ...] = ()) -> "InferredText":
+        """The value `text`, holding the given resolvable references."""
+        value = cls(text)
+        value.references = references
+        return value
 
 
 @dataclass

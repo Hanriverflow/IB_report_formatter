@@ -438,6 +438,45 @@ By default a financial table keeps each negative amount as written (`(1,234)` or
 - Alignment and column widths are the same as without the option.
 - Without `negative`, a written `△…` is left exactly as written. Any other value, or `negative` without `type: financial` in the same spec, is rejected.
 
+## Table and figure numbers and cross-references
+
+Give a table or figure an ID and the engine writes its caption as Word's Insert Caption command does: `표 1. Title`, `그림 1. Description`. The number is a Word `SEQ` field holding the number the engine worked out, and a body reference is a Word cross-reference (`REF` field) holding `표 1`. After someone inserts another table in Word and updates fields, later numbers and references follow. Tables and figures without an ID render exactly as before.
+
+```yaml
+tables:
+  - id: tbl-results        # tbl-, then lowercase letters and digits; words joined by hyphens
+    caption: 연도별 실적
+    unit: 억원
+```
+
+```markdown
+![거래 구조도](structure.png){#fig-structure}
+
+@tbl-results에서 보듯 매출이 늘었다. 구조는 @fig-structure 참조.
+```
+
+- Tables take `id: tbl-…` in their table spec and need a `caption`. Figures take `{#fig-…}` at the end of an image file line of its own and need a description. A `{#…}` after an image inside a paragraph, list or table cell, or on an embedded Base64 image, numbers nothing and is reported. Charts and diagrams are not numbered.
+- Tables and figures are counted separately from the start of the document, and only those actually drawn; there are no chapter numbers (`표 2-1`). The labels are `표` and `그림` in every profile.
+- `@tbl-…` and `@fig-…` become cross-references in paragraphs, lists, quotes, headings, table cells (HTML tables included) and table caption/unit/source/note text.
+- Reference grammar:
+  - The character before `@` must be the start of the text, whitespace, or an opening bracket or quote (`(`, `[`, `「`, `"`, ...). An `@` after a letter, digit, `+`, `.`, `_` or `-` (an e-mail address such as `user+@tbl-x.example`) or after another `@` is not a reference. Written right after any other character (`@tbl-a,@tbl-b`, `@tbl-a~@tbl-b`, `note:@tbl-a`) it is not a reference either and stays text, but when its ID is the ID of a table or figure in the document it was meant as one and is reported. Put a space before the `@` (`@tbl-a, @tbl-b`), or write `\@tbl-b` to keep it as text. Frontmatter values shown as plain text are not reported this way.
+  - `tbl-` and `fig-` are lowercase. `@Tbl-a` or `@FIG-a` is reported as a malformed reference.
+  - Text inside a chart or diagram block is like a code block and holds no reference.
+  - The ID is read whole, up to the last letter, digit, `-` or `_`, then checked. A malformed ID (`@tbl-a-`, `@tbl-`, `@tbl-Results`) is reported, never shortened to a valid prefix. A Korean particle, whitespace or punctuation may follow the ID directly (`@tbl-results에서`, `(@tbl-results)`).
+  - An ID followed by `.` and a letter or digit (a domain such as `@tbl-x.example`) is not a reference.
+  - Code spans and blocks, math (`$…$`), link destinations and an escaped `\@` never hold a reference, wherever they stand.
+  - The text is read as a reader sees it, across bold, italic and colour; an empty colour span adds nothing. An ID that formatting splits (`@tbl-a**b**`, `@tbl-a<span …>b</span>`) is reported, never resolved, and the domain rule applies to the whole visible ID (`@tbl-a**b**.com` is not a reference).
+  - A heading is rendered without its `**` markers but judged with them, like body text: `## @tbl-**a**` is reported.
+  - Term values (`{{key}}`) are never read as references, also in a heading that becomes the document title.
+  - References are read in the text as parsed, so `@**tbl-a**`, an HTML `&#64;tbl-a` and a YAML escape for `@` in a frontmatter value are read (and reported) like any other.
+  - Text that is not read as a reference, and a reference that does not resolve, render exactly as written, as before the feature, private-use characters included: a run is split only around a reference that resolves.
+- Word does not update these fields on opening or print preview (checked with Word 16 on Windows); select all and press F9 after editing. The cached values are correct until then.
+- Korean Word has no built-in `그림` caption label. To continue figure numbers with Word's Insert Caption, create the label `그림` once (References › Insert Caption › New Label).
+- Strict mode rejects, wherever the grammar reads a reference, one to an unknown ID, a malformed one, one whose ID formatting splits (`@tbl-a**b**`), one inside link text, and one in an image description (inline and HTML `data:` images included), a footnote or a frontmatter value the document shows (below), where no Word field can go; the default mode keeps such text exactly as written and reports it. A repeated figure ID and a `{#…}` that numbers nothing are rejected in strict mode too and kept as text otherwise. Table spec `id` errors in shape, repetition or a missing caption reject the document in both modes, like other table spec errors. An `id` on a table with no columns, which is not drawn, is rejected in strict mode; the default mode reports it and gives the table no number.
+- Frontmatter values checked for references (they are written as text): the title and subtitle always, and the date in every profile but `plain`, as written before term values are inserted. Every other value only where the document shows it: on the IB cover `report_type`, `sector`, `ticker`, `subject_company` (or `company`), `analyst`, `recipient`, `analysis_period`, `analysis_basis`; in the title block `sender.department`, `analyst`, `meeting_time`, `location`, `attendees` (a letter: `sender.organization`, `recipients`, `cc`); in the letter closing `attachments`, `sender.signatory` (or `sender.organization`), `document_no`, `sender.department`, `sender.contact`, and `letter.appendix_label` at the head of the appendix; in the header `sender.organization` (or `company`) and `version` (not in a letter); on the disclaimer page `company`; in a term sheet `version` and the `prepared_by`, `disclaimer` and confidentiality-label texts. A value is read as it is shown (plain text; term-sheet texts as inline Markdown). `report_type` is shown in capitals and so never holds a reference. A value an IB profile reads from a leading body paragraph (`**작성자:** …`) is judged in that paragraph: a term value, an escaped `@` or code there is not a reference, and one that resolves there is reported where the value is shown.
+- A reference that resolves changes nothing but its own text: an amount beside it in a table cell keeps the form it has without the ID, and the IB TOC preview keeps the heading as written with only the reference as `표 1`.
+- `docx-audit` reports a reference whose target bookmark is missing as an issue and a stale reference or caption number (fields not yet updated) as a warning. Numbering order is judged only for `SEQ` sequences without switches or with `\* ARABIC` alone. Only the main body is checked (not headers, footers or footnotes).
+
 ## Allowed asset folders, input limits and rejections
 
 **The image/logo path restriction changes earlier behaviour:** a local image that previously loaded can now be rejected if it is outside the allowed folders. For a Markdown file, its own folder and subfolders are allowed by default. Markdown text or a stream without a source file, and a directly constructed document model, have no default allowed folder; the current working directory is not implicitly allowed.

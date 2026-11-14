@@ -6,11 +6,13 @@ import re
 import yaml
 
 from document_model import (
+    CrossReference,
     DefaultTitle,
     DocumentMetadata,
     DocumentModel,
     ElementType,
     Heading,
+    InferredText,
     Paragraph,
 )
 from document_profiles import default_metadata
@@ -217,30 +219,41 @@ class FrontmatterParser:
 def _infer_metadata_from_elements(
     model: DocumentModel,
     allow_company_inference: bool = True,
-) -> None:
-    """Backfill metadata from document content when frontmatter is absent or partial."""
+) -> Heading | None:
+    """Backfill metadata from document content when frontmatter is absent or partial.
+
+    The parser calls this for IB profiles inside its reference scope and
+    judges the title it returns. Every other value read here is an
+    `InferredText`: a label value carries the references that resolve in its
+    paragraph, and a company read from the title carries none, because the
+    title it is part of is judged.
+
+    Returns:
+        The heading that became the title, or None.
+    """
     metadata = model.metadata
 
     # Only the profile's stand-in gives way to the first H1. A written title, even
     # "IB Report" or one made by a term reference, is a plain string and stays.
+    title_heading: Heading | None = None
     if isinstance(metadata.title, DefaultTitle):
-        first_heading = next(
+        title_heading = next(
             (
-                element.content.text.strip()
+                element.content
                 for element in model.elements
                 if element.element_type == ElementType.HEADING_1
                 and isinstance(element.content, Heading)
                 and element.content.text.strip()
             ),
-            "",
+            None,
         )
-        if first_heading:
-            metadata.title = first_heading
+        if title_heading is not None:
+            metadata.title = title_heading.text.strip()
 
     if allow_company_inference and metadata.company == "Korea Development Bank":
         inferred_company = _infer_company_from_title(metadata.title)
         if inferred_company:
-            metadata.extra.setdefault("subject_company", inferred_company)
+            metadata.extra.setdefault("subject_company", InferredText.read(inferred_company))
 
     label_map = {
         "기준일": ("extra", "date"),
@@ -277,10 +290,16 @@ def _infer_metadata_from_elements(
         if extracted is None:
             continue
 
-        label, value = extracted
+        label, text = extracted
         mapped = label_map.get(label.lower())
-        if not mapped or not value:
+        if not mapped or not text:
             continue
+        # The label run never holds a mapped value's reference: a label that is
+        # a reference maps to nothing.
+        value = InferredText.read(
+            text,
+            tuple(run.text for run in element.content.runs[1:] if isinstance(run, CrossReference)),
+        )
 
         field_name, extra_key = mapped
         if field_name == "extra" and extra_key:
@@ -293,6 +312,7 @@ def _infer_metadata_from_elements(
             "Korea Development Bank",
         }:
             setattr(metadata, field_name, value)
+    return title_heading
 
 
 def _extract_leading_metadata_pair(paragraph: Paragraph) -> tuple[str, str] | None:

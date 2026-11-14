@@ -2,6 +2,21 @@
 IB Renderer Module for Word Report Generation
 Handles styling and rendering of document elements in IB Bank style.
 
+Changelog (captions):
+    - Tables and figures with IDs are numbered in document order before
+      composition; their captions open with `표 1. ` / `그림 1. `.
+    - `@tbl-…`/`@fig-…` written where no field can go (title, subtitle, image
+      description, footnote) is reported and stays text.
+    - Review fixes: such text is read with the body-text rules; a table that is
+      not drawn gets no number; caption numbers actually written are compared
+      with the numbers worked out after composition.
+    - Second review: composition runs in a `ReferenceScope` of the render's
+      numbers; the frontmatter values a document shows (besides title,
+      subtitle and date, checked by the parser) are checked here
+      (`_check_metadata_references`); term-sheet metadata never holds a field.
+    - Fifth check: `letter.appendix_label` and the cover's `report_type` are
+      checked too.
+
 Changelog (property-test regressions):
     - Heading bold-marker removal skips code spans and escaped characters, and
       escapes are resolved once; other headings render as before.
@@ -86,7 +101,17 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Mm, Pt
 
-from document_model import Chart, ConfirmationBlock, DefaultTitle
+from document_model import (
+    CAPTION_LABELS,
+    CaptionNumber,
+    Chart,
+    ConfirmationBlock,
+    DefaultTitle,
+    InferredText,
+    caption_bookmark_name,
+    model_images,
+    numbered_items,
+)
 from document_profiles import (
     RenderOptions,
     default_metadata,
@@ -120,6 +145,12 @@ from ib_render_media import ImageRenderer as ImageRenderer
 from ib_render_media import LaTeXRenderer as LaTeXRenderer
 from ib_render_tables import _BLACK as _BLACK
 from ib_render_tables import TableRenderer as TableRenderer
+from ib_render_text import (
+    CaptionNumbers,
+    caption_prefix,
+    reference_scope,
+    use_caption_numbers,
+)
 from ib_render_text import TextRenderer as TextRenderer
 from input_safety import (
     ConversionRejection,
@@ -134,6 +165,7 @@ from input_safety import (
 from md_parser import (
     Blockquote,
     CodeBlock,
+    DocumentMetadata,
     DocumentModel,
     Element,
     ElementType,
@@ -143,6 +175,7 @@ from md_parser import (
     ListItem,
     Paragraph,
     Table,
+    TextParser,
 )
 from numeric_checks import CHECKS_PROPERTY, checks_to_json, parse_checks
 from office_layout import (
@@ -798,7 +831,19 @@ class IBDocumentRenderer:
             use_style(style_values),
             collect_raster_font_diagnostics() as font_warnings,
             collect_term_runs(resolved.term_tags) as term_runs,
+            use_caption_numbers(self._caption_numbers(model)) as caption_numbers,
+            TextParser.reference_scope(reference_scope(caption_numbers)),
         ):
+            self._check_metadata_references(
+                model.metadata,
+                cover=resolved.cover,
+                opening=report_title_block or opening_title,
+                disclaimer=resolved.disclaimer,
+                confidential=resolved.confidential,
+                parsed=model.parsed_profile is not None,
+            )
+            if model.parsed_profile is None:
+                self._check_unparsed_texts(model)
             self.styler.setup_document()
             self.styler.create_styles()
             if resolved.profile.name == "office-letter":
@@ -825,7 +870,8 @@ class IBDocumentRenderer:
                     title_inserted = render_office_opening(self.doc, model.metadata)
             if self._term_sheet:
                 # Resolved in preflight; the opening leads the first page, before any TOC.
-                with _metadata_text("term-sheet opening"):
+                # Its metadata texts cannot hold a field (checked above).
+                with _metadata_text("term-sheet opening"), TextParser.reference_scope(None):
                     title_inserted = render_term_sheet_opening(
                         self.doc,
                         model.metadata,
@@ -877,6 +923,7 @@ class IBDocumentRenderer:
                         italic=True,
                         color=STYLE.RED,
                     )
+            self._check_caption_order(caption_numbers)
             if not office_closed:
                 with _metadata_text("closing"):
                     render_office_closing(
@@ -895,7 +942,10 @@ class IBDocumentRenderer:
                 if isinstance(sender, dict)
                 else model.metadata.company
             )
-            with _metadata_text("header (sender.organization or company)"):
+            with (
+                _metadata_text("header (sender.organization or company)"),
+                TextParser.reference_scope(None),
+            ):
                 if self._term_sheet:
                     setup_term_sheet_header_footer(
                         self.doc,
@@ -1054,6 +1104,202 @@ class IBDocumentRenderer:
         normalized = cls._SEMANTIC_BOOKMARK_EXTRA_RE.sub("_", (extra or "").strip().lower())
         return normalized.strip("_")
 
+    def _caption_numbers(self, model: DocumentModel) -> CaptionNumbers:
+        """Number tables and figures with IDs in document order, before composition.
+
+        Tables and figures are counted separately, as Word's `SEQ 표` and
+        `SEQ 그림` fields count them. A repeated ID is a diagnostic: the later
+        caption keeps its number (so Word's count still matches) but gets no
+        bookmark, and references resolve to the first.
+
+        Args:
+            model: The render's own copy of the model, after title filtering.
+
+        Returns:
+            The numbers by model object and by ID, with this render's bookmark
+            allocator and diagnostic sink.
+        """
+        numbers = CaptionNumbers(next_bookmark_id=self._next_bookmark_id, errors=self.errors)
+        counts = dict.fromkeys(CAPTION_LABELS, 0)
+        reported = set(self.errors)  # the parser may have said so
+        for content, kind, problem in numbered_items(model.elements):
+            if problem is not None:
+                if "Reference id " + problem not in reported:
+                    reported.add("Reference id " + problem)
+                    self.errors.append("Reference id " + problem)
+                continue
+            counts[kind] += 1
+            label = CAPTION_LABELS[kind]
+            repeated = content.ref_id in numbers.by_id
+            if repeated:
+                self.errors.append(
+                    f"Reference id {content.ref_id!r} is used by more than one table or figure"
+                )
+            number = CaptionNumber(
+                text=f"{label} {counts[kind]}",
+                label=label,
+                number=counts[kind],
+                bookmark="" if repeated else caption_bookmark_name(content.ref_id),
+            )
+            numbers.by_object[id(content)] = number
+            numbers.by_id.setdefault(content.ref_id, number)
+        return numbers
+
+    def _check_metadata_references(
+        self,
+        metadata: DocumentMetadata,
+        cover: bool,
+        opening: bool,
+        disclaimer: bool,
+        confidential: bool,
+        parsed: bool,
+    ) -> None:
+        """Report references in the frontmatter values this render shows.
+
+        Such values are written as text and cannot hold a field. The parser
+        checks the title, subtitle and date before term values are inserted
+        (here only for a model built without the parser); this checks every
+        other value where a composer shows it: the cover,
+        the title block, the letter closing, the header, the disclaimer page,
+        and the term-sheet texts and footer. Values are read as the text they
+        are shown as, except term-sheet texts, which are inline Markdown. The
+        cover's `report_type` is shown in capitals and checked as written. A
+        value an IB profile read from a body paragraph
+        (`InferredText`, the date included) was judged where it stands; only
+        the references that resolve there are reported where it is shown.
+
+        Args:
+            metadata: The render's metadata.
+            cover: The cover page is rendered.
+            opening: The title block (`render_office_opening`) is rendered.
+            disclaimer: The disclaimer page is rendered.
+            confidential: The term-sheet confidentiality label is shown.
+            parsed: The model comes from the parser, which checked the title,
+                subtitle and date.
+        """
+        extra = metadata.extra
+        sender = extra.get("sender")
+        sender = sender if isinstance(sender, dict) else {}
+        letter = extra.get("letter")
+        letter = letter if isinstance(letter, dict) else {}
+        profile = metadata.profile
+        shown: list[str] = []
+        if cover:
+            institution = (
+                "subject_company" if str(extra.get("subject_company", "")).strip() else "company"
+            )
+            shown += [
+                "report_type",
+                "sector",
+                "ticker",
+                institution,
+                "analyst",
+                "recipient",
+                "analysis_period",
+                "analysis_basis",
+            ]
+        if opening and profile == "office-letter":
+            shown += ["sender.organization", "recipients", "cc"]
+        elif opening:
+            shown += ["sender.department", "analyst", "meeting_time", "location", "attendees"]
+        if profile == "office-letter":
+            signatory = "sender.signatory" if sender.get("signatory") else "sender.organization"
+            shown += [
+                "attachments",
+                signatory,
+                "document_no",
+                "sender.department",
+                "sender.contact",
+                "letter.appendix_label",  # heads the appendix page when one is set
+            ]
+        elif not self._term_sheet:
+            shown.append("sender.organization" if "organization" in sender else "company")
+            shown.append("version")  # after the company in the header (E8)
+        if disclaimer:
+            shown.append("company")
+        if self._term_sheet:
+            shown.append("version")
+        values = {
+            "company": metadata.company,
+            "ticker": metadata.ticker,
+            "sector": metadata.sector,
+            "analyst": metadata.analyst,
+            **{f"sender.{key}": value for key, value in sender.items()},
+            **{f"letter.{key}": value for key, value in letter.items()},
+        }
+        if profile != "plain":
+            shown.append("date")  # an inferred date; a written one is checked by the parser
+        for key in dict.fromkeys(shown):
+            value = values[key] if key in values else extra.get(key)
+            for text in value if isinstance(value, list) else [value]:
+                if isinstance(text, InferredText):
+                    TextParser.check_text(
+                        " ".join(text.references), f"frontmatter {key}", markdown=False
+                    )
+                elif isinstance(text, str) and key != "date":
+                    TextParser.check_text(text, f"frontmatter {key}", markdown=False)
+        if not parsed:
+            # A model built without the parser: its title, subtitle and date as they stand.
+            date = extra.get("date") if profile != "plain" else None
+            for place, text in (
+                ("document title", metadata.title),
+                ("subtitle", metadata.subtitle),
+                ("frontmatter date", date),
+            ):
+                if isinstance(text, str):
+                    TextParser.check_text(text, place, markdown=self._term_sheet)
+        texts = self.term_sheet_texts
+        if texts is not None:
+            for place, text in (
+                ("prepared_by", texts.prepared_by),
+                ("disclaimer", texts.disclaimer),
+            ):
+                TextParser.check_text(text, f"term-sheet {place}")
+            if confidential:
+                TextParser.check_text(
+                    texts.confidential_label, "term-sheet confidential_label", markdown=False
+                )
+
+    @staticmethod
+    def _check_unparsed_texts(model: DocumentModel) -> None:
+        """Report references in the descriptions and footnotes of a hand-built model.
+
+        Neither can hold a field. The parser reports them as written, before
+        a description's escapes are resolved; a model built without the
+        parser is read as it stands: a description as the plain text it is
+        stored as, wherever the image stands, and a footnote as inline
+        Markdown, as the parser reads one.
+
+        Args:
+            model: The render's copy of a model that did not come from the parser.
+        """
+        for image in model_images(model.elements):
+            TextParser.check_text(image.alt_text, "image description", markdown=False)
+        for text in model.footnotes.values():
+            if isinstance(text, str):
+                TextParser.check_text(text, "footnote")
+
+    def _check_caption_order(self, numbers: CaptionNumbers) -> None:
+        """Report caption numbers that were not written as they were worked out.
+
+        Numbers are assigned before composition; a caption that is then not
+        written (a failed element in the default mode) or written out of order
+        leaves later numbers and references with stale cached results.
+
+        Args:
+            numbers: The render's caption numbers after composition.
+        """
+        for label in CAPTION_LABELS.values():
+            expected = [n.number for n in numbers.by_object.values() if n.label == label]
+            written = [n.number for n in numbers.written if n.label == label]
+            if written != sorted(expected):
+                message = (
+                    f"Caption numbers {label} were written as {written} but worked out as "
+                    f"{sorted(expected)}; update fields in Word (select all, F9)"
+                )
+                if message not in self.errors:
+                    self.errors.append(message)
+
     def _next_bookmark_id(self) -> int:
         """Return the next bookmark ID for the current document."""
         self._bookmark_id += 1
@@ -1101,7 +1347,8 @@ class IBDocumentRenderer:
             self.callout_renderer.render(cast(Blockquote, element.content))
 
         elif etype == ElementType.IMAGE:
-            self.image_renderer.render(cast(Image, element.content))
+            image = cast(Image, element.content)
+            self.image_renderer.render(image, caption_prefix(image))
 
         elif etype == ElementType.LATEX_BLOCK:
             self._render_latex_block(cast(LaTeXEquation, element.content))

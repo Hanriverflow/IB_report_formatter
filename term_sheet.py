@@ -23,6 +23,10 @@ Changelog (A2 rendering):
       grid, table frame, caption/unit line, note, source and 4pt spacer.
     - Opening block, per-line body paragraphs, accent headings, document defaults,
       two-row confirmation box and per-section header/footer.
+
+Changelog (captions):
+    - The caption/unit line takes the caption number of a table with an ID.
+    - Opening and header texts keep `@tbl-…` as text (no field), as reported.
 """
 
 import logging
@@ -43,7 +47,13 @@ from docx.oxml.ns import qn
 from docx.oxml.table import CT_Tc
 from docx.shared import Emu, Length, Mm, Pt, RGBColor, Twips
 
-from document_model import DocumentMetadata, Heading, Paragraph, TextRun
+from document_model import (
+    DocumentMetadata,
+    Heading,
+    MarkedHeading,
+    Paragraph,
+    TextRun,
+)
 from document_profiles import document_version
 from ib_render_document_style import VERSION_PROPERTY, make_property_field
 from input_safety import (
@@ -780,7 +790,13 @@ def set_row_pagination(word_row: Any, keep_together: bool, repeat_header: bool) 
 
 
 def add_table_heading(
-    doc: Any, caption: str, unit: str, as_of: str, render_runs: RenderRuns, width: int
+    doc: Any,
+    caption: str,
+    unit: str,
+    as_of: str,
+    render_runs: RenderRuns,
+    width: int,
+    prefix: Sequence[TextRun] = (),
 ) -> None:
     """Caption at left and `(단위 : …, 기준일 : …)` at right, kept with the table.
 
@@ -791,6 +807,8 @@ def add_table_heading(
         as_of: Reference date text; may be empty.
         render_runs: Injected run renderer.
         width: Printable width of the current section in EMU (right tab stop).
+        prefix: Runs written before the caption in its formatting (the caption
+            number of a table with an ID); ignored without a caption.
     """
     details = ", ".join(
         part
@@ -802,7 +820,7 @@ def add_table_heading(
     paragraph = doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
     paragraph.paragraph_format.keep_with_next = True
     if caption:
-        runs = [replace(run, bold=True) for run in TextParser.parse_runs(caption)]
+        runs = [replace(run, bold=True) for run in [*prefix, *TextParser.parse_runs(caption)]]
         render_runs(paragraph, runs, default_color=STYLE.NAVY, font_size=STYLE.BODY_SIZE)
     if details:
         if caption:
@@ -1017,6 +1035,8 @@ def render_term_sheet_opening(
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title.paragraph_format.space_before = _COVER_TITLE_SPACE if cover else Pt(0)
     title.paragraph_format.space_after = Pt(2)
+    # Metadata cannot hold a reference field: the renderer parses this block
+    # outside any reference scope and reports such references beforehand.
     render_runs(
         title,
         _bold(_display_runs(metadata, "title", metadata.title)),
@@ -1112,7 +1132,12 @@ def render_term_sheet_heading(doc: Any, heading: Heading, render_runs: RenderRun
     level = max(1, min(heading.level, 4))
     sizes = {1: STYLE.H1_SIZE, 2: STYLE.H2_SIZE, 3: STYLE.H3_SIZE, 4: STYLE.H4_SIZE}
     paragraph = doc.add_heading(level=level)
-    runs = heading.runs or TextParser.parse_runs(heading.text)
+    if heading.runs:
+        runs = heading.runs
+    elif isinstance(heading, MarkedHeading):  # an escaped `@` is never a reference
+        runs = TextParser.parse_judged_runs(heading.text, heading.text, heading.escaped_ats)
+    else:
+        runs = TextParser.parse_runs(heading.text)
     render_runs(
         paragraph,
         _bold(runs),

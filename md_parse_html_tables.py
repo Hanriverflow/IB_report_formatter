@@ -34,6 +34,8 @@ def _html_image(source: str, alt: str) -> Image | None:
         The image, or None without a usable source.
     """
     source = source.strip()
+    # The description is plain text that cannot hold a field, whatever the source.
+    TextParser.check_text(alt, "image description", markdown=False)
     if source.lower().startswith("data:"):
         header, _, payload = source.partition(",")
         if not header.lower().endswith(";base64") or not payload.strip():
@@ -296,7 +298,8 @@ class _HtmlTableReader(HTMLParser):
             cleaned.pop(0)
         while cleaned and cleaned[-1].text == "\n":
             cleaned.pop()
-        return cleaned
+        # Cross-references follow the rules of Markdown text (code holds none).
+        return TextParser.read_references(cleaned)
 
 
 class HtmlTableParser:
