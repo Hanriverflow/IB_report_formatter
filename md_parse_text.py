@@ -229,6 +229,8 @@ class TextParser:
     _LITERAL_BREAK_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
     # Every visible `@`; a reference starts where `tbl-` or `fig-` follows one.
     _AT_RE = re.compile("@")
+    # An `@` that would start a reference in text whose `-` may already be escaped.
+    _REFERENCE_AT_RE = re.compile(r"@(?=(?:tbl|fig)\\?-)")
     # Characters an ID is read through (the whole token is checked afterwards,
     # so `@tbl-a-` and `@tbl-` are reported instead of shortened).
     _REFERENCE_ID_CHARS = frozenset(
@@ -1126,9 +1128,12 @@ class TextParser:
             text: Literal text inserted into a field parsed as inline Markdown.
 
         Returns:
-            Text whose inline syntax, including HTML breaks, is escaped.
+            Text whose inline syntax, including HTML breaks, is escaped. An `@`
+            before `tbl-` or `fig-` is escaped too, so an inserted term value is
+            never read as a cross-reference.
         """
         escaped = cls._ESCAPABLE_RE.sub(r"\\\1", text)
+        escaped = cls._REFERENCE_AT_RE.sub(r"\\@", escaped)
         return cls._LITERAL_BREAK_RE.sub(lambda match: "\\" + match.group(0), escaped)
 
     @classmethod

@@ -1204,3 +1204,13 @@ def test_hand_built_model_metadata_is_checked_when_rendered() -> None:
     renderer.render(DocumentModel(metadata=metadata, elements=[body]))
     assert "Cross-reference @tbl-a in the document title stays text" in renderer.errors
     assert "Cross-reference @fig-b in the frontmatter date stays text" in renderer.errors
+
+
+def test_term_values_in_table_texts_are_not_references(tmp_path: Path) -> None:
+    tables = '  - id: tbl-a\n    caption: "가상 {{x}}"\n    note: "주석 {{x}}"\n'
+    path = write_front(tmp_path, "body", 'terms:\n  x: "@tbl-a"\n', tables)
+    document, errors = render(path)
+    assert errors == []
+    assert references(document) == []
+    assert "표 1. 가상 @tbl-a" in caption_texts(document)
+    assert "주석 @tbl-a" in body_text(document)
