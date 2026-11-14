@@ -2210,3 +2210,36 @@ def test_a_numbered_financial_table_with_references_in_its_amount_columns(
         undefined.replace("@tbl-pl", "@tbl-a"),
     )
     assert differences == []
+
+
+CALLOUT_BODIES = [
+    "> **Note**: a &amp; b @tbl-a",
+    "> **Note**: a &#64; b @tbl-a",
+    "> **요약**: x " + BACKSLASH + "* y @tbl-a",
+    "> **요약**: x " + BACKSLASH + "_ y @tbl-a  z",
+    "> **주의**: x <br> @tbl-a",
+    "> **Note**: x [^1] @tbl-a\n\n[^1]: 각주",
+    "> **Note**: x " + BACKSLASH * 2 + " @tbl-a",
+    "> **Note**: x ~~s~~ @tbl-a",
+    "> **Note**: @tbl-a ^2^ x",
+    "> **시사점**: (1200) @tbl-a",
+]
+
+
+@pytest.mark.parametrize("profile", ["business-report", "ib-report", "term-sheet"])
+@pytest.mark.parametrize("body", CALLOUT_BODIES)
+def test_callouts_and_table_texts_render_alike_with_and_without_the_target(
+    profile: str, body: str
+) -> None:
+    """A callout body is drawn on one path when a reference resolves in it and on
+    another when none does; both give the same text and formatting (P6)."""
+
+    def document(defined: bool) -> str:
+        spec = "  - id: tbl-a\n    caption: A\n" if defined else "  - caption: A\n"
+        spec += f"    source: 출처 @tbl-a {BACKSLASH}* &amp;\n    note: 주 @tbl-a <br> x\n"
+        return (
+            f"---\nprofile: {profile}\ntitle: T\n{PROFILE_FRONTMATTER.get(profile, '')}"
+            f"tables:\n{spec}---\n\n| x |\n|---|\n| 1 |\n\n{body}\n"
+        )
+
+    assert _p6_differences(document(True), document(False)) == []
