@@ -450,3 +450,32 @@ def test_written_title_equal_to_a_stand_in_is_kept(tmp_path, profile, source, ex
     output = _render(source, profile, tmp_path / "out.docx")
 
     assert _core(output).title == expected
+
+
+@pytest.mark.parametrize("profile", ["ib-report", "plain", "office-letter"])
+def test_empty_version_is_no_version(tmp_path, profile):
+    extra = "version:\n"
+    source = _letter_source(extra) if profile == "office-letter" else _source(profile, extra)
+    output = _render(source, profile, tmp_path / "out.docx")
+
+    assert VERSION_PROPERTY not in _custom_properties(output)
+    for kind in ("header", "footer"):
+        for part in _story_parts(output, kind).values():
+            assert _property_fields(part) == []
+            assert "None" not in _visible_text(part)
+
+
+def test_empty_version_leaves_the_term_sheet_footer_label_empty(tmp_path):
+    output = _render_file(_term_sheet_copy(tmp_path, "version:"), tmp_path / "out.docx")
+
+    assert VERSION_PROPERTY not in _custom_properties(output)
+    for part in _story_parts(output, "footer").values():
+        assert _property_fields(part) == []
+        assert _visible_text(part).startswith("\t")
+
+
+def test_quoted_none_version_is_kept_as_written(tmp_path):
+    """Only an empty YAML value means no version; the quoted text "None" is a version."""
+    output = _render(_source("ib-report", 'version: "None"\n'), "ib-report", tmp_path / "out.docx")
+
+    assert _custom_properties(output)[VERSION_PROPERTY] == "None"

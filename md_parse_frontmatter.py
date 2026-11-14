@@ -124,6 +124,9 @@ class FrontmatterParser:
         metadata.extra = {
             k: v if k in structured else str(v) for k, v in data.items() if k not in known_keys
         }
+        if "version" in data and data["version"] is None:
+            # An empty `version:` means no version, not the text "None".
+            metadata.extra["version"] = ""
 
         return metadata, lines[content_start_idx:]
 
