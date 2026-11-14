@@ -753,8 +753,11 @@ class DocumentModel:
 #   report does not depend on what was changed.
 #
 # A caller who overrides the chart setting passes the same setting to the
-# parser, as with the profile. A model that holds a NaN is not equal to its
-# own copy and takes G4.
+# parser, as with the profile. A NaN is not equal to itself, but a model as
+# parsed and its copy share the one number object, which a list or dict
+# comparison takes for equal: such a model counts as parsed (G3). After
+# pickling the two hold separate NaNs, the model compares unequal to its copy
+# and takes G4. Either way nothing is silent.
 
 _PENDING = "_chart_reading_pending"
 _SETTING = "_chart_setting"
