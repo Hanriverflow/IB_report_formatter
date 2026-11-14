@@ -1423,3 +1423,40 @@ def test_text_holding_every_mark_is_not_read_and_says_so(
     assert references(document) == []
     assert "본문 \U000f0000\U000f0001 @tbl-a @tbl-a" in body_text(document)
     assert any(error.startswith("Cross-references are not read") for error in errors)
+
+
+# [23] Whether references are read never depends on the raw Markdown: the
+# recognizer reads the text as parsed and decoded.
+@pytest.mark.parametrize(
+    ("body", "tables", "message"),
+    [
+        ("see @**tbl-missing**", "", "@tbl-missing is split by formatting"),
+        ("see @**tbl-a**", DEFINED_A, "@tbl-a is split by formatting"),
+        ("see @tbl**-a**", DEFINED_A, "@tbl-a is split by formatting"),
+        (
+            "<table><tr><td>&#64;tbl-missing</td></tr></table>",
+            "",
+            "@tbl-missing has no table or figure with that id",
+        ),
+    ],
+)
+def test_references_the_raw_text_does_not_spell_are_read(
+    tmp_path: Path, body: str, tables: str, message: str
+) -> None:
+    path = write(tmp_path, body + (TABLE_ONLY if tables else ""), tables)
+    with pytest.raises(StrictValidationError, match=re.escape(message)):
+        render(path)
+    document, errors = render(path, strict=False)
+    assert references(document) == []
+    assert "Cross-reference " + message in " ".join(errors)
+
+
+def test_a_reference_decoded_from_a_yaml_escape_is_read(tmp_path: Path) -> None:
+    path = tmp_path / "doc.md"
+    path.write_text(
+        '---\nprofile: business-report\ntitle: "Title \u0040tbl-missing"\n---\n\nbody\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(StrictValidationError, match="in the document title stays text"):
+        render(path)
+

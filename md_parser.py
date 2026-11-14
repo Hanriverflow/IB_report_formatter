@@ -347,20 +347,20 @@ class MarkdownParser:
     def _parse_content(self, content: str) -> DocumentModel:
         """Parse text after the public text/file/stream boundary checked original bytes.
 
-        Text without `@tbl-` or `@fig-` is parsed once, outside any reference
-        scope, as before references existed. Otherwise it is parsed in a scope
-        in which no reference resolves yet; when that parse finds numbered
-        tables or figures, the document is parsed again in a scope holding their
-        IDs. Only resolvable references split runs; every other one is reported.
+        Every document is parsed in a reference scope in which no reference
+        resolves yet, so the recognizer reads exactly the text the parser
+        produces (emphasis removed, HTML entities and YAML escapes decoded); no
+        test on the raw Markdown decides whether it runs. In such a scope text
+        renders as outside one, and text without `@` costs nothing more. When
+        that parse finds numbered tables or figures, the document is parsed
+        again in a scope holding their IDs. Only resolvable references split
+        runs; every other one is reported.
         """
-        if "@tbl-" not in content and "@fig-" not in content:
-            with TextParser.reference_scope(None):
-                return self._parse_document(content)
-        found: list[str] = []
+        # Ordered and without repeats; the dictionary keeps the order.
+        found: dict[str, None] = {}
 
         def report(message: str) -> None:
-            if message not in found:
-                found.append(message)
+            found.setdefault(message)
 
         with TextParser.reference_scope(ReferenceScope(report=report)):
             model = self._parse_document(content)
@@ -376,8 +376,10 @@ class MarkdownParser:
             for _, _, problem in numbered_items(model.elements)
             if problem is not None
         ]
+        reported = set(model.warnings)
         for message in [*problems, *found]:
-            if message not in model.warnings:
+            if message not in reported:
+                reported.add(message)
                 model.warnings.append(message)
                 logger.warning("%s", message)
         return model
