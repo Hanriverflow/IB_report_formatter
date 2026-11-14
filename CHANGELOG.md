@@ -6,6 +6,12 @@ All notable changes to this project are documented in this file.
 
 Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Beta)** and the plugin stays **0.1.0**; nothing here has been tagged or published. Verification: `docs/verification-20261110.md`.
 
+### Fixed: a footnote referenced more than once
+- A document that referenced the same footnote in two or more places passed strict conversion and schema validation, but Word reported it as corrupt and did not open it (seen with Word 16.0.20527). The footnote's first reference stays a native footnote mark; every later one is now a footnote cross-reference field (`NOTEREF … \f \h`) that shows the same superscript number, as Word's own Insert Cross-reference > Footnote number (formatted) writes it. The number follows after F9 when a footnote is inserted earlier. This applies in paragraphs, headings, table cells, lists, quotes and callouts, and to IB `^1^` markers.
+- Documents that reference each footnote once are unchanged.
+- `docx-audit` reports a `NOTEREF` field whose bookmark is missing as an issue and a cached number that no longer matches as a warning.
+- New QA sample `samples/qa/footnote-rereference.md`. Verification: `docs/verification-footnote-rereference-20261114.md`.
+
 ### Office letters: attachments, tables at the end and item symbols (roadmap E7)
 Existing office letters change appearance where they have attachments or items nested three or more levels deep. Verification: `docs/verification-office-letter-20261114.md`.
 - A letter body that ends with a full table keeps `끝.` below the table; this is now pinned by tests (no output change).
