@@ -6,6 +6,11 @@ All notable changes to this project are documented in this file.
 
 Changes since 2.0.0-beta.1 (2026-11). Engine/package metadata stays **2.0.0 (Beta)** and the plugin stays **0.1.0**; nothing here has been tagged or published. Verification: `docs/verification-20261110.md`.
 
+### Fixed: documents that never finished parsing
+- A list marker followed only by whitespace (two or more spaces, tabs, U+3000 or other Unicode spaces: `1.   `, `-  `, `*\t\t`) or only by HTML anchors (`- <a id="x"></a>`) kept the conversion from ever finishing, in every profile. Such a line now reads as text, the marker itself, exactly as `1. ` and `- ` already did: a paragraph on its own, or the soft-wrapped end of the item or paragraph before it.
+- A table or quote line led by an HTML anchor (`<a id="x"></a>| a |`, `<a id="x"></a>> 인용`) had the same effect. It now becomes the table or quote that the same line without the anchor makes. Right after a table or quote, such a line starts a new one.
+- Documents that finished before are unchanged; no sample output changed. If a parsing pass ever consumes no line again, the conversion stops with an error naming the line instead of running forever. Verification: `docs/verification-list-marker-hang-20261114.md`.
+
 ### Office letters: attachments, tables at the end and item symbols (roadmap E7)
 Existing office letters change appearance where they have attachments or items nested three or more levels deep. Verification: `docs/verification-office-letter-20261114.md`.
 - A letter body that ends with a full table keeps `끝.` below the table; this is now pinned by tests (no output change).

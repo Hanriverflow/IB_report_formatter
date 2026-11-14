@@ -1,7 +1,9 @@
 """Markdown properties, with source-side oracles independent of the engine parser.
 
 Generation scope: bounded documents contain paragraphs (including soft wraps,
-spaces/tabs and parentheses), ATX headings, ordered/unordered lists, rectangular
+spaces/tabs and parentheses), ATX headings, ordered/unordered lists (an item may
+hold only spaces, tabs or U+3000 after its marker; that line reads as the marker
+as text, like `- `), rectangular
 pipe tables (1-5 rows including the header, 1-4 columns, empty cells), emphasis,
 backtick spans, backtick/tilde fences and backslash-escaped ASCII punctuation.
 Text combines Korean syllables, Latin letters, digits and punctuation. Blocks
@@ -212,13 +214,22 @@ def _document(
     )
     heading = "#" * draw(st.sampled_from(heading_levels)) + " " + fragments[1].source
     marker = list_marker or draw(st.sampled_from(("-", "*", "+", "1.")))
-    listing = marker + " " + fragments[2].source + "\n" + marker + " " + fragments[3].source
+    # An item may hold only whitespace after its marker; that line is text,
+    # the marker itself, like `- `: alone it is a paragraph, after an item
+    # it is that item's soft-wrapped continuation.
+    blanks = [draw(st.one_of(st.none(), st.text(" \t\u3000", max_size=3))) for _ in range(2)]
+    items = [
+        Fragment(blank, marker) if blank is not None else fragment
+        for blank, fragment in zip(blanks, fragments[2:], strict=True)
+    ]
+    listing = marker + " " + items[0].source + "\n" + marker + " " + items[1].source
+    listing_text = items[0].visible + (" " if blanks[1] is not None else "") + items[1].visible
     table_source, cells = draw(_table())
     code = "가상 " + draw(st.text(CODE, max_size=20)) + " 예시"
     blocks = (
         Fragment(paragraph, paragraph_text),
         Fragment(heading, fragments[1].visible),
-        Fragment(listing, fragments[2].visible + fragments[3].visible),
+        Fragment(listing, listing_text),
         Fragment(table_source, "".join(cell for row in cells for cell in row)),
         Fragment(_fence(code, draw(st.sampled_from(("`", "~")))), code),
     )

@@ -3,6 +3,14 @@ MD Parser Module for IB Style Word Report Converter
 Handles parsing of Markdown files including frontmatter, elements, tables,
 LaTeX equations, Base64 images, and footnotes.
 
+Changelog (list marker hang):
+    - FIXED: A list marker followed only by whitespace or HTML anchors (`1.   `,
+      `-  `, `- <a id="x"></a>`) is text, as `1. ` and `- ` already were; it
+      used to stop the parser from ever finishing.
+    - FIXED: A table or quote line led by an HTML anchor is consumed by its
+      block; it used to repeat the block forever.
+    - NEW: `_parse_elements` raises instead of looping when a pass consumes no line.
+
 Changelog (captions):
     - NEW: `![설명](파일){#fig-…}` is a numbered figure; an unusable `{#…}` ending
       keeps the line as text and is reported by the renderer wherever it stands.
@@ -806,8 +814,14 @@ class MarkdownParser:
         i = 0
         in_references = False
         chart_number = 0
+        last_start = -1
 
         while i < len(lines):
+            # Every pass must consume at least one line. A branch that takes a
+            # line it then cannot consume would repeat on it forever, so stop.
+            if i <= last_start:
+                raise RuntimeError(f"Markdown parser consumed no line at line {i + 1}")
+            last_start = i
             raw_line = lines[i]
             line = self._strip_html_anchors(raw_line.strip()).strip()
 
@@ -1000,7 +1014,11 @@ class MarkdownParser:
 
             # ── Table (collect all contiguous table lines) ──────────────────
             if self.TABLE_START_PATTERN.match(line):
-                table_lines: list[str] = []
+                # The first line was judged without its HTML anchors; when they
+                # lead it, it is taken as judged, or nothing would consume it.
+                first = lines[i].strip()
+                table_lines: list[str] = [first if first.startswith("|") else line]
+                i += 1
                 while i < len(lines) and lines[i].strip().startswith("|"):
                     table_lines.append(lines[i].strip())
                     i += 1
@@ -1047,8 +1065,12 @@ class MarkdownParser:
                 # rendered, so where it held an escaped `@` is kept apart.
                 sources: list[str] = []
                 quote_tokens: TokenMap = {}
+                start = i
                 while i < len(lines):
                     bq_match = self.BLOCKQUOTE_PATTERN.match(lines[i].strip())
+                    if bq_match is None and i == start:
+                        # Led by HTML anchors: the first line is taken as judged.
+                        bq_match = match
                     if bq_match:
                         source = bq_match.group(1)
                         if self._terms is not None:
@@ -1089,7 +1111,7 @@ class MarkdownParser:
                 continue
 
             # ── Bullet list ─────────────────────────────────────────────────
-            match = self.BULLET_PATTERN.match(raw_line)
+            match = self._list_match(self.BULLET_PATTERN, raw_line)
             if match:
                 indent_level = self._get_indent_level(match.group(1))
                 text, next_idx = self._collect_paragraph(lines, i, first_line=match.group(2))
@@ -1110,7 +1132,7 @@ class MarkdownParser:
                 continue
 
             # ── Numbered list ───────────────────────────────────────────────
-            match = self.NUMBERED_LIST_PATTERN.match(raw_line)
+            match = self._list_match(self.NUMBERED_LIST_PATTERN, raw_line)
             if match and not self._is_numbered_heading(line):
                 indent_level = self._get_indent_level(match.group(1))
                 number = match.group(2)
@@ -1173,6 +1195,28 @@ class MarkdownParser:
             i = next_idx
 
         return elements
+
+    @classmethod
+    def _list_match(cls, pattern: re.Pattern[str], raw_line: str) -> Match[str] | None:
+        """Match a list line whose item holds text.
+
+        A marker followed only by whitespace or HTML anchors (`1.   `, `-  `)
+        starts no item: such a line is text, as `1. ` and `- ` are. The test is
+        the one `_collect_paragraph` uses to end a paragraph, so an item it
+        accepts always gives that method its first line to consume.
+
+        Args:
+            pattern: `BULLET_PATTERN` or `NUMBERED_LIST_PATTERN`.
+            raw_line: The source line as written.
+
+        Returns:
+            The match, or None when the line is no list item.
+        """
+        match = pattern.match(raw_line)
+        # The item text is the pattern's last group.
+        if match is None or not cls._strip_html_anchors(match.group(pattern.groups)).strip():
+            return None
+        return match
 
     def _collect_paragraph(
         self, lines: list[str], start_idx: int, first_line: str | None = None
