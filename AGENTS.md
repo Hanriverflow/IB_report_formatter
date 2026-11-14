@@ -92,7 +92,7 @@ The `md_parse_*.py` and `ib_render_*.py` files are internal. Import from `md_par
 - Keep styles immutable and scoped. Do not replace a process-global style instance, capture theme-dependent values in default arguments, or cache styles across requests.
 - Use one renderer per concurrent job. CLI/API/registry must share `IBDocumentRenderer.render`; do not reintroduce a second document assembler.
 - Tables use ordered YAML specifications. Never guess a sensitivity table's base case: use explicit one-based body-row/column coordinates.
-- Totals and subtotal rules (`total_rows`, `subtotal_rows`) apply only to the one-based body rows a spec lists, in every profile; never infer them from text such as `합계` or from `schedule.total`. A spec's `negative` style (`paren`, `minus`, `triangle`, `type: financial` only) changes how negative amounts look, never their digits or units; without it negatives keep their written form and red (owner decision D4, 2026-11-14). Hand-built cell borders go through `TableStyler.set_cell_border` (schema-ordered `w:tcBorders`).
+- Totals and subtotal rules (`total_rows`, `subtotal_rows`) apply only to the one-based body rows a spec lists, in every profile; never infer them from text such as `합계` or from `schedule.total`. A spec's `negative` style (`paren`, `minus`, `triangle`, `type: financial` only) changes how negative amounts look, never their digits or units; without it negatives keep their written form and red (owner decision D4, 2026-11-14). It reads a cell's whole text once and restyles only a cell that is exactly one negative amount; an amount split across differently formatted runs keeps its text and gets a rendering warning (`IBDocumentRenderer.warnings`) that never rejects. It turns off only the automatic red: author-written colours and link colours stay. Alignment, column kinds and widths are judged on the written text. Hand-built cell borders go through `TableStyler.set_cell_border` (schema-ordered `w:tcBorders`).
 - Preserve blank cells, escapes, codes, dates and numeric presentation. Percent/bps/multiple roles do not rescale numeric values.
 - Strict mode rejects known input loss or rendering failures before saving. Diagnostics do not establish visual or financial correctness.
 - Changes to output must have regression tests through actual parsing/rendering and, for layout changes, representative page inspection.
@@ -449,7 +449,7 @@ Claude settings are in `.claude/settings.local.json` for allowed permissions.
 - **Negative numbers**: Red color, parentheses support
 - **Sensitivity tables**: Explicit-coordinate base case highlighting only
 - **Totals and subtotals**: rules and bold on listed body rows only (`total_rows`, `subtotal_rows`)
-- **Negative style**: optional per financial table (`negative: paren|minus|triangle`, black); default red as written
+- **Negative style**: optional per financial table (`negative: paren|minus|triangle`; turns off only the automatic red); default red as written
 - **Risk matrices**: Color-coded risk levels
 - **HTML tables** (converter output): `colspan`/`rowspan` become span markers; rows the header spans cover stay header rows
 - **Header rows**: table spec `header_rows` draws, merges and repeats several header rows in every profile

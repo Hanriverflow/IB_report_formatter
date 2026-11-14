@@ -397,7 +397,15 @@ Sensitivity highlighting is **explicit only**: row 1 is the first data row; colu
 
 Totals and subtotals are **explicit only**, in every profile. `subtotal_rows` lists body rows that get a single rule above and bold text; `total_rows` lists body rows that also get a double rule below. Row 1 is the first row after the header rows, so with `header_rows: 2` the third Markdown row is row 1. Rules use the profile's table accent colour (navy in the IB profiles, dark grey in the general profiles, the term-sheet navy); when a totals row is the last row its double rule takes the place of the table's bottom border. A row reading `합계` or `Total` gets nothing unless it is listed, and `schedule.total` only checks. A merged cell crossing a listed row stays one cell: Word draws no rule inside it. Lists that are not integers, are out of range, repeat a row, or name one row in both lists are rejected in strict and non-strict mode.
 
-By default a financial table keeps each negative amount as written (`(1,234)` or `-1,234`) and shows it in red. A `type: financial` spec can set `negative: paren`, `minus` or `triangle` instead: that table's negative amounts become `(1,234)`, `-1,234` or `△1,234` in black. It restyles whole amounts written `(…)`, `-…` or `△…` in numeric columns, keeps the digits and the unit (a suffix goes inside parentheses: `(3.5%)`), and leaves text, code and date columns, `▲`/`▼` and tokens such as `NM` alone. Without `negative`, a written `△…` is left exactly as written. Any other value, or `negative` without `type: financial` in the same spec, is rejected.
+By default a financial table keeps each negative amount as written (`(1,234)` or `-1,234`) and shows it in red. A `type: financial` spec can set `negative: paren`, `minus` or `triangle` instead: that table's negative amounts become `(1,234)`, `-1,234` or `△1,234`, and the automatic red is off.
+
+- A cell is restyled only when its whole text is one negative amount in a numeric column, written `-…`, `−…`, `(…)` or `△…`. The unit may sit inside or after the parentheses (`(3.5%)`, `(3.5)%`), and every written form of one amount gives the same text.
+- The digits and the unit stay; thousands separators are added and a unit goes inside parentheses (`(3.5%)`, `(1,200억원)`). A bare number in a percent, bps or multiple column gets that column's unit, as it does without the option.
+- Everything else keeps its written form: ranges such as `1-2`, several numbers or words in one cell, negative zero, text, code and date columns, `▲`/`▼` and tokens such as `NM`.
+- An amount split across differently formatted text (`-1200**.50**`, `-**1200**`) also keeps its written form, and the conversion logs a warning. The warning does not make strict mode reject the document.
+- The option turns off only the automatic red. A colour written in the document (`<span style="color:…">`) and a link's colour stay.
+- Alignment and column widths are the same as without the option.
+- Without `negative`, a written `△…` is left exactly as written. Any other value, or `negative` without `type: financial` in the same spec, is rejected.
 
 ## Allowed asset folders, input limits and rejections
 
