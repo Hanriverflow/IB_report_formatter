@@ -1460,3 +1460,15 @@ def test_a_reference_decoded_from_a_yaml_escape_is_read(tmp_path: Path) -> None:
     with pytest.raises(StrictValidationError, match="in the document title stays text"):
         render(path)
 
+
+# [26] Each diagnostic is reported once, in the order first met.
+def test_many_distinct_diagnostics_are_reported_once_in_order(tmp_path: Path) -> None:
+    body = "\n\n".join(f"@tbl-x{index} and @tbl-x{index}" for index in range(300))
+    model = parse_markdown_file(str(write(tmp_path, body)))
+    expected = [
+        f"Cross-reference @tbl-x{index} has no table or figure with that id" for index in range(300)
+    ]
+    assert [w for w in model.warnings if w.startswith("Cross-reference")] == expected
+    renderer = IBDocumentRenderer(options=RenderOptions(strict=False))
+    renderer.render(model)
+    assert [e for e in renderer.errors if e.startswith("Cross-reference")] == expected

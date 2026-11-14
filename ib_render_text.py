@@ -65,6 +65,10 @@ class CaptionNumbers:
     errors: list[str] = field(default_factory=list)
     # Every caption number actually written, in document order.
     written: list[CaptionNumber] = field(default_factory=list)
+    # The messages of the first `reported_count` entries of `errors`, so a
+    # repeat is found without searching the list.
+    reported: set[str] = field(default_factory=set)
+    reported_count: int = 0
 
 
 _CAPTION_NUMBERS: ContextVar[CaptionNumbers | None] = ContextVar("ib_caption_numbers", default=None)
@@ -99,8 +103,14 @@ def caption_prefix(item: object) -> list[TextRun]:
 
 def _report(numbers: CaptionNumbers, message: str) -> None:
     """Record a diagnostic once per render."""
-    if message not in numbers.errors:
-        numbers.errors.append(message)
+    errors = numbers.errors
+    if numbers.reported_count < len(errors):  # entries added without `_report`
+        numbers.reported.update(errors[numbers.reported_count :])
+        numbers.reported_count = len(errors)
+    if message not in numbers.reported:
+        errors.append(message)
+        numbers.reported.add(message)
+        numbers.reported_count += 1
         logger.warning("%s", message)
 
 

@@ -1068,9 +1068,11 @@ class IBDocumentRenderer:
         """
         numbers = CaptionNumbers(next_bookmark_id=self._next_bookmark_id, errors=self.errors)
         counts = dict.fromkeys(CAPTION_LABELS, 0)
+        reported = set(self.errors)  # the parser may have said so
         for content, kind, problem in numbered_items(model.elements):
             if problem is not None:
-                if "Reference id " + problem not in self.errors:  # the parser may have said so
+                if "Reference id " + problem not in reported:
+                    reported.add("Reference id " + problem)
                     self.errors.append("Reference id " + problem)
                 continue
             counts[kind] += 1
