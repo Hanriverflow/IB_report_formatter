@@ -66,14 +66,31 @@ emphasis retains its separate minimal strict xfail. No payload is filtered out.
 Determinism: local default profile markdown-properties, derandomize=True, deadline=None,
 database=None, max_examples=24. TemporaryDirectory is created per example under
 the OS temp directory; no function-scoped pytest fixture is used with @given.
+
+Time limit: each conversion runs under `_time_limit`. Generated input reaches
+lines that once kept the parser from ever finishing (a list marker followed
+only by whitespace), so a conversion that runs past the limit ends the test
+process with a non-zero exit code instead of stopping the run: 1 from
+`faulthandler`, or a crash code (139 seen on Windows), since dumping a running
+thread is best effort. pytest's output capture is lost when the process ends
+that way, so the traceback goes to `ibrf-markdown-properties-timeout-<process
+id>.log` in the OS temp directory (removed when the process ends normally).
+Hypothesis's `deadline` cannot interrupt such a loop.
 """
 
+import atexit
+import faulthandler
+import os
 import re
 import string
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import cache
 from io import BytesIO
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from tempfile import TemporaryDirectory, gettempdir
+from typing import TextIO
 
 import pytest
 import yaml
@@ -239,7 +256,47 @@ def _document(
     )
 
 
+CONVERSION_TIME_LIMIT = 300
+
+
+@cache
+def _timeout_log() -> TextIO:
+    """This process's file for a timed-out conversion's traceback.
+
+    One file per process, so concurrent runs do not overwrite each other. A
+    normal exit closes and removes it; the process `_time_limit` ends keeps it.
+    """
+    path = Path(gettempdir()) / f"ibrf-markdown-properties-timeout-{os.getpid()}.log"
+    log = path.open("w", encoding="utf-8")
+
+    def remove() -> None:
+        log.close()
+        path.unlink(missing_ok=True)
+
+    atexit.register(remove)
+    return log
+
+
+@contextmanager
+def _time_limit(seconds: float = CONVERSION_TIME_LIMIT) -> Generator[None]:
+    """End the process with a non-zero exit code if the block runs past `seconds`.
+
+    pytest's captured output is lost when the process ends this way, so every
+    thread's traceback goes to `_timeout_log()`.
+    """
+    faulthandler.dump_traceback_later(seconds, exit=True, file=_timeout_log())
+    try:
+        yield
+    finally:
+        faulthandler.cancel_dump_traceback_later()
+
+
 def _render(source: str, profile: str = "plain") -> WordDocument:
+    with _time_limit():
+        return _render_unlimited(source, profile)
+
+
+def _render_unlimited(source: str, profile: str) -> WordDocument:
     model = MarkdownParser(profile=profile).parse(source)
     return IBDocumentRenderer(
         options=RenderOptions(
@@ -575,6 +632,13 @@ def _is_rejection(error: Exception) -> bool:
 
 
 def _strict_save(
+    source: str, output: Path, profile: str | None, route: str, limits: InputLimits
+) -> str:
+    with _time_limit():
+        return _strict_save_unlimited(source, output, profile, route, limits)
+
+
+def _strict_save_unlimited(
     source: str, output: Path, profile: str | None, route: str, limits: InputLimits
 ) -> str:
     registry = get_default_registry()

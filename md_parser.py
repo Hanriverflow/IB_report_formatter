@@ -7,8 +7,10 @@ Changelog (list marker hang):
     - FIXED: A list marker followed only by whitespace or HTML anchors (`1.   `,
       `-  `, `- <a id="x"></a>`) is text, as `1. ` and `- ` already were; it
       used to stop the parser from ever finishing.
-    - FIXED: A table or quote line led by an HTML anchor is consumed by its
-      block; it used to repeat the block forever.
+    - FIXED: A table or quote line led by HTML anchors reads as the same line
+      without them (`_anchor_led_line`): the leading anchors are dropped, the
+      rest stays as written, and after a table or quote it continues that
+      block, as without the anchors. It used to repeat forever.
     - NEW: `_parse_elements` raises instead of looping when a pass consumes no line.
 
 Changelog (captions):
@@ -290,6 +292,15 @@ class MarkdownParser:
         r"<a\b[^>]*\bid\s*=\s*(['\"]).*?\1[^>]*>\s*</a>",
         re.IGNORECASE,
     )
+    # HTML anchors (and the whitespace around them) before a line's first other
+    # character; the same anchor pattern as `_HTML_ANCHOR_RE`.
+    _LEADING_ANCHORS_RE = re.compile(
+        r"^(?:\s*<a\b[^>]*\bid\s*=\s*(['\"]).*?\1[^>]*>\s*</a>)+\s*",
+        re.IGNORECASE,
+    )
+    # A quote line read without its leading anchors; anchors right after `>`
+    # may stand where the space would be (`><a id="x"></a> 인용`).
+    _ANCHORED_QUOTE_RE = re.compile(r"^>\s*(.+)$")
     _MULTISPACE_RE = re.compile(r"[ \t]{2,}")
     _INVALID_XML_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")
     _OPEN_PAREN_SPACE_RE = re.compile(r"\(\s+")
@@ -1014,13 +1025,16 @@ class MarkdownParser:
 
             # ── Table (collect all contiguous table lines) ──────────────────
             if self.TABLE_START_PATTERN.match(line):
-                # The first line was judged without its HTML anchors; when they
-                # lead it, it is taken as judged, or nothing would consume it.
-                first = lines[i].strip()
-                table_lines: list[str] = [first if first.startswith("|") else line]
-                i += 1
-                while i < len(lines) and lines[i].strip().startswith("|"):
-                    table_lines.append(lines[i].strip())
+                table_lines: list[str] = []
+                while i < len(lines):
+                    row = lines[i].strip()
+                    if not row.startswith("|"):
+                        # A row led by HTML anchors is read without them.
+                        anchored = self._anchor_led_line(lines[i], self.TABLE_START_PATTERN)
+                        if anchored is None or not anchored.startswith("|"):
+                            break
+                        row = anchored
+                    table_lines.append(row)
                     i += 1
                 table = TableParser.parse(
                     table_lines,
@@ -1065,12 +1079,13 @@ class MarkdownParser:
                 # rendered, so where it held an escaped `@` is kept apart.
                 sources: list[str] = []
                 quote_tokens: TokenMap = {}
-                start = i
                 while i < len(lines):
                     bq_match = self.BLOCKQUOTE_PATTERN.match(lines[i].strip())
-                    if bq_match is None and i == start:
-                        # Led by HTML anchors: the first line is taken as judged.
-                        bq_match = match
+                    if bq_match is None:
+                        # A quote line led by HTML anchors is read without them.
+                        anchored = self._anchor_led_line(lines[i], self.BLOCKQUOTE_PATTERN)
+                        if anchored is not None:
+                            bq_match = self._ANCHORED_QUOTE_RE.match(anchored)
                     if bq_match:
                         source = bq_match.group(1)
                         if self._terms is not None:
@@ -1217,6 +1232,37 @@ class MarkdownParser:
         if match is None or not cls._strip_html_anchors(match.group(pattern.groups)).strip():
             return None
         return match
+
+    def _anchor_led_line(self, line: str, pattern: re.Pattern[str]) -> str | None:
+        """Read a table or quote line that only its HTML anchors keep from matching.
+
+        `_parse_elements` judges a line without any of its anchors, while a
+        table or quote collects lines as written. A line led by anchors
+        (`<a id="x"></a>| a |`) is judged a table or quote line but is not one
+        as written; without this it is never consumed. It is read as the same
+        line without the leading anchors and the whitespace around them, so
+        the anchors are dropped as before a paragraph and everything after the
+        marker stays as written.
+
+        After a table or quote such a line continues the block, as it would
+        without the anchors. No branch the main loop tries before tables and
+        quotes can take it instead: a references header, separator, fence,
+        math block or HTML table needs another first character, and a Base64
+        image line must start with `![`. So on `c97841c` such a line was only
+        ever reached by this block's branch, where it repeated forever.
+
+        Args:
+            line: The source line.
+            pattern: `TABLE_START_PATTERN` or `BLOCKQUOTE_PATTERN`.
+
+        Returns:
+            The line without its leading anchors, or None when it is no line
+            of the block even without its anchors.
+        """
+        source = line.strip()
+        if not pattern.match(self._strip_html_anchors(source).strip()):
+            return None
+        return self._LEADING_ANCHORS_RE.sub("", source, count=1)
 
     def _collect_paragraph(
         self, lines: list[str], start_idx: int, first_line: str | None = None
