@@ -1,0 +1,672 @@
+{
+  "metadata": {
+    "title": "가상전자 회사채 발행 검토 차트",
+    "subtitle": "",
+    "company": "가상증권",
+    "ticker": "",
+    "sector": "SECTOR",
+    "analyst": "DCM Team 1",
+    "extra": {
+      "charts": true,
+      "layout": {
+        "cover": false,
+        "toc": false,
+        "disclaimer": false
+      }
+    },
+    "profile": "ib-report",
+    "display_runs": {}
+  },
+  "sections": [],
+  "elements": [
+    {
+      "element_type": "HEADING_1",
+      "content": {
+        "level": 1,
+        "text": "가상전자 회사채 발행 검토 차트",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "# 가상전자 회사채 발행 검토 차트",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "모든 회사 이름과 수치는 기능 검증용 가상 자료입니다. 실제 기업, 거래, 평가사 자료와 관계없습니다.",
+        "runs": [
+          {
+            "text": "모든 회사 이름과 수치는 기능 검증용 가상 자료입니다. 실제 기업, 거래, 평가사 자료와 관계없습니다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "모든 회사 이름과 수치는 기능 검증용 가상 자료입니다. 실제 기업, 거래, 평가사 자료와 관계없습니다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "만기 구조",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 만기 구조",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "CHART",
+      "content": {
+        "code": "chart_type: stacked_bar\ntitle: 2027~2028년에 만기가 몰리며, 2028년 차환 부담이 4,700억원으로 가장 크다\nsubtitle: \"연도별 만기 도래액, 단위: 억원\"\nlabels: [\"2026\", \"2027\", \"2028\", \"2029\", \"2030\", 2031 이후]\nseries:\n  - name: 공모 회사채\n    values: [1200, 2500, 3100, 900, 1500, 800]\n  - name: 사모사채·CP\n    values: [600, 400, 700, 300, 0, 0]\n  - name: 은행 차입\n    values: [300, 500, 900, 200, 400, 0]\ntotals: true\nnumber_format: ',.0f'\nnote: 2026년 9월 말 잔액 기준\nsource: 회사 제시 자료(가상)",
+        "spec": {
+          "chart_type": "stacked_bar",
+          "title": "2027~2028년에 만기가 몰리며, 2028년 차환 부담이 4,700억원으로 가장 크다",
+          "labels": [
+            "2026",
+            "2027",
+            "2028",
+            "2029",
+            "2030",
+            "2031 이후"
+          ],
+          "series": [
+            {
+              "name": "공모 회사채",
+              "values": [
+                1200.0,
+                2500.0,
+                3100.0,
+                900.0,
+                1500.0,
+                800.0
+              ],
+              "axis": "left"
+            },
+            {
+              "name": "사모사채·CP",
+              "values": [
+                600.0,
+                400.0,
+                700.0,
+                300.0,
+                0.0,
+                0.0
+              ],
+              "axis": "left"
+            },
+            {
+              "name": "은행 차입",
+              "values": [
+                300.0,
+                500.0,
+                900.0,
+                200.0,
+                400.0,
+                0.0
+              ],
+              "axis": "left"
+            }
+          ],
+          "y_label": null,
+          "source": "회사 제시 자료(가상)",
+          "total_label": null,
+          "unit": null,
+          "number_format": ",.0f",
+          "subtitle": "연도별 만기 도래액, 단위: 억원",
+          "note": "2026년 9월 말 잔액 기준",
+          "highlight": [],
+          "accent_series": null,
+          "reference_lines": [],
+          "totals": true,
+          "start_total": false,
+          "low": [],
+          "high": [],
+          "right_number_format": null,
+          "show_overlap": false
+        },
+        "error": null,
+        "label": "Chart 1 (2027~2028년에 만기가 몰리며, 2028년 차환 부담이 4,700억원으로 가장 크다)"
+      },
+      "raw_text": "```chart",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "만기는 2028년에 가장 크다.",
+        "runs": [
+          {
+            "text": "만기는 2028년에 가장 크다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "만기는 2028년에 가장 크다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "차입 부담",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 차입 부담",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "CHART",
+      "content": {
+        "code": "chart_type: bar_line\ntitle: 순차입금이 줄면서 순차입금/EBITDA는 3.4배에서 2.1배로 낮아졌다\nsubtitle: \"막대: 순차입금(억원)  선: 순차입금/EBITDA(배)\"\nlabels: [\"2022\", \"2023\", \"2024\", \"2025\", 2026.9 LTM]\nseries:\n  - name: 순차입금\n    values: [4500, 4200, 3900, 3500, 3300]\n  - name: 순차입금/EBITDA\n    values: [3.4, 3.1, 2.8, 2.4, 2.1]\n    axis: right\nnumber_format: ',.0f'\nright_number_format: multiple\nsource: 회사 제시 자료(가상)",
+        "spec": {
+          "chart_type": "bar_line",
+          "title": "순차입금이 줄면서 순차입금/EBITDA는 3.4배에서 2.1배로 낮아졌다",
+          "labels": [
+            "2022",
+            "2023",
+            "2024",
+            "2025",
+            "2026.9 LTM"
+          ],
+          "series": [
+            {
+              "name": "순차입금",
+              "values": [
+                4500.0,
+                4200.0,
+                3900.0,
+                3500.0,
+                3300.0
+              ],
+              "axis": "left"
+            },
+            {
+              "name": "순차입금/EBITDA",
+              "values": [
+                3.4,
+                3.1,
+                2.8,
+                2.4,
+                2.1
+              ],
+              "axis": "right"
+            }
+          ],
+          "y_label": null,
+          "source": "회사 제시 자료(가상)",
+          "total_label": null,
+          "unit": null,
+          "number_format": ",.0f",
+          "subtitle": "막대: 순차입금(억원)  선: 순차입금/EBITDA(배)",
+          "note": null,
+          "highlight": [],
+          "accent_series": null,
+          "reference_lines": [],
+          "totals": false,
+          "start_total": false,
+          "low": [],
+          "high": [],
+          "right_number_format": "multiple",
+          "show_overlap": false
+        },
+        "error": null,
+        "label": "Chart 2 (순차입금이 줄면서 순차입금/EBITDA는 3.4배에서 2.1배로 낮아졌다)"
+      },
+      "raw_text": "```chart",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "동종사 비교",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 동종사 비교",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "CHART",
+      "content": {
+        "code": "chart_type: hbar\ntitle: 가상전자의 회사채 잔액은 AA- 동종 5개사 중 두 번째로 많다\nsubtitle: \"AA- 등급 동종 기업 회사채 잔액(2026년 9월 말), 단위: 억원\"\nlabels: [가상화학, 가상전자, 가상건설, 가상유통, 가상해운]\nseries:\n  - name: 회사채 잔액\n    values: [18500, 14200, 9800, 7600, 5100]\nhighlight: [가상전자]\nnumber_format: ',.0f'\nsource: 가상 수치",
+        "spec": {
+          "chart_type": "hbar",
+          "title": "가상전자의 회사채 잔액은 AA- 동종 5개사 중 두 번째로 많다",
+          "labels": [
+            "가상화학",
+            "가상전자",
+            "가상건설",
+            "가상유통",
+            "가상해운"
+          ],
+          "series": [
+            {
+              "name": "회사채 잔액",
+              "values": [
+                18500.0,
+                14200.0,
+                9800.0,
+                7600.0,
+                5100.0
+              ],
+              "axis": "left"
+            }
+          ],
+          "y_label": null,
+          "source": "가상 수치",
+          "total_label": null,
+          "unit": null,
+          "number_format": ",.0f",
+          "subtitle": "AA- 등급 동종 기업 회사채 잔액(2026년 9월 말), 단위: 억원",
+          "note": null,
+          "highlight": [
+            "가상전자"
+          ],
+          "accent_series": null,
+          "reference_lines": [],
+          "totals": false,
+          "start_total": false,
+          "low": [],
+          "high": [],
+          "right_number_format": null,
+          "show_overlap": false
+        },
+        "error": null,
+        "label": "Chart 3 (가상전자의 회사채 잔액은 AA- 동종 5개사 중 두 번째로 많다)"
+      },
+      "raw_text": "```chart",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "스프레드 추이",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 스프레드 추이",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "CHART",
+      "content": {
+        "code": "chart_type: line\ntitle: 가상전자 3년물 스프레드는 2년 사이 18bp 줄어 등급 평균보다 5bp 낮아졌다\nsubtitle: \"국고채 3년 대비 민평 스프레드(월말), 단위: bp\"\nlabels: [\"24.10\", \"24.11\", \"24.12\", \"25.01\", \"25.02\", \"25.03\", \"25.04\", \"25.05\", \"25.06\", \"25.07\", \"25.08\", \"25.09\", \"25.10\", \"25.11\", \"25.12\", \"26.01\", \"26.02\", \"26.03\", \"26.04\", \"26.05\", \"26.06\", \"26.07\", \"26.08\", \"26.09\"]\nseries:\n  - name: AA- 평균\n    values: [70, 71, 73, 74, 72, 71, 71, 70, 69, 69, 68, 67, 66, 66, 65, 65, 64, 63, 63, 62, 62, 61, 61, 61]\n  - name: 가상전자\n    values: [74, 76, 79, 78, 75, 73, 74, 72, 70, 69, 68, 66, 65, 66, 64, 63, 61, 60, 59, 58, 58, 57, 57, 56]\nreference:\n  - name: 희망 스프레드\n    value: 60\nsource: 가상 수치",
+        "spec": {
+          "chart_type": "line",
+          "title": "가상전자 3년물 스프레드는 2년 사이 18bp 줄어 등급 평균보다 5bp 낮아졌다",
+          "labels": [
+            "24.10",
+            "24.11",
+            "24.12",
+            "25.01",
+            "25.02",
+            "25.03",
+            "25.04",
+            "25.05",
+            "25.06",
+            "25.07",
+            "25.08",
+            "25.09",
+            "25.10",
+            "25.11",
+            "25.12",
+            "26.01",
+            "26.02",
+            "26.03",
+            "26.04",
+            "26.05",
+            "26.06",
+            "26.07",
+            "26.08",
+            "26.09"
+          ],
+          "series": [
+            {
+              "name": "AA- 평균",
+              "values": [
+                70.0,
+                71.0,
+                73.0,
+                74.0,
+                72.0,
+                71.0,
+                71.0,
+                70.0,
+                69.0,
+                69.0,
+                68.0,
+                67.0,
+                66.0,
+                66.0,
+                65.0,
+                65.0,
+                64.0,
+                63.0,
+                63.0,
+                62.0,
+                62.0,
+                61.0,
+                61.0,
+                61.0
+              ],
+              "axis": "left"
+            },
+            {
+              "name": "가상전자",
+              "values": [
+                74.0,
+                76.0,
+                79.0,
+                78.0,
+                75.0,
+                73.0,
+                74.0,
+                72.0,
+                70.0,
+                69.0,
+                68.0,
+                66.0,
+                65.0,
+                66.0,
+                64.0,
+                63.0,
+                61.0,
+                60.0,
+                59.0,
+                58.0,
+                58.0,
+                57.0,
+                57.0,
+                56.0
+              ],
+              "axis": "left"
+            }
+          ],
+          "y_label": null,
+          "source": "가상 수치",
+          "total_label": null,
+          "unit": null,
+          "number_format": null,
+          "subtitle": "국고채 3년 대비 민평 스프레드(월말), 단위: bp",
+          "note": null,
+          "highlight": [],
+          "accent_series": null,
+          "reference_lines": [
+            {
+              "name": "희망 스프레드",
+              "value": 60.0
+            }
+          ],
+          "totals": false,
+          "start_total": false,
+          "low": [],
+          "high": [],
+          "right_number_format": null,
+          "show_overlap": false
+        },
+        "error": null,
+        "label": "Chart 4 (가상전자 3년물 스프레드는 2년 사이 18bp 줄어 등급 평균보다 5bp 낮아졌다)"
+      },
+      "raw_text": "```chart",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "수요예측 결과",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 수요예측 결과",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "CHART",
+      "content": {
+        "code": "chart_type: bar\ntitle: 수요예측 참여 5,800억원 중 -15bp 이하에 3,700억원이 몰렸다\nsubtitle: \"개별민평 대비 가산금리 구간별 참여금액(3년물, 모집 1,000억원), 단위: 억원\"\nlabels: [-30bp, -25bp, -20bp, -15bp, -10bp, -5bp, 0bp, +5bp, +10bp]\nseries:\n  - name: 참여금액\n    values: [300, 600, 1100, 1700, 900, 500, 400, 200, 100]\nhighlight: [-15bp]\nnumber_format: ',.0f'\nnote: 강조한 구간이 확정 가산금리(-15bp)\nsource: 가상 수치",
+        "spec": {
+          "chart_type": "bar",
+          "title": "수요예측 참여 5,800억원 중 -15bp 이하에 3,700억원이 몰렸다",
+          "labels": [
+            "-30bp",
+            "-25bp",
+            "-20bp",
+            "-15bp",
+            "-10bp",
+            "-5bp",
+            "0bp",
+            "+5bp",
+            "+10bp"
+          ],
+          "series": [
+            {
+              "name": "참여금액",
+              "values": [
+                300.0,
+                600.0,
+                1100.0,
+                1700.0,
+                900.0,
+                500.0,
+                400.0,
+                200.0,
+                100.0
+              ],
+              "axis": "left"
+            }
+          ],
+          "y_label": null,
+          "source": "가상 수치",
+          "total_label": null,
+          "unit": null,
+          "number_format": ",.0f",
+          "subtitle": "개별민평 대비 가산금리 구간별 참여금액(3년물, 모집 1,000억원), 단위: 억원",
+          "note": "강조한 구간이 확정 가산금리(-15bp)",
+          "highlight": [
+            "-15bp"
+          ],
+          "accent_series": null,
+          "reference_lines": [],
+          "totals": false,
+          "start_total": false,
+          "low": [],
+          "high": [],
+          "right_number_format": null,
+          "show_overlap": false
+        },
+        "error": null,
+        "label": "Chart 5 (수요예측 참여 5,800억원 중 -15bp 이하에 3,700억원이 몰렸다)"
+      },
+      "raw_text": "```chart",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "PARAGRAPH",
+      "content": {
+        "text": "확정 가산금리 구간에 참여가 가장 많았다.",
+        "runs": [
+          {
+            "text": "확정 가산금리 구간에 참여가 가장 많았다.",
+            "bold": false,
+            "italic": false,
+            "superscript": false,
+            "subscript": false,
+            "color_hex": null,
+            "is_latex": false,
+            "hyperlink": null,
+            "footnote_id": null,
+            "term_key": null,
+            "code": false,
+            "image": null
+          }
+        ],
+        "has_inline_latex": false
+      },
+      "raw_text": "확정 가산금리 구간에 참여가 가장 많았다.",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "밸류에이션 범위",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 밸류에이션 범위",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "CHART",
+      "content": {
+        "code": "chart_type: range\ntitle: 방법별 주당 가치는 11,800~13,200원 구간에서 겹친다\nsubtitle: \"평가 방법별 주당 가치 범위, 단위: 원\"\nlabels: [52주 최저·최고, 유사회사 PER, 유사거래 EV/EBITDA, \"DCF (WACC ±0.5%p)\"]\nlow: [9800, 10500, 11800, 11000]\nhigh: [13200, 14000, 16000, 14500]\nreference:\n  - name: 현재 주가\n    value: 12300\nshow_overlap: true\nnumber_format: ',.0f'\nsource: 가상 수치",
+        "spec": {
+          "chart_type": "range",
+          "title": "방법별 주당 가치는 11,800~13,200원 구간에서 겹친다",
+          "labels": [
+            "52주 최저·최고",
+            "유사회사 PER",
+            "유사거래 EV/EBITDA",
+            "DCF (WACC ±0.5%p)"
+          ],
+          "series": [],
+          "y_label": null,
+          "source": "가상 수치",
+          "total_label": null,
+          "unit": null,
+          "number_format": ",.0f",
+          "subtitle": "평가 방법별 주당 가치 범위, 단위: 원",
+          "note": null,
+          "highlight": [],
+          "accent_series": null,
+          "reference_lines": [
+            {
+              "name": "현재 주가",
+              "value": 12300.0
+            }
+          ],
+          "totals": false,
+          "start_total": false,
+          "low": [
+            9800.0,
+            10500.0,
+            11800.0,
+            11000.0
+          ],
+          "high": [
+            13200.0,
+            14000.0,
+            16000.0,
+            14500.0
+          ],
+          "right_number_format": null,
+          "show_overlap": true
+        },
+        "error": null,
+        "label": "Chart 6 (방법별 주당 가치는 11,800~13,200원 구간에서 겹친다)"
+      },
+      "raw_text": "```chart",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "HEADING_2",
+      "content": {
+        "level": 2,
+        "text": "현금 증감",
+        "is_numbered": false,
+        "runs": []
+      },
+      "raw_text": "## 현금 증감",
+      "inferred_subtitle": false
+    },
+    {
+      "element_type": "CHART",
+      "content": {
+        "code": "chart_type: waterfall\ntitle: 영업현금으로 차입을 갚고도 기말 현금이 늘었다\nsubtitle: \"단위: 억원\"\nlabels: [기초 현금, 영업현금, 차입 상환, 배당]\nseries:\n  - name: 증감\n    values: [1200, 900, -600, -150]\nstart_total: true\ntotal_label: 기말 현금\nnumber_format: ',.0f'\nsource: 회사 제시 자료(가상)",
+        "spec": {
+          "chart_type": "waterfall",
+          "title": "영업현금으로 차입을 갚고도 기말 현금이 늘었다",
+          "labels": [
+            "기초 현금",
+            "영업현금",
+            "차입 상환",
+            "배당"
+          ],
+          "series": [
+            {
+              "name": "증감",
+              "values": [
+                1200.0,
+                900.0,
+                -600.0,
+                -150.0
+              ],
+              "axis": "left"
+            }
+          ],
+          "y_label": null,
+          "source": "회사 제시 자료(가상)",
+          "total_label": "기말 현금",
+          "unit": null,
+          "number_format": ",.0f",
+          "subtitle": "단위: 억원",
+          "note": null,
+          "highlight": [],
+          "accent_series": null,
+          "reference_lines": [],
+          "totals": false,
+          "start_total": true,
+          "low": [],
+          "high": [],
+          "right_number_format": null,
+          "show_overlap": false
+        },
+        "error": null,
+        "label": "Chart 7 (영업현금으로 차입을 갚고도 기말 현금이 늘었다)"
+      },
+      "raw_text": "```chart",
+      "inferred_subtitle": false
+    }
+  ],
+  "footnotes": {},
+  "warnings": [],
+  "parsed_profile": "ib-report",
+  "source_dir": ".",
+  "asset_roots": [
+    "."
+  ],
+  "limits": {
+    "max_input_bytes": 16777216,
+    "max_table_cells": 50000,
+    "max_list_depth": 32,
+    "max_image_bytes": 20971520,
+    "max_image_pixels": 50000000
+  }
+}

@@ -1,0 +1,858 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes'?>
+<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" xmlns:mo="http://schemas.microsoft.com/office/mac/office/2008/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:mv="urn:schemas-microsoft-com:mac:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" mc:Ignorable="w14 wp14">
+  <w:body>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="Title"/>
+        <w:keepNext/>
+        <w:spacing w:after="240" w:before="240"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b/>
+          <w:sz w:val="28"/>
+        </w:rPr>
+        <w:t>가상전자 회사채 발행 검토 차트</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>작성자: DCM Team 1</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>모든 회사 이름과 수치는 기능 검증용 가상 자료입니다. 실제 기업, 거래, 평가사 자료와 관계없습니다.</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="Heading2"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Arial" w:eastAsia="Malgun Gothic" w:hAnsi="Arial"/>
+          <w:b/>
+          <w:i w:val="0"/>
+          <w:color w:val="404040"/>
+          <w:sz w:val="24"/>
+        </w:rPr>
+        <w:t>만기 구조</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="0" w:before="120"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>2027~2028년에 만기가 몰리며, 2028년 차환 부담이 4,700억원으로 가장 크다</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="40" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>연도별 만기 도래액, 단위: 억원</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:keepNext/>
+        <w:spacing w:after="40"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:bookmarkStart w:id="1" w:name="_ibrep_CHART_RANDOM"/>
+      <w:r>
+        <w:drawing>
+          <wp:inline xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+            <wp:extent cx="5486400" cy="2651760"/>
+            <wp:docPr descr="2027~2028년에 만기가 몰리며, 2028년 차환 부담이 4,700억원으로 가장 크다" id="1" name="Picture 1" title="2027~2028년에 만기가 몰리며, 2028년 차환 부담이 4,700억원으로 가장 크다"/>
+            <wp:cNvGraphicFramePr>
+              <a:graphicFrameLocks noChangeAspect="1"/>
+            </wp:cNvGraphicFramePr>
+            <a:graphic>
+              <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                <pic:pic>
+                  <pic:nvPicPr>
+                    <pic:cNvPr id="0" name="image.png"/>
+                    <pic:cNvPicPr/>
+                  </pic:nvPicPr>
+                  <pic:blipFill>
+                    <a:blip r:embed="rId9"/>
+                    <a:stretch>
+                      <a:fillRect/>
+                    </a:stretch>
+                  </pic:blipFill>
+                  <pic:spPr>
+                    <a:xfrm>
+                      <a:off x="0" y="0"/>
+                      <a:ext cx="5486400" cy="2651760"/>
+                    </a:xfrm>
+                    <a:prstGeom prst="rect"/>
+                  </pic:spPr>
+                </pic:pic>
+              </a:graphicData>
+            </a:graphic>
+          </wp:inline>
+        </w:drawing>
+      </w:r>
+      <w:bookmarkEnd w:id="1"/>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="0" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>Note: 2026년 9월 말 잔액 기준</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="160" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>Source: 회사 제시 자료(가상)</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>만기는 2028년에 가장 크다.</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="Heading2"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Arial" w:eastAsia="Malgun Gothic" w:hAnsi="Arial"/>
+          <w:b/>
+          <w:i w:val="0"/>
+          <w:color w:val="404040"/>
+          <w:sz w:val="24"/>
+        </w:rPr>
+        <w:t>차입 부담</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="0" w:before="120"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>순차입금이 줄면서 순차입금/EBITDA는 3.4배에서 2.1배로 낮아졌다</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="40" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>막대: 순차입금(억원)  선: 순차입금/EBITDA(배)</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:keepNext/>
+        <w:spacing w:after="40"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:bookmarkStart w:id="2" w:name="_ibrep_CHART_RANDOM"/>
+      <w:r>
+        <w:drawing>
+          <wp:inline xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+            <wp:extent cx="5486400" cy="2651760"/>
+            <wp:docPr descr="순차입금이 줄면서 순차입금/EBITDA는 3.4배에서 2.1배로 낮아졌다" id="2" name="Picture 2" title="순차입금이 줄면서 순차입금/EBITDA는 3.4배에서 2.1배로 낮아졌다"/>
+            <wp:cNvGraphicFramePr>
+              <a:graphicFrameLocks noChangeAspect="1"/>
+            </wp:cNvGraphicFramePr>
+            <a:graphic>
+              <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                <pic:pic>
+                  <pic:nvPicPr>
+                    <pic:cNvPr id="0" name="image.png"/>
+                    <pic:cNvPicPr/>
+                  </pic:nvPicPr>
+                  <pic:blipFill>
+                    <a:blip r:embed="rId10"/>
+                    <a:stretch>
+                      <a:fillRect/>
+                    </a:stretch>
+                  </pic:blipFill>
+                  <pic:spPr>
+                    <a:xfrm>
+                      <a:off x="0" y="0"/>
+                      <a:ext cx="5486400" cy="2651760"/>
+                    </a:xfrm>
+                    <a:prstGeom prst="rect"/>
+                  </pic:spPr>
+                </pic:pic>
+              </a:graphicData>
+            </a:graphic>
+          </wp:inline>
+        </w:drawing>
+      </w:r>
+      <w:bookmarkEnd w:id="2"/>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="160" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>Source: 회사 제시 자료(가상)</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="Heading2"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Arial" w:eastAsia="Malgun Gothic" w:hAnsi="Arial"/>
+          <w:b/>
+          <w:i w:val="0"/>
+          <w:color w:val="404040"/>
+          <w:sz w:val="24"/>
+        </w:rPr>
+        <w:t>동종사 비교</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="0" w:before="120"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>가상전자의 회사채 잔액은 AA- 동종 5개사 중 두 번째로 많다</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="40" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>AA- 등급 동종 기업 회사채 잔액(2026년 9월 말), 단위: 억원</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:keepNext/>
+        <w:spacing w:after="40"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:bookmarkStart w:id="3" w:name="_ibrep_CHART_RANDOM"/>
+      <w:r>
+        <w:drawing>
+          <wp:inline xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+            <wp:extent cx="5486400" cy="2331720"/>
+            <wp:docPr descr="가상전자의 회사채 잔액은 AA- 동종 5개사 중 두 번째로 많다" id="3" name="Picture 3" title="가상전자의 회사채 잔액은 AA- 동종 5개사 중 두 번째로 많다"/>
+            <wp:cNvGraphicFramePr>
+              <a:graphicFrameLocks noChangeAspect="1"/>
+            </wp:cNvGraphicFramePr>
+            <a:graphic>
+              <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                <pic:pic>
+                  <pic:nvPicPr>
+                    <pic:cNvPr id="0" name="image.png"/>
+                    <pic:cNvPicPr/>
+                  </pic:nvPicPr>
+                  <pic:blipFill>
+                    <a:blip r:embed="rId11"/>
+                    <a:stretch>
+                      <a:fillRect/>
+                    </a:stretch>
+                  </pic:blipFill>
+                  <pic:spPr>
+                    <a:xfrm>
+                      <a:off x="0" y="0"/>
+                      <a:ext cx="5486400" cy="2331720"/>
+                    </a:xfrm>
+                    <a:prstGeom prst="rect"/>
+                  </pic:spPr>
+                </pic:pic>
+              </a:graphicData>
+            </a:graphic>
+          </wp:inline>
+        </w:drawing>
+      </w:r>
+      <w:bookmarkEnd w:id="3"/>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="160" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>Source: 가상 수치</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="Heading2"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Arial" w:eastAsia="Malgun Gothic" w:hAnsi="Arial"/>
+          <w:b/>
+          <w:i w:val="0"/>
+          <w:color w:val="404040"/>
+          <w:sz w:val="24"/>
+        </w:rPr>
+        <w:t>스프레드 추이</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="0" w:before="120"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>가상전자 3년물 스프레드는 2년 사이 18bp 줄어 등급 평균보다 5bp 낮아졌다</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="40" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>국고채 3년 대비 민평 스프레드(월말), 단위: bp</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:keepNext/>
+        <w:spacing w:after="40"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:bookmarkStart w:id="4" w:name="_ibrep_CHART_RANDOM"/>
+      <w:r>
+        <w:drawing>
+          <wp:inline xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+            <wp:extent cx="5486400" cy="2651760"/>
+            <wp:docPr descr="가상전자 3년물 스프레드는 2년 사이 18bp 줄어 등급 평균보다 5bp 낮아졌다" id="4" name="Picture 4" title="가상전자 3년물 스프레드는 2년 사이 18bp 줄어 등급 평균보다 5bp 낮아졌다"/>
+            <wp:cNvGraphicFramePr>
+              <a:graphicFrameLocks noChangeAspect="1"/>
+            </wp:cNvGraphicFramePr>
+            <a:graphic>
+              <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                <pic:pic>
+                  <pic:nvPicPr>
+                    <pic:cNvPr id="0" name="image.png"/>
+                    <pic:cNvPicPr/>
+                  </pic:nvPicPr>
+                  <pic:blipFill>
+                    <a:blip r:embed="rId12"/>
+                    <a:stretch>
+                      <a:fillRect/>
+                    </a:stretch>
+                  </pic:blipFill>
+                  <pic:spPr>
+                    <a:xfrm>
+                      <a:off x="0" y="0"/>
+                      <a:ext cx="5486400" cy="2651760"/>
+                    </a:xfrm>
+                    <a:prstGeom prst="rect"/>
+                  </pic:spPr>
+                </pic:pic>
+              </a:graphicData>
+            </a:graphic>
+          </wp:inline>
+        </w:drawing>
+      </w:r>
+      <w:bookmarkEnd w:id="4"/>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="160" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>Source: 가상 수치</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="Heading2"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Arial" w:eastAsia="Malgun Gothic" w:hAnsi="Arial"/>
+          <w:b/>
+          <w:i w:val="0"/>
+          <w:color w:val="404040"/>
+          <w:sz w:val="24"/>
+        </w:rPr>
+        <w:t>수요예측 결과</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="0" w:before="120"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>수요예측 참여 5,800억원 중 -15bp 이하에 3,700억원이 몰렸다</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="40" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>개별민평 대비 가산금리 구간별 참여금액(3년물, 모집 1,000억원), 단위: 억원</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:keepNext/>
+        <w:spacing w:after="40"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:bookmarkStart w:id="5" w:name="_ibrep_CHART_RANDOM"/>
+      <w:r>
+        <w:drawing>
+          <wp:inline xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+            <wp:extent cx="5486400" cy="2651760"/>
+            <wp:docPr descr="수요예측 참여 5,800억원 중 -15bp 이하에 3,700억원이 몰렸다" id="5" name="Picture 5" title="수요예측 참여 5,800억원 중 -15bp 이하에 3,700억원이 몰렸다"/>
+            <wp:cNvGraphicFramePr>
+              <a:graphicFrameLocks noChangeAspect="1"/>
+            </wp:cNvGraphicFramePr>
+            <a:graphic>
+              <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                <pic:pic>
+                  <pic:nvPicPr>
+                    <pic:cNvPr id="0" name="image.png"/>
+                    <pic:cNvPicPr/>
+                  </pic:nvPicPr>
+                  <pic:blipFill>
+                    <a:blip r:embed="rId13"/>
+                    <a:stretch>
+                      <a:fillRect/>
+                    </a:stretch>
+                  </pic:blipFill>
+                  <pic:spPr>
+                    <a:xfrm>
+                      <a:off x="0" y="0"/>
+                      <a:ext cx="5486400" cy="2651760"/>
+                    </a:xfrm>
+                    <a:prstGeom prst="rect"/>
+                  </pic:spPr>
+                </pic:pic>
+              </a:graphicData>
+            </a:graphic>
+          </wp:inline>
+        </w:drawing>
+      </w:r>
+      <w:bookmarkEnd w:id="5"/>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="0" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>Note: 강조한 구간이 확정 가산금리(-15bp)</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="160" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>Source: 가상 수치</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Calibri" w:eastAsia="Malgun Gothic" w:hAnsi="Calibri"/>
+          <w:b w:val="0"/>
+          <w:i w:val="0"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>확정 가산금리 구간에 참여가 가장 많았다.</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="Heading2"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Arial" w:eastAsia="Malgun Gothic" w:hAnsi="Arial"/>
+          <w:b/>
+          <w:i w:val="0"/>
+          <w:color w:val="404040"/>
+          <w:sz w:val="24"/>
+        </w:rPr>
+        <w:t>밸류에이션 범위</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="0" w:before="120"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>방법별 주당 가치는 11,800~13,200원 구간에서 겹친다</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="40" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>평가 방법별 주당 가치 범위, 단위: 원</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:keepNext/>
+        <w:spacing w:after="40"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:bookmarkStart w:id="6" w:name="_ibrep_CHART_RANDOM"/>
+      <w:r>
+        <w:drawing>
+          <wp:inline xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+            <wp:extent cx="5486400" cy="2468880"/>
+            <wp:docPr descr="방법별 주당 가치는 11,800~13,200원 구간에서 겹친다" id="6" name="Picture 6" title="방법별 주당 가치는 11,800~13,200원 구간에서 겹친다"/>
+            <wp:cNvGraphicFramePr>
+              <a:graphicFrameLocks noChangeAspect="1"/>
+            </wp:cNvGraphicFramePr>
+            <a:graphic>
+              <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                <pic:pic>
+                  <pic:nvPicPr>
+                    <pic:cNvPr id="0" name="image.png"/>
+                    <pic:cNvPicPr/>
+                  </pic:nvPicPr>
+                  <pic:blipFill>
+                    <a:blip r:embed="rId14"/>
+                    <a:stretch>
+                      <a:fillRect/>
+                    </a:stretch>
+                  </pic:blipFill>
+                  <pic:spPr>
+                    <a:xfrm>
+                      <a:off x="0" y="0"/>
+                      <a:ext cx="5486400" cy="2468880"/>
+                    </a:xfrm>
+                    <a:prstGeom prst="rect"/>
+                  </pic:spPr>
+                </pic:pic>
+              </a:graphicData>
+            </a:graphic>
+          </wp:inline>
+        </w:drawing>
+      </w:r>
+      <w:bookmarkEnd w:id="6"/>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="160" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>Source: 가상 수치</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="Heading2"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:ascii="Arial" w:eastAsia="Malgun Gothic" w:hAnsi="Arial"/>
+          <w:b/>
+          <w:i w:val="0"/>
+          <w:color w:val="404040"/>
+          <w:sz w:val="24"/>
+        </w:rPr>
+        <w:t>현금 증감</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="0" w:before="120"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:b/>
+          <w:color w:val="003366"/>
+          <w:sz w:val="21"/>
+        </w:rPr>
+        <w:t>영업현금으로 차입을 갚고도 기말 현금이 늘었다</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:keepNext/>
+        <w:spacing w:after="40" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>단위: 억원</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:keepNext/>
+        <w:spacing w:after="40"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:bookmarkStart w:id="7" w:name="_ibrep_CHART_RANDOM"/>
+      <w:r>
+        <w:drawing>
+          <wp:inline xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+            <wp:extent cx="5486400" cy="2651760"/>
+            <wp:docPr descr="영업현금으로 차입을 갚고도 기말 현금이 늘었다" id="7" name="Picture 7" title="영업현금으로 차입을 갚고도 기말 현금이 늘었다"/>
+            <wp:cNvGraphicFramePr>
+              <a:graphicFrameLocks noChangeAspect="1"/>
+            </wp:cNvGraphicFramePr>
+            <a:graphic>
+              <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                <pic:pic>
+                  <pic:nvPicPr>
+                    <pic:cNvPr id="0" name="image.png"/>
+                    <pic:cNvPicPr/>
+                  </pic:nvPicPr>
+                  <pic:blipFill>
+                    <a:blip r:embed="rId15"/>
+                    <a:stretch>
+                      <a:fillRect/>
+                    </a:stretch>
+                  </pic:blipFill>
+                  <pic:spPr>
+                    <a:xfrm>
+                      <a:off x="0" y="0"/>
+                      <a:ext cx="5486400" cy="2651760"/>
+                    </a:xfrm>
+                    <a:prstGeom prst="rect"/>
+                  </pic:spPr>
+                </pic:pic>
+              </a:graphicData>
+            </a:graphic>
+          </wp:inline>
+        </w:drawing>
+      </w:r>
+      <w:bookmarkEnd w:id="7"/>
+    </w:p>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="IBBody"/>
+        <w:spacing w:after="160" w:before="0"/>
+        <w:jc w:val="left"/>
+      </w:pPr>
+      <w:r>
+        <w:rPr>
+          <w:rFonts w:eastAsia="Malgun Gothic"/>
+          <w:color w:val="808080"/>
+          <w:sz w:val="18"/>
+        </w:rPr>
+        <w:t>Source: 회사 제시 자료(가상)</w:t>
+      </w:r>
+    </w:p>
+    <w:sectPr w:rsidR="REVISION" w:rsidRPr="REVISION" w:rsidSect="REVISION">
+      <w:headerReference r:id="rId16" w:type="default"/>
+      <w:footerReference r:id="rId17" w:type="default"/>
+      <w:pgSz w:h="15840" w:w="12240"/>
+      <w:pgMar w:bottom="1080" w:footer="720" w:gutter="0" w:header="720" w:left="1440" w:right="1152" w:top="1440"/>
+      <w:cols w:space="720"/>
+      <w:docGrid w:linePitch="360"/>
+    </w:sectPr>
+  </w:body>
+</w:document>
