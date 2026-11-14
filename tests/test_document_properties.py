@@ -579,3 +579,20 @@ def test_untitled_ib_document_keeps_each_parsers_existing_title(tmp_path, profil
     assert isinstance(stand_in, DefaultTitle)
     assert stand_in == "IB Report"
     assert _core(_save(models["parse"], tmp_path / "text.docx")).title == ""
+
+
+def test_draft_partial_table_letter_keeps_both_marks(tmp_path):
+    """E7's 이하 빈칸 and E8's watermark and version property in one strict letter."""
+    sample = REPOSITORY_ROOT / "samples/qa/office-letter-partial-table.md"
+    source = sample.read_text(encoding="utf-8").replace(
+        "---\n", '---\nstatus: draft\nversion: "v0.9"\n', 1
+    )
+    output = _render(source, "office-letter", tmp_path / "out.docx")
+
+    assert "이하 빈칸" in _document_text(output)
+    assert _custom_properties(output)[VERSION_PROPERTY] == "v0.9"
+    headers = _story_parts(output, "header")
+    assert headers
+    for part in headers.values():
+        assert [text for _, _, text in _watermarks(part)] == ["DRAFT"]
+        assert _property_fields(part) == []
