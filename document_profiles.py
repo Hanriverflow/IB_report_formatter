@@ -536,12 +536,14 @@ def validate_office_metadata(metadata: DocumentMetadata) -> None:
         letter = metadata.extra.get("letter", {})
         if not isinstance(letter, dict):
             raise ValueError("letter must be a YAML mapping")
-        if set(letter) - {"appendix_heading", "appendix_label"}:
+        if set(letter) - {"appendix_heading", "appendix_label", "table_end"}:
             raise ValueError("Unknown letter settings")
         if any(not isinstance(v, str) or not v.strip() for v in letter.values()):
             raise ValueError("letter settings must be non-empty text")
         if "appendix_label" in letter and "appendix_heading" not in letter:
             raise ValueError("letter.appendix_label requires appendix_heading")
+        if letter.get("table_end", "partial") != "partial":
+            raise ValueError("letter.table_end must be 'partial'")
 
 
 def header_labels(rows: Sequence[Sequence[str]]) -> list[str]:

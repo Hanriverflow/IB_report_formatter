@@ -148,7 +148,7 @@ status: draft     # draft or final
 
 ### Letters with an appendix
 
-The letter profile uses a centred company name, aligned recipient/reference/subject fields, native numbered attachments, a closing marker, signatory and issue/contact details. Wrapped metadata aligns below the value. The company name is not repeated in the page header. `sender.signatory` accepts a YAML multiline string; no signer name is invented.
+The letter profile uses a centred company name, aligned recipient/reference/subject fields, attachment lines in the administrative-handbook form, a closing marker, signatory and issue/contact details. Wrapped metadata aligns below the value. The company name is not repeated in the page header. `sender.signatory` accepts a YAML multiline string; no signer name is invented.
 
 To place the closing **before** an appendix, specify its exact H1 text:
 
@@ -159,6 +159,23 @@ letter:
 ```
 
 That H1 must appear exactly once after the letter body and differ from the document title. Missing/duplicate/empty-body boundaries and unknown `letter` keys are rejected before saving. `appendix_label` is optional and requires `appendix_heading`. Without these settings the entire Markdown remains the letter body. Attachments are a declared list, not proof that external files exist or have been embedded. See [the complete synthetic example](samples/qa/office-letter-appendix.md).
+
+### Attachments, tables at the end and item symbols
+
+These follow the Korean administrative-document rule (enforcement rule of the 「행정업무의 운영 및 혁신에 관한 규정」, Art. 2(1) and 4(4)–(5)) and the 2025 administrative handbook. The rule binds government bodies only; for a company's letters it is the form recipients expect, not a legal requirement, and the engine does not certify legal adequacy. Details: [verification record](docs/verification-office-letter-20261114.md).
+
+- **Attachments.** One attachment is one unnumbered line, `붙임  발행조건 요약표 1부.  끝.`. Several start on the `붙임  1.` line and the next numbers align under `1.`; the numbers stay native Word numbering. `끝.` follows the last attachment.
+- **Body ending with a table.** A table filled to its last row gets `끝.` below it, one character in. If the final table is filled only partway (blank rows left for the record), declare it:
+
+  ```yaml
+  letter:
+    table_end: partial
+  ```
+
+  The first cell of the first blank row after the last written row then reads `이하 빈칸`, and `끝.` is omitted (it still follows attachments if there are any). The engine never infers this from blank rows, because a reply form keeps blank rows for the recipient. The setting is rejected before saving when its value is not `partial`, when the letter body does not end with a table, or when that table has no blank row after its last written row.
+- **Item symbols.** Nested numbered items in an office letter use `1.` `가.` `1)` `가)` `(1)` `(가)` `①` (levels one to seven). Word has no automatic format for the eighth symbol `㉮`: strict mode rejects an eighth level, and non-strict mode uses `가`, `나`, `다` with a warning. Word's 가나다 numbering returns to `가` after `하`; the handbook continues with `거`. Other profiles keep `1.` `가.` `(1)`.
+
+See [the synthetic partial-table example](samples/qa/office-letter-partial-table.md).
 
 Configuration precedence is **explicit CLI/API option > YAML > profile default**. YAML `layout` supports boolean `cover`, `toc`, `disclaimer`, `confidential`, `strict`, plus `separator_mode: auto|rule|page-break`. Unknown layout/table/theme keys fail validation. CLI overrides: `--profile`, `--theme`, `--strict`, `--no-cover`, `--no-toc`, `--no-disclaimer`, `--no-confidential`, `--separator-mode`. Enable cover/TOC through YAML or API when needed.
 
