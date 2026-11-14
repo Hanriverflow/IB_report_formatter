@@ -820,3 +820,83 @@ def test_an_author_colour_other_than_red_stays_only_in_a_table_with_the_option(
     assert colors(cells(rows(table)[2])[1]) <= {"auto"}
     assert colors(cells(rows(plain)[1])[1]) == {RED}
     assert RED in colors(cells(rows(plain)[2])[1])
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# THIRD INDEPENDENT CHECK (2026-11-14)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Finding [1]: reading an amount is apart from restyling it, so a leading zero that
+# keeps an amount from being restyled does not hide that the amount is split.
+LEADING_ZERO_SPLIT = ["-0001200**.50**", "-00^.5^"]
+
+
+@pytest.mark.parametrize("profile", THREE)
+@pytest.mark.parametrize("style", STYLES)
+def test_a_split_leading_zero_amount_keeps_its_text_and_warns(profile: str, style: str) -> None:
+    shown_texts, plain, renderer = option_and_plain(LEADING_ZERO_SPLIT, style, profile)
+    assert shown_texts == plain
+    assert renderer.warnings == [
+        f"Table negative style not applied to {text!r}: the amount is split across "
+        "differently formatted text, so it keeps its written form"
+        for text in ("-0001200.50", "-00.5")
+    ]
+    assert not any("split" in error for error in renderer.errors)
+
+
+@pytest.mark.parametrize("style", STYLES)
+def test_an_unsplit_leading_zero_amount_gives_no_warning(style: str) -> None:
+    values = [*LEADING_ZERO, "-0001200", "(0001.20)%", "-00.5", "**-0001200**"]
+    shown_texts, plain, renderer = option_and_plain(values, style)
+    assert shown_texts == plain
+    assert renderer.warnings == []
+
+
+# Finding [2]: an office letter's 이하 빈칸 is written after the table; on a named
+# totals or subtotal row it is bold like the rest of that row.
+LETTER_TABLE = "| 구분 | 값 |\n|---|---|\n| 가 | 10 |\n| | |\n"
+
+
+def partial_letter(spec: dict | None) -> str:
+    data: dict = {
+        "profile": "office-letter",
+        "title": "가상 안내",
+        "sender": {"organization": "가상회사"},
+        "recipients": ["가상 수신부서"],
+        "letter": {"table_end": "partial"},
+    }
+    if spec is not None:
+        data["tables"] = [spec]
+    return "---\n" + yaml.safe_dump(data, allow_unicode=True) + "---\n" + LETTER_TABLE
+
+
+def partial_mark_runs(doc) -> list:
+    table = doc.element.body.findall(qn("w:tbl"))[-1]
+    return [
+        run
+        for run in table.xpath(".//w:r[w:t]")
+        if "".join(run.xpath("./w:t/text()")) == "이하 빈칸"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("spec", "bottom"),
+    [({"total_rows": [2]}, ("double", "4")), ({"subtotal_rows": [2]}, None)],
+)
+def test_the_partial_table_mark_is_bold_on_a_named_row(spec: dict, bottom) -> None:
+    doc = render(partial_letter(spec))
+    (mark,) = partial_mark_runs(doc)
+    assert mark.xpath("./w:rPr/w:b")
+    table = doc.element.body.findall(qn("w:tbl"))[-1]
+    marked = rows(table)[2]
+    assert [style(tc, "top") for tc in cells(marked)] == ["single", "single"]
+    assert [style(tc, "bottom") for tc in cells(rows(table)[1])] == ["single", "single"]
+    expected_bottom = None if bottom is None else bottom[0]
+    assert [style(tc, "bottom") for tc in cells(marked)] == [expected_bottom] * 2
+
+
+@pytest.mark.parametrize("spec", [None, {"subtotal_rows": [1]}, {"total_rows": [1]}])
+def test_the_partial_table_mark_is_not_bold_off_a_named_row(spec) -> None:
+    doc = render(partial_letter(spec))
+    (mark,) = partial_mark_runs(doc)
+    assert not mark.xpath("./w:rPr/w:b")

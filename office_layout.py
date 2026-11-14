@@ -7,7 +7,9 @@ Changelog (letter closing):
       A blank cell is one Word shows nothing in, judged on parsed runs (line
       breaks and spaces are blank; text, images, equations are not); header
       rows are never the target. The mark goes first in the cell, ahead of any
-      line break, so it sits on the cell's first line.
+      line break, so it sits on the cell's first line. On a row the table spec
+      names in `total_rows` or `subtotal_rows` the mark is bold like the rest of
+      that row (`letter_partial_table_bold`).
     - Attachments follow the administrative handbook: one attachment is a single
       unnumbered line `붙임⇥항목.  끝.`; several start on the `붙임⇥1.` line of a
       native list whose other numbers align under `1.` (`render_attachments`).
@@ -261,13 +263,40 @@ def letter_partial_table_row(model: DocumentModel, appendix_index: int | None) -
     return target
 
 
-def _mark_partial_table(doc, row_index: int) -> None:
+def letter_partial_table_bold(
+    model: DocumentModel, appendix_index: int | None, row_index: int | None
+) -> bool:
+    """Whether the row receiving 이하 빈칸 is a named totals or subtotal row.
+
+    Every run of such a row is bold (table spec `total_rows`, `subtotal_rows`),
+    and the mark is written after the table, so it takes the bold itself.
+
+    Args:
+        model: Render copy of the document model, title H1 already removed.
+        appendix_index: Index of the explicit appendix H1; the body ends before it.
+        row_index: Zero-based row from `letter_partial_table_row`, or None.
+
+    Returns:
+        True when that row is a named body row of the body's last table.
+    """
+    if row_index is None:
+        return False
+    body = model.elements if appendix_index is None else model.elements[:appendix_index]
+    table = body[-1].content
+    if not isinstance(table, Table):
+        return False
+    body_row = row_index - table.header_rows + 1
+    return body_row in (*table.total_rows, *table.subtotal_rows)
+
+
+def _mark_partial_table(doc, row_index: int, bold: bool = False) -> None:
     """Write 이하 빈칸 into the first cell of a row of the last rendered table.
 
     The table renderer creates one Word row per model row, so the model index
     addresses the Word row. The mark is left-aligned even in a number column,
     and it goes first in the cell, ahead of any line break the blank cell holds,
-    so it sits on the cell's first line.
+    so it sits on the cell's first line. `bold` gives it the bold of a named
+    totals or subtotal row.
     """
     table = doc.element.body.findall(qn("w:tbl"))[-1]
     cell = table.findall(qn("w:tr"))[row_index].findall(qn("w:tc"))[0]
@@ -277,6 +306,8 @@ def _mark_partial_table(doc, row_index: int) -> None:
     run.font.name = STYLE.BODY_FONT
     run.font.size = STYLE.TABLE_BODY_SIZE
     run._element.get_or_add_rPr().get_or_add_rFonts().set(qn("w:eastAsia"), STYLE.KOREAN_FONT)
+    if bold:
+        run.font.bold = True
     p = paragraph._p
     p.remove(run._element)
     p.insert(1 if p.pPr is not None else 0, run._element)
@@ -385,7 +416,10 @@ def render_attachments(doc, attachments: list[str]) -> None:
 
 
 def render_office_closing(
-    doc, metadata: DocumentMetadata, partial_table_row: int | None = None
+    doc,
+    metadata: DocumentMetadata,
+    partial_table_row: int | None = None,
+    partial_table_bold: bool = False,
 ) -> None:
     """Render attachments and sender without manufacturing a signature.
 
@@ -395,11 +429,13 @@ def render_office_closing(
         partial_table_row: Row of the body's last table that receives 이하 빈칸
             (`letter_partial_table_row`). That mark replaces "끝." unless
             attachments follow, which still end with "끝.".
+        partial_table_bold: The mark's row is a named totals or subtotal row
+            (`letter_partial_table_bold`), so the mark is bold.
     """
     if metadata.profile != "office-letter":
         return
     if partial_table_row is not None:
-        _mark_partial_table(doc, partial_table_row)
+        _mark_partial_table(doc, partial_table_row, bold=partial_table_bold)
     attachments = string_list(metadata.extra, "attachments")
     if attachments:
         render_attachments(doc, attachments)

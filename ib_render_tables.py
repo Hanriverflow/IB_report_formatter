@@ -1244,8 +1244,9 @@ class TableRenderer:
             return None
         body = [run for run in runs[:end] if run.text]
         text = "".join(run.text for run in body)
-        amount = self._negative_amount(text, role, style)
-        if amount is None:
+        # Whether the text is an amount is decided apart from whether it can be
+        # restyled, so a split amount warns even when a leading zero keeps it.
+        if self._read_negative_amount(text) is None:
             return None
         if any(replace(run, text="") != replace(body[0], text="") for run in body[1:]):
             self._warn(
@@ -1255,10 +1256,37 @@ class TableRenderer:
             return None
         if body[0].superscript or body[0].subscript:
             return None
+        amount = self._negative_amount(text, role, style)
+        if amount is None:
+            return None
         leading = text[: len(text) - len(text.lstrip())]
         trailing = text[len(text.rstrip()) :]
         shown = leading + amount + trailing
         return shown, [replace(body[0], text=shown), *runs[end:]]
+
+    @classmethod
+    def _read_negative_amount(cls, text: str) -> tuple[str, str] | None:
+        """Read one whole nonzero negative amount, whether or not it can be restyled.
+
+        Args:
+            text: A cell's whole visible text.
+
+        Returns:
+            (number as written, unit as written), or None when the text is not
+            exactly one nonzero negative amount.
+        """
+        match = cls._NEGATIVE_AMOUNT_RE.fullmatch(text.strip())
+        if match is None:
+            return None
+        if match["paren"] is not None:
+            if match["inner"] and match["outer"]:
+                return None
+            number, unit = match["paren"], match["inner"] or match["outer"] or ""
+        else:
+            number, unit = match["signed"], match["unit"] or ""
+        if not any(int(ch) for ch in number if ch not in ",."):
+            return None
+        return number, unit
 
     @classmethod
     def _negative_amount(cls, text: str, role: str | None, style: str) -> str | None:
@@ -1271,12 +1299,13 @@ class TableRenderer:
         `paren` gives `(1,234)` (a unit goes inside: `(3.5%)`), `minus` gives
         `-1,234` and `triangle` gives `△1,234`.
 
-        No digit is ever dropped. An integer part with a leading zero
-        (`0001200`, `01,200`; it may be a code) is not restyled, so the cell
-        shows the same text as in a table without the setting. Digits are the
-        decimal digits the formatting without the setting accepts (full-width
-        ones included); they are judged zero or not by their value and written
-        the way that formatting writes them (`-１２３４` gives `1,234`).
+        An amount whose integer part starts with a zero (`0001200`, `01,200`;
+        it may be a code) is not restyled: the cell keeps the result of the
+        formatting without the setting, which drops such zeros in some forms
+        (`-0001200`, `(0001.20)%`, `-00.5`). Digits are the decimal digits that
+        formatting accepts (full-width ones included); they are judged zero or
+        not by their value and written the way that formatting writes them
+        (`-１２３４` gives `1,234`).
 
         Args:
             text: A cell's whole visible text.
@@ -1285,22 +1314,14 @@ class TableRenderer:
 
         Returns:
             The amount in the requested style, or None when the text is not
-            exactly one negative amount (negative zero and an integer part
-            with a leading zero included, which keep their written form).
+            exactly one nonzero negative amount or its integer part has a
+            leading zero; both keep the text of a table without the setting.
         """
-        match = cls._NEGATIVE_AMOUNT_RE.fullmatch(text.strip())
-        if match is None:
+        read = cls._read_negative_amount(text)
+        if read is None:
             return None
-        if match["paren"] is not None:
-            if match["inner"] and match["outer"]:
-                return None
-            number, unit = match["paren"], match["inner"] or match["outer"] or ""
-        else:
-            number, unit = match["signed"], match["unit"] or ""
-        number_digits = [int(ch) for ch in number if ch not in ",."]
+        number, unit = read
         integer_digits = [int(ch) for ch in number.split(".", 1)[0] if ch != ","]
-        if not any(number_digits):
-            return None
         if len(integer_digits) > 1 and integer_digits[0] == 0:
             return None
         unit = unit or cls._ROLE_UNITS.get(role or "", "")

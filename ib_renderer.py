@@ -149,6 +149,7 @@ from office_layout import (
     add_text,
     letter_appendix_index,
     letter_numbering_warnings,
+    letter_partial_table_bold,
     letter_partial_table_row,
     render_office_closing,
     render_office_opening,
@@ -763,6 +764,7 @@ class IBDocumentRenderer:
             appendix_index = letter_appendix_index(model)
             status = document_status(model.metadata)
             partial_table_row = letter_partial_table_row(model, appendix_index)
+            partial_table_bold = letter_partial_table_bold(model, appendix_index, partial_table_row)
         model.warnings.extend(letter_numbering_warnings(model))
         if resolved.strict and model.warnings:
             raise StrictValidationError("Input validation failed: ", model.warnings)
@@ -842,7 +844,9 @@ class IBDocumentRenderer:
             for idx, element in enumerate(model.elements):
                 if idx == appendix_index:
                     with _metadata_text("closing"):
-                        render_office_closing(self.doc, model.metadata, partial_table_row)
+                        render_office_closing(
+                            self.doc, model.metadata, partial_table_row, partial_table_bold
+                        )
                     office_closed = True
                     self.doc.add_page_break()
                     label = model.metadata.extra["letter"].get("appendix_label")
@@ -875,7 +879,9 @@ class IBDocumentRenderer:
                     )
             if not office_closed:
                 with _metadata_text("closing"):
-                    render_office_closing(self.doc, model.metadata, partial_table_row)
+                    render_office_closing(
+                        self.doc, model.metadata, partial_table_row, partial_table_bold
+                    )
             if model.footnotes:
                 self.footnote_renderer.render(
                     model.footnotes, allow_legacy_refs=resolved.profile.is_ib
