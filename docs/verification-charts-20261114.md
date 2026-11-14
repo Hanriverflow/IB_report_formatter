@@ -146,3 +146,41 @@ Word 16.0으로 `scripts/word_visual_qa.ps1`을 새 빈 폴더에 실행했다(�
 - 100% 누적 막대, 두 선의 이중축, 수익률 곡선, 산점도, 추정치 빗금, 성장률 화살표, 편집형 네이티브 차트(E15), Excel 연동(E16).
 - 그림 높이는 종류별 고정값이다(가로 막대·범위 막대만 항목 수에 비례). 항목이 아주 많은 세로 막대는 값 글자가 작아질 뿐 겹침을 피하는 배치는 하지 않는다.
 - 실제 흑백 프린터 인쇄, 다른 글꼴 환경(맑은 고딕이 없는 Linux)의 쪽 확인.
+
+## 11. main 병합 뒤 검증
+
+병합 커밋 `16bef4c`(`git merge --no-ff origin/main`, 부모 `78fa950`과 `a0cfe55`). 들어온 변경은 둘이다: 같은 각주를 두 번 가리킬 때 두 번째부터 `NOTEREF` 필드로 쓰는 수정(PR #31)과 설명 없는 그림의 대체 텍스트 경고(PR #32, 로드맵 E9). rebase·amend는 하지 않았다.
+
+**충돌과 해결(모두 양쪽 내용을 살림).**
+
+| 파일 | 충돌 | 해결 |
+|---|---|---|
+| `ib_render_media.py` | 모듈 설명의 변경 기록, `pathlib`·`typing` 가져오기 | 두 변경 기록을 모두 두고, `from pathlib import Path, PureWindowsPath`와 `from typing import cast`를 함께 둠 |
+| `AGENTS.md` | 맨 위 검증 기록 목록 | main의 두 줄(대체 텍스트 경고, 각주 중복 참조)과 이 브랜치의 차트 줄을 모두 둠 |
+| `CHANGELOG.md` | Unreleased 맨 앞 절 | 차트 절 다음에 main의 대체 텍스트 절과 각주 수정 절을 그대로 둠 |
+| `docs/improvement-roadmap-20260929.md` | 뒤로 미루는 것의 E9·E10 항목 | E9는 main의 결과 문장, E10은 이 브랜치의 결과 문장 |
+
+`ib_renderer.py`, `converters.py`, `README.md`, `README.ko.md`는 자동 병합됐다.
+
+**상호작용 확인.** 시험 `tests/test_chart_alt_text_and_footnotes.py`(7개)로 고정했다.
+
+- 대체 텍스트 경고: 차트 그리기는 `ImageRenderer._apply_alt_text`만 부르고 `warn_missing_description`은 부르지 않는다. main이 바꾼 `_insert_image(..., loaded=…)`는 이미지 경로만 쓰며, 이 브랜치는 `_insert_image`를 새로 부르지 않는다(차트는 `add_picture` 뒤 `_apply_alt_text`를 부름). 그래서 시그니처 충돌이 없다. `charts.md`(standard·classic)와 `charts-dcm.md`(standard)를 strict로 변환하면 렌더링 경고에 대체 텍스트 경고가 0건이고, 모든 그림에 설명이 있으며, `docx-audit`의 issue 0건·대체 텍스트 warning 0건이다. 제목 없는 차트는 `Chart 1`, 번호 붙는 차트는 제목(`구성`)이 설명이며 standard·classic 둘 다 렌더링 경고 0건이다.
+- 각주: 차트의 `title`·`subtitle`·`note`·`source`에 쓴 `[^1]`은 글자 그대로 나온다(`매출[^1]`, `주: 주석[^1]` 등). 차트 글자는 Markdown이 아닌 일반 글자이기 때문이다(5절과 같은 규칙). 각주 참조를 만들지 않으므로 본문에서 한 번 가리키면 기본 각주 표시 1개, 본문에서 두 번 가리키면 기본 각주 표시 1개와 `NOTEREF` 1개가 된다. strict에서 거부되지 않고 `docx-audit` issue 0건이다. 차트에서만 가리킨 각주는 본문에 참조가 없는 각주와 같이 문서 끝 `ENDNOTES` 목록에 내용이 남는다(기존 동작).
+- Word 확인: 위 두 경우(본문 한 번, 본문 두 번 + 차트 글자)를 Word 16.0.20527(PR #31이 손상을 재현한 빌드)에서 `scripts/word_visual_qa.ps1`로 열고 필드를 갱신했다. 두 문서 모두 열렸고 1쪽, 본문의 두 번째 참조도 `1`로 나오며 차트 글자는 `[^1]` 그대로다. 쪽 그림: `%TEMP%\ibrf-e10\stage3\word-pages\`. 입력 SHA-256 앞 12자: `685bb0818ae3`(한 번), `58dc529a1d21`(두 번).
+
+**스냅숏.** `origin/main`과 비교해 바뀐 기존 스냅숏은 `samples/qa/charts.md`의 4개(1~3절)뿐이고, 새로 더한 것은 이 브랜치의 43개다. main에서 온 `footnote-rereference.md` 스냅숏 22개는 main 그대로다. 병합 전 이 브랜치(`78fa950`)와 비교하면 차트 스냅숏은 하나도 바뀌지 않았다(병합으로 더해진 것은 각주 샘플 22개뿐).
+
+**Word 쪽 확인을 다시 하지 않은 근거.** 차트 문서의 XML 스냅숏(`charts.md` 3변형, `charts-dcm.md`)이 병합 전과 바이트 단위로 같다. 병합은 차트 문서의 출력을 바꾸지 않았으므로 8절의 확인이 그대로 유효하다.
+
+**게이트(병합 뒤).**
+
+| 명령 | 결과 |
+|---|---|
+| `uv run ruff check .` | 통과(0) |
+| `uv run ruff format --check .` | 통과(0) |
+| `uv run mypy .` | 44개 파일 문제 없음(0) |
+| `uv run pytest tests`(전체, 새 `--basetemp`) | 3,660 통과, 5 생략, 예상 실패 1, 스냅숏 433개 통과(0, 8분 16초). 병합 전보다 136개 많은 것은 main의 시험과 이 절의 시험 7개 |
+| Word 스키마 검사(`win-x64.zip`, Microsoft365) | `ok: true`, 표본 20개 문서(각주 샘플 추가) 오류 0건, 쓰지 않은 예외 없음(0) |
+| `uv build` | 휠·sdist 생성(0). 둘 다 `chart_render_standard.py` 포함, 비공개 폴더 없음, sdist에 `charts-dcm.md`·`footnote-rereference.md` 포함 |
+
+전체 pytest를 도는 동안 `AGENTS.md`의 차트 절에 이 상호작용 규칙(차트 그림은 늘 설명이 있음, 차트 글자의 `[^1]`은 글자)을 한 줄 더했으므로, 문서를 읽는 시험 3개 모듈과 새 시험을 다시 돌렸다: 451 통과, 예상 실패 1(0).
