@@ -109,9 +109,10 @@ from document_model import (
     DefaultTitle,
     InferredText,
     caption_bookmark_name,
+    chart_reading,
+    chart_reading_diagnostics,
     model_images,
     numbered_items,
-    undrawn_chart_ids,
 )
 from document_profiles import (
     RenderOptions,
@@ -738,6 +739,12 @@ class IBDocumentRenderer:
         model = deepcopy(model)
         roots = resolve_asset_roots((*model.asset_roots, *self.options.asset_roots, *asset_roots))
         resolved = resolve_options(model.metadata, self.options)
+        # A document with chart IDs was read both with and without its charts
+        # (principle V3): take the reading for this render's setting, and log
+        # the diagnostics only that reading has (the parser logged the rest).
+        model = chart_reading(model, resolved.charts)
+        for message in chart_reading_diagnostics(model):
+            logging.getLogger("md_parser").warning("%s", message)
         if model.parsed_profile is not None and model.parsed_profile != resolved.profile.name:
             raise ValueError(
                 f"Document was parsed with profile {model.parsed_profile!r}; "
@@ -1123,12 +1130,6 @@ class IBDocumentRenderer:
             allocator and diagnostic sink.
         """
         numbers = CaptionNumbers(next_bookmark_id=self._next_bookmark_id, errors=self.errors)
-        if not self.charts:
-            numbers.undrawn = {
-                ref_id: f"Reference id {ref_id!r} is on a chart, and charts are off, "
-                "so it is not drawn"
-                for ref_id in undrawn_chart_ids(model.elements)
-            }
         counts = dict.fromkeys(CAPTION_LABELS, 0)
         reported = set(self.errors)  # the parser may have said so
         for content, kind, problem in numbered_items(model.elements, self.charts):

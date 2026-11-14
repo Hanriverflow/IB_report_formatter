@@ -101,12 +101,14 @@ def test_a_chart_that_is_not_drawn_gets_no_number_and_its_references_are_reporte
     tmp_path: Path,
 ) -> None:
     path = write(tmp_path, "@fig-sales 참고\n\n" + chart(), charts="false")
-    with pytest.raises(StrictValidationError, match="charts are off"):
+    # Principle V3 (third independent review): with charts off the chart block
+    # is a code block in every respect, so the reference is reported exactly as
+    # in a document without that chart. This replaces the earlier pin of an
+    # added "charts are off" reason, which such a document never had before.
+    with pytest.raises(StrictValidationError, match="has no table or figure with that id"):
         render(path)
     document, errors = render(path, strict=False)
-    message = ";".join(errors)
-    assert "'fig-sales' is on a chart, and charts are off" in message
-    assert "Cross-reference @fig-sales" in message
+    assert errors == ["Cross-reference @fig-sales has no table or figure with that id"]
     assert fields(document) == [] and not document.inline_shapes
     assert any("@fig-sales 참고" in p.text for p in document.paragraphs)
     # The CLI/API switch decides, not only the frontmatter. Without a reference

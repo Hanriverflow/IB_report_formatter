@@ -297,6 +297,7 @@ class IBReportConverter:
                 profile=self.render_options.profile,
                 asset_roots=self.render_options.asset_roots,
                 limits=self.limits,
+                charts=self.render_options.charts,
             )
         except UnicodeDecodeError as e:
             raise RuntimeError(

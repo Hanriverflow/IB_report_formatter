@@ -178,15 +178,26 @@ class MarkdownInputConverter(InputConverter):
         roots = kwargs.get("asset_roots", ())
         profile = kwargs.get("profile")
         limits = kwargs.get("limits") or getattr(options, "limits", None) or DEFAULT_LIMITS
+        # The caller's `charts` override, when it is already known here; the
+        # renderer takes the reading for its own setting either way.
+        charts = kwargs.get("charts")
         if isinstance(options, RenderOptions):
             roots = (*options.asset_roots, *roots)
+            if charts is None:
+                charts = options.charts
 
         # parse_markdown_file now accepts both str and BinaryIO
         if is_stream(source):
             return parse_markdown_file(
-                cast(BinaryIO, source), profile=profile, asset_roots=roots, limits=limits
+                cast(BinaryIO, source),
+                profile=profile,
+                asset_roots=roots,
+                limits=limits,
+                charts=charts,
             )
-        return parse_markdown_file(str(source), profile=profile, asset_roots=roots, limits=limits)
+        return parse_markdown_file(
+            str(source), profile=profile, asset_roots=roots, limits=limits, charts=charts
+        )
 
 
 class DocxOutputConverter(OutputConverter):

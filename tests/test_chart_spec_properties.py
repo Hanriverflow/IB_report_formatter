@@ -210,10 +210,11 @@ def test_charts_off_never_checks_a_chart_id(blocks):
 
 def test_charts_off_reports_only_a_reference_to_a_chart_id():
     body = "@fig-test 참고\n\n" + ID_CHART.format(id="id: fig-test\n", title="Test")
+    # Principle V3 (third independent review): the reference is reported as in
+    # a document without that chart; no reason about charts is added.
     errors = _charts_off(body, strict=False)
-    assert "Reference id 'fig-test' is on a chart, and charts are off, so it is not drawn" in errors
-    assert "Cross-reference @fig-test has no table or figure with that id" in errors
-    with pytest.raises(ValueError, match="charts are off"):
+    assert errors == ["Cross-reference @fig-test has no table or figure with that id"]
+    with pytest.raises(ValueError, match="has no table or figure with that id"):
         _charts_off(body)
 
 

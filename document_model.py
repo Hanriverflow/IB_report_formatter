@@ -529,11 +529,10 @@ def numbered_items(
     The parser takes the IDs that resolve from here and the renderer numbers
     the same items, so both agree on what a reference can point to. A chart
     is a figure (`SEQ 그림`) captioned by its title. Whether charts are drawn
-    is a render option, so the parser counts them as drawn and the renderer
-    passes its own setting. A chart that is not drawn is skipped altogether:
-    its ID is neither numbered nor checked, so a document with charts off
-    converts every chart block to a code panel; only a reference to it is
-    reported (it has no target).
+    is a render option; a chart that is not drawn is skipped altogether: it
+    is a code panel, so its ID is neither numbered nor checked and no
+    reference resolves to it (principle V3). The parser reads a document
+    both ways when the two differ (`link_chart_readings`).
 
     Args:
         elements: Document elements.
@@ -566,19 +565,18 @@ def numbered_items(
         yield content, kind, problem
 
 
-def undrawn_chart_ids(elements: Sequence["Element"]) -> list[str]:
-    """IDs of charts with an ID, for a render whose charts are off (code panels)."""
-    return [
-        element.content.ref_id
-        for element in elements
-        if element.element_type == ElementType.CHART and isinstance(element.content, NumberedChart)
-    ]
+def numbered_targets(elements: Sequence["Element"], charts_drawn: bool = True) -> frozenset[str]:
+    """IDs that a reference can resolve to: those of numbered tables and figures.
 
-
-def numbered_targets(elements: Sequence["Element"]) -> frozenset[str]:
-    """IDs that a reference can resolve to: those of numbered tables and figures."""
+    Args:
+        elements: Document elements.
+        charts_drawn: Charts are rendered as pictures; otherwise no chart ID
+            is a target.
+    """
     return frozenset(
-        item.ref_id for item, _, problem in numbered_items(elements) if problem is None
+        item.ref_id
+        for item, _, problem in numbered_items(elements, charts_drawn)
+        if problem is None
     )
 
 
@@ -726,6 +724,62 @@ class DocumentModel:
     # Trusted caller context, deliberately separate from frontmatter metadata.
     asset_roots: tuple[Path, ...] = ()
     limits: InputLimits = DEFAULT_LIMITS
+
+
+# ── chart readings (principle V3) ────────────────────────────────────────────
+#
+# With charts off a chart block is a code block in every respect: its `id`
+# names nothing, so a `@fig-…` written for it is read exactly as in a document
+# without that chart. Whether charts are drawn is settled only at render time
+# (frontmatter, CLI or API), so when the two readings differ the parser keeps
+# both and the renderer takes the one for its setting. They are plain
+# attributes, not dataclass fields: a document without a chart ID has neither,
+# and the pinned model of every sample is unchanged.
+
+_READINGS = "_chart_readings"
+_READING_ONLY = "_chart_reading_only"
+
+
+def link_chart_readings(
+    drawn: "DocumentModel",
+    undrawn: "DocumentModel",
+    drawn_only: Sequence[str],
+    undrawn_only: Sequence[str],
+) -> None:
+    """Keep the two readings of one document together.
+
+    Args:
+        drawn: The document read with its charts drawn (their IDs are targets).
+        undrawn: The same document read with charts off (code blocks).
+        drawn_only: Diagnostics only the first reading has.
+        undrawn_only: Diagnostics only the second reading has.
+    """
+    readings = {True: drawn, False: undrawn}
+    for model, own in ((drawn, drawn_only), (undrawn, undrawn_only)):
+        setattr(model, _READINGS, readings)
+        setattr(model, _READING_ONLY, tuple(own))
+
+
+def chart_reading(model: "DocumentModel", charts_drawn: bool) -> "DocumentModel":
+    """The document as read for a render that draws its charts, or does not.
+
+    A model with one reading (no chart ID, or built by hand) is returned as is.
+    """
+    readings: dict[bool, DocumentModel] | None = getattr(model, _READINGS, None)
+    return model if readings is None else readings[charts_drawn]
+
+
+def chart_readings(model: "DocumentModel") -> tuple["DocumentModel", ...]:
+    """Every reading of the document, the given one first."""
+    readings: dict[bool, DocumentModel] | None = getattr(model, _READINGS, None)
+    if readings is None:
+        return (model,)
+    return (model, *(other for other in readings.values() if other is not model))
+
+
+def chart_reading_diagnostics(model: "DocumentModel") -> tuple[str, ...]:
+    """Diagnostics only this reading has; the renderer logs them when it uses it."""
+    return tuple(getattr(model, _READING_ONLY, ()))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

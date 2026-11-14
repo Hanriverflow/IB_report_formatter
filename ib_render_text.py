@@ -68,9 +68,6 @@ class CaptionNumbers:
     # The messages of the first `reported_count` entries of `errors`, so a
     # repeat is found without searching the list.
     reported: set[str] = field(default_factory=set)
-    # Why an ID has no number when its chart is not drawn (charts off); said
-    # only where a reference points to it.
-    undrawn: dict[str, str] = field(default_factory=dict)
     reported_count: int = 0
 
 
@@ -143,8 +140,6 @@ def resolve_cross_reference(reference: CrossReference, report: bool = True) -> C
         return None
     number = numbers.by_id.get(reference.target)
     if number is None and report:
-        if reference.target in numbers.undrawn:
-            _report(numbers, numbers.undrawn[reference.target])
         _report(numbers, f"Cross-reference @{reference.target} has no table or figure with that id")
     return number
 
