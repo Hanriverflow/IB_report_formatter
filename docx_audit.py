@@ -24,6 +24,10 @@ Changelog (captions):
       sequences with no switch or `\\* ARABIC` alone. Only the main body is read.
     - Second review: a `w:fldSimple` result skips the instruction text of a
       complex field nested in it, as complex fields do.
+
+Changelog (alt text):
+    - A picture in the main body without a description (alt text) is a warning,
+      unless Word marks it as decorative. It is never an issue.
 """
 
 import argparse
@@ -119,6 +123,9 @@ _REMOVED_CONTENT = frozenset({qn("w:del"), qn("w:moveFrom")})
 _TERM_TAG_PATH = qn("w:sdtPr") + "/" + qn("w:tag")
 _PLACEHOLDER_PATH = qn("w:sdtPr") + "/" + qn("w:showingPlcHdr")
 _INDICATIVE_RE = re.compile(r"\[[^\[\]]*\]")
+_PICTURE_URI = "http://schemas.openxmlformats.org/drawingml/2006/picture"
+_DECORATIVE = "{http://schemas.microsoft.com/office/drawing/2017/decorative}decorative"
+_FALLBACK = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback"
 
 
 _PAGINATION_FLAGS = (
@@ -228,6 +235,7 @@ def inspect_document(doc: DocxDocument) -> DocumentAudit:
                 "Possible rendering placeholder (may be literal user text): " + text
             )
     result.warnings.extend(_cross_reference_findings(doc)[1])
+    result.warnings.extend(_undescribed_pictures(doc))
     terms = inspect_terms(doc)
     if terms is not None:
         result.warnings.extend(_term_warnings(terms))
@@ -413,6 +421,38 @@ def _term_warnings(terms: TermAudit) -> list[str]:
         for key in terms.missing
     )
     warnings.extend(terms.failed_checks or [])
+    return warnings
+
+
+def _undescribed_pictures(doc: DocxDocument) -> list[str]:
+    """Warn for each picture in the main body without a description (alt text).
+
+    The saved file does not say who made a picture, so engine-made equations,
+    diagrams and logos are reported too. A picture Word marks as decorative needs
+    no description; deleted pictures and Office's fallback copies are not counted.
+
+    Args:
+        doc: Open document to read.
+
+    Returns:
+        One warning per picture, naming it as Word does (`Picture 3`).
+    """
+    warnings = []
+    for doc_pr in doc.element.body.iter(qn("wp:docPr")):
+        drawing = doc_pr.getparent()
+        if drawing is None or drawing.tag not in (qn("wp:inline"), qn("wp:anchor")):
+            continue
+        if not drawing.xpath(f"./a:graphic/a:graphicData[@uri='{_PICTURE_URI}']"):
+            continue
+        if (doc_pr.get("descr") or "").strip() or _is_removed(doc_pr):
+            continue
+        if any(ancestor.tag == _FALLBACK for ancestor in doc_pr.iterancestors()):
+            continue
+        if any(mark.get("val") in ("1", "true") for mark in doc_pr.iter(_DECORATIVE)):
+            continue
+        warnings.append(
+            f"Picture without a description (alt text): Word name '{doc_pr.get('name')}'"
+        )
     return warnings
 
 
