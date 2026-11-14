@@ -10,6 +10,7 @@ Changelog (term-sheet foundation):
 
 Changelog (IB table rules):
     - NEW: explicit `total_rows` / `subtotal_rows` body-row lists in every profile.
+    - NEW: per-table `negative` style (paren, minus, triangle) for `type: financial` tables.
 """
 
 import math
@@ -532,6 +533,10 @@ def header_labels(rows: Sequence[Sequence[str]]) -> list[str]:
     return labels
 
 
+# Table spec `negative`: (1,234), -1,234 or △1,234 in place of the written form and red.
+NEGATIVE_STYLES = ("paren", "minus", "triangle")
+
+
 def apply_table_specs(model: DocumentModel) -> None:
     """Apply explicit table semantics in document order, never infer a base case."""
     tables = [
@@ -572,6 +577,7 @@ def apply_table_specs(model: DocumentModel) -> None:
             "schedule",
             "total_rows",
             "subtotal_rows",
+            "negative",
         }
         if unknown:
             raise ValueError("Unknown table settings: {}".format(", ".join(sorted(unknown))))
@@ -596,6 +602,13 @@ def apply_table_specs(model: DocumentModel) -> None:
         shared = sorted(set(table.total_rows) & set(table.subtotal_rows))
         if shared:
             raise ValueError(f"Table body row {shared[0]} is in both total_rows and subtotal_rows")
+        if "negative" in spec:
+            # Display only: the amount is unchanged and red is dropped (owner decision D4).
+            if not isinstance(spec["negative"], str) or spec["negative"] not in NEGATIVE_STYLES:
+                raise ValueError("Table negative must be paren, minus or triangle")
+            if spec.get("type") != "financial":
+                raise ValueError("Table negative requires type: financial in the same spec")
+            table.negative = spec["negative"]
         if "spans" in spec:
             if not isinstance(spec["spans"], bool):
                 raise ValueError("Table spans must be true or false")

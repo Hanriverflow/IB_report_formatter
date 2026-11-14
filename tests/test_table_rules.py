@@ -268,3 +268,117 @@ def test_invalid_row_lists_are_rejected_in_both_modes(spec, message, strict: boo
     content = markdown(STATEMENT, "ib-memo", tables=[spec])
     with pytest.raises(ValueError, match=message):
         render(content, strict=strict)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NEGATIVE-NUMBER STYLE (table spec `negative`)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Negative amounts written three ways, a percent role, a unit suffix, a bold
+# amount, positive and token cells, and a text column with arrows and △.
+MIXED = (
+    "| 구분 | 전기 | 당기 | 증감률 | 증감 |\n|---|---|---|---|---|\n"
+    "| 금융손익 | (2100) | -2400 | -3.5 | ▲12800 |\n"
+    "| 법인세 | △2600 | **-1800** | (1.2) | ▼900 |\n"
+    "| 순이익 | 7100 | 1200억원 | NM | △500 |\n"
+)
+MIXED_SPEC = {"type": "financial", "columns": ["text", "money", "money", "percent", "text"]}
+RED = "C00000"
+
+
+def cell_texts(table) -> list[list[str]]:
+    return [["".join(tc.xpath(".//w:t/text()")) for tc in cells(row)] for row in rows(table)]
+
+
+def colors(tc) -> set[str]:
+    return set(tc.xpath(".//w:r/w:rPr/w:color/@w:val"))
+
+
+def digits(texts: list[list[str]]) -> list[str]:
+    return ["".join(ch for ch in "".join(row) if ch.isdigit()) for row in texts]
+
+
+@pytest.mark.parametrize("profile", ["ib-memo", "business-report", "term-sheet"])
+def test_without_the_option_negatives_keep_their_written_form_and_red(profile: str) -> None:
+    table = body_table(render(markdown(MIXED, profile, tables=[MIXED_SPEC])), "금융손익")
+    assert cell_texts(table)[1:] == [
+        ["금융손익", "(2,100)", "-2,400", "-3.5%", "▲12800"],
+        ["법인세", "△2600", "-1,800", "(1.2)%", "▼900"],
+        ["순이익", "7,100", "1,200억원", "NM", "△500"],
+    ]
+    first, second = cells(rows(table)[1]), cells(rows(table)[2])
+    assert [RED in colors(tc) for tc in first[1:4]] == [True, True, True]
+    # A written △ is not read as negative, and the text column is never red.
+    assert RED not in colors(second[1]) and RED in colors(second[2])
+    assert not any(RED in colors(tc) for row in rows(table) for tc in cells(row)[4:])
+
+
+EXPECTED = {
+    "paren": [
+        ["금융손익", "(2,100)", "(2,400)", "(3.5%)", "▲12800"],
+        ["법인세", "(2,600)", "(1,800)", "(1.2%)", "▼900"],
+    ],
+    "minus": [
+        ["금융손익", "-2,100", "-2,400", "-3.5%", "▲12800"],
+        ["법인세", "-2,600", "-1,800", "-1.2%", "▼900"],
+    ],
+    "triangle": [
+        ["금융손익", "△2,100", "△2,400", "△3.5%", "▲12800"],
+        ["법인세", "△2,600", "△1,800", "△1.2%", "▼900"],
+    ],
+}
+
+
+@pytest.mark.parametrize("profile", ["ib-memo", "business-report", "term-sheet"])
+@pytest.mark.parametrize("style", ["paren", "minus", "triangle"])
+def test_the_option_restyles_only_negative_amounts_in_black(profile: str, style: str) -> None:
+    spec = {**MIXED_SPEC, "negative": style}
+    table = body_table(render(markdown(MIXED, profile, tables=[spec])), "금융손익")
+    texts = cell_texts(table)
+    assert texts[1:3] == EXPECTED[style]
+    # Positive amounts, tokens and the text column (arrows, △500) are unchanged.
+    assert texts[3] == ["순이익", "7,100", "1,200억원", "NM", "△500"]
+    # The amounts are the same digits as without the option.
+    plain = cell_texts(
+        body_table(render(markdown(MIXED, profile, tables=[MIXED_SPEC])), "금융손익")
+    )
+    assert digits(texts) == digits(plain)
+    assert not any(RED in colors(tc) for row in rows(table) for tc in cells(row))
+    # Emphasis written in Markdown is kept.
+    assert set(bold_runs(cells(rows(table)[2])[2])) == {True}
+
+
+def test_the_option_leaves_other_tables_of_the_document_unchanged() -> None:
+    body = MIXED + "\n" + MIXED.replace("금융손익", "영업외손익")
+    spec = {**MIXED_SPEC, "negative": "paren"}
+    with_option = render(markdown(body, "ib-memo", tables=[spec, MIXED_SPEC]))
+    without = render(markdown(body, "ib-memo", tables=[MIXED_SPEC, MIXED_SPEC]))
+    assert etree.tostring(body_table(with_option, "영업외손익")) == etree.tostring(
+        body_table(without, "영업외손익")
+    )
+
+
+def test_a_suffix_after_parentheses_moves_inside_and_a_unit_amount_is_restyled() -> None:
+    body = "| 구분 | 금액 |\n|---|---|\n| 가 | (1200)억원 |\n| 나 | -300억원 |\n"
+    spec = {"type": "financial", "columns": ["text", "money"], "negative": "paren"}
+    table = body_table(render(markdown(body, "ib-memo", tables=[spec])), "억원")
+    assert [row[1] for row in cell_texts(table)[1:]] == ["(1,200억원)", "(300억원)"]
+
+
+@pytest.mark.parametrize(
+    ("spec", "message"),
+    [
+        ({"type": "financial", "negative": "red"}, "paren, minus or triangle"),
+        ({"type": "financial", "negative": "Paren"}, "paren, minus or triangle"),
+        ({"type": "financial", "negative": True}, "paren, minus or triangle"),
+        ({"type": "financial", "negative": ["paren"]}, "paren, minus or triangle"),
+        ({"negative": "paren"}, "requires type: financial"),
+        ({"type": "generic", "negative": "paren"}, "requires type: financial"),
+        ({"type": "sensitivity", "negative": "minus"}, "requires type: financial"),
+    ],
+)
+@pytest.mark.parametrize("strict", [True, False])
+def test_invalid_negative_settings_are_rejected_in_both_modes(spec, message, strict) -> None:
+    # The ib-memo header row reads as financial, but the option needs the spec to say so.
+    with pytest.raises(ValueError, match=message):
+        render(markdown(MIXED, "ib-memo", tables=[spec]), strict=strict)
