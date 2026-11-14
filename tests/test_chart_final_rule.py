@@ -1016,6 +1016,11 @@ POINT_VALUE_OVER_A_BAR = {
     ],
 }
 # Self-review: the 2 beside bar E was as high as both thin segments (2 and 3).
+# That holds for a text of about 20.2 px or more (Malgun Gothic: 21 px). With
+# a lower text (18 px in Gulim and Batang) the segment of 3 reaches 1.6 to
+# 1.7 px beyond the text, so the 2 may be written there; CI on Ubuntu, which
+# draws with NanumGothic, writes it too. The chart keeps the rule either way
+# (`FOURTH_CASES`); which values it writes depends on the font.
 THIN_SEGMENTS_LEVEL = {
     "type": "stacked_bar",
     "totals": True,
@@ -1024,6 +1029,19 @@ THIN_SEGMENTS_LEVEL = {
         {"name": "영업", "values": [120, 90, 60, 4, 75, 130]},
         {"name": "투자", "values": [8, 30, 70, 3, 2, 9]},
         {"name": "재무", "values": [10, 4, 25, 5, 3, 1]},
+    ],
+}
+# The same stacks with two segments of 1 in bar E (under 3 px each): a value
+# beside the bar has its centre within its own segment, so its text, of any
+# font's height, reaches over the whole other thin segment.
+THINNER_SEGMENTS = {
+    "type": "stacked_bar",
+    "totals": True,
+    "labels": ["A", "B", "C", "D", "E", "F"],
+    "series": [
+        {"name": "영업", "values": [120, 90, 60, 4, 75, 130]},
+        {"name": "투자", "values": [8, 30, 70, 3, 1, 9]},
+        {"name": "재무", "values": [10, 4, 25, 5, 1, 1]},
     ],
 }
 # Three lines end within a few points of each other, under a reference line.
@@ -1145,10 +1163,28 @@ def test_a_points_value_is_clearly_nearer_to_its_point_than_to_another_series(mo
 
 
 def test_a_value_as_high_as_a_whole_other_segment_is_not_drawn(monkeypatch):
-    seen = check(monkeypatch, THIN_SEGMENTS_LEVEL)
-    assert "2" not in shown(seen)
+    """Measured in the picture, so that it holds whatever font draws the values.
+
+    The premise is checked first: wherever a value's centre lies within its
+    own thin segment, the other thin segment of bar E (1 px or more high) is
+    wholly within the text's height, with 2 px to spare. Then neither value
+    is drawn, and both are named.
+    """
+    seen = check(monkeypatch, THINNER_SEGMENTS)
+    bars = {tuple(gid.split("\t")[1:3]): box for gid, box in seen["bars"]}
+    drawn = {item["gid"]: item["box"] for item in seen["texts"]}
+    # A value's text height in this picture, from one that is always drawn.
+    inside = drawn["value\tE\t영업\t75"]
+    height = inside[3] - inside[1]
+    for own, other in (("투자", "재무"), ("재무", "투자")):
+        segment, whole = bars[("E", own)], bars[("E", other)]
+        assert whole[3] - whole[1] >= 1.0
+        for centre in (segment[1], segment[3]):  # the lowest and the highest level place
+            assert centre - height / 2 <= whole[1] - 2
+            assert whole[3] + 2 <= centre + height / 2
+        assert f"value\tE\t{own}\t1" not in drawn
     left_out = [note for note in seen["warnings"] if "not written in the picture" in note]
-    assert len(left_out) == 1 and "E, 투자: 2" in left_out[0] and "E, 재무: 3" in left_out[0]
+    assert len(left_out) == 1 and "E, 투자: 1" in left_out[0] and "E, 재무: 1" in left_out[0]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
