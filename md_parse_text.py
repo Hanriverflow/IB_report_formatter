@@ -12,6 +12,9 @@ Changelog (captions):
       and splits a run only for a reference that resolves in the active
       `ReferenceScope`; every other reference is reported without touching the
       runs, so text without a resolvable reference parses exactly as before.
+    - Fifth check: an `@…` right after other text that names a target is
+      reported (never split); the `tbl-`/`fig-` prefix is matched in any case
+      so that capitals are reported by the ID check.
 """
 
 import logging
@@ -96,6 +99,10 @@ class _Candidate:
         end: Offset after the ID in that run (meaningful when `whole`).
         target: The whole visible ID after `@`.
         whole: The `@` and the whole ID lie in one run (no formatting splits it).
+        attached: The `@` stands right after punctuation or a letter that is
+            not part of an address (`표 1,@tbl-b`, `참조:@tbl-b`), where the
+            grammar reads no reference; it never resolves and is reported
+            only when its ID names a target.
     """
 
     ordinal: int
@@ -104,6 +111,7 @@ class _Candidate:
     end: int
     target: str
     whole: bool
+    attached: bool = False
 
 
 def _document_int(digits: str) -> int:
@@ -235,7 +243,7 @@ class TextParser:
     # Every visible `@`; a reference starts where `tbl-` or `fig-` follows one.
     _AT_RE = re.compile("@")
     # An `@` that would start a reference in text whose `-` may already be escaped.
-    _REFERENCE_AT_RE = re.compile(r"@(?=(?:tbl|fig)\\?-)")
+    _REFERENCE_AT_RE = re.compile(r"@(?=(?:tbl|fig)\\?-)", re.IGNORECASE)
     # Characters an ID is read through (the whole token is checked afterwards,
     # so `@tbl-a-` and `@tbl-` are reported instead of shortened).
     _REFERENCE_ID_CHARS = frozenset(
@@ -244,6 +252,13 @@ class TextParser:
     # Characters that may stand right before a reference's `@` besides
     # whitespace and the start of the text: opening brackets and quotes.
     _REFERENCE_OPENERS = frozenset("([{<\"'“‘「『《〈【〔（［｛")
+    # Characters right before an `@` that make it part of an address
+    # (`user+tag@tbl-x`) or a doubled sign; such an `@` is never looked at.
+    # After any other character (`표 1,@tbl-b`, `참조:@tbl-b`) it is no
+    # reference either, but one that names a target is reported.
+    _REFERENCE_ADDRESS_CHARS = frozenset(
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+._-@"
+    )
     # Where marks for escaped `@` and `$` come from while references are read:
     # private-use characters of planes 15 and 16, chosen afresh for each text
     # among those it does not hold (`free_marks`), so a mark never stands for a
@@ -838,7 +853,12 @@ class TextParser:
         scope = _REFERENCE_SCOPE.get()
         if scope is None or scope.report is None or "@" not in text:
             return
-        with cls.reference_scope(ReferenceScope(report=scope.report, place=place)):
+        # No reference resolves in such a place; the targets only tell an ID
+        # written right after other text from text that is no reference. Plain
+        # text shows its backslashes and backticks, so only Markdown is read so.
+        targets = scope.targets if markdown else frozenset()
+        place_scope = ReferenceScope(targets=targets, report=scope.report, place=place)
+        with cls.reference_scope(place_scope):
             if escaped_ats:
                 marked = cls._mark_escaped_ats(text, escaped_ats)
                 if marked is None:
@@ -980,6 +1000,16 @@ class TextParser:
             resolved: list[_Candidate] = []
             counted = "@" + at_mark + scope.escaped_at
             for candidate in cls._reference_candidates(runs, dollars, counted):
+                if candidate.attached:
+                    # Not a reference by the grammar, so the runs stay as they
+                    # are; an ID that names a target was meant as one.
+                    if scope.report is not None and candidate.target in scope.targets:
+                        scope.report(
+                            f"Cross-reference @{candidate.target} is written right after "
+                            "other text and stays text: put a space before it, or write "
+                            f"\\@{candidate.target} to keep it as text"
+                        )
+                    continue
                 problem = cls._reference_problem(candidate, runs[candidate.run], scope)
                 if problem is None:
                     resolved.append(candidate)
@@ -1003,12 +1033,15 @@ class TextParser:
         The text is read as a reader sees it, across every run: emphasis and
         colour do not interrupt it, an empty run adds nothing, and code, math,
         images, footnote marks and term values are opaque units. A reference
-        is `@` followed by `tbl-` or `fig-`, where the visible character before
-        `@` is the start of the text, whitespace or an opening bracket or quote;
-        its ID is every ID character after `@`, read whole even when formatting
-        changes inside it; and an ID followed by `.` and an ASCII letter or
-        digit is a domain name, not a reference. An escaped `@` is never one,
-        and with `dollars` neither is an `@` between dollar signs.
+        is `@` followed by `tbl-` or `fig-` in any letter case (the ID check
+        then reports capitals), where the visible character before `@` is the
+        start of the text, whitespace or an opening bracket or quote; its ID is
+        every ID character after `@`, read whole even when formatting changes
+        inside it; and an ID followed by `.` and an ASCII letter or digit is a
+        domain name, not a reference. An escaped `@` is never one, and with
+        `dollars` neither is an `@` between dollar signs. An `@…` right after
+        an address character or another `@` is skipped; right after any other
+        character it is returned as `attached`: it is no reference.
 
         Args:
             runs: Finished runs; escaped `@` and `$` still marked.
@@ -1044,14 +1077,15 @@ class TextParser:
         at_signs = re.compile("[" + re.escape(counted) + "]") if counted != "@" else cls._AT_RE
         for ordinal, match in enumerate(at_signs.finditer(visible)):
             at = match.start()
-            if match.group() != "@" or visible[at + 1 : at + 5] not in ("tbl-", "fig-"):
+            if match.group() != "@" or visible[at + 1 : at + 5].lower() not in ("tbl-", "fig-"):
                 continue
             inside = bisect_right(math_starts, at) - 1
             if inside >= 0 and at < math[inside][1]:
                 continue
             before = visible[at - 1] if at else ""
-            if not (before == "" or before.isspace() or before in cls._REFERENCE_OPENERS):
-                continue
+            attached = not (before == "" or before.isspace() or before in cls._REFERENCE_OPENERS)
+            if attached and before in cls._REFERENCE_ADDRESS_CHARS:
+                continue  # `user@tbl-x`, `@@tbl-x`: an address or a doubled sign
             end = at + 1
             while end < len(visible) and visible[end] in cls._REFERENCE_ID_CHARS:
                 end += 1  # always moves on, so reading ends with the text
@@ -1071,6 +1105,7 @@ class TextParser:
                     target=visible[at + 1 : end],
                     # Runs are consecutive blocks: the ID is whole if it ends in the same run.
                     whole=bisect_right(starts, end - 1) - 1 == run_index,
+                    attached=attached,
                 )
             )
         return found
@@ -1094,7 +1129,7 @@ class TextParser:
             return f"Cross-reference {written} in the {scope.place} stays text"
         if not candidate.whole:
             return f"Cross-reference {written} is split by formatting and stays text"
-        problem = reference_id_problem(candidate.target, candidate.target[:3])
+        problem = reference_id_problem(candidate.target, candidate.target[:3].lower())
         if problem is not None:
             return f"Cross-reference {written}: {problem}"
         if run.hyperlink:

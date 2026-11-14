@@ -14,6 +14,8 @@ Changelog (captions):
       numbers; the frontmatter values a document shows (besides title,
       subtitle and date, checked by the parser) are checked here
       (`_check_metadata_references`); term-sheet metadata never holds a field.
+    - Fifth check: `letter.appendix_label` and the cover's `report_type` are
+      checked too.
 
 Changelog (property-test regressions):
     - Heading bold-marker removal skips code spans and escaped characters, and
@@ -1161,8 +1163,8 @@ class IBDocumentRenderer:
         the title block, the letter closing, the header, the disclaimer page,
         and the term-sheet texts and footer. Values are read as the text they
         are shown as, except term-sheet texts, which are inline Markdown. The
-        cover's `report_type` is shown in capitals, which the grammar never
-        reads as a reference. A value an IB profile read from a body paragraph
+        cover's `report_type` is shown in capitals and checked as written. A
+        value an IB profile read from a body paragraph
         (`InferredText`, the date included) was judged where it stands; only
         the references that resolve there are reported where it is shown.
 
@@ -1178,6 +1180,8 @@ class IBDocumentRenderer:
         extra = metadata.extra
         sender = extra.get("sender")
         sender = sender if isinstance(sender, dict) else {}
+        letter = extra.get("letter")
+        letter = letter if isinstance(letter, dict) else {}
         profile = metadata.profile
         shown: list[str] = []
         if cover:
@@ -1185,6 +1189,7 @@ class IBDocumentRenderer:
                 "subject_company" if str(extra.get("subject_company", "")).strip() else "company"
             )
             shown += [
+                "report_type",
                 "sector",
                 "ticker",
                 institution,
@@ -1205,6 +1210,7 @@ class IBDocumentRenderer:
                 "document_no",
                 "sender.department",
                 "sender.contact",
+                "letter.appendix_label",  # heads the appendix page when one is set
             ]
         elif not self._term_sheet:
             shown.append("sender.organization" if "organization" in sender else "company")
@@ -1219,6 +1225,7 @@ class IBDocumentRenderer:
             "sector": metadata.sector,
             "analyst": metadata.analyst,
             **{f"sender.{key}": value for key, value in sender.items()},
+            **{f"letter.{key}": value for key, value in letter.items()},
         }
         if profile != "plain":
             shown.append("date")  # an inferred date; a written one is checked by the parser

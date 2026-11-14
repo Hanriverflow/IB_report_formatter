@@ -1124,10 +1124,11 @@ def test_metadata_references_are_reported_exactly_where_they_are_shown(
     reported = {
         key for key, ref_id in ids.items() if any(f"@{ref_id} in the " in error for error in errors)
     }
+    # Letter case is ignored: the cover shows `report_type` in capitals.
     printed = {
         key
         for key, ref_id in ids.items()
-        if re.search(re.escape("@" + ref_id) + "(?![A-Za-z0-9_-])", shown)
+        if re.search(re.escape("@" + ref_id) + "(?![A-Za-z0-9_-])", shown, re.IGNORECASE)
     }
     # The subtitle is checked in every profile, as before; the rest exactly where shown.
     assert reported - {"subtitle"} == printed - {"subtitle"}
@@ -2243,3 +2244,136 @@ def test_callouts_and_table_texts_render_alike_with_and_without_the_target(
         )
 
     assert _p6_differences(document(True), document(False)) == []
+
+
+# ── Fifth check: no reference stays text without a word ─────────────────────
+
+ATTACHED_MESSAGE = "@{} is written right after other text and stays text"
+
+
+@pytest.mark.parametrize(
+    ("markdown", "attached", "resolved"),
+    [
+        ("표는 @tbl-perf,@tbl-debt 참조", "tbl-debt", 1),
+        ("범위 @tbl-perf~@tbl-debt", "tbl-debt", 1),
+        ("둘 @tbl-perf/@tbl-debt", "tbl-debt", 1),
+        ("상세:@tbl-perf", "tbl-perf", 0),
+        ("다음@tbl-perf", "tbl-perf", 0),
+        ("강조 ***@tbl-perf***", "tbl-perf", 0),
+        ("코드 `x`@tbl-perf", "tbl-perf", 0),
+        ("- 목록,@fig-flow", "fig-flow", 0),
+        ("| 가 | 나 |\n|---|---|\n| 값:@tbl-debt | 1 |", "tbl-debt", 0),
+        ("> **Note**: 참고·@tbl-debt", "tbl-debt", 0),
+        ("## 제목—@tbl-perf", "tbl-perf", 0),
+    ],
+)
+def test_reference_written_right_after_other_text_is_reported(
+    tmp_path: Path, markdown: str, attached: str, resolved: int
+) -> None:
+    """`표 1,@tbl-b` is no reference by the grammar; an ID that names a target
+    was meant as one, so it is reported instead of staying text silently."""
+    body = markdown + "\n\n" + REF_TABLE_BODY + "\n![가상 흐름도](s.png){#fig-flow}\n"
+    tables = REF_TABLES
+    if markdown.startswith("|"):  # the case's own table comes first
+        tables = "  - caption: 사례\n" + REF_TABLES
+    path = write(tmp_path, body, tables)
+    with pytest.raises(StrictValidationError, match=re.escape(ATTACHED_MESSAGE.format(attached))):
+        render(path)
+    document, errors = render(path, strict=False)
+    assert any(ATTACHED_MESSAGE.format(attached) in error for error in errors)
+    assert len(references(document)) == resolved
+    assert "@" + attached in document_xml(document)  # the text is kept as written
+
+
+@pytest.mark.parametrize(
+    "markdown",
+    [
+        "가격,@tbl-none 그대로",  # no such table: text that is no reference
+        "문의 kim@tbl-perf 그대로",  # an address
+        "태그 a+b@tbl-perf 그대로",
+        "이중 @@tbl-perf 그대로",
+        "역슬래시 값:" + BACKSLASH + "@tbl-perf 그대로",
+        "경로 x/@tbl-perf.png 그대로",
+    ],
+)
+def test_text_after_which_an_at_sign_is_no_reference_stays_silent(
+    tmp_path: Path, markdown: str
+) -> None:
+    document, errors = render(write(tmp_path, markdown + "\n\n" + REF_TABLE_BODY, REF_TABLES))
+    assert errors == []
+    assert references(document) == []
+
+
+def test_attached_reference_changes_no_output(tmp_path: Path) -> None:
+    """Reporting never touches the runs: the default-mode document is the one
+    rendered when the ID names nothing."""
+    body = "표는 **굵게**,@tbl-debt 그리고 *기울임*:@tbl-debt 끝\n\n" + REF_TABLE_BODY
+    defined = render(write(tmp_path, body, REF_TABLES), strict=False)[0]
+    plain_tables = "  - id: tbl-perf\n    caption: 가상 실적 요약\n  - caption: 가상 차입 내역\n"
+    undefined = render(write(tmp_path, body, plain_tables), strict=False)[0]
+    paragraph = next(p for p in defined.paragraphs if p.text.startswith("표는"))
+    other = next(p for p in undefined.paragraphs if p.text.startswith("표는"))
+    assert paragraph._p.xml == other._p.xml
+
+
+@pytest.mark.parametrize(
+    ("markdown", "message"),
+    [
+        ("@Tbl-perf 참조", "'Tbl-perf' is not a table id"),
+        ("(@TBL-perf)", "'TBL-perf' is not a table id"),
+        ("@Fig-flow 참조", "'Fig-flow' is not a figure id"),
+    ],
+)
+def test_capital_letters_in_the_prefix_are_reported(
+    tmp_path: Path, markdown: str, message: str
+) -> None:
+    path = write(tmp_path, markdown + "\n\n" + REF_TABLE_BODY, REF_TABLES)
+    with pytest.raises(StrictValidationError, match=re.escape(message)):
+        render(path)
+    document, _ = render(path, strict=False)
+    assert references(document) == []
+    assert markdown in body_text(document)
+
+
+def test_term_value_with_a_capital_prefix_is_not_a_reference(tmp_path: Path) -> None:
+    path = write_front(tmp_path, "값 {{x}} 끝", 'terms:\n  x: "@Tbl-a"\n')
+    document, errors = render(path)
+    assert errors == []
+    assert references(document) == []
+    assert "@Tbl-a" in document_xml(document)
+
+
+def test_attached_reference_in_a_footnote_is_reported(tmp_path: Path) -> None:
+    body = "각주[^1]\n\n[^1]: 근거,@tbl-perf\n\n" + REF_TABLE_BODY
+    path = write(tmp_path, body, REF_TABLES)
+    with pytest.raises(StrictValidationError, match=ATTACHED_MESSAGE.format("tbl-perf")):
+        render(path)
+
+
+def test_appendix_label_and_report_type_cannot_hold_a_reference(tmp_path: Path) -> None:
+    letter = (
+        "---\nprofile: office-letter\ntitle: 시험 공문\nrecipients:\n  - 가상 수신처\n"
+        "sender:\n  organization: 주식회사 예시\n"
+        'letter:\n  appendix_heading: 별첨 내역\n  appendix_label: "붙임 @tbl-a"\n'
+        "tables:\n  - id: tbl-a\n    caption: A\n---\n\n# 시험 공문\n\n본문\n\n"
+        "# 별첨 내역\n\n| x |\n|---|\n| 1 |\n"
+    )
+    path = tmp_path / "letter.md"
+    path.write_text(letter, encoding="utf-8")
+    message = "Cross-reference @tbl-a in the frontmatter letter.appendix_label stays text"
+    with pytest.raises(StrictValidationError, match=re.escape(message)):
+        render(path)
+    document, errors = render(path, strict=False)
+    assert message in errors
+    assert references(document) == []
+    assert "붙임 @tbl-a" in body_text(document)
+
+    report = write_front(tmp_path, "본문", 'report_type: "검토 @tbl-a"\n')
+    text = report.read_text(encoding="utf-8").replace("business-report", "ib-report")
+    report.write_text(text, encoding="utf-8")
+    message = "Cross-reference @tbl-a in the frontmatter report_type stays text"
+    with pytest.raises(StrictValidationError, match=re.escape(message)):
+        render(report)
+    document, errors = render(report, strict=False)
+    assert message in errors
+    assert "검토 @TBL-A" in body_text(document)  # the cover shows it in capitals
