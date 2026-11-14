@@ -22,6 +22,8 @@ Changelog (captions):
     - Review fixes: quoted bookmark names are unquoted, a field nested in another
       field's instruction keeps its own result, and SEQ order is judged only for
       sequences with no switch or `\\* ARABIC` alone. Only the main body is read.
+    - Second review: a `w:fldSimple` result skips the instruction text of a
+      complex field nested in it, as complex fields do.
 """
 
 import argparse
@@ -521,8 +523,7 @@ def _body_fields(doc: DocxDocument) -> tuple[dict[str, str], list[tuple[str, str
         elif tag == _W + "instrText" and stack and not stack[-1]["shown"]:
             stack[-1]["code"].append(node.text or "")
         elif tag == _W + "fldSimple":
-            result = "".join(text.text or "" for text in node.iter(_W + "t"))
-            found.append(((node.get(qn("w:instr")) or "").strip(), result))
+            found.append(((node.get(qn("w:instr")) or "").strip(), _simple_field_result(node)))
         elif tag == _W + "t":
             # Text belongs to the result of every open field from the innermost
             # outwards while each of them is past its separator.
@@ -534,6 +535,35 @@ def _body_fields(doc: DocxDocument) -> tuple[dict[str, str], list[tuple[str, str
                 for name in open_marks.values():
                     marks[name].append(node.text or "")
     return {name: "".join(parts) for name, parts in marks.items()}, found
+
+
+def _simple_field_result(field: Any) -> str:
+    """Visible text of a `w:fldSimple` result, by the rule for complex fields.
+
+    Text inside the instruction of a complex field nested in the result (such
+    as the result of a field nested in that instruction) is not shown.
+
+    Args:
+        field: The `w:fldSimple` element.
+
+    Returns:
+        The text Word shows for the field.
+    """
+    shown: list[bool] = []
+    parts: list[str] = []
+    for node in field.iter(_W + "fldChar", _W + "t"):
+        if node.tag == _W + "t":
+            if all(shown):
+                parts.append(node.text or "")
+            continue
+        kind = node.get(qn("w:fldCharType"))
+        if kind == "begin":
+            shown.append(False)
+        elif kind == "separate" and shown:
+            shown[-1] = True
+        elif kind == "end" and shown:
+            shown.pop()
+    return "".join(parts)
 
 
 def _cross_reference_findings(doc: DocxDocument) -> tuple[list[str], list[str]]:

@@ -1166,6 +1166,34 @@ def test_table_that_is_not_drawn_is_reported_in_the_default_mode(tmp_path: Path)
     assert caption_texts(document) == ["표 1. A"]
 
 
+# [21] A simple field's result skips the instruction of a field nested in it.
+def test_audit_reads_a_simple_field_with_a_nested_field() -> None:
+    from docx_audit import inspect_document
+
+    alpha = (
+        '<w:bookmarkStart w:id="2" w:name="_Alpha"/><w:r><w:t>Alpha</w:t></w:r>'
+        '<w:bookmarkEnd w:id="2"/>'
+    )
+    yes = '<w:bookmarkStart w:id="3" w:name="_Yes"/><w:r><w:t>YES</w:t></w:r><w:bookmarkEnd w:id="3"/>'
+    nested = (
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        '<w:r><w:instrText xml:space="preserve"> IF </w:instrText></w:r>'
+        + _field("REF _Alpha", "Alpha")
+        + '<w:r><w:instrText xml:space="preserve"> = "Alpha" "YES" "NO" </w:instrText></w:r>'
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        "<w:r><w:t>YES</w:t></w:r>"
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+    )
+    simple = f'<w:fldSimple w:instr=" REF _Yes ">{nested}</w:fldSimple>'
+    audit = inspect_document(_audit_document(alpha, yes, simple))
+    assert audit.issues == [] and audit.warnings == []
+    stale = '<w:fldSimple w:instr=" REF _Yes "><w:r><w:t>NO</w:t></w:r></w:fldSimple>'
+    assert inspect_document(_audit_document(yes, stale)).warnings == [
+        "Cross-reference REF _Yes shows 'NO' but its target reads 'YES'; "
+        "update fields in Word (select all, F9)"
+    ]
+
+
 def test_hand_built_model_metadata_is_checked_when_rendered() -> None:
     from md_parser import DocumentMetadata, DocumentModel, Element, ElementType, Paragraph, TextRun
 
