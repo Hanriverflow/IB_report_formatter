@@ -144,3 +144,42 @@ Codex(읽기 전용)가 커밋 `426b377`을 검토해 병합을 막는 지적 1�
 **고치기 전 코드에서 새 테스트가 실패하는지.** `git archive 426b377`로 고치기 전 소스를 임시 폴더에 풀고 최종 테스트 파일만 넣어 같은 가상 환경으로 실행했다: 83개 중 12개 실패, 71개 통과(종료 코드 1). 실패한 12개는 [1]의 9개(인코딩된 `/`·`..`·`%20` × 2, 인코딩된 절대 경로·`\` 3개)와 [2]의 3개(Choice 2개, 첫 Choice에만 설명, Fallback만)다. 나머지 새 테스트 10개(실제 `%` 이름 2개, 둘째 Choice에만 설명, 설명 있는 Fallback만, 렌더러 재사용, 동시 변환, 제목·콜아웃·캡션 3개, 실패 요소 뒤)는 고치기 전에도 통과한다. 이것들은 결함 재현이 아니라 검토자가 요청한 회귀 범위다. 고친 뒤에는 83개 모두 통과한다.
 
 **찾았지만 바꾸지 않은 것.** 같은 원인(적힌 주소를 그대로 쓰는 문구)은 이 변경이 더한 경고에만 있었고, 그것을 고쳤다. 기존 로그·오류 문구는 지시대로 바꾸지 않았다. 적힌 주소를 그대로 보여 주는 기존 문구는 다음과 같다: `Image file not found: %s — inserting placeholder`(로그), 인라인 그림의 `Image could not be rendered: <설명 또는 주소>`(오류), `Inserted file image: %s`(디버그 로그), `[asset_outside_root] Image or logo is outside allowed folders: <경로>`(거부 문구). 이것들은 그림이 들어가지 않았거나 거부된 경우의 진단이며, 경로 노출을 줄이려면 별도 판단이 필요하다. 또 블록 그림 줄에 인코딩된 절대 경로(`![](C%3A%5C…)`)를 쓰면 기존 로더가 원본 폴더에 이어 붙인 뒤 디코딩해 `asset_outside_root`로 거부한다(인라인 그림은 불러온다). 이 차이도 이번에 바꾸지 않았다.
+
+**2차 검토 (대상 `fadabc0`).** Codex(읽기 전용)가 다시 검토했다. 1차 지적 2건은 모두 닫혔고, 새 지적과 병합을 막는 지적은 0건이다. 검토자가 확인한 것은 다음과 같다.
+
+- 시각·UUID·임시 이름을 고정한 36건에서 `c97841c`, `426b377`, `fadabc0`의 DOCX 전체 SHA-256이 같았다(산출 문서 불변).
+- `426b377`의 변경 전 모듈로 새 테스트를 돌려 12개 실패, 71개 통과를 재현했다.
+- 대소문자 섞인 `%2F`·`%5C`, 인코딩된 `..`, `%252F`, 실제 `%`·공백·한글을 섞은 경로 32개 조합에서 경고에 파일 이름만 나왔다. `loaded`가 bytes·None·BytesIO이면 모두 `embedded image`였다.
+- UNC·드라이브 상대·긴 경로 접두사는 경고 함수에 직접 넣어 이름만 남는 것을 확인했다.
+- `AlternateContent`의 여러 Choice, Choice 없음, 중첩, Fallback만 있는 경우와 저장소 샘플 17건을 확인했다.
+- strict 변환·audit·agent runner의 종료 코드 0, `ok=True`, 빈 `diagnostics`, 거부 코드 6개 그대로, 동시 변환 16건에서 경고가 섞이지 않음.
+
+2차 검토에서 확인하지 못한 것: 실제 네트워크 공유·심볼릭 링크를 거쳐 불러온 파일의 경고 이름, 실제 Word가 저장한 문서(장식용 표시, `AlternateContent`)와의 대조. 검토자는 전체 테스트와 실제 디스크 저장은 다시 돌리지 않았다.
+
+## 8. main 병합 뒤 검증
+
+`git fetch origin main` 뒤 `git merge --no-ff origin/main`으로 `origin/main` `0bc5225`(각주 중복 참조 수정, PR #31)를 병합했다. 병합 커밋은 `51a2011`(부모 `fadabc0`, `0bc5225`)이다. rebase·amend·force-push는 하지 않았다.
+
+**충돌과 해결.** 충돌은 3개 파일에서 났고, 모두 같은 자리에 양쪽이 한 덩어리씩 더한 것이어서 양쪽을 모두 살렸다(이 브랜치 쪽을 먼저, main 쪽을 뒤에).
+
+| 파일 | 충돌 자리 | 해결 |
+|---|---|---|
+| `docx_audit.py` | 모듈 docstring의 변경 기록(이 브랜치: `Changelog (alt text)`, main: `Changelog (repeated footnote references)`) | 두 절을 모두 두었다. 코드(`inspect_document`의 `_undescribed_pictures` 호출, main의 NOTEREF 진단)는 자동 병합됐고 충돌이 없었다 |
+| `AGENTS.md` | 검증 기록 목록의 마지막 줄 | 두 줄을 모두 두었다 |
+| `CHANGELOG.md` | `[Unreleased]` 맨 위 절 | 두 절(대체 텍스트 경고, 각주 중복 참조)을 모두 두었다 |
+
+`docs/improvement-roadmap-20260929.md`, `ib_renderer.py`, `ib_render_footnotes.py` 등 나머지는 자동 병합됐다.
+
+**NOTEREF 진단과의 관계.** 새 샘플 `samples/qa/footnote-rereference.md`를 strict로 변환하면 렌더 경고 0건, audit issue 0건, audit warning 0건이다(NOTEREF 필드 8개). 설명 없는 그림 1개와 설명 있는 그림 1개, 두 번 참조한 각주 1개를 섞은 가상 문서에서는 렌더 경고가 그림 경고 1건, audit issue 0건, audit warning이 그림 경고 1건이다(NOTEREF 필드 1개, NOTEREF warning 없음). 두 진단은 서로 다른 함수(`_undescribed_pictures`, `_cross_reference_findings`)가 각각 warnings에 더하며, 서로의 결과를 바꾸지 않는다. 저장소 샘플 테스트(`test_repository_samples_give_no_alt_text_warning`)는 새 샘플을 포함해 18건이 된다.
+
+**명령과 결과.**
+
+| 명령 | 종료 코드 | 결과 |
+|---|---|---|
+| `git merge --no-ff origin/main` | 1 | 충돌 3개 파일(위 표), 해결 뒤 병합 커밋 `51a2011` |
+| `uv run --no-sync ruff check .` | 0 | `All checks passed!` |
+| `uv run --no-sync ruff format --check .` | 0 | 107개 파일 형식 맞음 |
+| `uv run --no-sync mypy .` | 0 | 소스 43개, 오류 0건 |
+| `uv run --no-sync pytest tests/ -q -p no:cacheprovider --basetemp <새 임시 폴더> -W ignore` | 0 | 3576 통과, 5 건너뜀, 1 xfail, 484초. 스냅숏 389개 통과 |
+| `git diff --name-status origin/main HEAD -- tests/__snapshots__` | 0 | 0줄(main에서 온 스냅숏 389개 변경 0건) |
+| 새 샘플·혼합 문서 확인 스크립트(저장소 밖) | 0 | 위 "NOTEREF 진단과의 관계"의 수치 |
