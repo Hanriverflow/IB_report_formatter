@@ -20,7 +20,7 @@ Changelog (captions):
 
 import re
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Optional, Union
@@ -462,6 +462,41 @@ def numbered_targets(elements: Sequence["Element"]) -> frozenset[str]:
     return frozenset(
         item.ref_id for item, _, problem in numbered_items(elements) if problem is None
     )
+
+
+def model_images(elements: Sequence["Element"]) -> list["Image"]:
+    """Every image of the elements in document order, wherever it stands.
+
+    An image element, and an image run of a paragraph, heading, list item,
+    callout or table cell, are all found; each object once.
+
+    Args:
+        elements: The document's elements.
+
+    Returns:
+        The images.
+    """
+    found: list[Image] = []
+    seen: set[int] = set()
+    pending: list[object] = list(reversed(elements))
+    while pending:
+        item = pending.pop()
+        if isinstance(item, (str, bytes, int, float, Enum)) or item is None or id(item) in seen:
+            continue
+        seen.add(id(item))
+        if isinstance(item, Image):
+            found.append(item)
+            continue
+        if is_dataclass(item) and not isinstance(item, type):
+            children = [getattr(item, name.name) for name in fields(item)]
+        elif isinstance(item, dict):
+            children = list(item.values())
+        elif isinstance(item, (list, tuple)):
+            children = list(item)
+        else:
+            continue
+        pending.extend(reversed(children))
+    return found
 
 
 # ─────────────────────────────────────────────────────────────────────────────

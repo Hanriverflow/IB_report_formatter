@@ -105,6 +105,7 @@ from document_model import (
     Chart,
     ConfirmationBlock,
     caption_bookmark_name,
+    model_images,
     numbered_items,
 )
 from document_profiles import (
@@ -811,6 +812,8 @@ class IBDocumentRenderer:
                 confidential=resolved.confidential,
                 parsed=model.parsed_profile is not None,
             )
+            if model.parsed_profile is None:
+                self._check_unparsed_texts(model)
             self.styler.setup_document()
             self.styler.create_styles()
             if resolved.profile.name == "office-letter":
@@ -1192,6 +1195,25 @@ class IBDocumentRenderer:
                 TextParser.check_text(
                     texts.confidential_label, "term-sheet confidential_label", markdown=False
                 )
+
+    @staticmethod
+    def _check_unparsed_texts(model: DocumentModel) -> None:
+        """Report references in the descriptions and footnotes of a hand-built model.
+
+        Neither can hold a field. The parser reports them as written, before
+        a description's escapes are resolved; a model built without the
+        parser is read as it stands: a description as the plain text it is
+        stored as, wherever the image stands, and a footnote as inline
+        Markdown, as the parser reads one.
+
+        Args:
+            model: The render's copy of a model that did not come from the parser.
+        """
+        for image in model_images(model.elements):
+            TextParser.check_text(image.alt_text, "image description", markdown=False)
+        for text in model.footnotes.values():
+            if isinstance(text, str):
+                TextParser.check_text(text, "footnote")
 
     def _check_caption_order(self, numbers: CaptionNumbers) -> None:
         """Report caption numbers that were not written as they were worked out.

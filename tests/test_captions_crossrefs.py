@@ -1503,3 +1503,58 @@ def test_term_values_are_never_read_as_references(
     assert errors == []
     assert references(document) == []
     assert ("@tbl-missing" in all_text(document)) is shown
+
+
+# [24] A description or footnote is checked on every path: an HTML `data:`
+# image, and a model built without the parser.
+def test_the_description_of_an_html_data_image_is_checked(tmp_path: Path) -> None:
+    import base64
+
+    payload = base64.b64encode(SAMPLE_IMAGE.read_bytes()).decode()
+    body = (
+        f'<table><tr><td><img src="data:image/png;base64,{payload}" alt="Alt @tbl-missing">'
+        "</td></tr></table>"
+    )
+    path = write(tmp_path, body)
+    with pytest.raises(StrictValidationError, match="in the image description stays text"):
+        render(path)
+    document, _ = render(path, strict=False)
+    assert len(list(document.element.body.iter(f"{W}drawing"))) == 1
+
+
+def _hand_built(elements: list, footnotes: dict | None = None) -> list[str]:
+    """Render a model built without the parser and return its diagnostics."""
+    from md_parser import DocumentMetadata, DocumentModel
+
+    model = DocumentModel(
+        metadata=DocumentMetadata(title="Review", profile="business-report"),
+        elements=elements,
+        footnotes=footnotes or {},
+    )
+    renderer = IBDocumentRenderer(options=RenderOptions(strict=False))
+    renderer.render(model)
+    return renderer.errors
+
+
+def test_hand_built_footnotes_and_descriptions_are_checked() -> None:
+    from md_parser import Element, ElementType, Image, Paragraph, TextRun
+
+    footnote = Element(ElementType.PARAGRAPH, Paragraph("body", runs=[TextRun("1", footnote_id=1)]))
+    assert "Cross-reference @tbl-missing in the footnote stays text" in _hand_built(
+        [footnote], {1: "Note @tbl-missing"}
+    )
+    image = Image(alt_text="Alt @tbl-a", path=str(SAMPLE_IMAGE))
+    inline = Element(
+        ElementType.PARAGRAPH,
+        Paragraph("x", runs=[TextRun("x "), TextRun("", image=Image("In @fig-b", ""))]),
+    )
+    errors = _hand_built([Element(ElementType.IMAGE, image), inline])
+    assert "Cross-reference @tbl-a in the image description stays text" in errors
+    assert "Cross-reference @fig-b in the image description stays text" in errors
+
+
+def test_parsed_descriptions_and_footnotes_are_reported_once(tmp_path: Path) -> None:
+    body = "![Alt @tbl-missing](s.png)\n\ntext[^1]\n\n[^1]: note @tbl-missing\n"
+    _, errors = render(write(tmp_path, body), strict=False)
+    assert errors.count("Cross-reference @tbl-missing in the image description stays text") == 1
+    assert errors.count("Cross-reference @tbl-missing in the footnote stays text") == 1

@@ -34,6 +34,8 @@ def _html_image(source: str, alt: str) -> Image | None:
         The image, or None without a usable source.
     """
     source = source.strip()
+    # The description is plain text that cannot hold a field, whatever the source.
+    TextParser.check_text(alt, "image description", markdown=False)
     if source.lower().startswith("data:"):
         header, _, payload = source.partition(",")
         if not header.lower().endswith(";base64") or not payload.strip():
@@ -46,8 +48,6 @@ def _html_image(source: str, alt: str) -> Image | None:
         )
     if not source or any(character in source for character in "<>\n"):
         return None
-    # The description is plain text that cannot hold a field.
-    TextParser.check_text(alt, "image description", markdown=False)
     return Image(alt_text=alt, path=source)
 
 
