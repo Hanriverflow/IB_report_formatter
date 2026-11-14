@@ -3,18 +3,23 @@
 Changelog (captions):
     - `@tbl-…` / `@fig-…` in text become `CrossReference` runs; code, math, link
       destinations, escaped `\\@` and e-mail-like `a@tbl-x` stay literal.
+    - Review fixes: one recognizer (`_split_cross_references`) for Markdown and
+      HTML runs and for text that cannot hold a field (`reference_targets`);
+      the `@` must follow whitespace, an opening bracket or quote, or the start
+      of the text, the ID is read whole, a domain-like `@tbl-x.example` is not
+      a reference, and a run is split into pieces the renderer can join back.
 """
 
 import logging
 import os
 import re
 from collections.abc import Callable
-from dataclasses import fields, replace
+from dataclasses import replace
 from pathlib import Path
 from re import Match
 from urllib.parse import quote, unquote, urlsplit
 
-from document_model import CrossReference, Image, TextRun
+from document_model import TEXT_RUN_FIELDS, CrossReference, DescribedImage, Image, TextRun
 from input_safety import StrictValidationError
 from term_variables import (
     TERM_REFERENCE_RE,
@@ -154,11 +159,19 @@ class TextParser:
     # parse_runs reproduce inserted text verbatim.
     _ESCAPABLE_RE = re.compile(r'([\\$`^~.*"\'()\[\]{}|_-])')
     _LITERAL_BREAK_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
-    # `@tbl-…` / `@fig-…` that starts a word: not after a letter or digit (an
-    # e-mail address), a path or URL character, another `@` or a backslash. The
-    # ID is read generously and validated later, so `@tbl-Perf` is reported
-    # rather than silently left as text; it ends on a letter or digit.
-    CROSS_REFERENCE_RE = re.compile(r"(?<![\w@./\\-])@((?:tbl|fig)-[A-Za-z0-9_-]*[A-Za-z0-9])")
+    # A cross-reference candidate: `@tbl-` or `@fig-` and every ID character
+    # after it. The whole token is validated later, so `@tbl-a-` and `@tbl-`
+    # are reported instead of shortened to a valid prefix. Where it may start
+    # and end is decided by `_split_cross_references`.
+    _REFERENCE_CANDIDATE_RE = re.compile(r"@((?:tbl|fig)-[A-Za-z0-9_-]*)")
+    _REFERENCE_ID_CHAR_RE = re.compile(r"[A-Za-z0-9_-]")
+    # Characters that may stand right before a reference's `@` besides
+    # whitespace and the start of the text: opening brackets and quotes.
+    _REFERENCE_OPENERS = frozenset("([{<\"'“‘「『《〈【〔（［｛")
+    # Stands for a Markdown `\@` in text that was unescaped before it is parsed
+    # (callouts, numbered headings), so that `@` is never read as a reference.
+    ESCAPED_AT = ""
+    _OPAQUE = ""  # a code span or term value seen from outside: no reference edge
 
     # Inline formatting patterns. A term token counts as one subscript unit, so a
     # value between tildes is a subscript whatever it contains (never re-parsed).
@@ -186,39 +199,71 @@ class TextParser:
     )
 
     @classmethod
-    def parse_runs(cls, text: str) -> list[TextRun]:
+    def parse_runs(cls, text: str, escaped_at: bool = False) -> list[TextRun]:
         """
         Parse text into runs with formatting.
         Handles **bold**, inline $LaTeX$, and combinations.
+
+        Args:
+            text: Inline Markdown.
+            escaped_at: The text was unescaped already and writes each escaped
+                `@` as `ESCAPED_AT`; it is shown as `@` and never a reference.
         """
         runs: list[TextRun] = []
         text, code_spans = cls._protect_code_spans(text)
         text, images = cls._protect_images(text)
 
         # ── Phase 1: Split on color spans, then inline LaTeX boundaries ─────
-        color_segments = cls._split_on_color_spans(text)
-
-        for segment_text, color_hex in color_segments:
-            inline_segments = cls._split_on_inline_latex(segment_text)
-
-            for inline_text, is_latex in inline_segments:
-                if is_latex:
-                    runs.append(
-                        TextRun(
-                            text=inline_text,
-                            bold=False,
-                            italic=False,
-                            color_hex=color_hex,
-                            is_latex=True,
-                        )
+        segments = [
+            (inline_text, is_latex, color_hex)
+            for segment_text, color_hex in cls._split_on_color_spans(text)
+            for inline_text, is_latex in cls._split_on_inline_latex(segment_text)
+        ]
+        for index, (inline_text, is_latex, color_hex) in enumerate(segments):
+            if is_latex:
+                runs.append(
+                    TextRun(
+                        text=inline_text,
+                        bold=False,
+                        italic=False,
+                        color_hex=color_hex,
+                        is_latex=True,
                     )
-                else:
-                    runs.extend(
-                        cls._apply_color(cls._parse_inline_formatting(inline_text), color_hex)
-                    )
+                )
+            else:
+                parsed = cls._parse_inline_formatting(
+                    inline_text,
+                    cls._segment_edge(segments, index - 1, -1),
+                    cls._segment_edge(segments, index + 1, 1),
+                    escaped_at,
+                )
+                runs.extend(cls._apply_color(parsed, color_hex))
 
-        runs = cls._split_image_runs(runs, images, code_spans)
+        runs = cls._split_image_runs(runs, images, code_spans, escaped_at)
         return cls._encode_link_targets(cls._split_code_runs(runs, code_spans))
+
+    @staticmethod
+    def _segment_edge(segments: list[tuple[str, bool, str | None]], index: int, step: int) -> str:
+        """The visible character next to a segment boundary, for reference edges.
+
+        Args:
+            segments: Text, math flag and colour of each segment.
+            index: The neighbouring segment.
+            step: -1 for the character before a segment, 1 for the one after.
+
+        Returns:
+            `$` next to math, the nearest character of neighbouring text outside
+            emphasis markers, or an empty string at the edge of the text.
+        """
+        if not 0 <= index < len(segments):
+            return ""
+        text, is_latex, _ = segments[index]
+        if is_latex:
+            return "$"
+        text = text.rstrip("*_~^") if step < 0 else text.lstrip("*_~^")
+        if not text:
+            return ""
+        return text[-1] if step < 0 else text[0]
 
     @classmethod
     def _split_on_inline_latex(cls, text: str) -> list[tuple[str, bool]]:
@@ -253,18 +298,26 @@ class TextParser:
         return segments
 
     @classmethod
-    def parse_runs_plain(cls, text: str) -> list[TextRun]:
+    def parse_runs_plain(cls, text: str, escaped_at: bool = False) -> list[TextRun]:
         """
         Parse runs WITHOUT LaTeX detection.
         Used for contexts where $ should not be interpreted as LaTeX
-        (e.g., table cells with currency values).
+        (e.g., table cells with currency values). Text between dollar signs is
+        still never read as a cross-reference. `escaped_at` as in `parse_runs`.
         """
         text, code_spans = cls._protect_code_spans(text)
         text, images = cls._protect_images(text)
         runs: list[TextRun] = []
-        for segment_text, color_hex in cls._split_on_color_spans(text):
-            runs.extend(cls._apply_color(cls._parse_inline_formatting(segment_text), color_hex))
-        runs = cls._split_image_runs(runs, images, code_spans)
+        segments = [(segment, False, color) for segment, color in cls._split_on_color_spans(text)]
+        for index, (segment_text, _, color_hex) in enumerate(segments):
+            parsed = cls._parse_inline_formatting(
+                segment_text,
+                cls._segment_edge(segments, index - 1, -1),
+                cls._segment_edge(segments, index + 1, 1),
+                escaped_at,
+            )
+            runs.extend(cls._apply_color(parsed, color_hex))
+        runs = cls._split_image_runs(runs, images, code_spans, escaped_at)
         return cls._encode_link_targets(cls._split_code_runs(runs, code_spans))
 
     @classmethod
@@ -321,15 +374,19 @@ class TextParser:
         runs: list[TextRun],
         images: dict[str, tuple[str, str, str]],
         code_spans: dict[str, str],
+        escaped_at: bool = False,
     ) -> list[TextRun]:
         """Turn image tokens into image runs that keep the surrounding formatting.
 
         Math stays literal, so a token inside an equation gets its source back.
+        A description that holds cross-references makes a `DescribedImage`, read
+        with the same rules as body text, so they can be reported.
 
         Args:
             runs: Runs parsed from text whose images were replaced by tokens.
             images: Token to (source, alt text, destination) from `_protect_images`.
             code_spans: Code-span tokens, restored inside image fields.
+            escaped_at: Whether `ESCAPED_AT` stands for an escaped `@` (see `parse_runs`).
 
         Returns:
             Runs with each image as its own run whose text is empty.
@@ -355,7 +412,18 @@ class TextParser:
                 if match.start() > offset:
                     result.append(replace(run, text=run.text[offset : match.start()]))
                 _, alt, destination = images[match.group(0)]
-                image = Image(alt_text=cls.cleanup_text(restore(alt)), path=restore(destination))
+                source = restore(alt)
+                description = cls.cleanup_text(source)
+                path = restore(destination)
+                if escaped_at:
+                    description = description.replace(cls.ESCAPED_AT, "@")
+                    path = path.replace(cls.ESCAPED_AT, "@")
+                references = cls.reference_targets(source)
+                image = (
+                    DescribedImage(alt_text=description, path=path, references=tuple(references))
+                    if references
+                    else Image(alt_text=description, path=path)
+                )
                 result.append(replace(run, text="", image=image))
                 offset = match.end()
             if offset < len(run.text):
@@ -378,8 +446,11 @@ class TextParser:
         return cls._CODE_SPAN_RE.sub(replace, text), literals
 
     @classmethod
-    def _protect_escapes(cls, text: str) -> tuple[str, dict[str, str]]:
-        """Keep escaped punctuation literal until inline tokenization finishes."""
+    def _protect_escapes(cls, text: str, escaped_at: bool = False) -> tuple[str, dict[str, str]]:
+        """Keep escaped punctuation literal until inline tokenization finishes.
+
+        With `escaped_at`, each `ESCAPED_AT` is an escaped `@` too.
+        """
         literals: dict[str, str] = {}
         prefix = "\ue000ESC"
         while prefix in text:
@@ -389,6 +460,14 @@ class TextParser:
             token = prefix + str(len(literals)) + "\ue001"
             literals[token] = match.group(1)
             return token
+
+        if escaped_at and cls.ESCAPED_AT in text:
+            parts = text.split(cls.ESCAPED_AT)
+            text = parts[0]
+            for part in parts[1:]:
+                token = prefix + str(len(literals)) + "\ue001"
+                literals[token] = "@"
+                text += token + part
 
         # Text between dollar signs keeps the legacy set whether or not this
         # context renders math, so `$12\%$` reads the same in a callout or a cell.
@@ -549,9 +628,21 @@ class TextParser:
         return quote(target.replace("\\", "/"), safe="/#%")
 
     @classmethod
-    def _parse_inline_formatting(cls, text: str) -> list[TextRun]:
-        """Parse links and numeric footnote references alongside inline emphasis."""
-        text, literals = cls._protect_escapes(text)
+    def _parse_inline_formatting(
+        cls, text: str, leading: str = "", trailing: str = "", escaped_at: bool = False
+    ) -> list[TextRun]:
+        """Parse links and numeric footnote references alongside inline emphasis.
+
+        Args:
+            text: One segment of inline Markdown (no math, one colour).
+            leading: Visible character before the segment ("" at the start).
+            trailing: Visible character after the segment ("" at the end).
+            escaped_at: Whether `ESCAPED_AT` stands for an escaped `@`.
+
+        Returns:
+            The segment's runs, with cross-reference pieces.
+        """
+        text, literals = cls._protect_escapes(text, escaped_at)
         runs: list[TextRun] = []
         offset = 0
         for match in cls._INLINE_REFERENCE_RE.finditer(text):
@@ -577,24 +668,76 @@ class TextParser:
                 for token, literal in literals.items():
                     run.hyperlink = run.hyperlink.replace(token, "\\" + literal)
         # Escaped characters are still tokens here, so `\@tbl-x` is not a reference.
-        return cls._restore_code_spans(cls._split_cross_references(runs), literals)
+        runs = cls._split_cross_references(runs, literals, leading, trailing)
+        return cls._restore_code_spans(runs, literals)
 
     @classmethod
-    def _split_cross_references(cls, runs: list[TextRun]) -> list[TextRun]:
-        """Give each `@tbl-…` / `@fig-…` its own `CrossReference` run.
+    def mark_cross_references(cls, runs: list[TextRun]) -> list[TextRun]:
+        """Find cross-references in runs built without Markdown (HTML table cells).
 
-        The reference keeps the surrounding formatting (and a link, which the
-        renderer then reports). Footnote, term, code, math and image runs are
-        never split.
+        The same rules as for Markdown text apply; such runs have no escapes.
 
         Args:
-            runs: Runs whose escapes and code spans are still protected tokens.
+            runs: Finished runs of one cell.
 
         Returns:
-            The runs with every reference as its own run.
+            The runs, those holding a reference split into `CrossReference` pieces.
         """
+        return cls._split_cross_references(runs, {}, "", "")
+
+    @classmethod
+    def reference_targets(cls, text: str) -> list[str]:
+        """IDs of the cross-references written in `text`, read as inline Markdown.
+
+        Used for text that cannot hold a Word field (title, subtitle, image
+        descriptions, footnotes), with the rules of body text: code, math,
+        escapes and link destinations hold none.
+
+        Args:
+            text: Inline Markdown.
+
+        Returns:
+            Each reference's ID as written, in order.
+        """
+        return [
+            run.target
+            for run in cls.parse_runs(text)
+            if isinstance(run, CrossReference) and run.target
+        ]
+
+    @classmethod
+    def _split_cross_references(
+        cls, runs: list[TextRun], literals: dict[str, str], leading: str, trailing: str
+    ) -> list[TextRun]:
+        """Split each run that holds a cross-reference into `CrossReference` pieces.
+
+        A reference is `@` followed by `tbl-` or `fig-` and the ID characters
+        after it, where the visible character before `@` is the start of the
+        text, whitespace or an opening bracket or quote, and the ID is not
+        followed by `.` and a letter or digit (a domain name). Text inside code,
+        math, footnote and term runs, link destinations and escapes is never a
+        reference. The ID is taken whole, so a malformed one is reported later
+        rather than shortened. The pieces carry the run's formatting; the
+        renderer joins them back unless the reference resolves.
+
+        Args:
+            runs: Runs of one segment, escapes and code spans still tokens.
+            literals: Escape token to the character it stands for.
+            leading: Visible character before the segment.
+            trailing: Visible character after the segment.
+
+        Returns:
+            The runs, each one holding a reference replaced by its pieces.
+        """
+        joined = "".join(run.text for run in runs)
+        if "@" not in joined:
+            return runs
+        math = [match.span() for match in cls._INLINE_LATEX_RE.finditer(joined)]
         result: list[TextRun] = []
+        offset = 0
         for run in runs:
+            start = offset
+            offset += len(run.text)
             if (
                 "@" not in run.text
                 or run.footnote_id is not None
@@ -605,24 +748,74 @@ class TextParser:
             ):
                 result.append(run)
                 continue
-            offset = 0
-            for match in cls.CROSS_REFERENCE_RE.finditer(run.text):
-                if match.start() > offset:
-                    result.append(replace(run, text=run.text[offset : match.start()]))
-                values = {item.name: getattr(run, item.name) for item in fields(TextRun)}
-                values["text"] = match.group(0)
-                result.append(CrossReference(**values, target=match.group(1)))
-                offset = match.end()
-            if offset == 0:
+            found: list[tuple[int, int, str]] = []
+            for match in cls._REFERENCE_CANDIDATE_RE.finditer(run.text):
+                at, end = start + match.start(), start + match.end()
+                if any(low <= at < high for low, high in math):
+                    continue
+                before, _ = cls._visible_char(joined, at - 1, -1, literals, leading)
+                if not (before == "" or before.isspace() or before in cls._REFERENCE_OPENERS):
+                    continue
+                after, index = cls._visible_char(joined, end, 1, literals, trailing)
+                if after == ".":
+                    following, _ = cls._visible_char(joined, index + 1, 1, literals, trailing)
+                    if following.isascii() and following.isalnum():
+                        continue  # `@tbl-x.example`: a domain, not a reference
+                target = match.group(1)
+                # An ID that formatting splits (`@tbl-a**b**`) is read whole and
+                # reported: its piece's text no longer equals `@` + target.
+                while cls._REFERENCE_ID_CHAR_RE.fullmatch(after or "x!"):
+                    target += after
+                    after, index = cls._visible_char(joined, index + 1, 1, literals, trailing)
+                found.append((match.start(), match.end(), target))
+            if not found:
                 result.append(run)
-            elif offset < len(run.text):
-                result.append(replace(run, text=run.text[offset:]))
+                continue
+            values = {name: getattr(run, name) for name in TEXT_RUN_FIELDS}
+            pieces: list[tuple[str, str]] = []
+            cursor = 0
+            for piece_start, piece_end, target in found:
+                if piece_start > cursor:
+                    pieces.append((run.text[cursor:piece_start], ""))
+                pieces.append((run.text[piece_start:piece_end], target))
+                cursor = piece_end
+            if cursor < len(run.text):
+                pieces.append((run.text[cursor:], ""))
+            for index, (text, target) in enumerate(pieces):
+                values["text"] = text
+                result.append(CrossReference(**values, target=target, joined=index > 0))
         return result
 
     @classmethod
-    def cross_reference_targets(cls, text: str) -> list[str]:
-        """IDs of the `@tbl-…` / `@fig-…` references written in plain text."""
-        return [match.group(1) for match in cls.CROSS_REFERENCE_RE.finditer(text)]
+    def _visible_char(
+        cls, text: str, index: int, step: int, literals: dict[str, str], edge: str
+    ) -> tuple[str, int]:
+        """The character a reader sees at `index` of tokenized text.
+
+        Args:
+            text: Joined run text whose escapes and code spans are tokens.
+            index: Position to read.
+            step: -1 when reading backwards (a token is entered at its end).
+            literals: Escape token to its character.
+            edge: The character beyond the text's edge.
+
+        Returns:
+            The character (an escape's own character, `_OPAQUE` for any other
+            token, `edge` beyond the text) and the index of its last position
+            in the direction of reading.
+        """
+        if not 0 <= index < len(text):
+            return edge, index
+        char = text[index]
+        if step < 0 and char == "":
+            begin = text.rfind("", 0, index)
+            literal = literals.get(text[begin : index + 1], "") if begin >= 0 else ""
+            return (literal[-1:] or cls._OPAQUE), begin
+        if step > 0 and char == "":
+            end = text.find("", index)
+            literal = literals.get(text[index : end + 1], "") if end >= 0 else ""
+            return (literal[:1] or cls._OPAQUE), (end if end >= 0 else len(text))
+        return char, index
 
     @classmethod
     def _encode_link_targets(cls, runs: list[TextRun]) -> list[TextRun]:
@@ -702,28 +895,37 @@ class TextParser:
         return bool(cls._INLINE_LATEX_RE.search(text))
 
     @classmethod
-    def _unescape(cls, text: str) -> str:
+    def _unescape(cls, text: str, mark_at: bool = False) -> str:
         """Resolve escapes in text that is not tokenized; literal spans keep the legacy set.
 
         Args:
             text: Raw inline Markdown of a heading, quote line or emphasis part.
+            mark_at: Write an escaped `@` as `ESCAPED_AT` instead of `@`.
 
         Returns:
             Text with escapes resolved once.
         """
+
+        def unescape(match: Match[str]) -> str:
+            char = match.group(1)
+            return cls.ESCAPED_AT if mark_at and char == "@" else char
+
         pieces: list[str] = []
         offset = 0
         for match in cls._LITERAL_SPAN_RE.finditer(text):
-            pieces.append(cls._ESCAPE_RE.sub(r"\1", text[offset : match.start()]))
+            pieces.append(cls._ESCAPE_RE.sub(unescape, text[offset : match.start()]))
             pieces.append(cls._LEGACY_ESCAPE_RE.sub(r"\1", match.group(0)))
             offset = match.end()
-        pieces.append(cls._ESCAPE_RE.sub(r"\1", text[offset:]))
+        pieces.append(cls._ESCAPE_RE.sub(unescape, text[offset:]))
         return "".join(pieces)
 
     @staticmethod
-    def cleanup_text(text: str) -> str:
-        """Remove markdown artifacts and escape characters (single-pass regex)"""
-        return TextParser.normalize_html_breaks(TextParser._unescape(text).strip())
+    def cleanup_text(text: str, mark_at: bool = False) -> str:
+        """Remove markdown artifacts and escape characters (single-pass regex).
+
+        With `mark_at`, an escaped `@` becomes `ESCAPED_AT` (see `parse_runs`).
+        """
+        return TextParser.normalize_html_breaks(TextParser._unescape(text, mark_at).strip())
 
     @staticmethod
     def cleanup_text_preserve_spacing(text: str) -> str:

@@ -10,10 +10,17 @@ Changelog (captions):
     - Tables and figures with a reference ID (`NumberedTable`, `Figure`) and the
       render-time caption number run; subclasses keep models without IDs unchanged.
     - `CrossReference` runs for `@tbl-…` / `@fig-…` in body text.
+    - Review fixes: reference runs are pieces that `join_reference_pieces` puts
+      back together when a reference does not resolve; `MarkedHeading` and
+      `MarkedBlockquote` keep escaped `@` apart in text that was unescaped at
+      parse time; `DescribedImage` records references in an inline image's
+      description; `table_is_drawn` and `figure_id_problem` are the one rule
+      for what gets a number.
 """
 
 import re
-from dataclasses import dataclass, field
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field, fields, replace
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Optional, Union
@@ -96,14 +103,64 @@ class CaptionNumber(TextRun):
 
 @dataclass
 class CrossReference(TextRun):
-    """`@tbl-…` or `@fig-…` in body text; `text` keeps the written `@…` form.
+    """One piece of a run that holds `@tbl-…` / `@fig-…` text.
 
-    The renderer writes a Word `REF` field to the caption bookmark of `target`,
-    with the caption's `표 1` as its cached result. A reference it cannot
-    resolve stays as the written text and is reported.
+    The parser splits such a run into pieces: the references (`target` is the
+    ID as written, `text` the `@…` form) and the text around them (`target`
+    empty). Every piece after the first has `joined` set. The renderer writes
+    a resolvable reference as a Word `REF` field and puts every other piece
+    back into the single run it came from, so a document whose references do
+    not resolve renders exactly as before (`join_reference_pieces`).
     """
 
     target: str = ""
+    joined: bool = False
+
+
+TEXT_RUN_FIELDS = tuple(item.name for item in fields(TextRun))
+_RUN_FORMAT_FIELDS = tuple(name for name in TEXT_RUN_FIELDS if name != "text")
+
+
+def join_reference_pieces(
+    runs: Sequence[TextRun], keep: Callable[[CrossReference], bool] = lambda reference: False
+) -> list[TextRun]:
+    """Put reference pieces back into the runs they were split from.
+
+    A piece joins the piece before it when it is marked `joined` and has the
+    same formatting; the result is a plain `TextRun`. References that `keep`
+    accepts stay `CrossReference` runs on their own.
+
+    Args:
+        runs: Runs of one paragraph or field.
+        keep: Whether a reference (a piece with a target) stays a reference.
+
+    Returns:
+        The runs with every other piece merged back.
+    """
+    result: list[TextRun] = []
+    after_piece = False
+    for run in runs:
+        if not isinstance(run, CrossReference):
+            result.append(run)
+            after_piece = False
+            continue
+        if run.target and keep(run):
+            result.append(run)
+            after_piece = False
+            continue
+        plain = TextRun(**{name: getattr(run, name) for name in TEXT_RUN_FIELDS})
+        previous = result[-1] if result else None
+        if (
+            run.joined
+            and after_piece
+            and previous is not None
+            and all(getattr(previous, name) == getattr(plain, name) for name in _RUN_FORMAT_FIELDS)
+        ):
+            result[-1] = replace(previous, text=previous.text + plain.text)
+        else:
+            result.append(plain)
+        after_piece = True
+    return result
 
 
 @dataclass
@@ -274,6 +331,17 @@ class Heading:
 
 
 @dataclass
+class MarkedHeading(Heading):
+    """A heading whose `text` was unescaped at parse time and held an escaped `@`.
+
+    `marked_text` is `text` with each escaped `@` written as
+    `TextParser.ESCAPED_AT`, so a `\\@tbl-…` is never read as a reference.
+    """
+
+    marked_text: str = ""
+
+
+@dataclass
 class Paragraph:
     """A paragraph element"""
 
@@ -315,6 +383,13 @@ class Blockquote:
 
 
 @dataclass
+class MarkedBlockquote(Blockquote):
+    """A callout whose source held an escaped `@` (see `MarkedHeading`)."""
+
+    marked_text: str = ""
+
+
+@dataclass
 class Image:
     """An image reference — supports file paths and Base64 (v3)"""
 
@@ -329,6 +404,17 @@ class Figure(Image):
     """An image line with a reference ID (`![설명](파일){#fig-…}`), numbered in its caption."""
 
     ref_id: str = ""
+
+
+@dataclass
+class DescribedImage(Image):
+    """An inline image whose description holds `@tbl-…` / `@fig-…` references.
+
+    The description is plain text in Word, so these references stay text and
+    are reported; `references` lists their IDs as read from the source.
+    """
+
+    references: tuple[str, ...] = ()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -368,6 +454,30 @@ def reference_id_problem(ref_id: str, kind: str) -> str | None:
 def caption_bookmark_name(ref_id: str) -> str:
     """Return the hidden Word bookmark around a caption's label and number."""
     return "_Ref_" + ref_id.replace("-", "_")
+
+
+def figure_id_problem(ref_id: str, path: str, description: str) -> str | None:
+    """Explain why an image with `{#ref_id}` cannot be a numbered figure, or None.
+
+    Args:
+        ref_id: The ID as written after `#`.
+        path: The image destination.
+        description: The image description (alt text).
+
+    Returns:
+        A diagnostic starting with the ID, or None when the image can be numbered.
+    """
+    problem = reference_id_problem(ref_id, "fig")
+    if problem is None and path.startswith("data:"):
+        problem = f"{ref_id!r} is on an embedded image; figure ids need an image file"
+    if problem is None and not description.strip():
+        problem = f"{ref_id!r} needs an image description: its number is written before it"
+    return problem
+
+
+def table_is_drawn(table: "Table") -> bool:
+    """Whether the renderer draws `table` (and so whether its caption gets a number)."""
+    return bool(table.rows) and table.col_count > 0
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ Every test goes through the production parser and renderer. Tables are numbered
 by a table spec `id` (`tbl-…`), figures by `{#fig-…}` after an image file line.
 """
 
+import re
 import shutil
 from pathlib import Path
 
@@ -513,3 +514,277 @@ def test_audit_warns_about_stale_references_and_numbers(tmp_path: Path) -> None:
         "Caption numbers SEQ 표 are not 1, 2, 3... in document order; "
         "update fields in Word (select all, F9)"
     ) in warnings
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INDEPENDENT REVIEW FIXES (2026-11-14)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# The reviewer's inputs are used as given. `NOT_REFERENCES` pins principle P1:
+# text that is not a resolvable reference renders exactly as the same text
+# with the `@tbl-` / `@fig-` prefix disguised (which no engine version reads as
+# a reference), i.e. as before the feature. The same inputs were also compared
+# with the engine at 84cde43 (docs/verification-captions-crossrefs-20261114.md).
+
+_TEMP_IMAGE_NAME_RE = re.compile(r'name="tmp[^"]*\.png"')
+
+
+def document_xml(document: DocxDocument) -> str:
+    """The body XML with the random names of temporary equation images removed."""
+    return _TEMP_IMAGE_NAME_RE.sub('name="tmp.png"', document.element.xml)
+
+
+def disguised(markdown: str) -> str:
+    """The same text with every reference prefix changed so nothing can match."""
+    return markdown.replace("@tbl-", "@tbX-").replace("@fig-", "@fiX-")
+
+
+NOT_REFERENCES = [
+    "before @tbl-missing after",
+    "user+@tbl-x.example",
+    "x**@tbl-missing**y",
+    "user@tbl-x.example a@fig-1.com doc-team@tbl-example.com",
+    "> \\@tbl-missing",
+    "> **note** \\@tbl-x and @tbl-y",
+    "> $@tbl-a$ and **@tbl-missing** here",
+    "@tbl-a- @tbl-a-- @tbl- @fig- @tbl-Results @tbl-a_b @tbl-a**b**",
+    "<table><tr><td>@tbl-missing</td><td>x</td></tr></table>",
+    "prefix ![Alt @tbl-missing](s.png) suffix",
+    "[see @tbl-missing](https://x.example/@tbl-a) end",
+    "`@tbl-a` and \\@tbl-a",
+    "text[^1]\n\n[^1]: note @tbl-missing",
+    "| a | b |\n|---|---|\n| @tbl-missing | `@tbl-a` |",
+    "(@tbl-x.example) and @fig-1.5",
+    "### 제목 @tbl-missing\n\n1. 개요 \\@tbl-x",
+]
+
+
+@pytest.mark.parametrize("markdown", NOT_REFERENCES)
+def test_text_that_is_not_a_resolvable_reference_renders_as_before(
+    tmp_path: Path, markdown: str
+) -> None:
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    document, _ = render(write(tmp_path / "a", markdown), strict=False)
+    control, _ = render(write(tmp_path / "b", disguised(markdown)), strict=False)
+    expected = document_xml(control).replace("@tbX-", "@tbl-").replace("@fiX-", "@fig-")
+    assert document_xml(document) == expected
+    assert references(document) == []
+
+
+def test_unresolved_reference_stays_in_one_run(tmp_path: Path) -> None:
+    document, errors = render(write(tmp_path, "before @tbl-missing after"), strict=False)
+    paragraph = next(p for p in document.paragraphs if "@tbl-missing" in p.text)
+    assert [run.text for run in paragraph.runs] == ["before @tbl-missing after"]
+    assert errors == ["Cross-reference @tbl-missing has no table or figure with that id"]
+
+
+@pytest.mark.parametrize(
+    "markdown",
+    [
+        "user+@tbl-x.example",
+        "x**@tbl-missing**y",
+        "user@tbl-x.example a@fig-1.com",
+        "(@tbl-x.example) and @fig-1.5",
+        "> \\@tbl-missing",
+        "`@tbl-missing` and $@tbl-missing$",
+    ],
+)
+def test_at_signs_outside_the_reference_grammar_are_neither_read_nor_reported(
+    tmp_path: Path, markdown: str
+) -> None:
+    document, errors = render(write(tmp_path, markdown))
+    assert errors == []
+    assert references(document) == []
+
+
+@pytest.mark.parametrize(
+    "markdown",
+    ["(@tbl-a) 참조", "「@tbl-a」 참조", "**@tbl-a**의 값", "끝 @tbl-a.", "줄 처음\n@tbl-a에서"],
+)
+def test_references_after_openers_and_before_particles_resolve(
+    tmp_path: Path, markdown: str
+) -> None:
+    tables = "  - id: tbl-a\n    caption: 가상 표\n"
+    document, errors = render(write(tmp_path, markdown + "\n\n| 가 |\n|---|\n| 1 |\n", tables))
+    assert errors == []
+    assert references(document) == [(REF_INSTRUCTION.format("tbl_a"), "표 1")]
+
+
+# [2] A table that is not drawn takes no number.
+EMPTY_TABLE_SPECS = "  - id: tbl-empty\n    caption: Empty\n  - id: tbl-a\n    caption: A\n"
+EMPTY_TABLE_BODY = "|\n\n| x |\n|---|\n| 1 |\n\nsee @tbl-a and @tbl-empty\n"
+
+
+def test_table_that_is_not_drawn_takes_no_number(tmp_path: Path) -> None:
+    path = write(tmp_path, EMPTY_TABLE_BODY, EMPTY_TABLE_SPECS)
+    with pytest.raises(StrictValidationError, match="'tbl-empty' is on a table with no columns"):
+        render(path)
+    document, errors = render(path, strict=False)
+    assert caption_texts(document) == ["표 1. A"]
+    assert references(document) == [(REF_INSTRUCTION.format("tbl_a"), "표 1")]
+    assert "Cross-reference @tbl-empty has no table or figure with that id" in errors
+
+
+def test_caption_numbers_not_written_as_worked_out_are_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ib_render_tables import TableRenderer
+    from md_parser import Table
+
+    original = TableRenderer.render
+    calls = {"count": 0}
+
+    def fail_first(self: TableRenderer, table: Table) -> None:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("simulated failure")
+        original(self, table)
+
+    monkeypatch.setattr(TableRenderer, "render", fail_first)
+    path = write(tmp_path, REF_TABLE_BODY, REF_TABLES)
+    _, errors = render(path, strict=False)
+    assert (
+        "Caption numbers 표 were written as [2] but worked out as [1, 2]; "
+        "update fields in Word (select all, F9)"
+    ) in errors
+    calls["count"] = 0
+    with pytest.raises(StrictValidationError, match="Caption numbers 표 were written as"):
+        render(path)
+
+
+# [3] Every path protects code, escapes and math the same way.
+DEFINED_A = "  - id: tbl-a\n    caption: A\n"
+TABLE_ONLY = "\n\n| x |\n|---|\n| 1 |\n"
+
+
+def test_escaped_reference_in_a_callout_is_text(tmp_path: Path) -> None:
+    document, errors = render(
+        write(tmp_path, "> \\@tbl-missing\n\n> \\@tbl-a" + TABLE_ONLY, DEFINED_A)
+    )
+    assert errors == []
+    assert references(document) == []
+    assert "@tbl-a" in document_xml(document)
+
+
+@pytest.mark.parametrize("subtitle", ['"`@tbl-a`"', '"$@tbl-a$"', '"\\\\@tbl-a"'])
+def test_code_math_and_escapes_in_the_subtitle_are_not_references(
+    tmp_path: Path, subtitle: str
+) -> None:
+    path = write(tmp_path, "body" + TABLE_ONLY, DEFINED_A)
+    text = path.read_text(encoding="utf-8").replace(
+        "title: 시험 문서\n", f"title: 시험 문서\nsubtitle: {subtitle}\n"
+    )
+    path.write_text(text, encoding="utf-8")
+    _, errors = render(path)
+    assert errors == []
+
+
+def test_math_in_a_callout_is_not_a_reference(tmp_path: Path) -> None:
+    document, errors = render(write(tmp_path, "> $@tbl-a$" + TABLE_ONLY, DEFINED_A))
+    assert errors == []
+    assert references(document) == []
+    assert "$@tbl-a$" in document_xml(document)
+
+
+def test_toc_preview_reads_the_heading_like_its_renderer(tmp_path: Path) -> None:
+    body = "## `@tbl-a` heading\n\n## real @tbl-a\n" + TABLE_ONLY
+    document, errors = render(write(tmp_path, body, DEFINED_A, profile="ib-report"))
+    assert errors == []
+    texts = body_text(document)
+    assert "`@tbl-a` heading" in texts  # the preview line, as before
+    assert "real 표 1" in texts
+    assert not any("`표 1`" in text for text in texts)
+    assert len(references(document)) == 1  # only the second heading
+
+
+# [4] A malformed ID is reported whole, never shortened to a valid prefix.
+@pytest.mark.parametrize("token", ["@tbl-a-", "@tbl-a--", "@tbl-", "@fig-"])
+def test_malformed_references_are_reported_whole(tmp_path: Path, token: str) -> None:
+    path = write(tmp_path, f"see {token} here" + TABLE_ONLY, DEFINED_A)
+    message = f"Cross-reference {token}: '{token[1:]}' is not a"
+    with pytest.raises(StrictValidationError, match=re.escape(message)):
+        render(path)
+    document, errors = render(path, strict=False)
+    assert any(error.startswith(message) for error in errors)
+    assert references(document) == []
+    assert f"see {token} here" in body_text(document)
+
+
+def test_id_split_by_formatting_is_reported(tmp_path: Path) -> None:
+    path = write(tmp_path, "see @tbl-a**b** here" + TABLE_ONLY, DEFINED_A)
+    with pytest.raises(StrictValidationError, match="@tbl-ab is split by formatting"):
+        render(path)
+
+
+# [5] `{#…}` after an image that is not a numbered figure line is reported.
+@pytest.mark.parametrize(
+    ("markdown", "message"),
+    [
+        ("prefix\n![A](s.png){#Fig-A}", "Figure id 'Fig-A' is not a figure id"),
+        ("![A](s.png){#Fig-A}", "Figure id 'Fig-A' is not a figure id"),
+        ("- ![A](s.png){#fig-a}", "Figure id 'fig-a' works only on an image line"),
+        ("| ![A](s.png){#fig-a} |\n|---|\n| 1 |", "Figure id 'fig-a' works only on an image line"),
+        ("prefix\n![](s.png){#fig-a}", "Figure id 'fig-a' needs an image description"),
+    ],
+)
+def test_figure_id_that_numbers_nothing_is_reported_wherever_it_stands(
+    tmp_path: Path, markdown: str, message: str
+) -> None:
+    path = write(tmp_path, markdown)
+    with pytest.raises(StrictValidationError, match=re.escape(message)):
+        render(path)
+    document, errors = render(path, strict=False)
+    assert any(error.startswith(message) for error in errors)
+    assert caption_texts(document) == []
+
+
+# [6] HTML table cells read references like pipe table cells.
+def test_html_table_cells_hold_references(tmp_path: Path) -> None:
+    body = "<table><tr><td>@tbl-a</td><td>x</td></tr></table>" + TABLE_ONLY
+    document, errors = render(write(tmp_path, body, DEFINED_A))
+    assert errors == []
+    assert references(document) == [(REF_INSTRUCTION.format("tbl_a"), "표 1")]
+    path = write(tmp_path, "<table><tr><td>@tbl-missing</td></tr></table>" + TABLE_ONLY, DEFINED_A)
+    with pytest.raises(StrictValidationError, match="@tbl-missing has no table or figure"):
+        render(path)
+
+
+def test_html_code_cell_holds_no_reference(tmp_path: Path) -> None:
+    body = "<table><tr><td><code>@tbl-a</code></td></tr></table>" + TABLE_ONLY
+    document, errors = render(write(tmp_path, body, DEFINED_A))
+    assert errors == []
+    assert references(document) == []
+
+
+# [7] A term-sheet title and subtitle keep references as text, as reported.
+def test_term_sheet_title_and_subtitle_write_no_fields(tmp_path: Path) -> None:
+    path = write(
+        tmp_path, "| 구분 | 내용 |\n|---|---|\n| 1 | 2 |\n", DEFINED_A, profile="term-sheet"
+    )
+    text = path.read_text(encoding="utf-8").replace(
+        "title: 시험 문서\n", 'title: "Title @tbl-a"\nsubtitle: "Sub @tbl-a"\n'
+    )
+    path.write_text(text, encoding="utf-8")
+    document, errors = render(path, strict=False)
+    assert references(document) == []
+    assert "Cross-reference @tbl-a in the document title stays text" in errors
+    assert "Cross-reference @tbl-a in the subtitle stays text" in errors
+    assert "Title @tbl-a" in body_text(document) and "Sub @tbl-a" in body_text(document)
+    with pytest.raises(StrictValidationError, match="in the document title stays text"):
+        render(path)
+
+
+# [8] An inline image's description is checked like a figure line's.
+def test_inline_image_description_reference_is_reported(tmp_path: Path) -> None:
+    path = write(tmp_path, "prefix ![Alt @tbl-missing](s.png) suffix")
+    message = "Cross-reference @tbl-missing in the image description stays text"
+    with pytest.raises(StrictValidationError, match=message):
+        render(path)
+    _, errors = render(path, strict=False)
+    assert errors == [message]
+
+
+def test_escaped_reference_in_an_inline_image_description_is_text(tmp_path: Path) -> None:
+    _, errors = render(write(tmp_path, "prefix ![Alt \\@tbl-missing](s.png) suffix"))
+    assert errors == []

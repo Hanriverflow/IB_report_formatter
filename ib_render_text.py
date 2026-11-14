@@ -5,16 +5,19 @@ Changelog (captions):
       bookmark around both, from a render-scoped table of numbers.
     - Cross-references: `REF <bookmark> \\h \\* CHARFORMAT` with the target's
       `표 1` cached; an unresolvable reference stays text and is reported.
+    - Review fixes: reference pieces that do not resolve are joined back into
+      their original run, so such text renders exactly as before; inline image
+      descriptions with references and a `{#…}` after a non-figure image are
+      reported; every written caption number is recorded for the order check.
 """
 
 import logging
 import os
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
-from re import Match
 from typing import cast
 
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
@@ -22,7 +25,14 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
-from document_model import CaptionNumber, CrossReference, reference_id_problem
+from document_model import (
+    CaptionNumber,
+    CrossReference,
+    DescribedImage,
+    figure_id_problem,
+    join_reference_pieces,
+    reference_id_problem,
+)
 from ib_render_fonts import FontStyler
 from ib_render_footnotes import FootnoteRenderer
 from ib_render_media import ImageRenderer, LaTeXRenderer
@@ -55,6 +65,8 @@ class CaptionNumbers:
     by_id: dict[str, CaptionNumber] = field(default_factory=dict)
     next_bookmark_id: Callable[[], int] = lambda: 0
     errors: list[str] = field(default_factory=list)
+    # Every caption number actually written, in document order.
+    written: list[CaptionNumber] = field(default_factory=list)
 
 
 _CAPTION_NUMBERS: ContextVar[CaptionNumbers | None] = ContextVar("ib_caption_numbers", default=None)
@@ -94,47 +106,101 @@ def _report(numbers: CaptionNumbers, message: str) -> None:
         logger.warning("%s", message)
 
 
-def resolve_cross_reference(reference: CrossReference) -> CaptionNumber | None:
+def _reference_problem(reference: CrossReference) -> str | None:
+    """Why a reference piece stays text, or None when it can resolve."""
+    written = "@" + reference.target
+    if reference.text != written:
+        return f"Cross-reference {written} is split by formatting and stays text"
+    problem = reference_id_problem(reference.target, reference.target[:3])
+    if problem is not None:
+        return f"Cross-reference {written}: {problem}"
+    if reference.hyperlink:
+        return f"Cross-reference {written} is inside link text and stays text"
+    return None
+
+
+def resolve_cross_reference(reference: CrossReference, report: bool = True) -> CaptionNumber | None:
     """Return the caption a reference points to, or None to keep its written text.
 
-    Outside a render nothing is reported. Inside one, a malformed ID, an ID no
-    table or figure defines, and a reference inside link text (a Word field
-    cannot sit in a hyperlink run) are diagnostics that strict mode rejects.
+    Outside a render nothing is reported. Inside one, a malformed or split ID,
+    an ID no drawn table or figure has, and a reference inside link text (a
+    Word field cannot sit in a hyperlink run) are diagnostics that strict mode
+    rejects.
 
     Args:
-        reference: A `@tbl-…` / `@fig-…` run.
+        reference: A `@tbl-…` / `@fig-…` piece (`target` set).
+        report: Record the diagnostic of an unresolvable reference.
 
     Returns:
         The caption number of the target, or None.
     """
     numbers = _CAPTION_NUMBERS.get()
-    if numbers is None:
+    if numbers is None or not reference.target:
         return None
-    written = "@" + reference.target
-    problem = reference_id_problem(reference.target, reference.target[:3])
-    if problem is not None:
-        _report(numbers, f"Cross-reference {written}: {problem}")
-        return None
-    if reference.hyperlink:
-        _report(numbers, f"Cross-reference {written} is inside link text and stays text")
-        return None
-    number = numbers.by_id.get(reference.target)
-    if number is None:
-        _report(numbers, f"Cross-reference {written} has no table or figure with that id")
+    problem = _reference_problem(reference)
+    number = None if problem is not None else numbers.by_id.get(reference.target)
+    if problem is None and number is None:
+        problem = f"Cross-reference @{reference.target} has no table or figure with that id"
+    if problem is not None and report:
+        _report(numbers, problem)
     return number
 
 
-def cross_reference_text(text: str) -> str:
-    """Show resolvable `@…` references in plain text as their cached `표 1`."""
+def report_unwritable_references(references: Iterable[str], place: str) -> None:
+    """Report references in text that cannot hold a Word field; they stay text."""
     numbers = _CAPTION_NUMBERS.get()
-    if numbers is None or "@" not in text:
-        return text
+    if numbers is None:
+        return
+    for target in references:
+        _report(numbers, f"Cross-reference @{target} in the {place} stays text")
 
-    def shown(match: Match[str]) -> str:
-        number = numbers.by_id.get(match.group(1))
-        return number.text if number is not None else match.group(0)
 
-    return TextParser.CROSS_REFERENCE_RE.sub(shown, text)
+def report_stray_figure_id(image: Image, following: str) -> None:
+    """Report `{#…}` written right after an image that is not a numbered figure."""
+    numbers = _CAPTION_NUMBERS.get()
+    match = _FIGURE_ID_AFTER_IMAGE_RE.match(following)
+    if numbers is None or match is None:
+        return
+    ref_id = match.group(1)
+    problem = figure_id_problem(ref_id, image.path or "data:", image.alt_text)
+    detail = problem or f"{ref_id!r} works only on an image line of its own"
+    _report(numbers, f"Figure id {detail}; the image is not numbered")
+
+
+_FIGURE_ID_AFTER_IMAGE_RE = re.compile(r"\{#([^{}\s]*)\}")
+
+
+def resolved_reference_runs(runs: list[TextRun], report: bool = True) -> list[TextRun]:
+    """Join reference pieces back except the references that resolve.
+
+    Args:
+        runs: Runs of one paragraph or field.
+        report: Record diagnostics for references that stay text.
+
+    Returns:
+        Runs in which only resolvable references are `CrossReference` runs.
+    """
+    if not any(isinstance(run, CrossReference) for run in runs):
+        return runs
+    return join_reference_pieces(
+        runs, lambda reference: resolve_cross_reference(reference, report) is not None
+    )
+
+
+def reference_preview_text(runs: list[TextRun]) -> str | None:
+    """Plain text of `runs` with resolvable references as their `표 1`, or None.
+
+    Returns None when no reference resolves, so callers keep the text they
+    showed before.
+    """
+    joined = resolved_reference_runs(runs, report=False)
+    if not any(isinstance(run, CrossReference) for run in joined):
+        return None
+    pieces = []
+    for run in joined:
+        number = resolve_cross_reference(run, False) if isinstance(run, CrossReference) else None
+        pieces.append(number.text if number is not None else run.text)
+    return "".join(pieces)
 
 
 class TextRenderer:
@@ -166,7 +232,8 @@ class TextRenderer:
         font_name = font_name or STYLE.BODY_FONT
         font_size = font_size or STYLE.BODY_SIZE
 
-        for run_data in runs:
+        runs = resolved_reference_runs(runs)
+        for index, run_data in enumerate(runs):
             if run_data.is_latex:
                 TextRenderer._render_inline_latex(
                     paragraph,
@@ -175,10 +242,18 @@ class TextRenderer:
                 )
                 continue
             if run_data.image is not None:
+                if isinstance(run_data.image, DescribedImage):
+                    report_unwritable_references(
+                        list(run_data.image.references), "image description"
+                    )
+                if index + 1 < len(runs):
+                    report_stray_figure_id(run_data.image, runs[index + 1].text)
                 TextRenderer._render_inline_image(paragraph, run_data.image, font_size)
                 continue
             target = (
-                resolve_cross_reference(run_data) if isinstance(run_data, CrossReference) else None
+                resolve_cross_reference(run_data, report=False)
+                if isinstance(run_data, CrossReference)
+                else None
             )
             if isinstance(run_data, CaptionNumber) or target is not None:
                 style = run_data
@@ -258,9 +333,11 @@ class TextRenderer:
         runs = TextRenderer._field_runs(
             paragraph, f" SEQ {number.label} \\* ARABIC ", str(number.number), style
         )
+        numbers = _CAPTION_NUMBERS.get()
+        if numbers is not None:
+            numbers.written.append(number)
         if not number.bookmark:
             return
-        numbers = _CAPTION_NUMBERS.get()
         bookmark_id = str(numbers.next_bookmark_id() if numbers is not None else 0)
         start = OxmlElement("w:bookmarkStart")
         start.set(qn("w:id"), bookmark_id)
@@ -408,6 +485,7 @@ class TextRenderer:
         font_name: str | None = None,
         font_size: Pt | None = None,
         default_color: RGBColor | None = None,
+        escaped_at: bool = False,
     ):
         """Parse and render text with **bold**, *italic*, ^superscript^, and ~subscript~ markers.
 
@@ -415,11 +493,15 @@ class TextRenderer:
             1. Split on **bold** markers
             2. Within non-bold segments, split on *italic* markers
             3. Within all segments, detect ^superscript^ and ~subscript~ markers
+
+        `escaped_at`: the text writes an escaped `@` as `TextParser.ESCAPED_AT`.
         """
         font_name = font_name or STYLE.BODY_FONT
         font_size = font_size or STYLE.BODY_SIZE
 
-        parsed_runs = TextParser.parse_runs_plain(text)
+        parsed_runs = TextParser.parse_runs_plain(text, escaped_at=escaped_at)
+        # Only a reference that resolves needs runs; the rest stays text as before.
+        joined = resolved_reference_runs(parsed_runs)
         if any(
             run.bold
             or run.italic
@@ -430,7 +512,7 @@ class TextRenderer:
             or run.hyperlink
             or run.image is not None
             or isinstance(run, CrossReference)
-            for run in parsed_runs
+            for run in joined
         ):
             TextRenderer.render_runs(
                 paragraph,
@@ -441,6 +523,8 @@ class TextRenderer:
             )
             return
 
+        if escaped_at:
+            text = text.replace(TextParser.ESCAPED_AT, "@")
         # Split on bold markers first
         bold_parts = TextRenderer._BOLD_SPLIT_RE.split(text)
         for bold_part in bold_parts:

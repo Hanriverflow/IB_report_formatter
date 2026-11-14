@@ -2,6 +2,9 @@
 
 Changelog (captions):
     - The static TOC preview shows a heading's `@tbl-…` references as `표 1`.
+    - Review fixes: the preview reads the runs the heading renders
+      (`HeadingRenderer.source_runs`), and headings and callouts unescaped at
+      parse time keep an escaped `@` from becoming a reference.
 """
 
 import re
@@ -12,9 +15,10 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
+from document_model import MarkedBlockquote, MarkedHeading, TextRun
 from ib_render_document_style import TableStyler
 from ib_render_fonts import FontStyler
-from ib_render_text import TextRenderer, cross_reference_text
+from ib_render_text import TextRenderer, reference_preview_text
 from md_parser import (
     Blockquote,
     DocumentModel,
@@ -94,8 +98,10 @@ class TOCRenderer:
                 continue
 
             level = max(1, min(element.content.level, 4))
-            # The preview shows a heading's references as their cached numbers.
-            text = cross_reference_text(element.content.text.strip())
+            # A heading whose references resolve shows them as their cached
+            # numbers, read from the runs the heading itself renders.
+            preview = reference_preview_text(HeadingRenderer.source_runs(element.content))
+            text = preview.strip() if preview is not None else element.content.text.strip()
             if text:
                 entries.append((level, text))
 
@@ -141,17 +147,23 @@ class HeadingRenderer:
     def __init__(self, doc: DocxDocument):
         self.doc = doc
 
+    @classmethod
+    def source_runs(cls, heading: Heading) -> list[TextRun]:
+        """The runs a heading renders; parse-time term runs are used as is."""
+        if heading.runs:
+            return heading.runs
+        marked = isinstance(heading, MarkedHeading)
+        source = heading.marked_text if isinstance(heading, MarkedHeading) else heading.text
+        # Drop bold markers outside code spans and escapes, then parse once:
+        # unescaping before the parse turned escaped punctuation into syntax.
+        clean_text = cls._BOLD_MARKER_RE.sub(
+            lambda match: "" if match.group(0) == "**" else match.group(0), source
+        )
+        return TextParser.parse_runs(clean_text.strip(), escaped_at=marked)
+
     def render(self, heading: Heading):
         """Render a heading with appropriate level; parse-time term runs are used as is."""
-        if heading.runs:
-            source_runs = heading.runs
-        else:
-            # Drop bold markers outside code spans and escapes, then parse once:
-            # unescaping before the parse turned escaped punctuation into syntax.
-            clean_text = self._BOLD_MARKER_RE.sub(
-                lambda match: "" if match.group(0) == "**" else match.group(0), heading.text
-            )
-            source_runs = TextParser.parse_runs(clean_text.strip())
+        source_runs = self.source_runs(heading)
 
         # Clamp level to 1-4 (Word supports Heading 1-9, but we style 1-4)
         level = max(1, min(heading.level, 4))
@@ -357,13 +369,17 @@ class CalloutRenderer:
             )
         elif content_text:
             content_para = cell.add_paragraph()
+            marked = isinstance(blockquote, MarkedBlockquote)
 
             TextRenderer.render_text_with_formatting(
                 content_para,
-                content_text,
+                blockquote.marked_text.strip()
+                if isinstance(blockquote, MarkedBlockquote)
+                else content_text,
                 font_name=STYLE.BODY_FONT,
                 font_size=STYLE.BODY_SIZE,
                 default_color=content_color,
+                escaped_at=marked,
             )
 
         # Apply border styling

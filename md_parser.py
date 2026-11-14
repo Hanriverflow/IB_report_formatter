@@ -5,7 +5,8 @@ LaTeX equations, Base64 images, and footnotes.
 
 Changelog (captions):
     - NEW: `![설명](파일){#fig-…}` is a numbered figure; an unusable `{#…}` ending
-      keeps the line as text and becomes a model warning.
+      keeps the line as text and is reported by the renderer wherever it stands.
+    - Callouts and numbered headings, unescaped here, keep escaped `@` apart.
 
 Changelog (property-test regressions):
     - Use documented rejections for malformed declared YAML and invalid footnote IDs.
@@ -116,7 +117,7 @@ from document_model import (
 from document_model import (
     ElementType as ElementType,
 )
-from document_model import Figure, reference_id_problem
+from document_model import Figure, MarkedBlockquote, MarkedHeading, figure_id_problem
 from document_model import (
     Footnote as Footnote,
 )
@@ -492,18 +493,18 @@ class MarkdownParser:
         if self._terms is None or not isinstance(heading, Heading):
             return element
         tokens: TokenMap = {}
+        marked = isinstance(heading, MarkedHeading)
         if element.element_type == ElementType.NUMBERED_HEADING:
             # Its text is already unescaped, so substitute from the source line.
-            tokenized = TextParser.cleanup_text(
-                TextParser.tokenize_terms(element.raw_text, self._terms, tokens)
-            )
+            source = TextParser.tokenize_terms(element.raw_text, self._terms, tokens)
+            tokenized = TextParser.cleanup_text(source, mark_at=marked)
         else:
             tokenized = TextParser.tokenize_terms(heading.text, self._terms, tokens)
         if tokens:
-            heading.text = restore_terms(tokenized, tokens)
+            heading.text = restore_terms(tokenized.replace(TextParser.ESCAPED_AT, "@"), tokens)
             # HeadingRenderer drops bold markers because it bolds every run.
             heading.runs = split_term_runs(
-                TextParser.parse_runs(tokenized.replace("**", "").strip()),
+                TextParser.parse_runs(tokenized.replace("**", "").strip(), escaped_at=marked),
                 tokens,
             )
         return element
@@ -887,6 +888,9 @@ class MarkdownParser:
             match = self.BLOCKQUOTE_PATTERN.match(line)
             if match:
                 bq_lines: list[str] = []
+                # The same lines with escaped `@` kept apart: the callout body is
+                # unescaped here and parsed again when rendered.
+                marked_lines: list[str] = []
                 quote_tokens: TokenMap = {}
                 while i < len(lines):
                     bq_match = self.BLOCKQUOTE_PATTERN.match(lines[i].strip())
@@ -901,15 +905,26 @@ class MarkdownParser:
                                 latex=False,
                             )
                         bq_lines.append(TextParser.cleanup_text(source))
+                        marked_lines.append(TextParser.cleanup_text(source, mark_at=True))
                         i += 1
                     else:
                         break
 
                 title, body = self._extract_blockquote_title(bq_lines)
-                quote = Blockquote(text=body, title=title)
+                _, marked_body = self._extract_blockquote_title(marked_lines)
+                quote = (
+                    MarkedBlockquote(text=body, title=title, marked_text=marked_body)
+                    if marked_body != body
+                    else Blockquote(text=body, title=title)
+                )
                 if quote_tokens:
                     quote.text = restore_terms(body, quote_tokens)
-                    quote.runs = split_term_runs(TextParser.parse_runs_plain(body), quote_tokens)
+                    marked = isinstance(quote, MarkedBlockquote)
+                    quote.runs = split_term_runs(
+                        TextParser.parse_runs_plain(marked_body, escaped_at=marked), quote_tokens
+                    )
+                    if isinstance(quote, MarkedBlockquote):
+                        quote.marked_text = restore_terms(marked_body, quote_tokens)
                 elements.append(
                     Element(
                         element_type=ElementType.BLOCKQUOTE,
@@ -964,11 +979,10 @@ class MarkdownParser:
 
             # ── Numbered heading fallback (e.g. "1. 서론") ─────────────────
             if match and self._is_numbered_heading(line):
-                full_text = TextParser.cleanup_text(line)
                 elements.append(
                     Element(
                         element_type=ElementType.NUMBERED_HEADING,
-                        content=Heading(level=2, text=full_text, is_numbered=True),
+                        content=self._numbered_heading(line, 2),
                         raw_text=line,
                     )
                 )
@@ -983,11 +997,9 @@ class MarkdownParser:
             elif self._HTML_IMAGE_LINE_RE.match(line):
                 file_image = HtmlTableParser.image(line)
             else:
-                file_image, problem = self._parse_figure_line(line)
-                if problem is not None:
-                    self._parse_warnings.append(
-                        f"Line {i + 1}: {problem}; the line was kept as text"
-                    )
+                # A `{#…}` that cannot number this image keeps the line as text;
+                # the renderer reports it wherever such an image is written.
+                file_image = self._parse_figure_line(line)
             if file_image is not None:
                 elements.append(
                     Element(element_type=ElementType.IMAGE, content=file_image, raw_text=line)
@@ -1063,41 +1075,36 @@ class MarkdownParser:
             or self.BULLET_PATTERN.match(line)
             or self.NUMBERED_LIST_PATTERN.match(line)
             or self.IMAGE_PATTERN.match(line)
-            or self._parse_figure_line(line)[0] is not None
+            or self._parse_figure_line(line) is not None
             or self._is_reference_header(line)
         )
 
     @classmethod
-    def _parse_figure_line(cls, line: str) -> tuple[Figure | None, str | None]:
+    def _parse_figure_line(cls, line: str) -> Figure | None:
         """Read an image line ending in a Quarto-style ID, `![설명](파일){#fig-…}`.
 
-        Only a usable ID on a file image with a description makes a figure. Any
-        other `{#…}` ending keeps today's reading of the line as text, and is
-        reported so strict mode can reject it.
+        Only an ID that `figure_id_problem` accepts makes a figure. Any other
+        `{#…}` ending keeps today's reading of the line as text; the renderer
+        reports an image followed by `{#…}` wherever it stands, so the result
+        does not depend on the lines around it.
 
         Args:
             line: One stripped source line.
 
         Returns:
-            The figure, or None; and the problem when the line names an ID that
-            cannot be used.
+            The figure, or None.
         """
         attribute = cls._FIGURE_ID_RE.search(line)
         if attribute is None:
-            return None, None
+            return None
         image = cls.IMAGE_PATTERN.match(line[: attribute.start()])
         if image is None:
-            return None, None
+            return None
         ref_id = attribute.group(1)
         path = image.group(2) or image.group(3)
-        problem = reference_id_problem(ref_id, "fig")
-        if problem is None and path.startswith("data:"):
-            problem = f"{ref_id!r} is on an embedded image; figure ids need an image file"
-        if problem is None and not image.group(1).strip():
-            problem = f"{ref_id!r} needs an image description: its number is written before it"
-        if problem is not None:
-            return None, "Figure id " + problem
-        return Figure(alt_text=image.group(1), path=path, ref_id=ref_id), None
+        if figure_id_problem(ref_id, path, image.group(1)) is not None:
+            return None
+        return Figure(alt_text=image.group(1), path=path, ref_id=ref_id)
 
     def _normalize_paragraph_line(self, raw_line: str) -> tuple[str, bool]:
         """Normalize one paragraph source line and detect hard line breaks."""
@@ -1169,15 +1176,23 @@ class MarkdownParser:
 
     # ── Heading parsing helpers ─────────────────────────────────────────────
 
+    @staticmethod
+    def _numbered_heading(line: str, level: int) -> Heading:
+        """A numbered heading, whose text is unescaped here (see `MarkedHeading`)."""
+        text = TextParser.cleanup_text(line)
+        marked = TextParser.cleanup_text(line, mark_at=True)
+        if marked != text:
+            return MarkedHeading(level=level, text=text, is_numbered=True, marked_text=marked)
+        return Heading(level=level, text=text, is_numbered=True)
+
     def _try_parse_heading(self, line: str) -> Element | None:
         """Try to parse line as a heading"""
 
         # Numbered heading (**1. Title**)
         if self._financial_rules and self.NUMBERED_HEADING_PATTERN.match(line):
-            text = TextParser.cleanup_text(line)
             return Element(
                 element_type=ElementType.NUMBERED_HEADING,
-                content=Heading(level=1, text=text, is_numbered=True),
+                content=self._numbered_heading(line, 1),
                 raw_text=line,
             )
 

@@ -14,6 +14,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Emu, Inches, Pt, RGBColor
 
+from document_model import table_is_drawn
 from ib_render_document_style import TableStyler
 from ib_render_fonts import FontStyler
 from ib_render_text import TextRenderer, caption_prefix
@@ -80,7 +81,8 @@ class TableRenderer:
 
     def render(self, table: Table):
         """Render a table"""
-        if not table.rows or table.col_count == 0:
+        # The same rule decides whether the table's caption gets a number.
+        if not table_is_drawn(table):
             return
 
         row_count = len(table.rows)

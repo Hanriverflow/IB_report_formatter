@@ -7,6 +7,9 @@ Changelog (captions):
       composition; their captions open with `표 1. ` / `그림 1. `.
     - `@tbl-…`/`@fig-…` written where no field can go (title, subtitle, image
       description, footnote) is reported and stays text.
+    - Review fixes: such text is read with the body-text rules; a table that is
+      not drawn gets no number; caption numbers actually written are compared
+      with the numbers worked out after composition.
 
 Changelog (property-test regressions):
     - Heading bold-marker removal skips code spans and escaped characters, and
@@ -97,10 +100,12 @@ from document_model import (
     CaptionNumber,
     Chart,
     ConfirmationBlock,
+    DescribedImage,
     Figure,
     NumberedTable,
     caption_bookmark_name,
     reference_id_problem,
+    table_is_drawn,
 )
 from document_profiles import (
     RenderOptions,
@@ -789,7 +794,7 @@ class IBDocumentRenderer:
             use_style(style_values),
             collect_raster_font_diagnostics() as font_warnings,
             collect_term_runs(resolved.term_tags) as term_runs,
-            use_caption_numbers(self._caption_numbers(model)),
+            use_caption_numbers(self._caption_numbers(model)) as caption_numbers,
         ):
             self.styler.setup_document()
             self.styler.create_styles()
@@ -867,6 +872,7 @@ class IBDocumentRenderer:
                         italic=True,
                         color=STYLE.RED,
                     )
+            self._check_caption_order(caption_numbers)
             if not office_closed:
                 with _metadata_text("closing"):
                     render_office_closing(self.doc, model.metadata)
@@ -1043,16 +1049,24 @@ class IBDocumentRenderer:
         """
         numbers = CaptionNumbers(next_bookmark_id=self._next_bookmark_id, errors=self.errors)
         counts = dict.fromkeys(CAPTION_LABELS, 0)
-        # Plain text that never becomes runs cannot hold a reference field.
-        places = [("document title", model.metadata.title), ("subtitle", model.metadata.subtitle)]
-        places += [
-            ("image description", element.content.alt_text)
-            for element in model.elements
-            if element.element_type == ElementType.IMAGE and isinstance(element.content, Image)
+        # Text that is never written as runs cannot hold a reference field; it is
+        # read with the same rules as body text and its references reported.
+        places: list[tuple[str, list[str]]] = [
+            ("document title", self._references_in(model.metadata.title)),
+            ("subtitle", self._references_in(model.metadata.subtitle)),
         ]
-        places += [("footnote", text) for text in model.footnotes.values()]
-        for place, text in places:
-            for target in TextParser.cross_reference_targets(text if isinstance(text, str) else ""):
+        for element in model.elements:
+            if element.element_type == ElementType.IMAGE and isinstance(element.content, Image):
+                image = element.content
+                found = (
+                    list(image.references)
+                    if isinstance(image, DescribedImage)
+                    else self._references_in(image.alt_text)
+                )
+                places.append(("image description", found))
+        places += [("footnote", self._references_in(text)) for text in model.footnotes.values()]
+        for place, targets in places:
+            for target in targets:
                 message = f"Cross-reference @{target} in the {place} stays text"
                 if message not in self.errors:
                     self.errors.append(message)
@@ -1067,6 +1081,10 @@ class IBDocumentRenderer:
             problem = reference_id_problem(content.ref_id, kind)
             if problem is None and not caption.strip():
                 problem = f"{content.ref_id!r} has no caption to number"
+            if problem is None and kind == "tbl" and not table_is_drawn(cast(Table, content)):
+                # The renderer skips a table without rows or columns, so it gets
+                # no number and references to it have no target.
+                problem = f"{content.ref_id!r} is on a table with no columns, which is not drawn"
             if problem is not None:
                 self.errors.append("Reference id " + problem)
                 continue
@@ -1086,6 +1104,32 @@ class IBDocumentRenderer:
             numbers.by_object[id(content)] = number
             numbers.by_id.setdefault(content.ref_id, number)
         return numbers
+
+    @staticmethod
+    def _references_in(text: object) -> list[str]:
+        """Reference IDs in a metadata or description string (none in other values)."""
+        return TextParser.reference_targets(text) if isinstance(text, str) else []
+
+    def _check_caption_order(self, numbers: CaptionNumbers) -> None:
+        """Report caption numbers that were not written as they were worked out.
+
+        Numbers are assigned before composition; a caption that is then not
+        written (a failed element in the default mode) or written out of order
+        leaves later numbers and references with stale cached results.
+
+        Args:
+            numbers: The render's caption numbers after composition.
+        """
+        for label in CAPTION_LABELS.values():
+            expected = [n.number for n in numbers.by_object.values() if n.label == label]
+            written = [n.number for n in numbers.written if n.label == label]
+            if written != sorted(expected):
+                message = (
+                    f"Caption numbers {label} were written as {written} but worked out as "
+                    f"{sorted(expected)}; update fields in Word (select all, F9)"
+                )
+                if message not in self.errors:
+                    self.errors.append(message)
 
     def _next_bookmark_id(self) -> int:
         """Return the next bookmark ID for the current document."""

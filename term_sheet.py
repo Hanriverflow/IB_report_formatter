@@ -26,6 +26,7 @@ Changelog (A2 rendering):
 
 Changelog (captions):
     - The caption/unit line takes the caption number of a table with an ID.
+    - Title and subtitle keep `@tbl-…` as text (no field), as reported.
 """
 
 import logging
@@ -46,7 +47,14 @@ from docx.oxml.ns import qn
 from docx.oxml.table import CT_Tc
 from docx.shared import Emu, Length, Mm, Pt, RGBColor, Twips
 
-from document_model import DocumentMetadata, Heading, Paragraph, TextRun
+from document_model import (
+    DocumentMetadata,
+    Heading,
+    MarkedHeading,
+    Paragraph,
+    TextRun,
+    join_reference_pieces,
+)
 from input_safety import (
     DEFAULT_LIMITS,
     AssetOutsideRootError,
@@ -1026,16 +1034,18 @@ def render_term_sheet_opening(
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title.paragraph_format.space_before = _COVER_TITLE_SPACE if cover else Pt(0)
     title.paragraph_format.space_after = Pt(2)
+    # Title and subtitle cannot hold a reference field in any profile: their
+    # references stay text (and are reported by the renderer).
     render_runs(
         title,
-        _bold(_display_runs(metadata, "title", metadata.title)),
+        _bold(join_reference_pieces(_display_runs(metadata, "title", metadata.title))),
         default_color=STYLE.NAVY,
         font_name=STYLE.HEADING_FONT,
         font_size=STYLE.TS_TITLE_SIZE,
     )
     render_runs(
         _opening_paragraph(doc, Pt(8)),
-        _bold(_display_runs(metadata, "subtitle", metadata.subtitle)),
+        _bold(join_reference_pieces(_display_runs(metadata, "subtitle", metadata.subtitle))),
         default_color=STYLE.NAVY,
         font_name=STYLE.HEADING_FONT,
         font_size=STYLE.TS_SUBTITLE_SIZE,
@@ -1121,7 +1131,12 @@ def render_term_sheet_heading(doc: Any, heading: Heading, render_runs: RenderRun
     level = max(1, min(heading.level, 4))
     sizes = {1: STYLE.H1_SIZE, 2: STYLE.H2_SIZE, 3: STYLE.H3_SIZE, 4: STYLE.H4_SIZE}
     paragraph = doc.add_heading(level=level)
-    runs = heading.runs or TextParser.parse_runs(heading.text)
+    if heading.runs:
+        runs = heading.runs
+    elif isinstance(heading, MarkedHeading):  # an escaped `@` is never a reference
+        runs = TextParser.parse_runs(heading.marked_text, escaped_at=True)
+    else:
+        runs = TextParser.parse_runs(heading.text)
     render_runs(
         paragraph,
         _bold(runs),
