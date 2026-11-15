@@ -5,7 +5,9 @@ inferred from their text. Every test parses Markdown with the real parser and
 renders through `IBDocumentRenderer.render`.
 """
 
+import time
 from io import BytesIO
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -13,6 +15,7 @@ from docx import Document
 from docx.oxml.ns import qn
 from lxml import etree
 
+import ib_renderer
 from document_profiles import RenderOptions
 from ib_renderer import IBDocumentRenderer
 from md_parser import MarkdownParser
@@ -147,7 +150,15 @@ def test_a_row_reading_total_is_not_inferred(profile: str) -> None:
 
 
 @pytest.mark.parametrize("profile", PROFILES)
-def test_unnamed_tables_and_rows_keep_their_xml(profile: str) -> None:
+def test_unnamed_tables_and_rows_keep_their_xml(
+    profile: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Whole documents are compared: an undated IB cover prints today and the
+    # IB disclaimer page this year, so the renders must not straddle midnight.
+    day = time.strptime("2026-01-02", "%Y-%m-%d")
+    monkeypatch.setattr(
+        ib_renderer, "time", SimpleNamespace(strftime=lambda fmt: time.strftime(fmt, day))
+    )
     other = "| 별도항목 | 금액 |\n|---|---|\n| 가 | 10 |\n| 나 | 20 |\n"
     body = other + "\n" + STATEMENT
     marked = render(markdown(body, profile, tables=[{}, {"total_rows": [4]}]))

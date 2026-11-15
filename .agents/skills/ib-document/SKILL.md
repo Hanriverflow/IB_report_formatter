@@ -32,7 +32,7 @@ Invoke the deterministic helper from the repository root with a new output direc
 uv run python scripts/agent_render.py /absolute/job/draft.md --output-dir /absolute/job/render-01 --profile term-sheet --expected-terms /absolute/job/known-terms.json
 ```
 
-Select the actual profile; omit `--expected-terms` when no independent source baseline exists. Do not imply source validation in that case. Keep the source/ledger outside the render directory because the helper requires a new/empty directory. Read its structured JSON and exit status, including stage, diagnostics, audit and actual artifact paths. Failed strict rendering must not be presented as a finished Word document.
+Select the actual profile; omit `--expected-terms` when no independent source baseline exists. Do not imply source validation in that case. Keep the source/ledger outside the render directory because the helper requires a directory that does not exist yet; an existing directory is refused even when it is empty. Read its structured JSON and exit status, including stage, diagnostics, audit and actual artifact paths. Failed strict rendering must not be presented as a finished Word document.
 
 Repair source formatting, unsupported YAML, missing assets or other explained authoring errors, then render into `render-02`/`render-03`. Allow at most two repair revisions per request before reporting unresolved diagnostics and the current draft. Never silently disable strict mode, delete a failed numeric check or change a source fact to satisfy arithmetic. A contradiction in the source requires a visible question or an authorized correction, not an invented reconciliation.
 

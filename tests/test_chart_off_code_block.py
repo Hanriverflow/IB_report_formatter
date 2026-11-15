@@ -5,9 +5,10 @@ reference target when charts were off. `See:@fig-test` was then reported as a
 reference written right after other text (strict mode rejected a document that
 converted before chart IDs existed), and `See @fig-test` split one Word run
 into three. The parser now reads a document with chart IDs both with and
-without its charts; the parts the two readings read differently carry the
-other reading, and the renderer takes it for its own setting (on its copy,
-for parts still as parsed; `tests/test_chart_setting_model.py`). So every way
+without its charts; the model alone keeps the other reading and a copy as
+parsed, and a render whose setting differs draws the other reading whole
+while the model still equals that copy (a changed model is drawn as given
+and reported once; `tests/test_chart_setting_model.py`). So every way
 of turning charts off (no frontmatter key, `charts: false`, the API or CLI
 override, with or without telling the parser) gives the document it gave
 before: the chart's `id` changes nothing but its own code text.

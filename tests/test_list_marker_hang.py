@@ -255,6 +255,8 @@ def _in_child(cases: list[tuple[str, str]], render: bool = False) -> list[dict[s
             capture_output=True,
             text=True,
             encoding="utf-8",
+            # The child's log lines follow the console code page (CP949 on Korean Windows).
+            errors="replace",
             cwd=ROOT,
             timeout=TIME_LIMIT,
             check=False,
@@ -333,6 +335,7 @@ def test_a_pass_that_consumes_no_line_stops_the_parse() -> None:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
         cwd=ROOT,
         timeout=TIME_LIMIT,
         check=False,

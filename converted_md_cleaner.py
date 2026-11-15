@@ -33,6 +33,8 @@ from typing import Any
 
 import yaml
 
+from md_parse_html_tables import HtmlTableParser
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # PATTERNS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -60,9 +62,8 @@ _CONTAINER_RE = re.compile(r"^ {0,3}(?:>|[-+*](?:\s|$))")  # block quote or bull
 _ORDERED_ITEM_RE = re.compile(r"^ {0,3}\d{1,9}[.)](?:\s|$)")
 _TABLE_OPEN_RE = re.compile(r"<table\b", re.IGNORECASE)
 # Comments first, then whole tags (quoted attribute values may hold `>` or `</table>`).
-_HTML_TOKEN_RE = re.compile(
-    r"<!--.*?-->|<(/?)([A-Za-z][\w:-]*)(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", re.DOTALL
-)
+# The parser's own pattern, so the cleaner and the converter cannot read tags apart.
+_HTML_TOKEN_RE = HtmlTableParser.TOKEN_RE
 # Characters the inline parser may read as syntax (emphasis, LaTeX, super/subscript, code,
 # links, escapes, HTML); a band heading holding any of them could change meaning.
 _INLINE_SYNTAX_RE = re.compile(r"[<>*_`\[\]\\|$~^]|&[#\w]+;")
@@ -315,17 +316,11 @@ def _html_table_end(lines: list[str], index: int) -> int:
     """Exclusive end line of the balanced HTML table opening at `index`.
 
     Comments and quoted attribute values are skipped; an unclosed table runs
-    to the end of the document.
+    to the end of the document. The parser reads the same boundary, so the
+    cleaner and the converter agree on which lines are the table.
     """
-    text = "\n".join(lines[index:])
-    depth = 0
-    for token in _HTML_TOKEN_RE.finditer(text):
-        if (token.group(2) or "").lower() != "table":
-            continue
-        depth += -1 if token.group(1) else 1
-        if depth == 0:
-            return index + text.count("\n", 0, token.end()) + 1
-    return len(lines)
+    end = HtmlTableParser.block_end(lines, index)
+    return len(lines) if end is None else end
 
 
 def _starts_block(lines: list[str], index: int) -> bool:

@@ -15,6 +15,7 @@ import base64
 import pytest
 from docx import Document
 
+from document_profiles import RenderOptions
 from md_parser import (
     Blockquote,
     CodeBlock,
@@ -958,31 +959,24 @@ class TestSeparatorRendering:
                 Element(element_type=ElementType.PARAGRAPH, content=Paragraph(text="After")),
             ]
         )
-        renderer = IBDocumentRenderer()
+        # The plain profile adds no cover, contents or disclaimer of its own.
+        renderer = IBDocumentRenderer(options=RenderOptions(profile="plain"))
         doc = renderer.render(model)
 
-        # Should have paragraphs for: cover, TOC, "Before", separator, "After", disclaimer
-        all_text = [p.text for p in doc.paragraphs]
-        assert "Before" in all_text
-        assert "After" in all_text
+        assert [p.text for p in doc.paragraphs] == ["Before", "", "After"]
 
     def test_separator_has_border(self):
 
         from ib_renderer import IBDocumentRenderer
 
         model = DocumentModel(elements=[Element(element_type=ElementType.SEPARATOR, content=None)])
-        renderer = IBDocumentRenderer()
+        # The plain profile draws no rule of its own (the IB cover does).
+        renderer = IBDocumentRenderer(options=RenderOptions(profile="plain"))
         doc = renderer.render(model)
 
-        # Find a paragraph with bottom border
         ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
-        found_border = False
-        for p in doc.paragraphs:
-            borders = p._p.findall(".//w:pBdr/w:bottom", ns)
-            if borders:
-                found_border = True
-                break
-        assert found_border, "SEPARATOR should produce a paragraph with bottom border"
+        bordered = [p for p in doc.paragraphs if p._p.findall(".//w:pBdr/w:bottom", ns)]
+        assert len(bordered) == 1, "SEPARATOR should produce one paragraph with a bottom border"
 
     def test_separator_adds_semantic_bookmark(self):
         from ib_renderer import IBDocumentRenderer
@@ -1052,13 +1046,16 @@ class TestSeparatorRendering:
         model = DocumentModel(
             elements=[Element(element_type=ElementType.SEPARATOR, content=None, raw_text="---")]
         )
-        renderer = IBDocumentRenderer(separator_mode="page-break")
+        # The plain profile has no page break of its own (cover, contents, disclaimer).
+        renderer = IBDocumentRenderer(
+            options=RenderOptions(profile="plain", separator_mode="page-break")
+        )
         doc = renderer.render(model)
 
         page_breaks = doc.element.xpath(
             ".//*[local-name()='br' and @*[local-name()='type']='page']"
         )
-        assert len(page_breaks) >= 1
+        assert len(page_breaks) == 1
 
     def test_empty_element_no_crash(self):
         from ib_renderer import IBDocumentRenderer

@@ -19,6 +19,13 @@ Changelog (converted input):
       term-sheet input (`converted_md_cleaner`) and reports every change. It
       replaces the Deep Research formatting for that run; the default is unchanged.
 
+Changelog (audit 2026-11-15):
+    - Bold and LaTeX placeholders are private-use markers absent from the input,
+      and protected text is restored in frontmatter values (bold without `**`).
+    - Inline equations are restored before block ones (a false inline match can
+      hold a block placeholder); a placeholder left in the output is logged.
+    - Label colon spacing consumes spaces and tabs only, never a line break.
+
 Changelog (v2):
     - Complete rewrite for single-line Deep Research clipboard handling
     - LaTeX equation preservation (block $$ and inline $)
@@ -37,15 +44,40 @@ import sys
 from pathlib import Path
 from re import Match
 
+import yaml
+
+from cli_utils import resolve_input_path
 from cli_utils import setup_logging as configure_logging
 from converted_md_cleaner import clean_converted_term_sheet
 from deep_md_cleaner import CleanerConfig, clean_deepresearch_markdown
+from md_parse_blocks import FenceScanner
 
 # Parent folder path
 PARENT_DIR = Path(__file__).resolve().parent.parent
 
 # Logger
 logger = logging.getLogger("md_formatter")
+
+# Protected-text placeholders: a private-use start and end around a name and an
+# index. No formatting rule matches these characters, as none matched the
+# underscores of the earlier fixed `__BOLD_0__` form.
+_PLACEHOLDER_START = chr(0xE000)
+_PLACEHOLDER_END = chr(0xE001)
+
+
+def _free_token(token: str, text: str) -> str:
+    """Lengthen `token` until `text` does not hold it.
+
+    Args:
+        token: The preferred placeholder prefix.
+        text: The text the placeholders will be written into.
+
+    Returns:
+        A prefix absent from `text`, so no written text is taken for a placeholder.
+    """
+    while token in text:
+        token += "X"
+    return token
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -58,37 +90,58 @@ class LaTeXProtector:
     Protects LaTeX equations from being mangled during text reformatting.
 
     Replaces $$ ... $$ and $ ... $ with unique placeholders,
-    then restores them after formatting is complete.
+    then restores them after formatting is complete. A placeholder is a
+    private-use marker lengthened until the input does not hold it, so text
+    the author wrote is never taken for one.
     """
 
-    BLOCK_PLACEHOLDER = "__LATEX_BLOCK_{idx}__"
-    INLINE_PLACEHOLDER = "__LATEX_INLINE_{idx}__"
-
-    def __init__(self):
+    def __init__(self) -> None:
         self._block_store: list[str] = []
         self._inline_store: list[str] = []
+        self._block_token = ""
+        self._inline_token = ""
+
+    def _block_placeholder(self, idx: int) -> str:
+        return f"{self._block_token}{idx}{_PLACEHOLDER_END}"
+
+    def _inline_placeholder(self, idx: int) -> str:
+        return f"{self._inline_token}{idx}{_PLACEHOLDER_END}"
 
     def protect(self, text: str) -> str:
         """Replace all LaTeX with placeholders"""
+        self._block_token = _free_token(_PLACEHOLDER_START + "LATEXBLOCK", text)
+        self._inline_token = _free_token(_PLACEHOLDER_START + "LATEXINLINE", text)
         # Block equations first ($$...$$) — greedy but not across other $$
         text = self._protect_block(text)
         # Inline equations ($...$) — non-greedy
         text = self._protect_inline(text)
         return text
 
-    def restore(self, text: str) -> str:
-        """Restore all LaTeX from placeholders"""
-        # Restore block equations
-        for idx, latex in enumerate(self._block_store):
-            placeholder = self.BLOCK_PLACEHOLDER.format(idx=idx)
-            text = text.replace(placeholder, f"\n\n{latex}\n\n")
+    def restore(self, text: str, inline: bool = False) -> str:
+        """Restore all LaTeX from placeholders.
 
-        # Restore inline equations
+        Args:
+            text: Text holding placeholders.
+            inline: Put block equations back as written, without the blank
+                lines that set them apart in the body (for metadata values).
+        """
+        # Inline equations first: the inline pattern runs after block equations
+        # are protected, so a false inline match (`$5 ... $6`) can hold a block
+        # placeholder, while a block equation never holds an inline one.
         for idx, latex in enumerate(self._inline_store):
-            placeholder = self.INLINE_PLACEHOLDER.format(idx=idx)
+            placeholder = self._inline_placeholder(idx)
             text = text.replace(placeholder, latex)
 
+        for idx, latex in enumerate(self._block_store):
+            placeholder = self._block_placeholder(idx)
+            text = text.replace(placeholder, latex if inline else f"\n\n{latex}\n\n")
+
         return text
+
+    def remaining(self, text: str) -> int:
+        """Count this protector's placeholder markers still in `text`."""
+        tokens = [token for token in (self._block_token, self._inline_token) if token]
+        return sum(text.count(token) for token in tokens)
 
     def _protect_block(self, text: str) -> str:
         """Protect block equations $$...$$"""
@@ -96,7 +149,7 @@ class LaTeXProtector:
         def replacer(m):
             idx = len(self._block_store)
             self._block_store.append(m.group(0))
-            return self.BLOCK_PLACEHOLDER.format(idx=idx)
+            return self._block_placeholder(idx)
 
         return re.sub(r"\$\$[^$]+?\$\$", replacer, text)
 
@@ -106,7 +159,7 @@ class LaTeXProtector:
         def replacer(m):
             idx = len(self._inline_store)
             self._inline_store.append(m.group(0))
-            return self.INLINE_PLACEHOLDER.format(idx=idx)
+            return self._inline_placeholder(idx)
 
         # Match $...$ but not $$...$$ (already removed)
         return re.sub(r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)", replacer, text)
@@ -122,26 +175,52 @@ class BoldProtector:
     Protects **bold** text from being split by sentence boundary detection.
 
     Korean sentence endings inside bold markers should not trigger line breaks.
+    Placeholders are private-use markers the input does not hold (see
+    `LaTeXProtector`).
     """
 
-    PLACEHOLDER = "__BOLD_{idx}__"
-
-    def __init__(self):
+    def __init__(self) -> None:
         self._store: list[str] = []
+        self._token = ""
 
-    def protect(self, text: str) -> str:
+    def _placeholder(self, idx: int) -> str:
+        return f"{self._token}{idx}{_PLACEHOLDER_END}"
+
+    def protect(self, text: str, source: str = "") -> str:
+        """Replace bold spans with placeholders.
+
+        Args:
+            text: Text to protect (equations may already be placeholders).
+            source: The text before other protection; equations put back later
+                must not hold this protector's marker either.
+        """
+        # Lengthening keeps a marker absent from `text` absent, so one pass over
+        # each text is enough.
+        self._token = _free_token(_free_token(_PLACEHOLDER_START + "BOLD", text), source)
+
         def replacer(m):
             idx = len(self._store)
             self._store.append(m.group(0))
-            return self.PLACEHOLDER.format(idx=idx)
+            return self._placeholder(idx)
 
         return re.sub(r"\*\*[^*]+?\*\*", replacer, text)
 
-    def restore(self, text: str) -> str:
+    def restore(self, text: str, keep_markers: bool = True) -> str:
+        """Put protected bold text back.
+
+        Args:
+            text: Text holding placeholders.
+            keep_markers: False puts back the text without its `**` markers,
+                for metadata values written to YAML, which shows no emphasis.
+        """
         for idx, bold_text in enumerate(self._store):
-            placeholder = self.PLACEHOLDER.format(idx=idx)
-            text = text.replace(placeholder, bold_text)
+            placeholder = self._placeholder(idx)
+            text = text.replace(placeholder, bold_text if keep_markers else bold_text[2:-2])
         return text
+
+    def remaining(self, text: str) -> int:
+        """Count this protector's placeholder markers still in `text`."""
+        return text.count(self._token) if self._token else 0
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -221,6 +300,11 @@ class MetadataExtractor:
 
         return metadata, remaining.strip()
 
+    @staticmethod
+    def _yaml_escape(value: str) -> str:
+        """Escape a value for a double-quoted YAML scalar (backslash first, then quote)."""
+        return value.replace("\\", "\\\\").replace('"', '\\"')
+
     @classmethod
     def to_frontmatter(cls, metadata: dict[str, str]) -> str:
         """Convert metadata dict to YAML frontmatter"""
@@ -230,9 +314,7 @@ class MetadataExtractor:
         lines = ["---"]
 
         if "title" in metadata:
-            # Escape quotes in title
-            title = metadata["title"].replace('"', '\\"')
-            lines.append(f'title: "{title}"')
+            lines.append(f'title: "{cls._yaml_escape(metadata["title"])}"')
 
         field_mapping = {
             "주제": "subtitle",
@@ -244,7 +326,7 @@ class MetadataExtractor:
 
         for kr_key, en_key in field_mapping.items():
             if kr_key in metadata:
-                value = metadata[kr_key].replace('"', '\\"')
+                value = cls._yaml_escape(metadata[kr_key])
                 lines.append(f'{en_key}: "{value}"')
 
         lines.append("---")
@@ -391,7 +473,7 @@ class StructureDetector:
 
             # Insert heading marker
             heading_text = f"\n\n## {number}. {title}"
-            result = result[: m.start() + 1] + heading_text + result[m.end() :]
+            result = result[: m.start()] + heading_text + result[m.end() :]
 
         return result
 
@@ -468,7 +550,9 @@ class ColonLabelDetector:
         result = text
         for label in cls._SPACING_LABELS:
             bold_spans = [(m.start(), m.end()) for m in cls._BOLD_SPAN_RE.finditer(result)]
-            pattern = rf"({re.escape(label)}):\s*"
+            # Spaces and tabs only, and only before a value on the same line:
+            # `\s*` would join a label with a value on the next line.
+            pattern = rf"({re.escape(label)}):[ \t]*(?=\S)"
 
             def replacer(match: Match[str], spans: list[tuple[int, int]] = bold_spans) -> str:
                 if cls._is_inside_spans(match.start(), spans):
@@ -564,12 +648,13 @@ def format_markdown(
         return _light_format(result)
 
     # ── Step 1: Protect LaTeX ───────────────────────────────────────────────
+    source = result
     latex_protector = LaTeXProtector()
     result = latex_protector.protect(result)
 
     # ── Step 2: Protect bold markers ────────────────────────────────────────
     bold_protector = BoldProtector()
-    result = bold_protector.protect(result)
+    result = bold_protector.protect(result, source)
 
     # ── Step 3: Normalize colon spacing (global + label-specific) ─────────
     result = ColonLabelDetector.normalize_colon_spacing_global(result)
@@ -577,6 +662,13 @@ def format_markdown(
 
     # ── Step 4: Extract metadata ────────────────────────────────────────────
     metadata, result = MetadataExtractor.extract(result)
+    # Metadata values were cut from protected text: put the protected text back
+    # before they are written. YAML values show no emphasis, so bold keeps its
+    # text without the `**` markers; equations are kept as written.
+    metadata = {
+        key: latex_protector.restore(bold_protector.restore(value, keep_markers=False), inline=True)
+        for key, value in metadata.items()
+    }
     frontmatter = MetadataExtractor.to_frontmatter(metadata)
 
     # ── Step 5: Insert structural breaks ────────────────────────────────────
@@ -593,6 +685,10 @@ def format_markdown(
 
     # ── Step 9: Clean up ────────────────────────────────────────────────────
     result = _cleanup(result)
+    _report_leftover_placeholders(
+        bold_protector.remaining(result + frontmatter)
+        + latex_protector.remaining(result + frontmatter)
+    )
 
     # ── Step 10: Prepend frontmatter ────────────────────────────────────────
     if frontmatter:
@@ -601,9 +697,63 @@ def format_markdown(
     return result
 
 
+def _literal_line_ranges(lines: list[str]) -> list[tuple[int, int]]:
+    """Find the line ranges light formatting must not touch.
+
+    Args:
+        lines: The text split at line feeds.
+
+    Returns:
+        Half-open `(start, end)` line ranges, in order: YAML frontmatter at the
+        very top and every fenced code block. Fences are the parser's own
+        (`FenceScanner`: any indentation, an unclosed fence runs to the end).
+        Frontmatter is a block opened by `---` on the first line, closed by
+        `---`, whose content is a YAML mapping; anything else that starts with
+        a rule is prose.
+    """
+    ranges: list[tuple[int, int]] = []
+    index = 0
+    if lines and lines[0].strip() == "---":
+        for end in range(1, len(lines)):
+            if lines[end].strip() == "---":
+                try:
+                    is_mapping = isinstance(yaml.safe_load("\n".join(lines[1:end])), dict)
+                except yaml.YAMLError:
+                    is_mapping = False
+                if is_mapping:
+                    ranges.append((0, end + 1))
+                    index = end + 1
+                break
+    while index < len(lines):
+        block = FenceScanner.scan(lines, index)
+        if block is None:
+            index += 1
+            continue
+        ranges.append((index, block[2]))
+        index = block[2]
+    return ranges
+
+
 def _light_format(text: str) -> str:
-    """Apply minimal formatting to already-structured text"""
-    result = text
+    """Apply minimal formatting to already-structured text.
+
+    Frontmatter and fenced code are literal: they are set aside before the
+    prose rules run and put back unchanged.
+    """
+    lines = text.split("\n")
+    token = "\ue000LITERAL"
+    while token in text:
+        token += "X"
+    literals: list[str] = []
+    pieces: list[str] = []
+    position = 0
+    for start, end in _literal_line_ranges(lines):
+        pieces.extend(lines[position:start])
+        pieces.append(f"{token}{len(literals)}\ue001")
+        literals.append("\n".join(lines[start:end]))
+        position = end
+    pieces.extend(lines[position:])
+    result = "\n".join(pieces)
 
     # Normalize colon spacing even in light-format mode
     result = ColonLabelDetector.normalize_colon_spacing_global(result)
@@ -615,7 +765,36 @@ def _light_format(text: str) -> str:
     # Clean up excess whitespace
     result = re.sub(r"\n{3,}", "\n\n", result)
 
-    return result.strip()
+    result = result.strip()
+    for number, literal in enumerate(literals):
+        placeholder = f"{token}{number}\ue001"
+        before, found, after = result.partition(placeholder)
+        if not found:
+            continue
+        # A label rule may have pulled the block up onto the line before it;
+        # a fence or frontmatter must start its own line.
+        if before and not before.endswith("\n"):
+            before = before.rstrip(" \t") + "\n"
+        result = before + literal + after
+    _report_leftover_placeholders(result.count(token))
+    return result
+
+
+def _report_leftover_placeholders(count: int) -> None:
+    """Log an error when protected-text markers of this run reach the output.
+
+    A last line of defence: the text is returned as is (nothing is stripped),
+    so the author can see where protected text was not put back.
+
+    Args:
+        count: Placeholder markers of this run still in the result.
+    """
+    if count:
+        logger.error(
+            "Formatter left %d protected-text placeholder(s) in the output; "
+            "the protected text there was not restored",
+            count,
+        )
 
 
 def _cleanup(text: str) -> str:
@@ -719,16 +898,15 @@ def format_file_with_options(
         cleaner_mode, cite_mode, drop_unknown_markers, cleaner_report
     ):
         raise ValueError("--converted-term-sheet cannot be combined with the DeepResearch cleaner")
-    input_file = Path(input_path)
-
-    # Resolve path
-    if not input_file.is_absolute():
-        parent_path = PARENT_DIR / input_file.name
-        if parent_path.exists():
-            input_file = parent_path
+    # The same policy as `md-to-word`: a path with a folder, or a file in the
+    # working directory, is read as given; only a bare name falls back to the
+    # project locations.
+    input_file = resolve_input_path(str(input_path), PARENT_DIR, Path(__file__))
 
     if not input_file.exists():
-        raise FileNotFoundError(f"File not found: {input_file}")
+        # Name the path as it was given: for a bare name `input_file` is only the
+        # last place that was searched.
+        raise FileNotFoundError(f"File not found: {input_path}")
 
     content = _read_with_encoding(input_file)
     line_count = content.count("\n")

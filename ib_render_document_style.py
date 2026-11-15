@@ -50,7 +50,6 @@ class GeneratorSignatureWriter:
     )
     _PROJECT_NAME = "ib-report-formatter"
     _GENERATOR_NAME = "ib_report_formatter"
-    _GENERATOR_PROFILE = "ib_generated"
     _PYPROJECT_VERSION_RE = re.compile(r'^version\s*=\s*"([^"]+)"\s*$')
     _resolved_version: str | None = None
 
@@ -118,9 +117,14 @@ class GeneratorSignatureWriter:
             if name in properties or (owned_prefix and name.startswith(owned_prefix)):
                 custom_props.remove(prop)
 
-        used_pids = cls._used_property_ids(custom_props)
+        # The smallest unused PID each time (2 is the first, per OPC convention).
+        used_pids = set(cls._used_property_ids(custom_props))
+        next_pid = 2
         for name, value in properties.items():
-            custom_props.append(cls._build_property(name, value, cls._next_pid(used_pids)))
+            while next_pid in used_pids:
+                next_pid += 1
+            custom_props.append(cls._build_property(name, value, next_pid))
+            next_pid += 1
 
     @classmethod
     def _signature_properties(cls, profile: str = "ib_generated") -> dict[str, str]:
@@ -177,15 +181,6 @@ class GeneratorSignatureWriter:
             if pid.isdigit():
                 used_pids.append(int(pid))
         return used_pids
-
-    @staticmethod
-    def _next_pid(used_pids: list[int]) -> int:
-        """Return the next unused custom-property PID (starts at 2 per OPC convention)."""
-        candidate = 2
-        while candidate in used_pids:
-            candidate += 1
-        used_pids.append(candidate)
-        return candidate
 
     @staticmethod
     def _local_name(tag: str) -> str:

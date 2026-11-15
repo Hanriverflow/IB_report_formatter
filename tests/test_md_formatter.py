@@ -4,6 +4,8 @@ Tests for md_formatter module.
 Tests the markdown pre-processor for single-line text conversion.
 """
 
+import pytest
+
 from deep_md_cleaner import MARKER_END, MARKER_SEPARATOR, MARKER_START, CleanerConfig
 from md_formatter import (
     BoldProtector,
@@ -31,7 +33,8 @@ class TestLaTeXProtector:
         protected = protector.protect(text)
 
         assert "$$" not in protected
-        assert "__LATEX_BLOCK_" in protected
+        # Placeholders are private-use markers the input cannot spell by accident.
+        assert chr(0xE000) + "LATEXBLOCK" in protected
 
     def test_protect_inline_equation(self):
         """Protect inline equations ($...$)."""
@@ -41,7 +44,7 @@ class TestLaTeXProtector:
         protected = protector.protect(text)
 
         assert "$x^2 + y^2$" not in protected
-        assert "__LATEX_INLINE_" in protected
+        assert chr(0xE000) + "LATEXINLINE" in protected
 
     def test_restore_equations(self):
         """Restore protected equations."""
@@ -71,7 +74,7 @@ class TestBoldProtector:
         protected = protector.protect(text)
 
         assert "**" not in protected
-        assert "__BOLD_" in protected
+        assert chr(0xE000) + "BOLD" in protected
 
     def test_restore_bold_text(self):
         """Restore bold markers."""
@@ -94,12 +97,12 @@ class TestMetadataExtractor:
 
     def test_extract_title(self):
         """Extract report title from [보고서] marker."""
-        text = "[보고서] 네페스 기업분석작성일: 2024-01-15"
+        text = "[보고서] 가나다전자 기업분석작성일: 2024-01-15"
 
         metadata, remaining = MetadataExtractor.extract(text)
 
         assert "title" in metadata
-        assert "네페스" in metadata["title"]
+        assert "가나다전자" in metadata["title"]
 
     def test_extract_metadata_fields(self):
         """Extract standard metadata fields."""
@@ -231,7 +234,7 @@ Paragraph two.
         """Global colon normalization should cover common report lines."""
         text = (
             "보고서 작성일:2026년 2월 7일 (초판 2026.01.30 대비 전면 개정)\n"
-            "분석 대상:주식회사 네패스 (KOSDAQ: 033640)\n"
+            "분석 대상:주식회사 가나다전자 (KOSDAQ: 000000)\n"
             "보고서 유형:심층 기업 분석 및 산업 전략 리포트\n"
             "Disclaimer:본 보고서는 공개 가용 정보를 기반으로 한 분석 자료"
         )
@@ -239,7 +242,7 @@ Paragraph two.
         result = format_markdown(text)
 
         assert 'date: "2026년 2월 7일 (초판 2026.01.30 대비 전면 개정)"' in result
-        assert "분석 대상: 주식회사 네패스" in result
+        assert "분석 대상: 주식회사 가나다전자" in result
         assert "보고서 유형: 심층 기업 분석" in result
         assert "Disclaimer: 본 보고서는" in result
 
@@ -294,3 +297,88 @@ class TestCheckNeedsFormatting:
         file.write_text(content, encoding="utf-8")
 
         assert check_needs_formatting(str(file)) is False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AUDIT 2026-11-15 REGRESSIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def test_major_heading_replaces_its_number_instead_of_leaving_a_digit():
+    """`1. Overview` became `1` + a heading: the first digit of the match was kept."""
+    assert format_markdown("1. Overview") == "## 1. Overview"
+    result = format_markdown("서론입니다. 1. 개요 본문입니다. 2. 배경 본문이다.")
+    assert result == "서론입니다.\n\n## 1. 개요 본문입니다.\n\n## 2. 배경 본문이다."
+
+
+def test_generated_frontmatter_keeps_backslashes_and_quotes():
+    """A backslash in a double-quoted YAML scalar is an escape unless it is doubled."""
+    import yaml
+
+    title = 'C:\\temp "draft"'
+    frontmatter = MetadataExtractor.to_frontmatter({"title": title, "수신": "a\\nb"})
+    loaded = yaml.safe_load(frontmatter.strip("-\n"))
+    assert loaded == {"title": title, "recipient": "a\\nb"}
+
+
+def test_light_format_leaves_frontmatter_and_fenced_code_literal():
+    """Prose rules (colon spacing, callout breaks, blank-line trimming) stop at literals."""
+    literal = '---\ntitle: "a:b"\n---\n```text\na:b\n\n\n\n[참고] key:value\n```\n~~~\nx:y\n~~~'
+    prose = "\n".join(f"항목{n}:값" for n in range(25))
+    result = format_markdown(literal + "\n" + prose)
+    assert result.startswith(literal + "\n")
+    assert "항목0: 값" in result and "항목24: 값" in result
+    # An unclosed fence runs to the end, as in the parser.
+    unclosed = "\n".join(["line"] * 25) + "\n```\nk:v"
+    assert format_markdown(unclosed).endswith("```\nk:v")
+    tail = "\n" + "\n".join(["line"] * 25)
+    # The parser's fences: any indentation; a backtick in the info string is no fence.
+    assert format_markdown("- item\n    ```\n    a:b\n    ```" + tail).startswith(
+        "- item\n    ```\n    a:b\n    ```\n"
+    )
+    assert format_markdown("``` a`b\nk:v\n```" + tail).startswith("``` a`b\nk: v\n")
+    # A rule at the top followed by prose is not frontmatter, nor is a `...` closer.
+    assert "본문: 값" in format_markdown("---\n\n본문:값\n\n---" + tail)
+    assert "본문: 값" in format_markdown("---\n본문:값\n..." + tail)
+    # A label rule that reaches across the line break does not pull the fence up.
+    assert format_markdown("작성일:\n```\ncode:x\n```" + tail).startswith(
+        "작성일:\n```\ncode:x\n```\n"
+    )
+
+
+def test_format_file_names_the_missing_path_as_given(tmp_path, monkeypatch):
+    import md_formatter
+
+    monkeypatch.setattr(md_formatter, "PARENT_DIR", tmp_path / "parent")
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(FileNotFoundError, match=r"^File not found: nowhere-xyz\.md$"):
+        md_formatter.format_file_with_options("nowhere-xyz.md")
+
+
+def test_format_file_reads_the_path_given_not_a_namesake_in_the_parent_folder(
+    tmp_path, monkeypatch
+):
+    """`a/report.md` used to be replaced by `<project parent>/report.md` when both existed."""
+    import md_formatter
+
+    parent = tmp_path / "parent"
+    work = tmp_path / "work"
+    (work / "a").mkdir(parents=True)
+    parent.mkdir()
+    (parent / "report.md").write_text("WRONG\n", encoding="utf-8")
+    (work / "a" / "report.md").write_text("RIGHT\n", encoding="utf-8")
+    (work / "bare.md").write_text("CWD\n", encoding="utf-8")
+    (parent / "bare.md").write_text("WRONG\n", encoding="utf-8")
+    (parent / "only-parent.md").write_text("PARENT\n", encoding="utf-8")
+    monkeypatch.setattr(md_formatter, "PARENT_DIR", parent)
+    monkeypatch.chdir(work)
+
+    def formatted(name: str) -> str:
+        out = tmp_path / "out.md"
+        md_formatter.format_file_with_options(name, str(out))
+        return out.read_text(encoding="utf-8")
+
+    assert formatted("a/report.md") == "RIGHT"
+    assert formatted("bare.md") == "CWD"
+    # A bare name that is not in the working directory still falls back.
+    assert formatted("only-parent.md") == "PARENT"

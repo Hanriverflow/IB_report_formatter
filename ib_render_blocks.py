@@ -394,53 +394,6 @@ class CalloutRenderer:
         # Spacer
         self.doc.add_paragraph()
 
-    def render_executive_summary(self, title: str, bullet_points: list):
-        """
-        Render a professional Executive Summary box.
-
-        Args:
-            title: Box title (e.g., "Executive Summary")
-            bullet_points: List of key points to display
-        """
-        table = self.doc.add_table(rows=1, cols=1)
-        cell = table.rows[0].cells[0]
-        TableStyler.set_cell_background(cell, STYLE.NAVY_HEX)
-
-        # Title
-        title_para = cell.paragraphs[0]
-        title_run = title_para.add_run(f"▶ {title}")
-        FontStyler.apply_run_style(
-            title_run,
-            font_name=STYLE.HEADING_FONT,
-            font_size=Pt(12),
-            bold=True,
-            color=STYLE.WHITE,
-        )
-
-        # Bullet points
-        for point in bullet_points:
-            point_para = cell.add_paragraph()
-            bullet_run = point_para.add_run("  •  ")
-            FontStyler.apply_run_style(
-                bullet_run,
-                font_name=STYLE.BODY_FONT,
-                font_size=STYLE.BODY_SIZE,
-                color=STYLE.WHITE,
-            )
-            text_run = point_para.add_run(point)
-            FontStyler.apply_run_style(
-                text_run,
-                font_name=STYLE.BODY_FONT,
-                font_size=STYLE.BODY_SIZE,
-                color=STYLE.WHITE,
-            )
-
-        # Full border for executive summary
-        self._apply_full_border(table, STYLE.NAVY_HEX)
-
-        # Spacer
-        self.doc.add_paragraph()
-
     @staticmethod
     def _apply_callout_border(table, border_hex: str):
         """Apply left accent border, hide other borders."""
@@ -457,24 +410,6 @@ class CalloutRenderer:
                 border.set(qn("w:color"), border_hex)
             else:
                 border.set(qn("w:val"), "nil")
-            tblBorders.append(border)
-
-        insert_ordered(tblPr, tblBorders)
-        if tbl.tblPr is None:
-            tbl.insert(0, tblPr)
-
-    @staticmethod
-    def _apply_full_border(table, border_hex: str):
-        """Apply full border around the callout box."""
-        tbl = table._tbl
-        tblPr = tbl.tblPr if tbl.tblPr is not None else OxmlElement("w:tblPr")
-        tblBorders = OxmlElement("w:tblBorders")
-
-        for border_name in ("top", "left", "bottom", "right"):
-            border = OxmlElement(f"w:{border_name}")
-            border.set(qn("w:val"), "single")
-            border.set(qn("w:sz"), "12")
-            border.set(qn("w:color"), border_hex)
             tblBorders.append(border)
 
         insert_ordered(tblPr, tblBorders)

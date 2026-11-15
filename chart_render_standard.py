@@ -671,6 +671,17 @@ class _Drawer:
             value = written_decimal(value / self.scale)
         return round_half_up_text(value, number_format)
 
+    def plotted(self, number: Decimal) -> float:
+        """A worked-out sum (`exact_sum`, at the spec's scale) at the plot's scale.
+
+        The scale is applied in decimal arithmetic before the float is made:
+        a sum of values that are each finite can lie beyond the float range
+        (two values of 1e308), and only its scaled form fits. The scale is a
+        power of two, so its decimal is exact and, at scale 1, the float is
+        the one `float(number)` gives.
+        """
+        return float(EXACT.multiply(number, Decimal(self.scale)))
+
     def warn_many(self, count: int) -> None:
         if count > MAX_DISTINCT_SERIES:
             self.note(
@@ -1648,7 +1659,7 @@ class _Drawer:
         tones = self.tones.stack(len(spec.series))
         positions = range(len(spec.labels))
         sums = [exact_sum([s.values[i] for s in spec.series], self.scale) for i in positions]
-        totals = [float(total) * self.scale for total in sums]
+        totals = [self.plotted(total) for total in sums]
         top = max(totals) or 1.0
         width = 0.56  # leaves each column room for a value beside its bar
         bar_inches = width * self.width * 0.85 / len(spec.labels)

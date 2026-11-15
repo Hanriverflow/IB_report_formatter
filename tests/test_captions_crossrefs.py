@@ -7,8 +7,11 @@ by a table spec `id` (`tbl-…`), figures by `{#fig-…}` after an image file li
 import random
 import re
 import shutil
+import time
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -39,6 +42,24 @@ def write(tmp_path: Path, body: str, tables: str = "", profile: str = "business-
     path = tmp_path / "doc.md"
     path.write_text(front + "---\n\n# 시험 문서\n\n" + body, encoding="utf-8")
     return path
+
+
+@contextmanager
+def fixed_clock() -> Iterator[None]:
+    """Hold `ib_renderer.time` on one day while documents are rendered for comparison.
+
+    An undated IB cover prints today and the IB disclaimer page this year, so
+    two renders of one document that straddle midnight would differ. The
+    patch ends with the block; `ib_renderer.time` is the `time` module again.
+    """
+    import ib_renderer
+
+    day = time.strptime("2026-01-02", "%Y-%m-%d")
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            ib_renderer, "time", SimpleNamespace(strftime=lambda fmt: time.strftime(fmt, day))
+        )
+        yield
 
 
 def render(path: Path, strict: bool = True) -> tuple[DocxDocument, list[str]]:
@@ -1350,14 +1371,17 @@ def _random_document(seed: int, blocks: int) -> tuple[str, str]:
         else:
             lines.append(text)
     lines.append("[^1]: 각주 @tbl-missing \ue010 \\@tbl-a")
-    front = f"---\nprofile: {profile}\ntitle: 시험 문서\n{_P1_TERMS}---\n\n"
+    # A written date: the cover would otherwise print today, and two renders of
+    # the same document that straddle midnight would differ (seen once in CI).
+    front = f"---\nprofile: {profile}\ntitle: 시험 문서\ndate: 2026-01-02\n{_P1_TERMS}---\n\n"
     return front + "\n\n".join(lines) + "\n", profile
 
 
 def _rendered_xml(path: Path) -> str:
     """Body and footnote XML of a non-strict render, temporary image names removed."""
     renderer = IBDocumentRenderer(options=RenderOptions(strict=False))
-    document = renderer.render(parse_markdown_file(str(path)))
+    with fixed_clock():  # the written date does not hold the disclaimer's year
+        document = renderer.render(parse_markdown_file(str(path)))
     parts = [document_xml(document)]
     for part in document.part.package.iter_parts():
         if str(part.partname) == "/word/footnotes.xml":
@@ -1770,6 +1794,12 @@ def _outcomes(path: Path, profile: str | None) -> dict[str, tuple]:
     `file`, `stream`, `registry` and `cli` all reach `parse_markdown_file`;
     `text` is `MarkdownParser.parse`.
     """
+    with fixed_clock():  # the documents are undated: the IB cover would print today
+        return _outcomes_on_one_day(path, profile)
+
+
+def _outcomes_on_one_day(path: Path, profile: str | None) -> dict[str, tuple]:
+    """`_outcomes` with the renderer's clock already held."""
     import io
 
     from converters import get_default_registry
@@ -1973,7 +2003,9 @@ def _p6_differences(defined: str, undefined: str) -> list[str]:
     views = []
     for markdown in (defined, undefined):
         renderer = IBDocumentRenderer(options=RenderOptions(strict=False))
-        views.append(_p6_view(renderer.render(parse_markdown_file(io.BytesIO(markdown.encode())))))
+        with fixed_clock():  # an undated IB cover would print today
+            document = renderer.render(parse_markdown_file(io.BytesIO(markdown.encode())))
+        views.append(_p6_view(document))
     left, right = views
     assert len(left) == len(right)
     return [

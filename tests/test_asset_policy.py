@@ -497,7 +497,9 @@ def test_registry_markdown_with_output_format_only_parses(
         render_options=RenderOptions(profile="ib-report"),
     )
     assert isinstance(model, DocumentModel)
-    assert model == parse_markdown_file(str(source), profile=profile)
+    # An explicit `profile` argument wins; without one the parser takes the
+    # options' profile (explicit API options override the YAML `profile: plain`).
+    assert model == parse_markdown_file(str(source), profile=profile or "ib-report")
     assert not output.exists()
 
 

@@ -833,6 +833,25 @@ class TextParser:
         finally:
             _REFERENCE_SCOPE.reset(token)
 
+    @staticmethod
+    @contextmanager
+    def silent_reference_scope() -> Iterator[None]:
+        """Parse with the current scope's targets but report and record nothing.
+
+        For a parse made only to compare two readings of the same text, so the
+        comparison adds no diagnostic.
+
+        Yields:
+            None.
+        """
+        scope = _REFERENCE_SCOPE.get()
+        silent = None if scope is None else replace(scope, report=None, kept=None)
+        token = _REFERENCE_SCOPE.set(silent)
+        try:
+            yield
+        finally:
+            _REFERENCE_SCOPE.reset(token)
+
     @classmethod
     def check_text(
         cls, text: str, place: str, markdown: bool = True, escaped_ats: Sequence[int] = ()

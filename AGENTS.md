@@ -107,7 +107,7 @@ The `md_parse_*.py` and `ib_render_*.py` files are internal. Import from `md_par
 - Changes to output must have regression tests through actual parsing/rendering and, for layout changes, representative page inspection.
 - Frontmatter `version` becomes the custom property `Version`, shown by a `DOCPROPERTY Version` field whose stored result is the version text: after the company in the header (not in office letters) and in the term-sheet footer. Never write the field without the property; Word prints an error for a missing one. `version` keeps the existing metadata display coercion (numbers render as YAML read them).
 - `status: draft` adds Word's own VML text watermark (ids `PowerPlusWaterMarkObject…`, which Word's Remove Watermark recognises) to every header part of every section, after all headers exist; Word's gallery alone would mark only one header. `final` or no status adds nothing; any other value is rejected in both modes.
-- The renderer writes the document's own core properties: title (not a profile's stand-in title), empty author and comment, and the conversion time. Snapshots already normalise the times. A stand-in title is marked by type (`DefaultTitle`) where profile defaults are made, never recognised by its text; a title over 255 characters is shortened in the core properties only, with a warning, and is not a rejection. An empty `version:` means no version.
+- The renderer writes the document's own core properties: title (not a profile's stand-in title), empty author and comment, and the conversion time. Snapshots already normalise the times. A stand-in title is marked by type (`DefaultTitle`) where profile defaults are made, never recognised by its text; outside the `term-sheet` profile a title over 255 characters is shortened in the core properties only, with a warning, and is not a rejection (a term-sheet title or subtitle over 255 characters is rejected in both modes). An empty `version:` means no version.
 - Office letters close before the explicitly named unique H1 in `letter.appendix_heading`; no implicit appendix inference or second assembler. Optional `appendix_label` requires that boundary. Preserve native attachment numbers.
 - Office-letter attachments: one is an unnumbered `붙임⇥item.  끝.` line; several are one native list whose first item carries `붙임⇥%1.` through a second list instance on the same abstract definition. `letter.table_end: partial` is the only way to get `이하 빈칸` (first cell of the first blank row after the last written row of the body's final table); never infer it from blank rows. Office-letter numbered lists use `1. 가. 1) 가) (1) (가) ①`; Word has no format for `㉮`, so level eight and deeper is a strict rejection and a 가 stand-in otherwise. Other profiles keep their numbering. Record: `docs/verification-office-letter-20261114.md`.
 - Inline HTML breaks must reach Word paragraphs, emphasis, headings, lists and cells without changing code/escaped literals or link URLs.
@@ -323,17 +323,24 @@ Changelog (v3):
 ## Error Handling
 
 ### Element-Level Resilience
-Non-strict rendering continues with diagnostics if an element fails. Strict rendering must reject the output before saving:
+Non-strict rendering continues with diagnostics if an element fails. Strict rendering must reject the output before saving. The reference is the element loop in `IBDocumentRenderer` (`ib_renderer.py`):
 ```python
 for idx, element in enumerate(model.elements):
     try:
         self._render_element(element)
-    except Exception as e:
-        logger.warning("Failed to render element %d: %s", idx, e)
+    except InputLimitError:
+        raise  # a limit is never turned into a placeholder
+    except Exception as exc:
+        message = f"Element {idx} ({element.element_type.name}): {exc}"
+        self.errors.append(message)  # strict mode rejects the document on these
+        logger.warning("%s", message)
         # Insert visible error marker in document
-        p = self.doc.add_paragraph()
-        err_run = p.add_run(f"[Render Error: {element.element_type.name}]")
-        FontStyler.apply_run_style(err_run, italic=True, color=STYLE.RED)
+        p = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
+        FontStyler.apply_run_style(
+            p.add_run(f"[Render Error: {element.element_type.name}]"),
+            italic=True,
+            color=STYLE.RED,
+        )
 ```
 
 ### File I/O with Encoding Fallback
@@ -351,12 +358,11 @@ def _read_with_encoding(file_path: Path) -> str:
 
 ### Safe Save with Lock Handling
 ```python
-try:
-    doc.save(str(output_path))
-except PermissionError:
-    # File is open in Word - save with timestamp suffix
-    new_name = f"{output_path.stem}_{timestamp}{output_path.suffix}"
-    doc.save(str(new_path))
+from md_to_word import safe_save
+
+# Atomic save; when the file is open in Word it saves beside it under a
+# timestamped name and returns that path.
+saved_path = safe_save(doc, output_path)
 ```
 
 ---

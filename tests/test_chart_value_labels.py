@@ -29,6 +29,7 @@ from chart_renderer import format_value, parse_chart_spec, waterfall_positions
 LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz가나다라마바사아자차카타파하"
 names = st.text(alphabet=LETTERS, min_size=1, max_size=14)
 FORMATS = [None, "percent", "bps", "multiple", ",.2f"]
+TWIN_GAP_POINTS = 16.0  # a point's value lies within 16 pt over or under it
 
 
 @st.composite
@@ -191,13 +192,72 @@ def measure(monkeypatch, spec, width: float) -> tuple[list, object, list[str]]:
             for artist in drawn
         ]
         seen["canvas"] = self.bbox.frozen()
+        # Frozen now: the figure is cleared once the picture is saved.
+        seen["axes"] = [axes.transData.frozen() for axes in self.axes]
+        seen["dpi"] = self.dpi
+        # Whose each value is (category, series, number), with its box; read
+        # only to excuse a twin point's value (`twin_excuses`).
+        seen["values"] = {
+            tuple(artist.get_gid().split("\t")[1:4]): artist.get_window_extent(renderer)
+            for artist in drawn
+            if (artist.get_gid() or "").startswith("value\t")
+        }
         return saved(self, *args, **kwargs)
 
     monkeypatch.setattr(Figure, "savefig", capture)
     warnings: list[str] = []
     standard.render_standard_chart_png(spec, width_inches=width, warnings=warnings)
     monkeypatch.setattr(Figure, "savefig", saved)
-    return seen["texts"], seen["canvas"], warnings
+    return seen["texts"], seen["canvas"], warnings, seen
+
+
+def twin_excuses(spec, spot, drawn: dict, warned: set, gap: float) -> Counter:
+    """Texts of missing `bar_line` values that a twin point's number speaks for.
+
+    Final rule, exception for twins: points of one category from different
+    right-axis series that lie within half a pixel of each other and are
+    written with the same text share one number. A value neither drawn nor
+    named is excused only when it is itself such a point and its own twin's
+    number is drawn at their shared spot (over or under it within `gap`).
+    Keyed per point, so a missing equal value elsewhere is never excused.
+
+    Args:
+        spec: The chart spec.
+        spot: `spot(series, index)` -> the point's pixel, measured from the
+            right axis as drawn (not the renderer's record).
+        drawn: (category, series, number) -> box of each drawn value.
+        warned: (category, series, number) of each value a warning names.
+        gap: Largest distance in pixels between a value and its point.
+
+    Returns:
+        Each excused value's text, counted once per excused point.
+    """
+    excused: Counter = Counter()
+    if spec.chart_type != "bar_line":
+        return excused
+    right = [s for s in spec.series if s.axis == "right"]
+    for index, category in enumerate(spec.labels):
+        for s in right:
+            text = format_value(s.values[index], spec.right_number_format)
+            key = (category, s.name, text)
+            if key in drawn or key in warned:
+                continue
+            x, y = spot(s, index)
+            for other in right:
+                ox, oy = spot(other, index)
+                box = drawn.get((category, other.name, text))
+                if (
+                    other is not s
+                    and box is not None
+                    and format_value(other.values[index], spec.right_number_format) == text
+                    and abs(ox - x) <= 0.5
+                    and abs(oy - y) <= 0.5
+                    and box.x0 - 0.5 <= x <= box.x1 + 0.5
+                    and max(box.y0 - y, y - box.y1, 0) <= gap
+                ):
+                    excused[text] += 1
+                    break
+    return excused
 
 
 def warned_values(warnings: list[str]) -> Counter:
@@ -210,9 +270,22 @@ def warned_values(warnings: list[str]) -> Counter:
     return found
 
 
+def warned_keys(warnings: list[str]) -> set:
+    """(category, series, number) of each value a warning names."""
+    found = set()
+    for warning in warnings:
+        if "for lack of room: " not in warning:
+            continue
+        for item in warning.split("for lack of room: ", 1)[1].split("; "):
+            where, number = item.rsplit(": ", 1)
+            category, _, series = where.rpartition(", ")
+            found.add((category, series, number))
+    return found
+
+
 def check(monkeypatch, data: dict, width: float = 6.0) -> list[str]:
     spec = parse_chart_spec(yaml.safe_dump(data, allow_unicode=True))
-    texts, canvas, warnings = measure(monkeypatch, spec, width)
+    texts, canvas, warnings, seen = measure(monkeypatch, spec, width)
     for text, box, _ in texts:
         assert box.x0 >= canvas.x0 - 1 and box.x1 <= canvas.x1 + 1, f"{text!r} leaves the picture"
         assert box.y0 >= canvas.y0 - 1 and box.y1 <= canvas.y1 + 1, f"{text!r} leaves the picture"
@@ -228,7 +301,23 @@ def check(monkeypatch, data: dict, width: float = 6.0) -> list[str]:
             )
             assert not overlap, f"{text!r} overlaps {other!r}"
     drawn = Counter(shown[text] for text, _ in values)
-    assert drawn + warned_values(warnings) == expected_values(spec)
+    accounted = drawn + warned_values(warnings)
+    want = expected_values(spec)
+    # Twin points: the number is written once for the pair, so the value not
+    # written is neither drawn nor named; judged per point (`twin_excuses`).
+    axes = seen["axes"]
+
+    def spot(series, index):
+        return axes[1].transform((index, series.values[index]))
+
+    excused = (
+        twin_excuses(
+            spec, spot, seen["values"], warned_keys(warnings), TWIN_GAP_POINTS * seen["dpi"] / 72
+        )
+        if len(axes) > 1
+        else Counter()
+    )
+    assert accounted == want - excused
     return warnings
 
 
@@ -242,6 +331,18 @@ MANY_LINES = {
     "labels": ["A", "B"],
     "series": [{"name": f"S{i:02}", "values": [0, 1]} for i in range(16)],
 }
+# Fifth review (as in tests/test_chart_final_rule.py): two right-axis lines
+# that share a spot and a text at A and C.
+TWIN_POINTS = {
+    "type": "bar_line",
+    "title": "Twins",
+    "labels": ["A", "B", "C"],
+    "series": [
+        {"name": "Bars", "values": [10, 12, 14]},
+        {"name": "R1", "axis": "right", "values": [5, 6, 9]},
+        {"name": "R2", "axis": "right", "values": [5, 7.5, 9]},
+    ],
+}
 
 
 @seed(20261114)
@@ -253,8 +354,78 @@ MANY_LINES = {
 @given(chart_data(), st.sampled_from([4.5, 6.0]))
 @example(SMALL_STACK, 6.0)
 @example(MANY_LINES, 6.0)
+@example(TWIN_POINTS, 4.5)
+@example(TWIN_POINTS, 6.0)
 def test_every_value_is_drawn_whole_or_named_in_a_warning(monkeypatch, data, width):
     check(monkeypatch, data, width)
+
+
+def test_twin_points_write_one_number_without_a_warning(monkeypatch):
+    # Fifth review: at A and C the two right-axis lines share a spot and a
+    # text, so 5 and 9 are written once each and nothing is named.
+    spec = parse_chart_spec(yaml.safe_dump(TWIN_POINTS, allow_unicode=True))
+    for width in (3.0, 3.5, 4.5, 6.0):
+        assert check(monkeypatch, TWIN_POINTS, width) == []
+        _, _, warnings, seen = measure(monkeypatch, spec, width)
+        axes = seen["axes"]
+        excused = twin_excuses(
+            spec,
+            lambda series, index, axes=axes: axes[1].transform((index, series.values[index])),
+            seen["values"],
+            warned_keys(warnings),
+            TWIN_GAP_POINTS * seen["dpi"] / 72,
+        )
+        assert excused == Counter({"5": 1, "9": 1})
+
+
+class _Box:
+    """A stand-in for a measured text box (pixels)."""
+
+    def __init__(self, x0: float, y0: float, x1: float, y1: float) -> None:
+        self.x0, self.y0, self.x1, self.y1 = x0, y0, x1, y1
+
+
+def test_a_missing_equal_value_elsewhere_is_not_excused_by_twins():
+    """Review S2, on hand-built measurements (no chart is drawn).
+
+    At A the right-axis points R1 and R2 share a spot and the text 5, and both
+    are written, one over and one under the spot. At B, R1 is also 5 but on
+    its own spot (R2 is 7.5), and it is neither drawn nor named. A text-keyed
+    excuse let A's drawn 5 cover B's miss; the per-point excuse does not.
+    At C the twins share 9 and only R2's is drawn: R1's 9 is excused.
+    """
+    spec = parse_chart_spec(
+        yaml.safe_dump(
+            {
+                "type": "bar_line",
+                "labels": ["A", "B", "C"],
+                "series": [
+                    {"name": "Bars", "values": [10, 12, 14]},
+                    {"name": "R1", "axis": "right", "values": [5, 5, 9]},
+                    {"name": "R2", "axis": "right", "values": [5, 7.5, 9]},
+                ],
+            }
+        )
+    )
+
+    # Pixel of each point: x by category, y by value (a fake right axis).
+    def spot(series, index):
+        return (100.0 + 100 * index, 10.0 * series.values[index])
+
+    drawn = {
+        ("A", "R1", "5"): _Box(95, 55, 105, 65),  # over A's spot (100, 50)
+        ("A", "R2", "5"): _Box(95, 35, 105, 45),  # under it
+        ("B", "R2", "7.5"): _Box(195, 80, 205, 90),
+        ("C", "R2", "9"): _Box(295, 95, 305, 105),  # over C's spot (300, 90)
+        **{(c, "Bars", n): _Box(0, 0, 1, 1) for c, n in (("A", "10"), ("B", "12"), ("C", "14"))},
+    }
+    excused = twin_excuses(spec, spot, drawn, set(), gap=21.0)
+    assert excused == Counter({"9": 1})  # B's 5 is not excused
+    want = expected_values(spec)
+    accounted = Counter(number for _, _, number in drawn)
+    # The checker's comparison: rejected for B's 5, and only for it.
+    assert want - excused - accounted == Counter({"5": 1})
+    assert accounted != want - excused
 
 
 def test_small_stacked_segments_are_written_on_their_own_segment_or_named(monkeypatch):

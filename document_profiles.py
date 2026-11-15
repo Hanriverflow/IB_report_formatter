@@ -820,9 +820,11 @@ def _body_row_list(raw: Any, key: str, body_rows: int) -> list[int]:
         type(row) is not int or not 1 <= row <= body_rows for row in raw
     ):
         raise ValueError(f"Table {key} must be a list of body row numbers from 1 to {body_rows}")
-    for index, row in enumerate(raw):
-        if row in raw[:index]:
+    seen: set[int] = set()
+    for row in raw:
+        if row in seen:
             raise ValueError(f"Table {key} lists body row {row} twice")
+        seen.add(row)
     return list(raw)
 
 

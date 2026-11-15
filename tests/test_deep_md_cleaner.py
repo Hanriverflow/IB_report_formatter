@@ -70,11 +70,11 @@ def test_cite_mode_strip():
 
 
 def test_entity_keeps_display_name():
-    payload = '["company", "신세계프라퍼티", "korean company"]'
+    payload = '["company", "가나다프라퍼티", "korean company"]'
     text = "파트너: {entity}".format(entity=_marker("entity", payload))
     cleaned, report = clean_deepresearch_markdown(text, CleanerConfig(activation_mode="on"))
 
-    assert cleaned == "파트너: 신세계프라퍼티"
+    assert cleaned == "파트너: 가나다프라퍼티"
     assert report.entity_markers == 1
 
 
@@ -131,3 +131,16 @@ def test_class_api_detect():
     cleaner = DeepResearchCleaner(CleanerConfig(activation_mode="auto"))
     assert cleaner.detect(_marker("cite", "turn1search0")) is True
     assert cleaner.detect("plain text") is False
+
+
+def test_generated_footnotes_do_not_reuse_the_authors_numbers():
+    """A generated `[^1]` used to collide with a footnote the text already had."""
+    text = "Original[^1] and[^7].\n\n[^1]: Author's source\n[^7]: Another\n\nNew {cite}\n".format(
+        cite=_marker("cite", "turn1search0" + MARKER_SEPARATOR + "turn2search0")
+    )
+    cleaned, report = clean_deepresearch_markdown(text, CleanerConfig(activation_mode="on"))
+
+    assert "New [^8][^9]" in cleaned
+    assert "[^8]: turn1search0\n[^9]: turn2search0" in cleaned
+    assert cleaned.count("[^1]: ") == 1 and "[^1]: Author's source" in cleaned
+    assert report.footnotes_emitted == 2

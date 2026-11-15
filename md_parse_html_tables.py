@@ -319,12 +319,30 @@ class HtmlTableParser:
     """
 
     START_RE = re.compile(r"^\s*<table\b", re.IGNORECASE)
-    _OPEN_RE = re.compile(r"<table\b", re.IGNORECASE)
-    _CLOSE_RE = re.compile(r"</table\s*>", re.IGNORECASE)
+    # A comment or a whole tag; quoted attribute values are part of the tag, so a
+    # `</table>` written inside one is not a tag of its own. As in HTML, a quote
+    # opens a value only right after `=` (spaces allowed); any other quote is a
+    # plain character (`<b it's`). A bare `=` is one not followed by a quote, so
+    # each `=` has exactly one reading and a tag without `>` fails in linear time.
+    TOKEN_RE = re.compile(
+        r"<!--.*?-->|<(/?)([A-Za-z][\w:-]*)"
+        r"(?:[^>=]|=\s*\"[^\"]*\"|=\s*'[^']*'|=(?!\s*[\"']))*>",
+        re.DOTALL,
+    )
+    # Where a token could start. One that fails to match inside a partial window
+    # may only lack its end, which lies further on.
+    _TOKEN_START_RE = re.compile(r"<(?:!--|/?[A-Za-z])")
+    _FIRST_WINDOW = 64
 
     @classmethod
     def block_end(cls, lines: list[str], start: int) -> int | None:
         """Return the index after the line closing the table opened at `start`.
+
+        Only real `<table>` and `</table>` tags count: comments and quoted
+        attribute values are skipped. The text is read in growing windows so a
+        table costs about its own length, not the rest of the document; a result
+        is taken from a partial window only when every possible tag before it
+        matched whole there.
 
         Args:
             lines: Document lines.
@@ -333,14 +351,25 @@ class HtmlTableParser:
         Returns:
             The end index, or None when the table is never closed.
         """
-        depth = 0
-        for index in range(start, len(lines)):
-            depth += len(cls._OPEN_RE.findall(lines[index])) - len(
-                cls._CLOSE_RE.findall(lines[index])
-            )
-            if depth <= 0:
-                return index + 1
-        return None
+        size = cls._FIRST_WINDOW
+        while True:
+            stop = min(len(lines), start + size)
+            complete = stop == len(lines)
+            text = "\n".join(lines[start:stop])
+            depth = 0
+            position = 0
+            for token in cls.TOKEN_RE.finditer(text):
+                if not complete and cls._TOKEN_START_RE.search(text, position, token.start()):
+                    break  # an earlier tag may close beyond this window
+                position = token.end()
+                if (token.group(2) or "").lower() != "table":
+                    continue
+                depth += -1 if token.group(1) else 1
+                if depth == 0:
+                    return start + text.count("\n", 0, token.end()) + 1
+            if complete:
+                return None
+            size *= 2
 
     @staticmethod
     def _table_cell(runs: list[TextRun]) -> TableCell:

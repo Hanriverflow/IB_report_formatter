@@ -1,7 +1,8 @@
 """A2 table contracts: generic merge emission and term-sheet table layout.
 
-Every test parses synthetic Markdown with the real parser, renders through
-`IBDocumentRenderer.render`, saves to memory and inspects the reopened XML.
+Most tests parse synthetic Markdown with the real parser, render through
+`IBDocumentRenderer.render`, save to memory and inspect the reopened XML.
+A few call `TableRenderer.render` or `term_sheet.split_run_lines` directly.
 All names and figures are fictional.
 """
 

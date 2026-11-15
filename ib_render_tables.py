@@ -136,16 +136,18 @@ class TableRenderer:
         # is concatenated; each owner cell is then filled exactly once.
         rectangles = self._merge_cells(word_table, table)
         covered = self._covered_cells(rectangles)
+        # python-docx builds the whole row list on every `rows[i]`; build it once.
+        word_rows = list(word_table.rows)
 
         # Render header rows
         header_rows = min(table.header_rows, len(table.rows))
         for h_idx in range(header_rows):
-            self._render_header_row(word_table, table.rows[h_idx], col_count, covered, h_idx)
+            self._render_header_row(word_rows[h_idx], table.rows[h_idx], col_count, covered, h_idx)
 
         # Render data rows based on table type
         for r_idx, row in enumerate(table.rows[header_rows:], header_rows):
             self._render_data_row(
-                word_table,
+                word_rows[r_idx],
                 row,
                 r_idx,
                 col_count,
@@ -160,8 +162,8 @@ class TableRenderer:
         self._mirror_vertical_fills(word_table, rectangles)
 
         for h_idx in range(header_rows):
-            word_table.rows[h_idx]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
-        for word_row in word_table.rows:
+            word_rows[h_idx]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
+        for word_row in word_rows:
             word_row._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
         # Apply borders
         TableStyler.set_table_borders(word_table)
@@ -284,8 +286,10 @@ class TableRenderer:
         )
 
         line_counts = [0] * row_count
+        # python-docx builds the whole row list on every `rows[i]`; build it once.
+        word_rows = list(word_table.rows)
         for row_index, row in enumerate(table.rows):
-            word_cells = word_table.rows[row_index].cells
+            word_cells = word_rows[row_index].cells
             for column_index in range(col_count):
                 if (row_index, column_index) in covered:
                     continue
@@ -322,7 +326,7 @@ class TableRenderer:
                     line_counts[row_index] = max(line_counts[row_index], lines)
         self._mirror_vertical_fills(word_table, rectangles)
         self._apply_row_rules(word_table, table)
-        for row_index, word_row in enumerate(word_table.rows):
+        for row_index, word_row in enumerate(word_rows):
             header = row_index < table.header_rows
             set_row_pagination(
                 word_row,
@@ -562,7 +566,7 @@ class TableRenderer:
         marked = [*table.subtotal_rows, *table.total_rows]
         if not marked:
             return
-        rows = word_table.rows
+        rows = list(word_table.rows)
         color = STYLE.NAVY_HEX
         for body_row in marked:
             index = table.header_rows + body_row - 1
@@ -705,15 +709,16 @@ class TableRenderer:
         Continuation cells keep their own properties in OOXML, so the owner's fill
         is repeated to keep the whole merged area shaded in every consumer.
         """
+        rows = list(word_table.rows) if rectangles else []
         for top, left, bottom, _ in rectangles:
             if bottom == top:
                 continue
-            owner = word_table.rows[top]._tr.tc_at_grid_offset(left)
+            owner = rows[top]._tr.tc_at_grid_offset(left)
             shading = owner.tcPr.find(qn("w:shd")) if owner.tcPr is not None else None
             if shading is None or not shading.get(qn("w:fill")):
                 continue
             for row_index in range(top + 1, bottom + 1):
-                continuation = word_table.rows[row_index]._tr.tc_at_grid_offset(left)
+                continuation = rows[row_index]._tr.tc_at_grid_offset(left)
                 set_cell_fill(continuation, shading.get(qn("w:fill")))
 
     @staticmethod
@@ -1033,14 +1038,17 @@ class TableRenderer:
 
     def _render_header_row(
         self,
-        word_table,
+        word_row,
         row: TableRow,
         col_count: int,
         covered: Set[tuple[int, int]] = frozenset(),
         row_index: int = 0,
     ):
-        """Render one header row with Navy background, skipping merged-away cells."""
-        word_cells = word_table.rows[row_index].cells
+        """Render one header row with Navy background, skipping merged-away cells.
+
+        `word_row` is the Word row at `row_index`.
+        """
+        word_cells = word_row.cells
 
         for c_idx, cell_data in enumerate(row.cells):
             if c_idx >= col_count:
@@ -1082,7 +1090,7 @@ class TableRenderer:
 
     def _render_data_row(
         self,
-        word_table,
+        word_row,
         row: TableRow,
         row_idx: int,
         col_count: int,
@@ -1099,8 +1107,9 @@ class TableRenderer:
         Zebra shading counts body rows only, so it starts on the first body row
         whatever the number of header rows. `negative` is the table spec's
         negative-number style; None keeps the written form and red.
+        `word_row` is the Word row at `row_idx`.
         """
-        word_cells = word_table.rows[row_idx].cells
+        word_cells = word_row.cells
 
         for c_idx, cell_data in enumerate(row.cells):
             if c_idx >= col_count:
@@ -1190,6 +1199,14 @@ class TableRenderer:
         display_runs = cell_data.runs
         if format_numbers:
             display_content = self._format_numeric_text(display_content, role)
+            groups = reference_groups(display_runs)
+            split = (
+                None
+                if any(len(group) > 1 for group in groups)
+                else self._format_split_amount(display_runs, role, negative)
+            )
+            if split is not None:
+                return display_content, split
             # Semantic runs are independent of the amount. In particular, a
             # footnote's displayed number must never enter numeric formatting,
             # and a term value keeps the exact text written in `terms:`.
@@ -1198,7 +1215,7 @@ class TableRenderer:
             # no amount pattern accepts, so they keep their text exactly as
             # the run does when the reference does not resolve.
             formatted: list[TextRun] = []
-            for group in reference_groups(display_runs):
+            for group in groups:
                 if len(group) > 1:
                     formatted.extend(display_runs[group.start : group.stop])
                     continue
@@ -1407,6 +1424,86 @@ class TableRenderer:
         trailing = text[len(text.rstrip()) :]
         return leading + formatted + trailing
 
+    def _format_split_amount(
+        self, runs: list[TextRun], role: str | None, negative: str | None = None
+    ) -> list[TextRun] | None:
+        """Format one amount written across several formatting runs as a whole.
+
+        Formatting each run on its own put a column's unit inside the amount
+        (`**12**.5` became `12%.5`). Here the amount and its unit are read
+        from the cell's whole visible text, exactly as an unsplit cell is
+        (`_format_numeric_text`), and the result is spread back over the
+        runs: every run keeps its own format and its own characters, thousands
+        separators go into the run of the digit they precede, and a unit the
+        column adds goes once, after the last character of the amount. Space-
+        only runs and footnote markers before or after the amount are not part
+        of it (`_is_outer_piece`) and are kept as written.
+
+        When the formatted text is more than the written text with separators
+        and a unit added (dropped leading zeros, full-width digits written as
+        ASCII), it cannot be spread back safely: the runs keep their written
+        text and a rendering warning is recorded, which never rejects. In a
+        table with a `negative` style, a split negative amount has already
+        been reported by `_restyle_negative` (its warning says the amount
+        keeps its written form), so it is not reported twice.
+
+        Args:
+            runs: A body cell's runs, none of them a split reference.
+            role: Explicit column presentation role, if configured.
+            negative: The table spec's negative-number style, if any.
+
+        Returns:
+            The runs to show, or None when the cell is not one amount split
+            across two or more runs (it is then formatted run by run as before).
+        """
+        inner = [i for i, run in enumerate(runs) if not self._is_outer_piece(run)]
+        if not inner:
+            return None
+        first, last = inner[0], inner[-1]
+        if any(self._is_semantic_run(run) for run in runs[first : last + 1]):
+            return None
+        pieces = [i for i in range(first, last + 1) if runs[i].text]
+        if len(pieces) < 2:
+            return None
+        text = "".join(runs[i].text for i in pieces)
+        stripped = text.strip()
+        if not self._NUMERIC_LIKE_RE.fullmatch(stripped):
+            return None
+        owner = [i for i in pieces for _ in runs[i].text]  # the run of each character
+        start = len(text) - len(text.lstrip())
+        end = start + len(stripped)
+        number = self._format_financial_number(stripped)
+        unit = (
+            self._ROLE_UNITS.get(role or "", "") if self._PURE_NUMBER_RE.fullmatch(stripped) else ""
+        )
+        texts: dict[int, list[str]] = {i: [] for i in pieces}
+        for position in range(start):
+            texts[owner[position]].append(text[position])
+        position = start
+        for char in number:
+            if position < end and char == text[position]:
+                texts[owner[position]].append(char)
+                position += 1
+            elif char == "," and position < end:
+                texts[owner[position]].append(char)
+            else:
+                position = -1
+                break
+        if position != end:
+            if not (negative and self._read_negative_amount(stripped) is not None):
+                self._warn(
+                    f"Table number formatting not applied to {stripped!r}: the amount is split "
+                    "across differently formatted text, so it keeps its written form"
+                )
+            return list(runs)
+        texts[owner[end - 1]].append(unit)
+        for position in range(end, len(text)):
+            texts[owner[position]].append(text[position])
+        return [
+            replace(run, text="".join(texts[i])) if i in texts else run
+            for i, run in enumerate(runs)
+        ]
+
     @staticmethod
     def _configure_cell_paragraph(paragraph) -> None:
         """Normalize paragraph spacing inside table cells for a tighter, cleaner grid."""
@@ -1492,10 +1589,11 @@ class TableRenderer:
         """Apply table-type specific styling to every paragraph of one owner cell.
 
         Args:
-            fill: Cell background setter. Legacy tables keep the historical append;
-                term-sheet tables pass a schema-ordered setter.
-            negative: Table spec negative-number style; a table that sets one keeps
-                its negative amounts black (owner decision, 2026-11-14).
+            fill: Cell background setter; the default and the term-sheet setter
+                both insert in schema order.
+            negative: Table spec negative-number style; a table that sets one gets
+                no automatic red (owner decision, 2026-11-14). Colours the author
+                wrote and hyperlink colours stay.
         """
         runs = [run for paragraph in cell.paragraphs for run in paragraph.runs]
         if table_type == TableType.FINANCIAL:

@@ -4,7 +4,51 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
-Nothing yet.
+Whole-project audit of 2026-11-15: defects found by reading every module, each reproduced before it was fixed and each fix with a regression test. Nothing here changes a document that did not show the defect.
+
+### Read first: what changes for existing documents
+- **Strict mode rejects two more losses.** A diagram arrow that names a box that is not defined, and a table `schedule` that states `average_life` while its repayments add up to zero, are reported; they used to pass without a word.
+- **`md-format` writes different text** for the inputs listed under "Formatter" below (a stray digit before a generated heading, colons inside code, backslashes and bold in generated frontmatter). It also reads a relative path as given instead of a file of the same name in the project's parent folder.
+- **Removed, unused public names:** `CalloutRenderer.render_executive_summary`, `FootnoteParser.find_inline_references`, `LaTeXParser.INLINE_RE`, `LaTeXParser.extract_inline_segments`, `MarkdownParser.CODE_FENCE_PATTERN`.
+
+### Markdown reading
+- Escaped punctuation in a callout stays literal, as in a paragraph: `> \*literal\*` shows `*literal*` (it showed italic `literal`). A callout whose first line is a label followed by `<br>` no longer drops the text after the `<br>`.
+- HTML table cells are literal: a reference-style link (`[x]`) in a cell is not expanded, a `[x]: target` line in a table defines nothing, and a `[^n]: text` line in a cell stays cell text (it is still reported as an undefined footnote, like any `[^n]` in an HTML cell).
+- `<table>` and `</table>` inside a quoted attribute value or an HTML comment no longer end or open a table; `<table data-note="</table>">` used to be dropped. A quote opens an attribute value only right after `=`. The converted-term-sheet cleaner reads tags and table boundaries the same way.
+- An inline code span that continues on the next line keeps its `<br>`, its trailing backslash and its inner spacing.
+- With charts off, a closed chart fence keeps its trailing spaces and blank lines in the code panel, like any closed code fence.
+- A diagram arrow to or from an undefined box is reported (`Diagram arrow 'a' -> 'bb' names a box that is not defined; the arrow is not drawn`); strict mode rejects the document.
+- Reference-link preprocessing restores its protected text in one pass (8,000 code spans and escapes: 2.4 s to 0.4 s); the result is unchanged.
+
+### Tables, code, diagrams and charts
+- In a percent, bps or multiple column an amount split across formatting gets its unit once, after the amount: `**12**.5` shows `12.5%` (it showed `12%.5`), and a unit already written is not doubled. A split amount gets the same thousands separators as an unsplit one, each run keeping its own formatting. When that would change its digits (leading zeros, full-width digits) the amount keeps its written text and a rendering warning says so; the warning never rejects.
+- A fenced code block uses the theme's `CODE_FONT`, as inline code already did. The default is still Consolas.
+- A flow diagram picture is at most the printable width of the page; a body at least 6 in wide still gets a 6 in picture.
+- A standard-style stacked bar whose stack total is beyond the float range is drawn instead of falling back to its code panel.
+- Rendering a long table no longer rebuilds python-docx's row list for every row, so its time no longer grows with the square of the row count; `document.xml` is byte-identical.
+
+### Numeric checks and `docx-audit`
+- Table `schedule`: a stated `average_life` with repayments that add up to zero is reported as not workable. The last-balance check judges the balance carried over blank cells, so a complete schedule whose last balance cell is blank is no longer rejected; one that does not reach zero is still reported, by the message that its repayments do not add up to the principal.
+- `docx-audit` compares tabs, line breaks, symbols and objects when it checks a cross-reference's cached text against its target; a stale reference that differed only in those was missed.
+
+### Formatter (`md-format`, `--format`)
+- A generated major heading no longer leaves the first digit of its number behind (`1. Overview` became `1` and `## 1. Overview`).
+- Light formatting (more than 20 line breaks) leaves YAML frontmatter and fenced code unchanged; it used to add a space after colons inside them.
+- Generated frontmatter escapes backslashes (`C:\temp` in a title was read back with a tab), shows bold text without its `**` and equations as written (a title could read `__BOLD_0__`), and text that merely looks like a placeholder is kept. A block equation between two dollar amounts on one line is no longer replaced by a placeholder.
+- The label-spacing rule works within a line only; `작성일:` followed by a value on the next line is no longer joined to it.
+- `md-format a/report.md` reads that file. A bare name is looked up in the working directory first, as `md-to-word` does, and a missing file is named as it was given.
+- DeepResearch citations are numbered after the footnotes the text already has, so a generated `[^1]` no longer replaces the author's.
+
+### Command line, registry and saving
+- Known and not changed: `md-to-word <folder> --batch --format` (or `--deepresearch-cleaner`) writes `<name>_formatted.md` / `<name>_cleaned.md` beside each input and replaces a file of that name, even when that file is another input of the batch. Keep documents with such names out of a batch folder.
+- The converter registry parses with `RenderOptions.profile` when no `profile` argument is given, as the command line does, so one options object can be used for parsing and rendering.
+- Stream format detection no longer calls text "unknown" when its 8,192-byte sample ends inside a multi-byte character.
+- Saving a new DOCX no longer changes the process umask to read it. The portable converter reserves its output name by creating it, so two windows saving the same name into one folder keep both results.
+
+### Distribution and repository
+- The Codex source ZIP ships `samples/qa/`, and the sdist ships the documents its READMEs link (`docs/start-here.md`, `docs/codex-start.html`, `docs/plugin-guide.md`, `docs/pr-consolidation-20260926.md`, `docs/verification-20261110.md`, `docs/verification-office-letter-20261114.md`, `scripts/word_schema_validation.md`); the ZIP gains the last three too.
+- The five historical planning files (`plan.md`, `plan_upgrade.md`, `next_step.md`, `roadmap.md`, `git_checklist.md`) moved to `docs/archive/`. They are not shipped.
+- Tests: tests that could not fail now can, comparisons of two renders no longer depend on the clock, and test data uses fictional names only.
 
 ## [2.0.0-beta.2] - 2026-11-15
 
@@ -102,7 +146,7 @@ Existing office letters change appearance where they have attachments or items n
 ### Document properties and DRAFT marking (output changes)
 - Frontmatter `version` is written as the custom document property `Version` and shown after the company in the page header as a `DOCPROPERTY Version` field holding the current value (office letters show no version; the term-sheet footer's version becomes the same field with unchanged text). After editing the property in Word, F9 inside a header updates that section and Ctrl+P or print preview updates every section. An empty `version:` means no version. Verification: `docs/verification-document-properties-20261114.md`.
 - `status: draft` puts a DRAFT watermark in Word's own format into every header of every section, so Design > Watermark > Remove Watermark clears every page, including the IB cover and landscape-table sections; `final` or no status adds nothing and any other value is rejected. New QA sample `samples/qa/draft-version.md`.
-- File > Info now shows the document's own title, an empty author and comment, and the conversion time instead of python-docx's template values (author `python-docx`, comment `generated by python-docx`, dates of 2013). Only `docProps/core.xml` changes; page images of all samples are unchanged. A profile's stand-in title is left out, but a title the document writes is kept even when it reads `Document` or `IB Report` (term sheets reject these two titles). A title longer than 255 characters, Word's limit for a file property, is shortened there only, with a warning; the document text keeps it whole.
+- File > Info now shows the document's own title, an empty author and comment, and the conversion time instead of python-docx's template values (author `python-docx`, comment `generated by python-docx`, dates of 2013). Only `docProps/core.xml` changes; page images of all samples are unchanged. A profile's stand-in title is left out, but a title the document writes is kept even when it reads `Document` or `IB Report` (term sheets reject these two titles). Outside the `term-sheet` profile a title longer than 255 characters, Word's limit for a file property, is shortened there only, with a warning; the document text keeps it whole (a term-sheet title or subtitle over 255 characters is still rejected).
 - A title written as `Document` or `IB Report` is now kept as the document title, except in term sheets, which reject these two titles. With a different first H1 heading it used to be replaced by that heading in general profiles (`title: Document` with `# Chapter` gave the title `Chapter`) and, for `title: IB Report` in IB profiles, when read through `parse_markdown_file` (the CLI and converter path); and a hand-built model rendered under another profile used to take that profile's stand-in title. How a document without a written title gets its title is unchanged.
 
 ### Table and figure numbers
@@ -131,7 +175,7 @@ Existing office letters change appearance where they have attachments or items n
 - `docx-audit` reads the package's content-type list first and checks every part it declares as XML, and every relationship part, with entity resolution, DTD loading and network access off, before opening the document. Part extensions are read by python-docx's own rule, so a part without an extension is covered. A package whose content-type list is missing or unreadable is reported and not opened. A package with a part that declares a DTD or entities is reported as an issue naming the part and is not opened or expanded. Results for ordinary documents are unchanged.
 
 ### Verification infrastructure
-- CI gate `word-schema`: every sample (12 Markdown samples, 13 documents with the charts-on variant) is rendered in strict mode and checked with OOXML-Validator v2.1.6, downloaded and verified against a pinned SHA-256. The validation script verifies the downloaded archive in the same run that executes it, so an unverified validator never runs. An error not covered by `scripts/word_schema_exceptions.json` (currently empty) fails the job, and an exception covers an error only when the error type and description also match its evidence. See `scripts/word_schema_validation.md`.
+- CI gate `word-schema`: every sample (18 Markdown samples, 20 documents with the charts-on and classic-chart variants) is rendered in strict mode and checked with OOXML-Validator v2.1.6, downloaded and verified against a pinned SHA-256. The validation script verifies the downloaded archive in the same run that executes it, so an unverified validator never runs. An error not covered by `scripts/word_schema_exceptions.json` (currently empty) fails the job, and an exception covers an error only when the error type and description also match its evidence. See `scripts/word_schema_validation.md`.
 - Snapshot tests pin the parsed model and every XML part of every sample; property tests (Hypothesis, fixed examples) check visible text, table cells, literal code and escapes, and that strict conversion either saves or rejects. The gaps they found in Markdown reading are fixed (see Fixes); the one strict `xfail` left in `tests/test_markdown_properties.py` records the intended tree-value emphasis inside code blocks. `tests/test_config_properties.py` applies the save-or-reject property to generated house and theme file content and to YAML built with aliases, and checks that each conversion finishes.
 - CI also runs `ruff format --check`. `syrupy` and `hypothesis` are development-only dependencies.
 - New engine module `input_safety.py`.

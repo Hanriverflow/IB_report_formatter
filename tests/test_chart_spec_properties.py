@@ -86,7 +86,9 @@ def chart_specs(draw):
             data["reference"] = [{key: draw(values) for key in REFERENCE_KEYS}]
         else:
             key = draw(st.sampled_from(["labels", "values", "low", "high", "highlight"]))
-            target = data["series"][0] if key == "values" and data.get("series") else data
+            series = data.get("series")
+            in_series = key == "values" and isinstance(series, list) and series
+            target = series[0] if in_series else data
             if isinstance(target, dict):
                 target[key] = draw(st.lists(values, max_size=3))
     return data

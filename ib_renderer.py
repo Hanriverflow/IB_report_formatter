@@ -22,6 +22,8 @@ Changelog (property-test regressions):
       escapes are resolved once; other headings render as before.
     - A whitespace-only code line keeps its own whitespace (an empty line keeps
       the one-space spacer).
+    - Later: an empty code line carries no spacer text; the paragraph mark sets
+      the line height.
 
 Changelog (house style fixes):
     - A landscape table right after a bare page break (cover, TOC) turns the
@@ -1544,7 +1546,7 @@ class IBDocumentRenderer:
             spacer = paragraph.add_run(line)
             FontStyler.apply_run_style(
                 spacer,
-                font_name="Consolas",
+                font_name=STYLE.CODE_FONT,
                 font_size=Pt(9.5),
                 color=STYLE.MEDIUM_GRAY,
             )
@@ -1562,7 +1564,7 @@ class IBDocumentRenderer:
             prefix_run = paragraph.add_run(prefix)
             FontStyler.apply_run_style(
                 prefix_run,
-                font_name="Consolas",
+                font_name=STYLE.CODE_FONT,
                 font_size=Pt(9.5),
                 color=STYLE.MEDIUM_GRAY,
             )
@@ -1574,14 +1576,14 @@ class IBDocumentRenderer:
                 before_run = paragraph.add_run(before)
                 FontStyler.apply_run_style(
                     before_run,
-                    font_name="Consolas",
+                    font_name=STYLE.CODE_FONT,
                     font_size=Pt(9.5),
                     color=STYLE.DARK_GRAY,
                 )
             value_run = paragraph.add_run(value)
             FontStyler.apply_run_style(
                 value_run,
-                font_name="Consolas",
+                font_name=STYLE.CODE_FONT,
                 font_size=Pt(9.5),
                 bold=True,
                 color=STYLE.NAVY,
@@ -1589,14 +1591,14 @@ class IBDocumentRenderer:
             divider_run = paragraph.add_run(divider)
             FontStyler.apply_run_style(
                 divider_run,
-                font_name="Consolas",
+                font_name=STYLE.CODE_FONT,
                 font_size=Pt(9.5),
                 color=STYLE.MEDIUM_GRAY,
             )
             tail_run = paragraph.add_run(after)
             FontStyler.apply_run_style(
                 tail_run,
-                font_name="Consolas",
+                font_name=STYLE.CODE_FONT,
                 font_size=Pt(9.5),
                 color=STYLE.DARK_GRAY,
             )
@@ -1606,7 +1608,7 @@ class IBDocumentRenderer:
         main_run = paragraph.add_run(remainder)
         FontStyler.apply_run_style(
             main_run,
-            font_name="Consolas",
+            font_name=STYLE.CODE_FONT,
             font_size=Pt(9.8 if is_root else 9.5),
             bold=is_root,
             color=STYLE.NAVY if is_root else STYLE.DARK_GRAY,
@@ -1660,14 +1662,13 @@ class IBDocumentRenderer:
             paragraph = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
             TextRenderer._render_inline_latex(paragraph, latex_eq.expression, STYLE.BODY_SIZE)
 
-    def _render_latex_fallback(self, expression: str, inline: bool = False):
+    def _render_latex_fallback(self, expression: str):
         """Render LaTeX as styled text when image rendering fails."""
         message = "LaTeX could not be rendered: " + expression
         self.errors.append(message)
         logger.warning("%s", message)
         p = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
-        if not inline:
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
         run = p.add_run(f"[{expression}]")
         FontStyler.apply_run_style(

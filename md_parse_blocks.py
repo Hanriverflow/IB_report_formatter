@@ -3,7 +3,7 @@
 import logging
 import re
 
-from document_model import Image, TextRun
+from document_model import Image
 from md_parse_text import TextParser, _document_int
 
 logger = logging.getLogger("md_parser")
@@ -107,7 +107,8 @@ class FootnoteParser:
         Extract references from the end of the document.
         Looks for patterns like "1. Citation text" after references section.
 
-        Only considers the *last* references section to avoid false positives.
+        Collects entries from every references section; a later entry replaces
+        an earlier one with the same number.
         """
         references: dict[int, str] = {}
         in_references = False
@@ -138,16 +139,6 @@ class FootnoteParser:
 
         return references
 
-    @staticmethod
-    def find_inline_references(text: str) -> list[int]:
-        """Find all inline reference numbers in text"""
-        refs: list[int] = []
-        for match in FootnoteParser.INLINE_PATTERN.finditer(text):
-            group = match.group(1) or match.group(2)
-            if group:
-                refs.append(_document_int(group))
-        return refs
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # LaTeX PARSER (NEW v3)
@@ -170,9 +161,6 @@ class LaTeXParser:
     # Block equation delimiter (start or end of multi-line)
     BLOCK_DELIMITER_RE = re.compile(r"^\$\$\s*$")
 
-    # Inline LaTeX: $...$ but not $$...$$, not escaped \$
-    INLINE_RE = TextParser._INLINE_LATEX_RE
-
     @classmethod
     def is_block_start(cls, line: str) -> bool:
         """Check if line starts a block equation"""
@@ -194,21 +182,6 @@ class LaTeXParser:
     def has_inline(cls, text: str) -> bool:
         """Check if text contains inline LaTeX"""
         return TextParser.has_inline_latex(text)
-
-    @classmethod
-    def extract_inline_segments(cls, text: str) -> list[tuple[str, bool]]:
-        """
-        Split text into (content, is_latex) segments.
-
-        Returns:
-            List of (text, is_latex) tuples preserving source order
-        """
-        protected, literals = TextParser._protect_code_spans(text)
-        segments = TextParser._split_on_inline_latex(protected)
-        return [
-            (TextParser._restore_code_spans([TextRun(text=value)], literals)[0].text, is_math)
-            for value, is_math in segments
-        ]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

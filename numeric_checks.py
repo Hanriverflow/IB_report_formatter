@@ -502,10 +502,12 @@ def check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> list[st
 
     Each stated balance must equal the previous balance less that period's
     repayment (the first period starts from the stated principal, or else from
-    its own balance plus repayment); the last balance must be zero, the
+    its own balance plus repayment); the last balance (printed, or carried
+    forward over blank balances after the last printed one) must be zero, the
     repayments must add up to the principal, a totals row must show their sum,
     and a stated weighted average life (in years, from a months column) must
-    agree. A dash reads as zero; a blank or text without digits (such as a
+    agree; with no repayments it cannot be worked out, which is reported. A
+    dash reads as zero; a blank or text without digits (such as a
     drawdown label) states nothing, so it is no repayment and no balance.
     Amount tolerances are half of the display step of the stated value unless
     `tolerance` is given; the average life uses half of its own display step.
@@ -552,12 +554,14 @@ def _check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> list[s
     opening: Decimal | None = spec.principal
     opening_step: Decimal = spec.principal_step if spec.principal_step is not None else Decimal(1)
     last_balance: tuple[Decimal, Decimal] | None = None
+    carried = False  # the last row states no balance
     for index, row in enumerate(periods):
         repaid = number(index, row, spec.repayment, "repayment")
         balance = number(index, row, spec.balance, "balance")
         months = number(index, row, spec.months, "months")
         amount = repaid[0] if repaid else Decimal(0)
         repayments.append((amount, months[0] if months else None))
+        carried = balance is None
         if balance is None:  # nothing stated: carry the expected balance forward
             previous = previous - amount if previous is not None else None
             continue
@@ -571,10 +575,22 @@ def _check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> list[s
             )
         previous = balance[0]
         last_balance = balance
-    if last_balance is not None and abs(last_balance[0]) > allowed(last_balance[1]):
-        problems.append(f"the last balance is {_plain(last_balance[0])}, not 0")
     repaid_total = sum((amount for amount, _ in repayments), Decimal(0))
-    if opening is not None and abs(repaid_total - opening) > allowed(opening_step):
+    unreconciled = opening is not None and abs(repaid_total - opening) > allowed(opening_step)
+    # The balance after the last row: the printed one, or, when the last rows
+    # leave it blank, the expected balance carried forward from the last
+    # printed one (judged with that printed balance's display step). A
+    # carried balance is the principal less the repayments, so when the
+    # repayments do not add up to the principal it only restates that
+    # message (an unmarked totals row, for one) and is not reported twice.
+    if (
+        last_balance is not None
+        and previous is not None
+        and abs(previous) > allowed(last_balance[1])
+        and not (carried and unreconciled)
+    ):
+        problems.append(f"the last balance is {_plain(previous)}, not 0")
+    if unreconciled and opening is not None:
         problems.append(
             f"repayments add up to {_plain(repaid_total)}, not the principal {_plain(opening)}"
         )
@@ -590,7 +606,13 @@ def _check_schedule(rows: Sequence[Sequence[str]], spec: ScheduleSpec) -> list[s
     if spec.average_life is not None:
         if spec.months is None:
             problems.append("average_life needs the months column")
-        elif repaid_total:
+        elif not repaid_total:
+            # No weights: a stated figure the check cannot establish must not
+            # pass as checked.
+            problems.append(
+                "the weighted average life cannot be worked out: the repayments add up to 0"
+            )
+        else:
             if any(months is None for amount, months in repayments if amount):
                 problems.append("average_life needs the months of every repayment")
             else:

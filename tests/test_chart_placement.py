@@ -31,7 +31,7 @@ from hypothesis import strategies as st
 import chart_render_standard as standard
 from chart_renderer import format_value, parse_chart_spec, waterfall_positions
 from render_styles import STYLE
-from tests.test_chart_value_labels import MANY_LINES, SMALL_STACK, chart_data
+from tests.test_chart_value_labels import MANY_LINES, SMALL_STACK, TWIN_POINTS, chart_data
 
 GAP_POINTS = 16.0
 REVIEW_STACK = {
@@ -257,8 +257,51 @@ def check(monkeypatch, data: dict, width: float = 6.0) -> dict:
     for category, items in stacks.items():
         by_rank = [cy for _, cy in sorted(items, key=lambda item: order.index(item[0]))]
         assert by_rank == sorted(by_rank), f"{category}: values out of the stack's order"
-    assert drawn + warned(seen["warnings"]) == want
+    accounted = drawn + warned(seen["warnings"])
+    # Twin points: one number written for a twin is true of this point too.
+    twins = twin_points(spec, seen)
+    excused = Counter(
+        {
+            key: times
+            for key, times in (want - accounted).items()
+            if any(drawn[(key[0], other, key[2])] for other in twins.get((key[0], key[1]), ()))
+        }
+    )
+    assert accounted == want - excused
     return seen
+
+
+def twin_points(spec, seen) -> dict[tuple[str, str], list[str]]:
+    """(category, series) of each right-axis point -> the series of its twins.
+
+    Final rule, exception for twins: points of one category from different
+    right-axis series of a `bar_line` chart that lie within half a pixel of
+    each other and are written with the same text share one number. The spot
+    is measured from the right axis as drawn, not taken from the renderer.
+    """
+    found: dict[tuple[str, str], list[str]] = {}
+    if spec.chart_type != "bar_line" or len(seen["axes"]) < 2:
+        return found
+    right = [s for s in spec.series if s.axis == "right"]
+    for index, category in enumerate(spec.labels):
+        spots = [
+            (
+                s.name,
+                seen["axes"][1].transform((index, s.values[index])),
+                format_value(s.values[index], spec.right_number_format),
+            )
+            for s in right
+        ]
+        for name, (x, y), text in spots:
+            found[(category, name)] = [
+                other
+                for other, (ox, oy), other_text in spots
+                if other != name
+                and other_text == text
+                and abs(ox - x) <= 0.5
+                and abs(oy - y) <= 0.5
+            ]
+    return found
 
 
 @seed(20261114)
@@ -277,8 +320,22 @@ def check(monkeypatch, data: dict, width: float = 6.0) -> dict:
 @example(REVIEW_BARS, 6.0)
 @example(SMALL_STACK, 6.0)
 @example(MANY_LINES, 6.0)
+@example(TWIN_POINTS, 3.0)
+@example(TWIN_POINTS, 6.0)
 def test_every_drawn_value_sits_on_its_own_mark(monkeypatch, data, width):
     check(monkeypatch, data, width)
+
+
+def test_twin_points_are_one_number_on_their_shared_spot(monkeypatch):
+    # Fifth review: at A and C the right-axis lines R1 and R2 share a spot
+    # and a text; one of each pair is drawn, over that spot, and none is named.
+    for width in (3.0, 3.5, 4.5, 6.0):
+        seen = check(monkeypatch, TWIN_POINTS, width)
+        assert seen["warnings"] == []
+        drawn = [gid.split("\t")[1:] for _, gid, _ in seen["texts"] if gid and gid[:6] == "value\t"]
+        for category, number in (("A", "5"), ("C", "9")):
+            assert [d for d in drawn if d[0] == category and d[2] == number and d[1] != "Bars"]
+            assert sum(d[0] == category and d[2] == number for d in drawn) == 1
 
 
 def _texts(seen, number: str) -> list:

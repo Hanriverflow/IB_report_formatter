@@ -589,7 +589,7 @@ powershell.exe -NoProfile -File scripts/word_visual_qa.ps1 -InputDirectory .dryf
 
 Word의 목차·쪽번호 필드를 갱신하고 페이지 캐시를 준비한 뒤 출력합니다. **출력 폴더는 새 폴더이거나 비어 있어야 하며**, 이전 검증 이미지는 덮어쓰지 않습니다. `-ExpectedPages 2`를 추가하면 모든 입력 파일이 2페이지인지 검사합니다. 문서마다 예상 쪽수가 다르면 별도로 실행하거나 이 옵션을 생략하십시오. 예상 쪽수 불일치 또는 검증 중 원본 변경은 완료된 기록을 남긴 뒤 비정상 종료합니다.
 
-`manifest.json`은 항상 배열이며 Word 버전·시각, 원본/갱신 DOCX/PNG의 SHA-256, 실제·기대 페이지 수, `visualReview: pending`을 기록합니다. 렌더 성공만으로 시각검증을 완료하지 않습니다. 모든 PNG를 확인하고 manifest 해시와 연결한 별도 검토 기록을 남기십시오. [최신 검증 기록](docs/verification-20260915.md)을 참고하십시오.
+`manifest.json`은 항상 배열이며 Word 버전·시각, 원본/갱신 DOCX/PNG의 SHA-256, 실제·기대 페이지 수, `visualReview: pending`을 기록합니다. 렌더 성공만으로 시각검증을 완료하지 않습니다. 모든 PNG를 확인하고 manifest 해시와 연결한 별도 검토 기록을 남기십시오. [2026-09-15 Word 검증 기록](docs/verification-20260915.md)을 참고하십시오.
 
 한글 Windows 경로는 실제 파일 경로를 따옴표로 감싸 전달하십시오. Markdown에서 복사한 `파일\_초안.md`와 실제 `파일_초안.md`는 다릅니다. `_초안.md`가 실제 하위 경로일 수도 있으므로 역슬래시를 일괄 제거하지 말고 실제 파일을 확인해야 합니다. CLI가 입력·출력 경로를 추측하여 고치지는 않습니다.
 
