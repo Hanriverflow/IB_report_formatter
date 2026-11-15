@@ -1,8 +1,10 @@
 """Chart regressions through the public parser, renderer, converter and CLI."""
 
 import sys
+import time
 import warnings
 from io import BytesIO
+from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
@@ -219,6 +221,12 @@ def test_disabled_chart_xml_is_identical_to_code_block(profile, monkeypatch):
     from document_model import CodeBlock
 
     monkeypatch.setattr("ib_renderer.uuid4", lambda: UUID(int=0))
+    # Whole documents are compared: an undated IB cover prints today and the
+    # IB disclaimer page this year, so the renders must not straddle midnight.
+    day = time.strptime("2026-01-02", "%Y-%m-%d")
+    monkeypatch.setattr(
+        "ib_renderer.time", SimpleNamespace(strftime=lambda fmt: time.strftime(fmt, day))
+    )
     model = MarkdownParser(profile=profile).parse(_profile_frontmatter(profile) + CHART)
     chart_doc = IBDocumentRenderer().render(model)
     element = model.elements[0]
