@@ -544,9 +544,8 @@ def problems(spec, seen) -> list[str]:
     named = Counter()
     for (category, series, number), times in missing.items():
         named[(f"{category}, {series}" if category else series) + f": {number}"] += times
-    if "; ".join(sorted(named.elements())) != "; ".join(sorted(listed.elements())):
-        if sorted("; ".join(sorted(named.elements()))) != sorted("; ".join(listed.elements())):
-            found.append(f"the warning names {sorted(listed)}, not drawn are {sorted(named)}")
+    if named != listed:
+        found.append(f"the warning names {sorted(listed)}, not drawn are {sorted(named)}")
 
     # 2. A line or reference line left without its text is said to have no name.
     unnamed = [note for note in seen["warnings"] if "drawn without a name" in note]

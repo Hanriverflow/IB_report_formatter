@@ -409,7 +409,5 @@ def test_negation_keeps_the_display_tolerance() -> None:
 )
 def test_invalid_schedule_specs_are_rejected(spec) -> None:
     source = _schedule(spec=spec)
-    if spec == {"months": None, "average_life": 2}:
-        source = source.replace("  months: 2\n", "")
     with pytest.raises(ValueError, match="schedule"):
         MarkdownParser().parse(source)

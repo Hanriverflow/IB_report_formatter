@@ -348,7 +348,9 @@ def _ci_workflow():
     return yaml.safe_load((root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
 
 
-def test_ci_workflow_config_and_python312_gate():
+def test_ci_workflow_config_and_python312_gate(monkeypatch):
+    # The syntax gate globs the current directory, as CI runs it from the repository root.
+    monkeypatch.chdir(Path(__file__).resolve().parents[1])
     workflow = _ci_workflow()
     assert set(workflow["on"]) == {"push", "pull_request"}
     schema_job = workflow["jobs"]["word-schema"]

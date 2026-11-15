@@ -443,8 +443,6 @@ def test_attachments_still_close_the_letter_before_an_explicit_appendix():
 # ITEM SYMBOLS: 1. 가. 1) 가) (1) (가) ① IN OFFICE LETTERS ONLY
 # ═══════════════════════════════════════════════════════════════════════════════
 
-SYMBOLS = ["1.", "가.", "1)", "가)", "(1)", "(가)", "①"]
-
 
 def nested_list(depth: int) -> str:
     """One numbered item per level, nested with four spaces per level."""

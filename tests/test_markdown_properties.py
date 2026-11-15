@@ -419,7 +419,7 @@ def test_code_and_escapes_unchanged(kind: str, case: tuple[str, str, str, str]) 
 def _working_fenced_payload(draw: st.DrawFn) -> str:
     # Partition the original line alphabet, rather than discard examples. All
     # nonempty intermediate lines (including whitespace-only lines) are active;
-    # empty lines and trailing whitespace are in the strict xfail groups below.
+    # empty lines and trailing whitespace have separate active properties below.
     lines = draw(st.lists(st.text(CODE, min_size=1, max_size=25), max_size=3))
     last = draw(st.text(CODE, max_size=24)) + draw(st.sampled_from(tuple(CODE.rstrip(" \t"))))
     return "\n".join([*lines, last])

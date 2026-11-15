@@ -1350,7 +1350,9 @@ def _random_document(seed: int, blocks: int) -> tuple[str, str]:
         else:
             lines.append(text)
     lines.append("[^1]: 각주 @tbl-missing \ue010 \\@tbl-a")
-    front = f"---\nprofile: {profile}\ntitle: 시험 문서\n{_P1_TERMS}---\n\n"
+    # A written date: the cover would otherwise print today, and two renders of
+    # the same document that straddle midnight would differ (seen once in CI).
+    front = f"---\nprofile: {profile}\ntitle: 시험 문서\ndate: 2026-01-02\n{_P1_TERMS}---\n\n"
     return front + "\n\n".join(lines) + "\n", profile
 
 
