@@ -11,6 +11,10 @@ Changelog (render warnings):
     - The DOCX output converter adds the renderer's warnings to a caller's
       `render_warnings` list.
 
+Changelog (audit 2026-11-15):
+    - The Markdown input converter parses with `RenderOptions.profile` when no
+      explicit `profile` argument is given, as the CLI does.
+
 Usage:
     from converters import get_default_registry
 
@@ -185,6 +189,11 @@ class MarkdownInputConverter(InputConverter):
             roots = (*options.asset_roots, *roots)
             if charts is None:
                 charts = options.charts
+            # The renderer refuses a model parsed with another profile, so the
+            # parser takes the options' profile too (explicit API options
+            # override YAML); an explicit `profile` argument still wins.
+            if profile is None:
+                profile = options.profile
 
         # parse_markdown_file now accepts both str and BinaryIO
         if is_stream(source):

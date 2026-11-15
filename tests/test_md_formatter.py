@@ -33,7 +33,8 @@ class TestLaTeXProtector:
         protected = protector.protect(text)
 
         assert "$$" not in protected
-        assert "__LATEX_BLOCK_" in protected
+        # Placeholders are private-use markers the input cannot spell by accident.
+        assert chr(0xE000) + "LATEXBLOCK" in protected
 
     def test_protect_inline_equation(self):
         """Protect inline equations ($...$)."""
@@ -43,7 +44,7 @@ class TestLaTeXProtector:
         protected = protector.protect(text)
 
         assert "$x^2 + y^2$" not in protected
-        assert "__LATEX_INLINE_" in protected
+        assert chr(0xE000) + "LATEXINLINE" in protected
 
     def test_restore_equations(self):
         """Restore protected equations."""
@@ -73,7 +74,7 @@ class TestBoldProtector:
         protected = protector.protect(text)
 
         assert "**" not in protected
-        assert "__BOLD_" in protected
+        assert chr(0xE000) + "BOLD" in protected
 
     def test_restore_bold_text(self):
         """Restore bold markers."""

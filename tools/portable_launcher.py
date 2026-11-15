@@ -14,6 +14,7 @@ from pathlib import Path
 if not getattr(sys, "frozen", False):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from cli_utils import reserve_unused_path
 from document_profiles import PROFILES, RenderOptions
 from input_safety import ConversionRejection, InputLimitError, RejectionCode
 from md_to_word import IBReportConverter
@@ -87,6 +88,10 @@ def application_root() -> Path:
 def convert_document(source: str, output_dir: str, profile: str | None = None) -> Path:
     """Convert one Markdown document without replacing an existing result.
 
+    The destination name is reserved by creating it exclusively before the
+    conversion; a process killed between the reservation and the save leaves an
+    empty file under the reserved name.
+
     Args:
         source: Input Markdown path; companion files resolve relative to it.
         output_dir: Destination folder.
@@ -105,14 +110,26 @@ def convert_document(source: str, output_dir: str, profile: str | None = None) -
     if profile is not None and profile not in PROFILES:
         raise ValueError(f"알 수 없는 문서 유형: {profile}")
     destination = Path(output_dir).resolve()
-    output = destination / f"{input_path.stem}.docx"
-    if output.exists():
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        output = destination / f"{input_path.stem}_{stamp}.docx"
-    converter = IBReportConverter(
-        str(input_path), str(output), RenderOptions(profile=profile, strict=True)
-    )
-    return Path(converter.convert()).resolve()
+    destination.mkdir(parents=True, exist_ok=True)
+    # Reserve the name by creating it exclusively: a check for an existing file
+    # followed by a later save lets two windows writing the same name at once
+    # both see "not there", and the second save would replace the first.
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    output = reserve_unused_path(destination / f"{input_path.stem}.docx", stamp)
+    try:
+        converter = IBReportConverter(
+            str(input_path), str(output), RenderOptions(profile=profile, strict=True)
+        )
+        saved = Path(converter.convert()).resolve()
+    except BaseException:
+        # The reservation is still the empty file created above.
+        output.unlink(missing_ok=True)
+        raise
+    if saved != output.resolve():
+        # Saved under the engine's locked-file fallback name; the reservation
+        # was never written.
+        output.unlink(missing_ok=True)
+    return saved
 
 
 class QueueLogHandler(logging.Handler):

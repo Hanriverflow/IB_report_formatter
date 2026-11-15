@@ -5,10 +5,17 @@ Changelog (hardening):
     - Save through sibling temporary files to preserve existing reports on failure.
     - Reserve locked-file fallback names exclusively, including concurrent saves.
     - Limit project-directory input fallback to bare filenames.
+
+Changelog (audit 2026-11-15):
+    - A new file's mode comes from creating the temporary file with 0666 (the
+      kernel applies the umask); the process umask is no longer changed.
+    - `reserve_unused_path` reserves a destination name, the unsuffixed one
+      included, by exclusive creation (used by the portable converter).
 """
 
 import logging
 import os
+import secrets
 import stat
 import sys
 import tempfile
@@ -118,42 +125,96 @@ def generate_output_path(
     return input_path.with_suffix(suffix)
 
 
-def _target_mode(output_path: Path) -> int:
-    """Return the existing destination mode, or the umask default for a new file.
+_TEMP_OPEN_FLAGS = (
+    os.O_WRONLY
+    | os.O_CREAT
+    | os.O_EXCL
+    | getattr(os, "O_NOFOLLOW", 0)
+    | getattr(os, "O_NOINHERIT", 0)
+    | getattr(os, "O_BINARY", 0)
+)
+
+
+def _create_sibling_temp(output_path: Path) -> Path:
+    """Create an empty, unused temporary file beside the destination.
+
+    The file is created with mode 0666 so that the operating system applies the
+    process umask, exactly as a direct save would; the process umask is never
+    changed, which is not safe while other threads create files.
 
     Args:
-        output_path: Destination that may or may not exist.
+        output_path: Destination in an existing directory.
 
     Returns:
-        Permission bits to apply before replacing the destination.
+        Path to the new temporary file, owned by this save operation.
     """
-    try:
-        return stat.S_IMODE(output_path.stat().st_mode)
-    except FileNotFoundError:
-        umask = os.umask(0)
-        os.umask(umask)
-        return 0o666 & ~umask
+    for _ in range(tempfile.TMP_MAX):
+        candidate = output_path.with_name(
+            f".{output_path.stem}_{secrets.token_hex(6)}{output_path.suffix}"
+        )
+        try:
+            fd = os.open(candidate, _TEMP_OPEN_FLAGS, 0o666)
+        except FileExistsError:
+            continue
+        os.close(fd)
+        return candidate
+    raise FileExistsError(f"No unused temporary name beside {output_path}")
 
 
 def _atomic_save(output_path: Path, save_action: Callable[[Path], None]) -> None:
     """Serialize beside the destination and replace it only after success.
 
+    A new destination keeps the mode its temporary file was created with (0666
+    less the umask); an existing one keeps its own mode.
+
     Args:
         output_path: Destination in an existing directory.
         save_action: Callback that serializes the complete output to a path.
     """
-    fd, temp_name = tempfile.mkstemp(
-        prefix=f".{output_path.stem}_", suffix=output_path.suffix, dir=str(output_path.parent)
-    )
-    temp_path = Path(temp_name)
+    temp_path = _create_sibling_temp(output_path)
     try:
-        os.close(fd)
         save_action(temp_path)
-        # mkstemp creates 0600 files; keep the mode a direct save would have produced.
-        os.chmod(temp_path, _target_mode(output_path))
+        try:
+            existing_mode = stat.S_IMODE(output_path.stat().st_mode)
+        except FileNotFoundError:
+            existing_mode = None
+        if existing_mode is not None:
+            os.chmod(temp_path, existing_mode)
         os.replace(temp_path, output_path)
     finally:
         temp_path.unlink(missing_ok=True)
+
+
+def reserve_unused_path(output_path: Path, stamp: str, *, include_original: bool = True) -> Path:
+    """Exclusively create the first unused destination name and return it.
+
+    Candidates are `output_path` itself (when `include_original`), then
+    `<stem>_<stamp><suffix>`, then `<stem>_<stamp>_<n><suffix>` for n = 1, 2, ...
+    Each is created with exclusive creation, so two savers running at the same
+    time never get the same name and an existing file is never chosen. A process
+    killed between the reservation and the save leaves an empty file under the
+    reserved name.
+
+    Args:
+        output_path: Preferred destination whose stem and extension are kept.
+        stamp: Text that sets the fallback names apart (a time stamp).
+        include_original: Try `output_path` itself first.
+
+    Returns:
+        Path to an empty file owned by the caller, who removes it if the save fails.
+    """
+    counter = -1 if include_original else 0
+    while True:
+        if counter < 0:
+            candidate = output_path
+        else:
+            suffix = f"_{stamp}" if counter == 0 else f"_{stamp}_{counter}"
+            candidate = output_path.with_name(f"{output_path.stem}{suffix}{output_path.suffix}")
+        try:
+            with candidate.open("xb"):
+                return candidate
+        except FileExistsError:
+            counter += 1
 
 
 def _reserve_fallback_path(output_path: Path) -> Path:
@@ -165,16 +226,7 @@ def _reserve_fallback_path(output_path: Path) -> Path:
     Returns:
         Path to an empty file owned by this save operation.
     """
-    timestamp = int(time.time())
-    counter = 0
-    while True:
-        suffix = f"_{timestamp}" if counter == 0 else f"_{timestamp}_{counter}"
-        candidate = output_path.with_name(f"{output_path.stem}{suffix}{output_path.suffix}")
-        try:
-            with candidate.open("xb"):
-                return candidate
-        except FileExistsError:
-            counter += 1
+    return reserve_unused_path(output_path, str(int(time.time())), include_original=False)
 
 
 def safe_save(

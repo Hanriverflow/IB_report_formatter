@@ -101,6 +101,10 @@ include = [
     "/samples/profiles/**", "/samples/qa/**", "/scripts/word_visual_qa.ps1", "/docs/implementation-plan-20260914.md",
     "/docs/verification-20260914.md",
     "/docs/improvement-plan-20260915.md", "/docs/verification-20260915.md",
+    # Public documents the shipped READMEs link to.
+    "/docs/start-here.md", "/docs/codex-start.html", "/docs/plugin-guide.md",
+    "/docs/pr-consolidation-20260926.md", "/docs/verification-20261110.md",
+    "/docs/verification-office-letter-20261114.md", "/scripts/word_schema_validation.md",
 ]
 
 [tool.ruff]

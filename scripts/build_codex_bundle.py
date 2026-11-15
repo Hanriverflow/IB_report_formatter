@@ -86,6 +86,21 @@ PUBLIC_FILES = (
     "samples/harness/expected-terms.json",
     "samples/distribution/minimal-term-sheet.md",
     "samples/distribution/minimal-house.yaml",
+    # Fictional QA samples and records the shipped READMEs link to or run.
+    "samples/qa/captions-structure.png",
+    "samples/qa/captions.md",
+    "samples/qa/charts-dcm.md",
+    "samples/qa/charts.md",
+    "samples/qa/draft-version.md",
+    "samples/qa/footnote-rereference.md",
+    "samples/qa/ib-table-rules.md",
+    "samples/qa/landscape.md",
+    "samples/qa/long-table.md",
+    "samples/qa/office-letter-appendix.md",
+    "samples/qa/office-letter-partial-table.md",
+    "docs/verification-20261110.md",
+    "docs/verification-office-letter-20261114.md",
+    "scripts/word_schema_validation.md",
 )
 
 
