@@ -284,7 +284,12 @@ class MarkdownParser:
     TABLE_START_PATTERN = re.compile(r"^\|")
     _HTML_IMAGE_LINE_RE = re.compile(r"^<img\b[^<>]*>$", re.IGNORECASE)
     SEPARATOR_PATTERN = re.compile(r"^(---|## ---)$")
-    CODE_FENCE_PATTERN = FenceScanner.OPEN_RE
+    _QUOTE_LABELS = r"시사점|참고|주의|결론|요약|핵심|KEY INSIGHT|NOTE|WARNING"
+    # A callout label on the unescaped first line, and the same label as written.
+    _QUOTE_LABEL_RE = re.compile(rf"^\[({_QUOTE_LABELS})\]\s*(.*)", re.IGNORECASE)
+    _QUOTE_SOURCE_LABEL_RE = re.compile(rf"^\\?\[({_QUOTE_LABELS})\\?\]\s*(.*)", re.IGNORECASE)
+    # What `TextParser.cleanup_text` rewrites: escapes and HTML breaks.
+    _QUOTE_REREAD_RE = re.compile(r"\\|<br\s*/?>", re.IGNORECASE)
 
     # Reference section keywords
     _REFERENCE_KEYWORDS = frozenset(
@@ -520,6 +525,13 @@ class MarkdownParser:
 
         # Extract footnotes/references
         fenced_indices = FenceScanner.protected_indices(remaining_lines)
+        # HTML cells are literal: no definition is taken out of them. Their
+        # lines are still scanned for footnote marks, as before.
+        table_indices = {
+            index
+            for start, end in self._html_table_blocks(remaining_lines)
+            for index in range(start, end)
+        }
         prose_lines = [
             line if index not in fenced_indices else ""
             for index, line in enumerate(remaining_lines)
@@ -543,7 +555,9 @@ class MarkdownParser:
                 content_lines.append(raw_line)
                 continue
             match = self._EXT_FOOTNOTE_DEF_RE.match(raw_line.strip())
-            if not self._EXT_FOOTNOTE_DEF_RE.match(scan_lines[index].strip()):
+            if index in table_indices or not self._EXT_FOOTNOTE_DEF_RE.match(
+                scan_lines[index].strip()
+            ):
                 match = None
             if match:
                 number = _document_int(match.group(1))
@@ -828,6 +842,36 @@ class MarkdownParser:
             return destination
         return "<" + destination + ">"
 
+    @staticmethod
+    def _html_table_blocks(lines: list[str]) -> list[tuple[int, int]]:
+        """Line ranges of closed HTML tables outside code fences.
+
+        HTML cell text is literal, so these lines reach the HTML reader as
+        written: reference links are not expanded and footnote definitions are
+        not taken out of them.
+
+        Args:
+            lines: Document lines.
+
+        Returns:
+            `(start, end)` pairs, end exclusive, in document order.
+        """
+        blocks: list[tuple[int, int]] = []
+        index = 0
+        while index < len(lines):
+            fence = FenceScanner.scan(lines, index)
+            if fence:
+                index = fence[2]
+                continue
+            if HtmlTableParser.START_RE.match(lines[index]):
+                end = HtmlTableParser.block_end(lines, index)
+                if end is not None:
+                    blocks.append((index, end))
+                    index = end
+                    continue
+            index += 1
+        return blocks
+
     @classmethod
     def _resolve_reference_links(cls, lines: list[str]) -> list[str]:
         """Collect link definitions and expand resolved references outside code."""
@@ -843,12 +887,16 @@ class MarkdownParser:
             return token
 
         pieces: list[str] = []
+        tables = dict(cls._html_table_blocks(lines))
         index = 0
         while index < len(lines):
             block = FenceScanner.scan(lines, index)
             if block:
                 pieces.append(protect("\n".join(lines[index : block[2]])))
                 index = block[2]
+            elif index in tables:
+                pieces.append(protect("\n".join(lines[index : tables[index]])))
+                index = tables[index]
             else:
                 pieces.append(lines[index])
                 index += 1
@@ -968,11 +1016,19 @@ class MarkdownParser:
 
                 if language == "chart":
                     chart_number += 1
-                    chart = Chart(code=code_text, label=f"Chart {chart_number}")
+                    # With charts off the fence is a code block in every respect,
+                    # so a closed one keeps its literal content, as below; the
+                    # specification is read from the trimmed text.
+                    chart_code = (
+                        "\n".join(code_lines)
+                        if i - fence_start == len(code_lines) + 2
+                        else code_text
+                    )
+                    chart = Chart(code=chart_code, label=f"Chart {chart_number}")
                     try:
                         spec, ref_id = parse_chart(code_text)
                         if ref_id is not None:
-                            chart = NumberedChart(code=code_text, label=chart.label, ref_id=ref_id)
+                            chart = NumberedChart(code=chart_code, label=chart.label, ref_id=ref_id)
                         chart.spec = spec
                         if chart.spec.title:
                             chart.label += f" ({chart.spec.title})"
@@ -1180,18 +1236,31 @@ class MarkdownParser:
 
                 title, body = self._extract_blockquote_title(bq_lines)
                 escaped_ats = self._quote_escaped_ats(sources)
+                source_body = self._quote_source_body(bq_lines, sources)
                 quote: Blockquote
                 if quote_tokens:
                     # The runs made here carry what the offsets protected.
                     quote = Blockquote(text=restore_terms(body, quote_tokens), title=title)
-                    quote.runs = split_term_runs(
-                        TextParser.parse_judged_runs(body, body, escaped_ats, plain=True),
-                        quote_tokens,
-                    )
-                elif escaped_ats:
-                    quote = MarkedBlockquote(text=body, title=title, escaped_ats=escaped_ats)
+                    runs = TextParser.parse_judged_runs(body, body, escaped_ats, plain=True)
+                    if source_body is not None:
+                        with TextParser.silent_reference_scope():
+                            written = TextParser.parse_runs_plain(source_body)
+                        if written != runs:
+                            # The unescaped body reads an escape as syntax.
+                            runs = written
+                    quote.runs = split_term_runs(runs, quote_tokens)
                 else:
-                    quote = Blockquote(text=body, title=title)
+                    if escaped_ats:
+                        quote = MarkedBlockquote(text=body, title=title, escaped_ats=escaped_ats)
+                    else:
+                        quote = Blockquote(text=body, title=title)
+                    if source_body is not None and self._quote_rereads_escapes(
+                        body, escaped_ats, source_body
+                    ):
+                        # The renderer would parse the unescaped body again and
+                        # read an escape as syntax; the runs read once from the
+                        # source are rendered instead.
+                        quote.runs = TextParser.parse_runs_plain(source_body)
                 elements.append(
                     Element(
                         element_type=ElementType.BLOCKQUOTE,
@@ -1351,13 +1420,13 @@ class MarkdownParser:
             - hard line break (trailing backslash or <br>; 2+ trailing spaces only
               with preserve_trailing_double_space_break=True) -> newline
         """
-        parts: list[str] = []
+        working_lines: list[str] = []
         i = start_idx
-        use_hard_break = False
 
         while i < len(lines):
             raw_line = first_line if i == start_idx and first_line is not None else lines[i]
-            line = self._strip_html_anchors(raw_line).strip()
+            working = self._strip_html_anchors(raw_line)
+            line = working.strip()
 
             if not line:
                 break
@@ -1371,16 +1440,52 @@ class MarkdownParser:
             ):
                 break
 
-            normalized, hard_break = self._normalize_paragraph_line(raw_line)
+            working_lines.append(working)
+            i += 1
+
+        # A code span that crosses lines is literal: its `<br>`, trailing
+        # backslash and spacing are not line breaks or spacing to normalise.
+        # It is set aside whole before the line-level pass and its line endings
+        # become single spaces, as a soft break between the lines would give.
+        text = "\n".join(working_lines)
+        spans: dict[str, str] = {}
+        if "`" in text and "\n" in text:
+            prefix = "\ue000LINES"
+            while prefix in text:
+                prefix += "X"
+
+            def protect(match: Match[str]) -> str:
+                if "\n" not in match.group(0):
+                    return match.group(0)
+                pieces = match.group(0).split("\n")
+                last = len(pieces) - 1
+                token = prefix + str(len(spans)) + "\ue001"
+                # Lines are trimmed at the break as the paragraph trims them.
+                spans[token] = " ".join(
+                    piece.rstrip()
+                    if index == 0
+                    else piece.lstrip()
+                    if index == last
+                    else piece.strip()
+                    for index, piece in enumerate(pieces)
+                )
+                return token
+
+            text = TextParser._CODE_SPAN_RE.sub(protect, text)
+
+        parts: list[str] = []
+        use_hard_break = False
+        for working in text.split("\n"):
+            normalized, hard_break = self._normalize_working_line(working)
             if normalized:
                 if parts:
                     parts.append("\n" if use_hard_break else " ")
                 parts.append(normalized)
-
             use_hard_break = hard_break
-            i += 1
 
         paragraph_text = "".join(parts).strip()
+        for token, literal in spans.items():
+            paragraph_text = paragraph_text.replace(token, literal)
         return paragraph_text, i
 
     def _starts_new_block(self, line: str) -> bool:
@@ -1432,9 +1537,11 @@ class MarkdownParser:
 
     def _normalize_paragraph_line(self, raw_line: str) -> tuple[str, bool]:
         """Normalize one paragraph source line and detect hard line breaks."""
-        hard_break = False
-        working = self._strip_html_anchors(raw_line)
+        return self._normalize_working_line(self._strip_html_anchors(raw_line))
 
+    def _normalize_working_line(self, working: str) -> tuple[str, bool]:
+        """Normalize one paragraph line whose HTML anchors are already removed."""
+        hard_break = False
         if self._HTML_BREAK_RE.search(working):
             hard_break = True
             working = self._HTML_BREAK_RE.sub("", working).rstrip()
@@ -1793,12 +1900,7 @@ class MarkdownParser:
 
         if bq_lines:
             first = bq_lines[0]
-            label_match = re.match(
-                r"^\[(시사점|참고|주의|결론|요약|핵심|"
-                r"KEY INSIGHT|NOTE|WARNING)\]\s*(.*)",
-                first,
-                re.IGNORECASE,
-            )
+            label_match = MarkdownParser._QUOTE_LABEL_RE.match(first)
             if label_match:
                 title = label_match.group(1).upper()
                 remainder = label_match.group(2).strip()
@@ -1806,6 +1908,72 @@ class MarkdownParser:
 
         body = " ".join(body_lines).strip()
         return title, body
+
+    @classmethod
+    def _quote_source_body(cls, bq_lines: list[str], sources: list[str]) -> str | None:
+        """The callout body as written, before its escapes were resolved.
+
+        It is the body `_extract_blockquote_title` gives, made from the source
+        lines: the same label is taken off the first line (its brackets may be
+        escaped) and the lines are joined with spaces.
+
+        Args:
+            bq_lines: The unescaped quote lines.
+            sources: The same lines as written (term references as tokens).
+
+        Returns:
+            The source body, or None when it cannot read differently from the
+            unescaped body or the label cannot be found in the source line the
+            same way.
+        """
+        # `cleanup_text` changes a line in exactly three ways: it resolves
+        # escapes (only where a backslash stands), strips the line (the source
+        # lines are stripped here too) and turns HTML breaks into newlines (only
+        # where `<br>` stands). The parse of the source strips nothing else and
+        # reads the same breaks, so a body with neither a backslash nor a break
+        # reads the same both ways and needs no comparison.
+        if not any(cls._QUOTE_REREAD_RE.search(source) for source in sources):
+            return None
+        lines = [source.strip() for source in sources]
+        label = cls._QUOTE_LABEL_RE.match(bq_lines[0]) if bq_lines else None
+        if label is not None:
+            written = cls._QUOTE_SOURCE_LABEL_RE.match(lines[0])
+            if written is None or written.group(1) != label.group(1):
+                return None
+            remainder = written.group(2).strip()
+            lines = ([remainder] if remainder else []) + lines[1:]
+        return " ".join(lines).strip()
+
+    @staticmethod
+    def _quote_rereads_escapes(body: str, escaped_ats: tuple[int, ...], source_body: str) -> bool:
+        """Whether rendering the unescaped body differs from reading its source once.
+
+        The renderer parses a callout body that has no runs (`CalloutRenderer`);
+        that body was unescaped here, so an escaped `*`, `` ` ``, `<br>` and the
+        like would be read as syntax. Both readings here are made silently, so
+        the comparison adds no diagnostic. When they agree, the body keeps no
+        runs and the renderer parses and reports as before. When they differ,
+        the caller parses the source once more in the parser's own scope and
+        stores those runs: their reference diagnostics go to the model's
+        warnings, as for a callout with term values, and the renderer does not
+        parse the body again.
+
+        Args:
+            body: The unescaped body.
+            escaped_ats: Offsets of escaped `@` in `body`.
+            source_body: The body as written.
+
+        Returns:
+            True when the two readings give different runs.
+        """
+        with TextParser.silent_reference_scope():
+            rendered = (
+                TextParser.parse_judged_runs(body, body, escaped_ats, plain=True)
+                if escaped_ats
+                else TextParser.parse_runs_plain(body)
+            )
+            written = TextParser.parse_runs_plain(source_body)
+        return rendered != written
 
     @classmethod
     def _quote_escaped_ats(cls, sources: list[str]) -> tuple[int, ...]:
