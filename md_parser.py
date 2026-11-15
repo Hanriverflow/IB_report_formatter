@@ -875,9 +875,19 @@ class MarkdownParser:
             return f"[{match.group(1)}]({cls._wrap_destination(destination)})"
 
         source = cls._REFERENCE_LINK_RE.sub(resolve, source)
-        # Later protection layers may contain tokens from earlier layers.
-        for token, value in reversed(list(literals.items())):
-            source = source.replace(token, value)
+        # Later protection layers may contain tokens from earlier layers, so a
+        # token's text is restored through the same substitution, once per token.
+        if literals:
+            token_re = re.compile(re.escape(prefix) + "[0-9]+\ue001")
+            restored: dict[str, str] = {}
+
+            def restore(match: Match[str]) -> str:
+                token = match.group(0)
+                if token not in restored:
+                    restored[token] = token_re.sub(restore, literals[token])
+                return restored[token]
+
+            source = token_re.sub(restore, source)
         return source.split("\n")
 
     # ── Element-level parsing ───────────────────────────────────────────────
@@ -1338,7 +1348,8 @@ class MarkdownParser:
 
         CommonMark semantics:
             - soft line break (single newline in paragraph) -> space
-            - hard line break (2+ trailing spaces, trailing backslash, <br>) -> newline
+            - hard line break (trailing backslash or <br>; 2+ trailing spaces only
+              with preserve_trailing_double_space_break=True) -> newline
         """
         parts: list[str] = []
         i = start_idx
@@ -1558,7 +1569,7 @@ class MarkdownParser:
 
         Heuristics:
             - Short title (≤ ~40 chars after the number)
-            - Starts with Korean or uppercase English
+            - Starts with Korean or an English letter
             - Does NOT contain sentence-ending punctuation mid-line
             - Number ≤ 20 (unlikely section numbers above this)
         """
@@ -1648,6 +1659,16 @@ class MarkdownParser:
                     style=a.get("style", "solid"),
                 )
                 diagram.arrows.append(arrow)
+
+            # The renderer cannot draw an arrow to a box that is not there; say so
+            # (strict mode then rejects the document instead of dropping the arrow).
+            known = {box.id for box in diagram.boxes}
+            for arrow in diagram.arrows:
+                if arrow.from_id not in known or arrow.to_id not in known:
+                    self._parse_warnings.append(
+                        f"Diagram arrow {arrow.from_id!r} -> {arrow.to_id!r} names a box "
+                        "that is not defined; the arrow is not drawn"
+                    )
 
             return diagram
         except Exception as e:
@@ -1747,17 +1768,6 @@ class MarkdownParser:
             filtered.append(elem)
 
         return filtered
-
-    def _looks_like_heading(self, line: str) -> bool:
-        """Quick check if a line looks like any kind of heading"""
-        return bool(
-            self.H1_PATTERN.match(line)
-            or self.H2_PATTERN.match(line)
-            or self.H3_PATTERN.match(line)
-            or self.H4_PATTERN.match(line)
-            or self.DEEP_HEADING_PATTERN.match(line)
-            or self.NUMBERED_HEADING_PATTERN.match(line)
-        )
 
     def _is_reference_header(self, line: str) -> bool:
         """Check if line is a references section header"""
@@ -1879,8 +1889,8 @@ def parse_markdown_file(
     Parse a markdown file or stream into a DocumentModel.
 
     Accepts a file path (str) or a binary stream (BinaryIO).
-    Tries intelligent encoding detection, falls back through
-    UTF-8 → EUC-KR → CP949.
+    Tries UTF-8 (with or without BOM), then EUC-KR and CP949; the optional
+    charset-normalizer is asked only when all of those fail.
 
     Args:
         source: Path to the markdown file, or a readable binary stream.

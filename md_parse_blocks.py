@@ -107,7 +107,8 @@ class FootnoteParser:
         Extract references from the end of the document.
         Looks for patterns like "1. Citation text" after references section.
 
-        Only considers the *last* references section to avoid false positives.
+        Collects entries from every references section; a later entry replaces
+        an earlier one with the same number.
         """
         references: dict[int, str] = {}
         in_references = False

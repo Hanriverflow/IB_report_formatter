@@ -10,6 +10,8 @@ Tests core parsing functionality including:
 
 from pathlib import Path
 
+import pytest
+
 from md_parser import (
     Blockquote,
     CodeBlock,
@@ -337,6 +339,24 @@ boxes:
         assert model.elements[0].content.diagram_type == "flow"
         assert model.elements[0].content.title == "Test Flow"
 
+    def test_diagram_arrow_to_an_undefined_box_is_reported(self):
+        """The renderer skips such an arrow; without a warning strict mode saved the loss."""
+        from document_profiles import RenderOptions
+        from ib_renderer import IBDocumentRenderer
+        from input_safety import StrictValidationError
+
+        fence = "```diagram:flow\nboxes:\n  - {id: a, label: Start, pos: [0, 0]}\n"
+        fence += "  - {id: b, label: End, pos: [3, 0]}\narrows:\n"
+        good = MarkdownParser(profile="plain").parse(fence + "  - {from: a, to: b}\n```\n")
+        assert not good.warnings
+
+        model = MarkdownParser(profile="plain").parse(fence + "  - {from: a, to: bb}\n```\n")
+        assert model.warnings == [
+            "Diagram arrow 'a' -> 'bb' names a box that is not defined; the arrow is not drawn"
+        ]
+        with pytest.raises(StrictValidationError, match="Diagram arrow"):
+            IBDocumentRenderer(options=RenderOptions(profile="plain", strict=True)).render(model)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MARKDOWN PARSER TESTS
@@ -491,7 +511,7 @@ title: Test
 
     def test_excessive_internal_spaces_are_normalized_in_paragraphs(self):
         """Paragraph parser should normalize repeated spaces and parenthesis spacing."""
-        content = """동서울터미널   ( 신세계동서울  PFV )
+        content = """가나다터미널   ( 가나다개발  PFV )
 """
         parser = MarkdownParser()
         model = parser.parse(content)
@@ -499,7 +519,7 @@ title: Test
         paragraphs = [e for e in model.elements if e.element_type == ElementType.PARAGRAPH]
         assert len(paragraphs) == 1
         assert isinstance(paragraphs[0].content, Paragraph)
-        assert paragraphs[0].content.text == "동서울터미널 (신세계동서울 PFV)"
+        assert paragraphs[0].content.text == "가나다터미널 (가나다개발 PFV)"
 
     def test_separator_emits_separator_element(self):
         """Guard against separator lines being consumed without producing an element."""

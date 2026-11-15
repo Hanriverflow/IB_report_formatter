@@ -269,7 +269,8 @@ def insert_ordered(parent: etree._Element, child: etree._Element, replace: bool 
             element occurs once as the schema requires.
 
     Raises:
-        KeyError: The parent or child is not in a known sequence.
+        KeyError: The parent has no known sequence.
+        ValueError: The child is not in the parent's sequence.
     """
     sequence = SEQUENCES[etree.QName(parent).localname]
     name = etree.QName(child).localname

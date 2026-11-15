@@ -132,6 +132,7 @@ known-first-party = [
     "cli_utils",
     "converted_md_cleaner",
     "deep_md_cleaner",
+    "diagram_renderer",
     "ib_renderer",
     "ib_render_fonts",
     "ib_render_document_style",

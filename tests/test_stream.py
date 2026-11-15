@@ -14,13 +14,6 @@ from pathlib import Path
 import pytest
 from docx import Document
 
-PNG_BYTES = (
-    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x04\x00\x00\x00"
-    b"\xb5\x1c\x0c\x02\x00\x00\x00\x0bIDATx\xdac\xfc\xff\x1f\x00\x03\x03\x02\x00\xee\xd9\xf1"
-    b"\xe4\x00\x00\x00\x00IEND\xaeB`\x82"
-)
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # FIXTURES
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -41,14 +34,6 @@ def sample_docx_bytes():
 def sample_md_bytes():
     """Create sample Markdown bytes."""
     return "# 스트림 테스트\n\n본문 텍스트입니다.\n".encode()
-
-
-@pytest.fixture
-def sample_docx_path(tmp_path, sample_docx_bytes):
-    """Write sample DOCX to disk and return path."""
-    p = tmp_path / "test.docx"
-    p.write_bytes(sample_docx_bytes)
-    return p
 
 
 @pytest.fixture
@@ -104,15 +89,30 @@ class TestDetectFormat:
         # Not ZIP, not text → unknown
         assert detect_format(stream) == "unknown"
 
+    @pytest.mark.parametrize("encoding", ["utf-8", "cp949"])
+    def test_text_sample_cut_inside_a_character_is_still_text(self, encoding):
+        """The 8,192-byte sample used to be decoded as if it were the whole input."""
+        from stream_utils import detect_format
+
+        data = ("a" * 8191 + "가나다").encode(encoding)
+        assert detect_format(io.BytesIO(data)) == "md"
+
+    @pytest.mark.parametrize("data", [b"hello\xff", b"hello\x80", b"\xff", b"# t\n\xc3"])
+    def test_whole_input_with_an_invalid_last_byte_is_not_text(self, data):
+        """Only a sample that stops short of the input may end inside a character."""
+        from stream_utils import detect_format
+
+        assert detect_format(io.BytesIO(data)) == "unknown"
+        # A full-length sample still has to decode once its cut tail is dropped.
+        assert detect_format(io.BytesIO(b"\xff\xfe" * 4096)) == "unknown"
+
     def test_stream_position_preserved(self, sample_docx_bytes):
         from stream_utils import detect_format
 
         stream = io.BytesIO(sample_docx_bytes)
         stream.seek(5)
         detect_format(stream)
-        # ensure_seekable wraps, so position should be at start of the new wrapper
-        # but the point is detect_format doesn't consume the stream
-        # We just verify it doesn't raise
+        assert stream.tell() == 5
 
     def test_detect_korean_euckr(self):
         """Korean text in EUC-KR should be detected as md."""

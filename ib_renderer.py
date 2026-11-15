@@ -22,6 +22,8 @@ Changelog (property-test regressions):
       escapes are resolved once; other headings render as before.
     - A whitespace-only code line keeps its own whitespace (an empty line keeps
       the one-space spacer).
+    - Later: an empty code line carries no spacer text; the paragraph mark sets
+      the line height.
 
 Changelog (house style fixes):
     - A landscape table right after a bare page break (cover, TOC) turns the
@@ -1660,14 +1662,13 @@ class IBDocumentRenderer:
             paragraph = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
             TextRenderer._render_inline_latex(paragraph, latex_eq.expression, STYLE.BODY_SIZE)
 
-    def _render_latex_fallback(self, expression: str, inline: bool = False):
+    def _render_latex_fallback(self, expression: str):
         """Render LaTeX as styled text when image rendering fails."""
         message = "LaTeX could not be rendered: " + expression
         self.errors.append(message)
         logger.warning("%s", message)
         p = self.doc.add_paragraph(style=STYLE.STYLE_IB_BODY)
-        if not inline:
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
         run = p.add_run(f"[{expression}]")
         FontStyler.apply_run_style(

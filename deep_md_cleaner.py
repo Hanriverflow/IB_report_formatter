@@ -4,7 +4,7 @@ DeepResearch markdown cleaner.
 This module handles OpenAI DeepResearch markers embedded in markdown text,
 for example:
     \ue200cite\ue202turn5search0\ue202turn1search8\ue201
-    \ue200entity\ue202["company", "신세계", "..."]\ue201
+    \ue200entity\ue202["company", "가나다", "..."]\ue201
     \ue200image_group\ue202{"query": [...]}\ue201
 """
 
@@ -90,6 +90,8 @@ class DeepResearchCleaner:
         + re.escape(MARKER_END),
         re.DOTALL,
     )
+    # A numbered Markdown footnote reference or definition already in the text.
+    _NUMBERED_FOOTNOTE_RE = re.compile(r"\[\^(\d+)\]")
 
     def __init__(self, config: CleanerConfig | None = None):
         self.config = config or CleanerConfig()
@@ -124,6 +126,11 @@ class DeepResearchCleaner:
         report.applied = True
 
         footnotes: OrderedDictType[str, int] = OrderedDict()
+        # Generated numbers start after the footnotes the author already wrote,
+        # so `[^1]` in the text keeps pointing at the author's own note.
+        first_number = 1 + max(
+            (int(number) for number in self._NUMBERED_FOOTNOTE_RE.findall(text)), default=0
+        )
 
         def replace_block(match: Match[str]) -> str:
             tag = match.group(1).strip().lower()
@@ -131,7 +138,7 @@ class DeepResearchCleaner:
 
             if tag == "cite":
                 report.cite_markers += 1
-                return self._handle_cite(payload, footnotes)
+                return self._handle_cite(payload, footnotes, first_number)
 
             if tag == "entity":
                 report.entity_markers += 1
@@ -159,7 +166,9 @@ class DeepResearchCleaner:
         report.was_modified = cleaned != text
         return cleaned, report
 
-    def _handle_cite(self, payload: str, footnotes: "OrderedDictType[str, int]") -> str:
+    def _handle_cite(
+        self, payload: str, footnotes: "OrderedDictType[str, int]", first_number: int = 1
+    ) -> str:
         ids = [token.strip() for token in payload.split(MARKER_SEPARATOR) if token.strip()]
         if not ids and payload.strip():
             ids = [payload.strip()]
@@ -175,7 +184,7 @@ class DeepResearchCleaner:
         refs = []
         for sid in ids:
             if sid not in footnotes:
-                footnotes[sid] = len(footnotes) + 1
+                footnotes[sid] = len(footnotes) + first_number
             refs.append(f"[^{footnotes[sid]}]")
         return "".join(refs)
 

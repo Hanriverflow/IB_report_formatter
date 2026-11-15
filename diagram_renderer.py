@@ -62,7 +62,7 @@ class DiagramRenderer:
         image_path = self._render_image(diagram)
         if image_path:
             try:
-                self._insert(image_path, diagram.title, diagram.notes)
+                self._insert(image_path, diagram.title)
                 return True
             except Exception as e:
                 logger.warning("Failed to insert diagram: %s", e)
@@ -334,8 +334,8 @@ class DiagramRenderer:
             t = hh / abs(dy)
         return cx + dx * t, cy + dy * t
 
-    def _insert(self, file_path: str, title: str, notes: list[str]):
-        """Insert diagram image centered with caption and notes."""
+    def _insert(self, file_path: str, title: str):
+        """Insert diagram image centered with caption (notes are drawn in the image)."""
         p = self.doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = p.add_run()

@@ -136,16 +136,18 @@ class TableRenderer:
         # is concatenated; each owner cell is then filled exactly once.
         rectangles = self._merge_cells(word_table, table)
         covered = self._covered_cells(rectangles)
+        # python-docx builds the whole row list on every `rows[i]`; build it once.
+        word_rows = list(word_table.rows)
 
         # Render header rows
         header_rows = min(table.header_rows, len(table.rows))
         for h_idx in range(header_rows):
-            self._render_header_row(word_table, table.rows[h_idx], col_count, covered, h_idx)
+            self._render_header_row(word_rows[h_idx], table.rows[h_idx], col_count, covered, h_idx)
 
         # Render data rows based on table type
         for r_idx, row in enumerate(table.rows[header_rows:], header_rows):
             self._render_data_row(
-                word_table,
+                word_rows[r_idx],
                 row,
                 r_idx,
                 col_count,
@@ -160,8 +162,8 @@ class TableRenderer:
         self._mirror_vertical_fills(word_table, rectangles)
 
         for h_idx in range(header_rows):
-            word_table.rows[h_idx]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
-        for word_row in word_table.rows:
+            word_rows[h_idx]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
+        for word_row in word_rows:
             word_row._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
         # Apply borders
         TableStyler.set_table_borders(word_table)
@@ -284,8 +286,10 @@ class TableRenderer:
         )
 
         line_counts = [0] * row_count
+        # python-docx builds the whole row list on every `rows[i]`; build it once.
+        word_rows = list(word_table.rows)
         for row_index, row in enumerate(table.rows):
-            word_cells = word_table.rows[row_index].cells
+            word_cells = word_rows[row_index].cells
             for column_index in range(col_count):
                 if (row_index, column_index) in covered:
                     continue
@@ -322,7 +326,7 @@ class TableRenderer:
                     line_counts[row_index] = max(line_counts[row_index], lines)
         self._mirror_vertical_fills(word_table, rectangles)
         self._apply_row_rules(word_table, table)
-        for row_index, word_row in enumerate(word_table.rows):
+        for row_index, word_row in enumerate(word_rows):
             header = row_index < table.header_rows
             set_row_pagination(
                 word_row,
@@ -562,7 +566,7 @@ class TableRenderer:
         marked = [*table.subtotal_rows, *table.total_rows]
         if not marked:
             return
-        rows = word_table.rows
+        rows = list(word_table.rows)
         color = STYLE.NAVY_HEX
         for body_row in marked:
             index = table.header_rows + body_row - 1
@@ -705,15 +709,16 @@ class TableRenderer:
         Continuation cells keep their own properties in OOXML, so the owner's fill
         is repeated to keep the whole merged area shaded in every consumer.
         """
+        rows = list(word_table.rows) if rectangles else []
         for top, left, bottom, _ in rectangles:
             if bottom == top:
                 continue
-            owner = word_table.rows[top]._tr.tc_at_grid_offset(left)
+            owner = rows[top]._tr.tc_at_grid_offset(left)
             shading = owner.tcPr.find(qn("w:shd")) if owner.tcPr is not None else None
             if shading is None or not shading.get(qn("w:fill")):
                 continue
             for row_index in range(top + 1, bottom + 1):
-                continuation = word_table.rows[row_index]._tr.tc_at_grid_offset(left)
+                continuation = rows[row_index]._tr.tc_at_grid_offset(left)
                 set_cell_fill(continuation, shading.get(qn("w:fill")))
 
     @staticmethod
@@ -1033,14 +1038,17 @@ class TableRenderer:
 
     def _render_header_row(
         self,
-        word_table,
+        word_row,
         row: TableRow,
         col_count: int,
         covered: Set[tuple[int, int]] = frozenset(),
         row_index: int = 0,
     ):
-        """Render one header row with Navy background, skipping merged-away cells."""
-        word_cells = word_table.rows[row_index].cells
+        """Render one header row with Navy background, skipping merged-away cells.
+
+        `word_row` is the Word row at `row_index`.
+        """
+        word_cells = word_row.cells
 
         for c_idx, cell_data in enumerate(row.cells):
             if c_idx >= col_count:
@@ -1082,7 +1090,7 @@ class TableRenderer:
 
     def _render_data_row(
         self,
-        word_table,
+        word_row,
         row: TableRow,
         row_idx: int,
         col_count: int,
@@ -1099,8 +1107,9 @@ class TableRenderer:
         Zebra shading counts body rows only, so it starts on the first body row
         whatever the number of header rows. `negative` is the table spec's
         negative-number style; None keeps the written form and red.
+        `word_row` is the Word row at `row_idx`.
         """
-        word_cells = word_table.rows[row_idx].cells
+        word_cells = word_row.cells
 
         for c_idx, cell_data in enumerate(row.cells):
             if c_idx >= col_count:
@@ -1492,10 +1501,11 @@ class TableRenderer:
         """Apply table-type specific styling to every paragraph of one owner cell.
 
         Args:
-            fill: Cell background setter. Legacy tables keep the historical append;
-                term-sheet tables pass a schema-ordered setter.
-            negative: Table spec negative-number style; a table that sets one keeps
-                its negative amounts black (owner decision, 2026-11-14).
+            fill: Cell background setter; the default and the term-sheet setter
+                both insert in schema order.
+            negative: Table spec negative-number style; a table that sets one gets
+                no automatic red (owner decision, 2026-11-14). Colours the author
+                wrote and hyperlink colours stay.
         """
         runs = [run for paragraph in cell.paragraphs for run in paragraph.runs]
         if table_type == TableType.FINANCIAL:

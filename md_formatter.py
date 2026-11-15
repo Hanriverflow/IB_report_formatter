@@ -37,9 +37,13 @@ import sys
 from pathlib import Path
 from re import Match
 
+import yaml
+
+from cli_utils import resolve_input_path
 from cli_utils import setup_logging as configure_logging
 from converted_md_cleaner import clean_converted_term_sheet
 from deep_md_cleaner import CleanerConfig, clean_deepresearch_markdown
+from md_parse_blocks import FenceScanner
 
 # Parent folder path
 PARENT_DIR = Path(__file__).resolve().parent.parent
@@ -221,6 +225,11 @@ class MetadataExtractor:
 
         return metadata, remaining.strip()
 
+    @staticmethod
+    def _yaml_escape(value: str) -> str:
+        """Escape a value for a double-quoted YAML scalar (backslash first, then quote)."""
+        return value.replace("\\", "\\\\").replace('"', '\\"')
+
     @classmethod
     def to_frontmatter(cls, metadata: dict[str, str]) -> str:
         """Convert metadata dict to YAML frontmatter"""
@@ -230,9 +239,7 @@ class MetadataExtractor:
         lines = ["---"]
 
         if "title" in metadata:
-            # Escape quotes in title
-            title = metadata["title"].replace('"', '\\"')
-            lines.append(f'title: "{title}"')
+            lines.append(f'title: "{cls._yaml_escape(metadata["title"])}"')
 
         field_mapping = {
             "주제": "subtitle",
@@ -244,7 +251,7 @@ class MetadataExtractor:
 
         for kr_key, en_key in field_mapping.items():
             if kr_key in metadata:
-                value = metadata[kr_key].replace('"', '\\"')
+                value = cls._yaml_escape(metadata[kr_key])
                 lines.append(f'{en_key}: "{value}"')
 
         lines.append("---")
@@ -391,7 +398,7 @@ class StructureDetector:
 
             # Insert heading marker
             heading_text = f"\n\n## {number}. {title}"
-            result = result[: m.start() + 1] + heading_text + result[m.end() :]
+            result = result[: m.start()] + heading_text + result[m.end() :]
 
         return result
 
@@ -601,9 +608,63 @@ def format_markdown(
     return result
 
 
+def _literal_line_ranges(lines: list[str]) -> list[tuple[int, int]]:
+    """Find the line ranges light formatting must not touch.
+
+    Args:
+        lines: The text split at line feeds.
+
+    Returns:
+        Half-open `(start, end)` line ranges, in order: YAML frontmatter at the
+        very top and every fenced code block. Fences are the parser's own
+        (`FenceScanner`: any indentation, an unclosed fence runs to the end).
+        Frontmatter is a block opened by `---` on the first line, closed by
+        `---`, whose content is a YAML mapping; anything else that starts with
+        a rule is prose.
+    """
+    ranges: list[tuple[int, int]] = []
+    index = 0
+    if lines and lines[0].strip() == "---":
+        for end in range(1, len(lines)):
+            if lines[end].strip() == "---":
+                try:
+                    is_mapping = isinstance(yaml.safe_load("\n".join(lines[1:end])), dict)
+                except yaml.YAMLError:
+                    is_mapping = False
+                if is_mapping:
+                    ranges.append((0, end + 1))
+                    index = end + 1
+                break
+    while index < len(lines):
+        block = FenceScanner.scan(lines, index)
+        if block is None:
+            index += 1
+            continue
+        ranges.append((index, block[2]))
+        index = block[2]
+    return ranges
+
+
 def _light_format(text: str) -> str:
-    """Apply minimal formatting to already-structured text"""
-    result = text
+    """Apply minimal formatting to already-structured text.
+
+    Frontmatter and fenced code are literal: they are set aside before the
+    prose rules run and put back unchanged.
+    """
+    lines = text.split("\n")
+    token = "\ue000LITERAL"
+    while token in text:
+        token += "X"
+    literals: list[str] = []
+    pieces: list[str] = []
+    position = 0
+    for start, end in _literal_line_ranges(lines):
+        pieces.extend(lines[position:start])
+        pieces.append(f"{token}{len(literals)}\ue001")
+        literals.append("\n".join(lines[start:end]))
+        position = end
+    pieces.extend(lines[position:])
+    result = "\n".join(pieces)
 
     # Normalize colon spacing even in light-format mode
     result = ColonLabelDetector.normalize_colon_spacing_global(result)
@@ -615,7 +676,18 @@ def _light_format(text: str) -> str:
     # Clean up excess whitespace
     result = re.sub(r"\n{3,}", "\n\n", result)
 
-    return result.strip()
+    result = result.strip()
+    for number, literal in enumerate(literals):
+        placeholder = f"{token}{number}\ue001"
+        before, found, after = result.partition(placeholder)
+        if not found:
+            continue
+        # A label rule may have pulled the block up onto the line before it;
+        # a fence or frontmatter must start its own line.
+        if before and not before.endswith("\n"):
+            before = before.rstrip(" \t") + "\n"
+        result = before + literal + after
+    return result
 
 
 def _cleanup(text: str) -> str:
@@ -719,16 +791,15 @@ def format_file_with_options(
         cleaner_mode, cite_mode, drop_unknown_markers, cleaner_report
     ):
         raise ValueError("--converted-term-sheet cannot be combined with the DeepResearch cleaner")
-    input_file = Path(input_path)
-
-    # Resolve path
-    if not input_file.is_absolute():
-        parent_path = PARENT_DIR / input_file.name
-        if parent_path.exists():
-            input_file = parent_path
+    # The same policy as `md-to-word`: a path with a folder, or a file in the
+    # working directory, is read as given; only a bare name falls back to the
+    # project locations.
+    input_file = resolve_input_path(str(input_path), PARENT_DIR, Path(__file__))
 
     if not input_file.exists():
-        raise FileNotFoundError(f"File not found: {input_file}")
+        # Name the path as it was given: for a bare name `input_file` is only the
+        # last place that was searched.
+        raise FileNotFoundError(f"File not found: {input_path}")
 
     content = _read_with_encoding(input_file)
     line_count = content.count("\n")

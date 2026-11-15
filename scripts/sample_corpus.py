@@ -1,4 +1,4 @@
-"""Shared strict sample corpus for schema validation and future snapshots."""
+"""Shared strict sample corpus for schema validation and snapshot tests."""
 
 from dataclasses import dataclass
 from pathlib import Path

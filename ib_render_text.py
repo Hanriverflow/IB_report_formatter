@@ -203,7 +203,6 @@ class TextRenderer:
     # Delimiters must flank their text, as in `TextParser` (`2 * 3` stays literal).
     _BOLD_SPLIT_RE = re.compile(r"(\*\*(?!\s).*?(?<!\s)\*\*)")
     _ITALIC_SPLIT_RE = re.compile(r"(?<!\*)(\*(?![\s*])[^*]*?[^\s*]\*)(?!\*)")
-    _SUPERSCRIPT_RE = re.compile(r"\^([^^]+?)\^")
     _SUBSCRIPT_PATTERN = r"(?<!~)~[A-Za-z0-9]{1,8}~(?!~)"
     _VERTICAL_ALIGN_SPLIT_RE = re.compile(r"(\^[^^]+?\^|" + _SUBSCRIPT_PATTERN + r")")
     _ESCAPE_RE = re.compile(r'\\([~.*"\'()\[\]{}|_-])')

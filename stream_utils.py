@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 # PK\x03\x04 = ZIP (DOCX, XLSX, PPTX are ZIP-based)
 _ZIP_SIGNATURE = b"PK\x03\x04"
 
+# Bytes sampled for the text heuristic; a sample this long may end inside a character.
+_TEXT_SAMPLE_BYTES = 8192
+
 # Known extension → format mappings
 _EXT_TO_FORMAT = {
     ".docx": "docx",
@@ -89,11 +92,11 @@ def detect_format(
 
     # 3. Heuristic: if it looks like valid UTF-8 text, treat as markdown
     source.seek(pos)
-    sample = source.read(min(8192, limits.max_input_bytes + 1))
+    sample = source.read(min(_TEXT_SAMPLE_BYTES, limits.max_input_bytes + 1))
     source.seek(pos)
     limits.check(RejectionCode.LIMIT_INPUT_BYTES, len(sample))
 
-    if _looks_like_text(sample):
+    if _looks_like_text(sample, cut=len(sample) == _TEXT_SAMPLE_BYTES):
         return "md"
 
     return "unknown"
@@ -142,27 +145,33 @@ def is_stream(source: object) -> bool:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _looks_like_text(data: bytes) -> bool:
+def _looks_like_text(data: bytes, cut: bool = False) -> bool:
     """Heuristic check: does this data look like UTF-8 text?
 
     Returns True if the data can be decoded as UTF-8 and doesn't
     contain excessive control characters (excluding newlines/tabs).
+
+    Args:
+        data: The sampled bytes.
+        cut: The sample stops before the end of the input, so its last
+            character may be incomplete; up to its missing bytes are ignored.
     """
     if not data:
         return False
 
-    try:
-        text = data.decode("utf-8")
-    except UnicodeDecodeError:
-        # Try other common encodings for Korean text
-        for enc in ("euc-kr", "cp949"):
+    # UTF-8 first, then other common encodings for Korean text
+    text = None
+    for enc, longest_tail in (("utf-8", 3), ("euc-kr", 1), ("cp949", 1)):
+        for dropped in range((longest_tail if cut else 0) + 1):
             try:
-                text = data.decode(enc)
+                text = data[: len(data) - dropped].decode(enc)
                 break
             except UnicodeDecodeError:
                 continue
-        else:
-            return False
+        if text is not None:
+            break
+    if text is None:
+        return False
 
     # Count control characters (excluding whitespace)
     control_count = sum(1 for ch in text if ord(ch) < 32 and ch not in ("\n", "\r", "\t"))
