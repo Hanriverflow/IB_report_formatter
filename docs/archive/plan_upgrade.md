@@ -1,6 +1,6 @@
 # Functional Upgrade Plan
 
-> Historical document — superseded by [the 2026-09-14 implementation plan](docs/implementation-plan-20260914.md). Word→MD development is retired; bidirectional roadmap items below are not active requirements.
+> Historical document — superseded by [the 2026-09-14 implementation plan](../implementation-plan-20260914.md). Word→MD development is retired; bidirectional roadmap items below are not active requirements.
 
 ## Goal
 

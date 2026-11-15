@@ -1,6 +1,6 @@
 # OpenAI DeepResearch 전용 Cleaner 구현 로드맵
 
-> Historical document — superseded by [the 2026-09-14 implementation plan](docs/implementation-plan-20260914.md). Word→MD development is retired; bidirectional roadmap items below are not active requirements.
+> Historical document — superseded by [the 2026-09-14 implementation plan](../implementation-plan-20260914.md). Word→MD development is retired; bidirectional roadmap items below are not active requirements.
 
 > **Status**: 구현 및 문서화 완료
 > **Verified on**: 2026-03-23 (`main`, `uv run pytest tests/ -q` → 250 passed)
@@ -10,7 +10,7 @@
 - 이 이슈는 일반 Markdown 품질 문제가 아니라, **OpenAI DeepResearch export 마커**(`cite...`, `entity...`, `image_group...`)에 한정된 문제다.
 - 따라서 기본 변환 파이프라인은 유지하고, **필요할 때만 Cleaner를 활성화**하는 방식으로 설계한다.
 - 샘플 근거:
-  - `GPT_deep/신세계프라퍼티_사업분석_20260214-research-report.md`
+  - `GPT_deep/` 아래의 실제 사례 보고서 1건 (로컬 전용, 저장소에 없음)
   - `GPT_deep/deep_md_issue.md`
 
 ## 2) 설계 원칙
