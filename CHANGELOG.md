@@ -6,9 +6,9 @@ All notable changes to this project are documented in this file.
 
 Nothing yet.
 
-## [2.0.0-beta.2] - YYYY-MM-DD (not yet published)
+## [2.0.0-beta.2] - 2026-11-15
 
-Second public distribution prerelease, prepared on 2026-11-15 from `main` and **not yet tagged or published**; the date is filled in when it is published. Changes since 2.0.0-beta.1 (PRs #23 to #35). As with beta.1, the release tag `v2.0.0-beta.2` identifies the delivery set and engine/package metadata stays **2.0.0 (Beta)**. The plugin moves from **0.1.0** to **0.2.0**, because the engine, skills and runtime launcher it carries changed. Verification: `docs/verification-20261110.md` and the records named in each section below.
+Second public distribution prerelease, published on 2026-11-15 as the GitHub prerelease `v2.0.0-beta.2`. Like beta.1, it is not financial or legal approval or a guarantee of page layout. Changes since 2.0.0-beta.1 (PRs #23 to #35). As with beta.1, the release tag `v2.0.0-beta.2` identifies the delivery set and engine/package metadata stays **2.0.0 (Beta)**. The plugin moves from **0.1.0** to **0.2.0**, because the engine, skills and runtime launcher it carries changed. Verification: `docs/verification-20261110.md` and the records named in each section below.
 
 ### Read first: what changes for existing documents
 - **Charts look different.** A document with `charts: true` now draws its charts in an IB/consulting style (`chart_style: standard`): one accent colour with greys, values on the bars, the legend above, title and subtitle above and note and source below as Word paragraphs. To keep the earlier look, write `chart_style: classic` in the frontmatter (API: `RenderOptions(chart_style="classic")`); this keeps `bar`, `line` and `waterfall` charts that use only the earlier keys exactly as before. A value with no clear place in the picture is left out rather than drawn over something else, and every value left out is named in a warning (the CLI prints it; the plugin's `result.json` lists it under `render_warnings`); this is never a rejection. Numbers in standard charts round a 5 away from zero, as a spreadsheet does. Details under "Charts in the IB/consulting style" below.
