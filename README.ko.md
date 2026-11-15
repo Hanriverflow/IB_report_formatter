@@ -22,7 +22,7 @@ IB 보고서와 회사 업무문서를 위한 **Markdown → 편집 가능한 Wo
 
 </details>
 
-**버전 구분:** 엔진 **2.0.0 (Beta)** / 플러그인 **0.1.0**. 서로 다른 버전 체계이며 신·구 제품 순서가 아닙니다. ZIP과 `.plugin`은 같은 플러그인이고, Claude 웹·Cowork 실행은 검증되지 않았습니다. 소스가 있다는 것이 다운로드 가능한 Release 게시를 뜻하지는 않습니다. [검증 범위](https://github.com/Hanriverflow/IB_report_formatter/blob/main/docs/verification-plugin-20261008.md)
+**버전 구분:** 엔진 **2.0.0 (Beta)** / 플러그인 **0.2.0**. 서로 다른 버전 체계이며 신·구 제품 순서가 아닙니다. ZIP과 `.plugin`은 같은 플러그인이고, Claude 웹·Cowork 실행은 검증되지 않았습니다. 소스가 있다는 것이 다운로드 가능한 Release 게시를 뜻하지는 않습니다. [검증 범위](https://github.com/Hanriverflow/IB_report_formatter/blob/main/docs/verification-plugin-20261008.md)
 
 **문서 종류는 그다음에 선택합니다:** 일반 업무(공문·보고서·회의록), IB 보고서·메모, 금융거래 텀시트. 기관별 문구·로고는 YAML 설정으로 구분하며 실제 기관 자료는 저장소 밖에 둡니다. 모든 배포본이 같은 엔진을 사용하므로 기능 브랜치를 별도 제품으로 내려받지 않습니다. [문서 프로필](#문서-프로파일) · [관리자용 빌드·배포 안내](https://github.com/Hanriverflow/IB_report_formatter/blob/main/docs/distribution-build.md)
 

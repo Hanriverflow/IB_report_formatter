@@ -20,7 +20,7 @@ IB Report Formatter는 **같은 Markdown → Word 엔진**을 세 가지 방식�
 **기존 업무 폴더의 자료로 AI에게 작성·수정부터 Word 변환까지 맡기려는 분**에게 적합합니다. 일반 AI 작성 사용자의 기본 선택입니다.
 
 - 지원 대상: Claude Code / Codex의 플러그인 지원 버전과 본인 계정.
-- 파일명: `ib-report-formatter-plugin-0.1.0.zip` (현재 플러그인 버전 기준).
+- 파일명: `ib-report-formatter-plugin-0.2.0.zip` (현재 플러그인 버전 기준).
 - uv가 필요하며 Python 3.12와 잠긴 의존성은 최초 설정 시 준비합니다. ZIP에 런타임이나 EXE는 포함되지 않습니다.
 - ZIP을 도구용 폴더에 전체 압축 해제하고 [플러그인 설치 안내](plugin-guide.md)에 따라 호스트에 설치합니다.
 - 실제 자료와 결과는 **플러그인 밖의 자신의 작업 폴더**에 보관합니다. 호스트에서 그 작업 폴더를 열어 `setup`, `ib-document` 스킬을 사용합니다.
@@ -58,6 +58,6 @@ IB Report Formatter는 **같은 Markdown → Word 엔진**을 세 가지 방식�
 
 - [GitHub Releases](https://github.com/Hanriverflow/IB_report_formatter/releases)에 게시된 자산만 공개 배포본으로 취급합니다. 자산이 없다면 아직 공개 다운로드가 게시되지 않은 상태입니다.
 - GitHub의 **Code → Download ZIP**은 저장소 소스이며 Windows 실행 프로그램 ZIP이 아닙니다.
-- 엔진 **2.0.0 (Beta)**와 플러그인 **0.1.0**은 별도 버전입니다. 현재 플러그인에는 엔진 2.0.0이 포함됩니다. 실제 묶음의 manifest와 검증 기록을 함께 확인하세요.
+- 엔진 **2.0.0 (Beta)**와 플러그인 **0.2.0**은 별도 버전입니다. 현재 플러그인에는 엔진 2.0.0이 포함됩니다. 실제 묶음의 manifest와 검증 기록을 함께 확인하세요.
 - 테스트·구조 검사, 원자료 일치 확인, Word의 실제 페이지 검토는 각각 다른 단계입니다. 한 단계의 성공으로 나머지를 보장하지 않습니다.
 - 개발 브랜치는 개발 이력입니다. 최종 사용자에게는 검증된 Release 자산을 전달하고, 빌드는 [관리자용 안내](https://github.com/Hanriverflow/IB_report_formatter/blob/main/docs/distribution-build.md)를 따릅니다.
