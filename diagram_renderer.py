@@ -336,10 +336,11 @@ class DiagramRenderer:
 
     def _insert(self, file_path: str, title: str):
         """Insert diagram image centered with caption (notes are drawn in the image)."""
+        width = self._picture_width()
         p = self.doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = p.add_run()
-        run.add_picture(file_path, width=Inches(6.0))
+        run.add_picture(file_path, width=Inches(width))
 
         # Caption
         if title:
@@ -353,6 +354,26 @@ class DiagramRenderer:
             )
 
         self.doc.add_paragraph()
+
+    def _picture_width(self) -> float:
+        """The diagram picture width in inches: 6.0, or less in a narrower body.
+
+        Bounded by the current (last) section's printable width the same way
+        chart pictures are (`ChartRenderer.render`), so a theme with wide
+        margins does not push the picture past the margins. A section without
+        explicit page width and margins, or with no positive printable width,
+        keeps the earlier fixed 6.0 inches.
+
+        Returns:
+            The width to insert the picture at, in inches.
+        """
+        section = self.doc.sections[-1]
+        page_width = section.page_width
+        left_margin, right_margin = section.left_margin, section.right_margin
+        if page_width is None or left_margin is None or right_margin is None:
+            return 6.0
+        printable = (page_width - left_margin - right_margin) / 914400
+        return min(6.0, printable) if printable > 0 else 6.0
 
     def _placeholder(self, title: str):
         """Text placeholder when matplotlib is unavailable."""

@@ -1546,7 +1546,7 @@ class IBDocumentRenderer:
             spacer = paragraph.add_run(line)
             FontStyler.apply_run_style(
                 spacer,
-                font_name="Consolas",
+                font_name=STYLE.CODE_FONT,
                 font_size=Pt(9.5),
                 color=STYLE.MEDIUM_GRAY,
             )
@@ -1564,7 +1564,7 @@ class IBDocumentRenderer:
             prefix_run = paragraph.add_run(prefix)
             FontStyler.apply_run_style(
                 prefix_run,
-                font_name="Consolas",
+                font_name=STYLE.CODE_FONT,
                 font_size=Pt(9.5),
                 color=STYLE.MEDIUM_GRAY,
             )
@@ -1576,14 +1576,14 @@ class IBDocumentRenderer:
                 before_run = paragraph.add_run(before)
                 FontStyler.apply_run_style(
                     before_run,
-                    font_name="Consolas",
+                    font_name=STYLE.CODE_FONT,
                     font_size=Pt(9.5),
                     color=STYLE.DARK_GRAY,
                 )
             value_run = paragraph.add_run(value)
             FontStyler.apply_run_style(
                 value_run,
-                font_name="Consolas",
+                font_name=STYLE.CODE_FONT,
                 font_size=Pt(9.5),
                 bold=True,
                 color=STYLE.NAVY,
@@ -1591,14 +1591,14 @@ class IBDocumentRenderer:
             divider_run = paragraph.add_run(divider)
             FontStyler.apply_run_style(
                 divider_run,
-                font_name="Consolas",
+                font_name=STYLE.CODE_FONT,
                 font_size=Pt(9.5),
                 color=STYLE.MEDIUM_GRAY,
             )
             tail_run = paragraph.add_run(after)
             FontStyler.apply_run_style(
                 tail_run,
-                font_name="Consolas",
+                font_name=STYLE.CODE_FONT,
                 font_size=Pt(9.5),
                 color=STYLE.DARK_GRAY,
             )
@@ -1608,7 +1608,7 @@ class IBDocumentRenderer:
         main_run = paragraph.add_run(remainder)
         FontStyler.apply_run_style(
             main_run,
-            font_name="Consolas",
+            font_name=STYLE.CODE_FONT,
             font_size=Pt(9.8 if is_root else 9.5),
             bold=is_root,
             color=STYLE.NAVY if is_root else STYLE.DARK_GRAY,

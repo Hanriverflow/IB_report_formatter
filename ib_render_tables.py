@@ -1199,6 +1199,14 @@ class TableRenderer:
         display_runs = cell_data.runs
         if format_numbers:
             display_content = self._format_numeric_text(display_content, role)
+            groups = reference_groups(display_runs)
+            split = (
+                None
+                if any(len(group) > 1 for group in groups)
+                else self._format_split_amount(display_runs, role, negative)
+            )
+            if split is not None:
+                return display_content, split
             # Semantic runs are independent of the amount. In particular, a
             # footnote's displayed number must never enter numeric formatting,
             # and a term value keeps the exact text written in `terms:`.
@@ -1207,7 +1215,7 @@ class TableRenderer:
             # no amount pattern accepts, so they keep their text exactly as
             # the run does when the reference does not resolve.
             formatted: list[TextRun] = []
-            for group in reference_groups(display_runs):
+            for group in groups:
                 if len(group) > 1:
                     formatted.extend(display_runs[group.start : group.stop])
                     continue
@@ -1415,6 +1423,86 @@ class TableRenderer:
         leading = text[: len(text) - len(text.lstrip())]
         trailing = text[len(text.rstrip()) :]
         return leading + formatted + trailing
+
+    def _format_split_amount(
+        self, runs: list[TextRun], role: str | None, negative: str | None = None
+    ) -> list[TextRun] | None:
+        """Format one amount written across several formatting runs as a whole.
+
+        Formatting each run on its own put a column's unit inside the amount
+        (`**12**.5` became `12%.5`). Here the amount and its unit are read
+        from the cell's whole visible text, exactly as an unsplit cell is
+        (`_format_numeric_text`), and the result is spread back over the
+        runs: every run keeps its own format and its own characters, thousands
+        separators go into the run of the digit they precede, and a unit the
+        column adds goes once, after the last character of the amount. Space-
+        only runs and footnote markers before or after the amount are not part
+        of it (`_is_outer_piece`) and are kept as written.
+
+        When the formatted text is more than the written text with separators
+        and a unit added (dropped leading zeros, full-width digits written as
+        ASCII), it cannot be spread back safely: the runs keep their written
+        text and a rendering warning is recorded, which never rejects. In a
+        table with a `negative` style, a split negative amount has already
+        been reported by `_restyle_negative` (its warning says the amount
+        keeps its written form), so it is not reported twice.
+
+        Args:
+            runs: A body cell's runs, none of them a split reference.
+            role: Explicit column presentation role, if configured.
+            negative: The table spec's negative-number style, if any.
+
+        Returns:
+            The runs to show, or None when the cell is not one amount split
+            across two or more runs (it is then formatted run by run as before).
+        """
+        inner = [i for i, run in enumerate(runs) if not self._is_outer_piece(run)]
+        if not inner:
+            return None
+        first, last = inner[0], inner[-1]
+        if any(self._is_semantic_run(run) for run in runs[first : last + 1]):
+            return None
+        pieces = [i for i in range(first, last + 1) if runs[i].text]
+        if len(pieces) < 2:
+            return None
+        text = "".join(runs[i].text for i in pieces)
+        stripped = text.strip()
+        if not self._NUMERIC_LIKE_RE.fullmatch(stripped):
+            return None
+        owner = [i for i in pieces for _ in runs[i].text]  # the run of each character
+        start = len(text) - len(text.lstrip())
+        end = start + len(stripped)
+        number = self._format_financial_number(stripped)
+        unit = (
+            self._ROLE_UNITS.get(role or "", "") if self._PURE_NUMBER_RE.fullmatch(stripped) else ""
+        )
+        texts: dict[int, list[str]] = {i: [] for i in pieces}
+        for position in range(start):
+            texts[owner[position]].append(text[position])
+        position = start
+        for char in number:
+            if position < end and char == text[position]:
+                texts[owner[position]].append(char)
+                position += 1
+            elif char == "," and position < end:
+                texts[owner[position]].append(char)
+            else:
+                position = -1
+                break
+        if position != end:
+            if not (negative and self._read_negative_amount(stripped) is not None):
+                self._warn(
+                    f"Table number formatting not applied to {stripped!r}: the amount is split "
+                    "across differently formatted text, so it keeps its written form"
+                )
+            return list(runs)
+        texts[owner[end - 1]].append(unit)
+        for position in range(end, len(text)):
+            texts[owner[position]].append(text[position])
+        return [
+            replace(run, text="".join(texts[i])) if i in texts else run
+            for i, run in enumerate(runs)
+        ]
 
     @staticmethod
     def _configure_cell_paragraph(paragraph) -> None:

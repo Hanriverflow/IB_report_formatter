@@ -125,6 +125,7 @@ _VISIBLE_RUN_CONTENT: dict[str, str] = {
 _TEXT_TAG = qn("w:t")
 _SYMBOL_TAG = qn("w:sym")
 _RUN_CONTENT_TAGS = (_TEXT_TAG, _SYMBOL_TAG, *_VISIBLE_RUN_CONTENT)
+_RUN_CONTENT_TAG_SET = frozenset(_RUN_CONTENT_TAGS)
 _SOFT_HYPHEN = "\u00ad"
 _REMOVED_CONTENT = frozenset({qn("w:del"), qn("w:moveFrom")})
 _TERM_TAG_PATH = qn("w:sdtPr") + "/" + qn("w:tag")
@@ -322,13 +323,28 @@ def _current_text(content: Any, control: Any) -> str:
     for node in content.iter(*_RUN_CONTENT_TAGS):
         if _is_removed(node, stop=control):
             continue
-        if node.tag == _TEXT_TAG:
-            parts.append(node.text or "")
-        elif node.tag == _SYMBOL_TAG:
-            parts.append(_symbol_text(node))
-        else:
-            parts.append(_VISIBLE_RUN_CONTENT[node.tag])
+        parts.append(_run_content_text(node))
     return _visible("".join(parts))
+
+
+def _run_content_text(node: Any) -> str:
+    """Visible text of one run-content element (`w:t`, `w:sym` or `_VISIBLE_RUN_CONTENT`).
+
+    The one decoder for what a reader sees of a run: term values, bookmark
+    targets and cached field results are all read through it, so a tab, break
+    or symbol counts the same on both sides of a comparison.
+
+    Args:
+        node: An element whose tag is one of `_RUN_CONTENT_TAGS`.
+
+    Returns:
+        Its visible text (before `_visible` drops optional hyphens).
+    """
+    if node.tag == _TEXT_TAG:
+        return node.text or ""
+    if node.tag == _SYMBOL_TAG:
+        return _symbol_text(node)
+    return _VISIBLE_RUN_CONTENT[node.tag]
 
 
 def _symbol_text(node: Any) -> str:
@@ -555,9 +571,12 @@ def _body_fields(
 ) -> tuple[dict[str, str], list[tuple[str, str]], dict[str, int]]:
     """Read bookmarks and fields of the main document in order.
 
-    Text counts as visible unless it is a field instruction, so a bookmark
-    around `표 ` and a `SEQ` field reads `표 1`. A field nested in another
-    field's instruction still has its own cached result.
+    Run content counts as visible unless it is a field instruction, so a
+    bookmark around `표 ` and a `SEQ` field reads `표 1`. It is read with the
+    term audit's decoder (`_run_content_text`): tabs, breaks, symbols and
+    objects count, deleted or moved-away content does not, and optional
+    hyphens are dropped. A field nested in another field's instruction still
+    has its own cached result.
 
     Args:
         doc: Open document.
@@ -601,17 +620,20 @@ def _body_fields(
             stack[-1]["code"].append(node.text or "")
         elif tag == _W + "fldSimple":
             found.append(((node.get(qn("w:instr")) or "").strip(), _simple_field_result(node)))
-        elif tag == _W + "t":
+        # Not an `elif`: a footnote reference is also visible run content.
+        if tag in _RUN_CONTENT_TAG_SET and not _is_removed(node):
+            text = _run_content_text(node)
             # Text belongs to the result of every open field from the innermost
             # outwards while each of them is past its separator.
             for state in reversed(stack):
                 if not state["shown"]:
                     break
-                state["result"].append(node.text or "")
+                state["result"].append(text)
             if all(state["shown"] for state in stack):
                 for name in open_marks.values():
-                    marks[name].append(node.text or "")
-    return {name: "".join(parts) for name, parts in marks.items()}, found, notes
+                    marks[name].append(text)
+    found = [(code, _visible(result)) for code, result in found]
+    return {name: _visible("".join(parts)) for name, parts in marks.items()}, found, notes
 
 
 def _simple_field_result(field: Any) -> str:
@@ -628,10 +650,10 @@ def _simple_field_result(field: Any) -> str:
     """
     shown: list[bool] = []
     parts: list[str] = []
-    for node in field.iter(_W + "fldChar", _W + "t"):
-        if node.tag == _W + "t":
-            if all(shown):
-                parts.append(node.text or "")
+    for node in field.iter(_W + "fldChar", *_RUN_CONTENT_TAGS):
+        if node.tag in _RUN_CONTENT_TAG_SET:
+            if all(shown) and not _is_removed(node, stop=field):
+                parts.append(_run_content_text(node))
             continue
         kind = node.get(qn("w:fldCharType"))
         if kind == "begin":
