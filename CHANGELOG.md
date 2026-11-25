@@ -50,6 +50,14 @@ Whole-project audit of 2026-11-15: defects found by reading every module, each r
 - The five historical planning files (`plan.md`, `plan_upgrade.md`, `next_step.md`, `roadmap.md`, `git_checklist.md`) moved to `docs/archive/`. They are not shipped.
 - Tests: tests that could not fail now can, comparisons of two renders no longer depend on the clock, and test data uses fictional names only.
 
+### Pagination and caption style (2026-11-25; output changes)
+These were moved into the engine from a post-processing step that a 25-page report needed.
+- **Page-break separators** (`## ---`, or `---` with `layout: separator_mode: page-break`) no longer leave a paragraph that holds only a page break. When a paragraph follows, it gets "page break before" and the separator's bookmark. The separator paragraph is removed, together with an empty engine spacer right before it (for example the one after a table). A break that landed at the foot of a page used to leave a blank page. A separator followed by a table, another page break, a section break or the end of the document keeps its break. Cover, contents, disclaimer and section breaks are unchanged.
+- **Short tables stay on one page.** In a table of at most `SHORT_TABLE_MAX_ROWS` (7) rows, header rows included, every paragraph of every row except the last keeps with the next. Word moves the table to the next page whole instead of splitting it. Longer tables are unchanged. Applies to every profile.
+- **Figure captions are upright.** Hangul has no italic face, so Word only slanted the glyphs. Table captions were already upright.
+- **`참고` and `NOTE` callouts have no icon.** `ℹ` fell back to a symbol font and showed as a boxed "i". The other callout icons are unchanged.
+- `skills/ib-document/SKILL.md` gains a visual review checklist.
+
 ## [2.0.0-beta.2] - 2026-11-15
 
 Second public distribution prerelease, published on 2026-11-15 as the GitHub prerelease `v2.0.0-beta.2`. Like beta.1, it is not financial or legal approval or a guarantee of page layout. Changes since 2.0.0-beta.1 (PRs #23 to #35). As with beta.1, the release tag `v2.0.0-beta.2` identifies the delivery set and engine/package metadata stays **2.0.0 (Beta)**. The plugin moves from **0.1.0** to **0.2.0**, because the engine, skills and runtime launcher it carries changed. Verification: `docs/verification-20261110.md` and the records named in each section below.

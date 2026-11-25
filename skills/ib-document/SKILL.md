@@ -55,4 +55,17 @@ After authoring, perform a distinct review pass against the source. Report separ
 - **Engine/structure review:** strict render and structural audit, including unresolved warnings; numeric checks only assess declared formulas.
 - **Visual review:** `not_performed` unless actual rendered pages were inspected. When performed, record source/output hashes, actual/expected pages and renderer/Word version; inspect every page against that evidence. XML inspection is not page inspection.
 
+### Visual review checklist
+
+Look for these on every page. Fix them in the Markdown and render again into a new output directory; do not edit the DOCX by hand. The engine already puts a page-break separator's break on the next paragraph and keeps a table of seven rows or fewer on one page. To push a block to the next page, put `## ---` before it (or `---` when the frontmatter sets `layout: separator_mode: page-break`).
+
+- **Header row alone at the foot of a page**, with the table body on the next page: push the table, or the heading above it, to the next page.
+- **Blank page before a section:** two page breaks in a row, or a page break just before a table. Keep one break.
+- **Heading alone at the foot of a page:** push the heading to the next page.
+- **Figure on one page and its caption on the next:** push the figure to the next page, or shorten the text above it.
+- **Word broken mid-word inside a table cell:** a long run without spaces wraps at any character. Add commas or spaces at natural breaks in the Markdown cell.
+- **`₩` where a backslash should be:** Korean fonts draw `\` as `₩`. Avoid backslashes in body text; write paths with `/` or describe the location.
+- **Leftover Markdown syntax** such as `**`, `|`, `#`, `[^1]` or backticks: correct the Markdown that did not parse.
+- **List nesting lost**, a sub-bullet shown at the top level: indent sub-bullets by four spaces.
+
 Return actual generated DOCX and editable MD paths, evidence JSON, ledger and questions when used. Distinguish review drafts from documents with unresolved conditions. Do not claim financial/legal validity or visual correctness from engine success. Stay within the requested document task; sending or publishing is a separate action.

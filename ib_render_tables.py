@@ -49,6 +49,25 @@ logger = logging.getLogger("ib_renderer")
 
 _BLACK = RGBColor(0, 0, 0)
 
+# A table of at most this many rows, header rows included, is kept on one page.
+SHORT_TABLE_MAX_ROWS = 7
+
+
+def keep_short_table_together(word_table: Any) -> None:
+    """Keep every row but the last with the next row when the table is short.
+
+    Each paragraph of those rows gets keep-with-next, so Word moves a short
+    table to the next page whole instead of splitting it. A table longer than
+    `SHORT_TABLE_MAX_ROWS` is left as it is (a term-sheet header row keeps its
+    own keep-with-next, set when its cells are filled).
+    """
+    rows = word_table._tbl.tr_lst
+    if len(rows) > SHORT_TABLE_MAX_ROWS:
+        return
+    for row in rows[:-1]:
+        for paragraph in row.iter(qn("w:p")):
+            paragraph.get_or_add_pPr().keepNext_val = True
+
 
 class TableRenderer:
     """Renders tables with type-specific styling"""
@@ -165,6 +184,7 @@ class TableRenderer:
             word_rows[h_idx]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
         for word_row in word_rows:
             word_row._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
+        keep_short_table_together(word_table)
         # Apply borders
         TableStyler.set_table_borders(word_table)
         self._apply_row_rules(word_table, table)
@@ -333,6 +353,7 @@ class TableRenderer:
                 keep_together=header or line_counts[row_index] <= ROW_SPLIT_THRESHOLD,
                 repeat_header=header,
             )
+        keep_short_table_together(word_table)
         if table.note:
             add_table_note(self.doc, table.note, TextRenderer.render_runs)
         if table.source:

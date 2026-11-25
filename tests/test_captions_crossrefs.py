@@ -210,7 +210,7 @@ def test_caption_number_keeps_the_caption_formatting(tmp_path: Path) -> None:
     sizes = {run.font.size for run in caption.runs}
     assert len(sizes) == 1
     figure = next(p for p in document.paragraphs if p.text == "그림 1. 가상 거래 구조도")
-    assert all(run.font.italic for run in figure.runs)
+    assert not any(run.font.italic for run in figure.runs)
     plain = next(p for p in document.paragraphs if p.text == "번호 없는 그림")
     assert {run.font.size for run in figure.runs} == {run.font.size for run in plain.runs}
     assert {str(run.font.color.rgb) for run in figure.runs} == {

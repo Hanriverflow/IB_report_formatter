@@ -137,16 +137,12 @@
       </w:r>
     </w:p>
     <w:p>
-      <w:bookmarkStart w:id="2" w:name="_ibrep_SEPARATOR_RANDOM"/>
-      <w:r>
-        <w:br w:type="page"/>
-      </w:r>
-      <w:bookmarkEnd w:id="2"/>
-    </w:p>
-    <w:p>
       <w:pPr>
         <w:pStyle w:val="Heading2"/>
+        <w:pageBreakBefore/>
       </w:pPr>
+      <w:bookmarkStart w:id="2" w:name="_ibrep_SEPARATOR_RANDOM"/>
+      <w:bookmarkEnd w:id="2"/>
       <w:r>
         <w:rPr>
           <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>
@@ -264,16 +260,12 @@
       </w:r>
     </w:p>
     <w:p>
-      <w:bookmarkStart w:id="4" w:name="_ibrep_SEPARATOR_RANDOM"/>
-      <w:r>
-        <w:br w:type="page"/>
-      </w:r>
-      <w:bookmarkEnd w:id="4"/>
-    </w:p>
-    <w:p>
       <w:pPr>
         <w:pStyle w:val="Heading2"/>
+        <w:pageBreakBefore/>
       </w:pPr>
+      <w:bookmarkStart w:id="4" w:name="_ibrep_SEPARATOR_RANDOM"/>
+      <w:bookmarkEnd w:id="4"/>
       <w:r>
         <w:rPr>
           <w:rFonts w:ascii="Malgun Gothic" w:eastAsia="Malgun Gothic" w:hAnsi="Malgun Gothic"/>

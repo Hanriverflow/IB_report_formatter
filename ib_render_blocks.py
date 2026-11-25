@@ -303,9 +303,9 @@ class CalloutRenderer:
             "WARNING": ("FFF3CD", STYLE.ORANGE, STYLE.ORANGE, "⚠"),
             "주의": ("FFF3CD", STYLE.ORANGE, STYLE.ORANGE, "⚠"),
             "RISK": ("FFF3CD", STYLE.ORANGE, STYLE.ORANGE, "⚠"),
-            # Notes
-            "NOTE": (STYLE.LIGHT_GRAY_HEX, STYLE.DARK_GRAY, STYLE.DARK_GRAY, "ℹ"),
-            "참고": (STYLE.LIGHT_GRAY_HEX, STYLE.DARK_GRAY, STYLE.DARK_GRAY, "ℹ"),
+            # Notes: no icon; "ℹ" falls back to a symbol font and shows as a boxed "i".
+            "NOTE": (STYLE.LIGHT_GRAY_HEX, STYLE.DARK_GRAY, STYLE.DARK_GRAY, ""),
+            "참고": (STYLE.LIGHT_GRAY_HEX, STYLE.DARK_GRAY, STYLE.DARK_GRAY, ""),
         }
 
     def __init__(self, doc: DocxDocument):
@@ -340,7 +340,7 @@ class CalloutRenderer:
 
         # Title
         title_para = cell.paragraphs[0]
-        title_run = title_para.add_run(f"{icon} {blockquote.title}")
+        title_run = title_para.add_run(f"{icon} {blockquote.title}" if icon else blockquote.title)
 
         # For dark backgrounds (like Executive Summary), use white text
         if bg_hex == STYLE.NAVY_HEX:

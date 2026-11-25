@@ -214,6 +214,7 @@
           </w:tcPr>
           <w:p>
             <w:pPr>
+              <w:keepNext/>
               <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
               <w:jc w:val="center"/>
             </w:pPr>
@@ -237,6 +238,7 @@
           </w:tcPr>
           <w:p>
             <w:pPr>
+              <w:keepNext/>
               <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
               <w:jc w:val="center"/>
             </w:pPr>
@@ -260,6 +262,7 @@
           </w:tcPr>
           <w:p>
             <w:pPr>
+              <w:keepNext/>
               <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
               <w:jc w:val="center"/>
             </w:pPr>
@@ -287,6 +290,7 @@
           </w:tcPr>
           <w:p>
             <w:pPr>
+              <w:keepNext/>
               <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
               <w:jc w:val="left"/>
             </w:pPr>
@@ -308,6 +312,7 @@
           </w:tcPr>
           <w:p>
             <w:pPr>
+              <w:keepNext/>
               <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
               <w:jc w:val="left"/>
             </w:pPr>
@@ -329,6 +334,7 @@
           </w:tcPr>
           <w:p>
             <w:pPr>
+              <w:keepNext/>
               <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
               <w:jc w:val="left"/>
             </w:pPr>
@@ -355,6 +361,7 @@
           </w:tcPr>
           <w:p>
             <w:pPr>
+              <w:keepNext/>
               <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
               <w:jc w:val="left"/>
             </w:pPr>
@@ -376,6 +383,7 @@
           </w:tcPr>
           <w:p>
             <w:pPr>
+              <w:keepNext/>
               <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
               <w:jc w:val="left"/>
             </w:pPr>
@@ -397,6 +405,7 @@
           </w:tcPr>
           <w:p>
             <w:pPr>
+              <w:keepNext/>
               <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
               <w:jc w:val="left"/>
             </w:pPr>
@@ -423,6 +432,7 @@
           </w:tcPr>
           <w:p>
             <w:pPr>
+              <w:keepNext/>
               <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
               <w:jc w:val="left"/>
             </w:pPr>
@@ -442,6 +452,7 @@
           </w:tcPr>
           <w:p>
             <w:pPr>
+              <w:keepNext/>
               <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
               <w:jc w:val="left"/>
             </w:pPr>
@@ -454,6 +465,7 @@
           </w:tcPr>
           <w:p>
             <w:pPr>
+              <w:keepNext/>
               <w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>
               <w:jc w:val="left"/>
             </w:pPr>

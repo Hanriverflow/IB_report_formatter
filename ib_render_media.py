@@ -275,10 +275,9 @@ class ImageRenderer:
             caption_para = self.doc.add_paragraph()
             caption_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
+            # Upright: Hangul has no italic face, so Word only slants the glyphs.
             def style(run) -> None:
-                FontStyler.apply_run_style(
-                    run, font_size=STYLE.SMALL_SIZE, italic=True, color=STYLE.DARK_GRAY
-                )
+                FontStyler.apply_run_style(run, font_size=STYLE.SMALL_SIZE, color=STYLE.DARK_GRAY)
 
             for piece in [*caption_prefix, TextRun(text=alt_text)]:
                 if isinstance(piece, CaptionNumber):
@@ -292,7 +291,6 @@ class ImageRenderer:
             FontStyler.apply_run_style(
                 caption_run,
                 font_size=STYLE.SMALL_SIZE,
-                italic=True,
                 color=STYLE.DARK_GRAY,
             )
 

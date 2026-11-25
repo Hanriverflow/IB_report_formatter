@@ -660,6 +660,8 @@ class IBDocumentRenderer:
         cast(Any, self.doc.part)._ib_render_errors = self.errors
         cast(Any, self.doc.part)._ib_render_warnings = self.warnings
         self._bookmark_id = 0
+        # Page-break separator paragraphs, in document order (`_move_separator_breaks`).
+        self._separator_breaks: list[Any] = []
         self.styler = DocumentStyler(self.doc)
         self.cover_renderer = CoverRenderer(self.doc)
         self.toc_renderer = TOCRenderer(self.doc)
@@ -955,6 +957,8 @@ class IBDocumentRenderer:
             if resolved.disclaimer:
                 with _metadata_text("disclaimer (company)"):
                     self.disclaimer_renderer.render(model.metadata.company)
+            # Every block that can follow a separator now exists.
+            self._move_separator_breaks()
             sender = model.metadata.extra.get("sender", {})
             company = (
                 sender.get("organization", model.metadata.company)
@@ -1449,6 +1453,8 @@ class IBDocumentRenderer:
         if self._resolve_separator_mode(element) == "page-break":
             paragraph = self.doc.add_page_break()
             self._add_semantic_bookmark(paragraph, ElementType.SEPARATOR.name)
+            # Becomes "page break before" on the next paragraph once it exists.
+            self._separator_breaks.append(paragraph._p)
             return
 
         p = self.doc.add_paragraph()
@@ -1480,6 +1486,51 @@ class IBDocumentRenderer:
         if raw_text == "## ---":
             return "page-break"
         return "rule"
+
+    # Paragraph properties an engine spacer may carry; anything else is content.
+    _SPACER_PPR_TAGS = frozenset(
+        qn(tag) for tag in ("w:pStyle", "w:keepNext", "w:spacing", "w:jc", "w:rPr")
+    )
+
+    def _move_separator_breaks(self) -> None:
+        """Turn page-break separators into "page break before" on the next paragraph.
+
+        A paragraph that holds only a page break and lands at the foot of a page
+        leaves a blank page in Word. When a separator's next body block is a
+        paragraph (no section break, no page break of its own), that paragraph
+        gets `w:pageBreakBefore`, the separator's bookmark moves to its start and
+        the separator paragraph is removed, together with an engine spacer (an
+        empty paragraph with no runs) right before it. A separator followed by a
+        table, another page break, a section break or nothing keeps its break.
+        Only the separators this render wrote are touched; cover, contents,
+        disclaimer and section breaks are not.
+        """
+        for separator in self._separator_breaks:
+            body = separator.getparent()
+            if body is None:
+                continue  # replaced by a landscape table's section break
+            following = separator.getnext()
+            if (
+                following is None
+                or following.tag != qn("w:p")
+                or following.xpath('./w:pPr/w:sectPr | .//w:br[@w:type="page"]')
+            ):
+                continue
+            previous = separator.getprevious()
+            # python-docx keeps the schema order of `w:pPr` children.
+            following.get_or_add_pPr().pageBreakBefore_val = True
+            index = 1
+            for bookmark in separator.xpath("./w:bookmarkStart | ./w:bookmarkEnd"):
+                following.insert(index, bookmark)
+                index += 1
+            body.remove(separator)
+            if (
+                previous is not None
+                and previous.tag == qn("w:p")
+                and all(child.tag == qn("w:pPr") for child in previous)
+                and all(child.tag in self._SPACER_PPR_TAGS for child in previous.xpath("./w:pPr/*"))
+            ):
+                body.remove(previous)
 
     def _render_code_block(self, code_block):
         """Render a fenced code block as a monospaced shaded block."""

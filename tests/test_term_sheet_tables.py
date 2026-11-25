@@ -30,6 +30,7 @@ from document_model import (
 )
 from document_profiles import RenderOptions
 from docx_audit import inspect_document
+from ib_render_tables import SHORT_TABLE_MAX_ROWS
 from ib_renderer import IBDocumentRenderer
 from md_parser import MarkdownParser
 
@@ -254,10 +255,13 @@ LEGACY_SPECS = [
 # before A2 (commit 26b9c74: plain 03d688af…, ib-report 4e5942dd…); updated when
 # the legacy schema-order fix moved w:shd/w:tblBorders into place. The old and
 # new XML were verified identical after sorting property children into schema
-# order, so only element order changed.
+# order, so only element order changed. Updated again when short tables were kept
+# on one page (2026-11-25: plain 5f696c6f…, ib-report 63057cff…): with the rule
+# switched off the old digests still matched, and the new XML differs only by
+# 13 added `w:keepNext` elements.
 LEGACY_DIGESTS = {
-    "plain": "5f696c6f0253cf0f61ea475151770345f21588ab11bb9f9b562dea81de8f128a",
-    "ib-report": "63057cfffd2261f8b72a5dd67944f704d9dbacd01246652e657f71d358293186",
+    "plain": "26ab2f9c505146030d81953a6841daa66838fad8f6d4d435fef3092f143dc35c",
+    "ib-report": "5fa37a87c018b28a31a2154f2ed72e0b309aabef5c7218b5bfa3990aefc58c2b",
 }
 
 
@@ -455,9 +459,12 @@ def test_header_row_paragraphs_keep_with_the_first_body_row() -> None:
         header, *body = rows(table)
         header_paragraphs = header.xpath("./w:tc/w:p")
         assert header_paragraphs and all(p.xpath("./w:pPr/w:keepNext") for p in header_paragraphs)
-        assert not any(
-            p.xpath("./w:pPr/w:keepNext") for row in body for p in row.xpath("./w:tc/w:p")
-        )
+        # Both tables are short, so every body row but the last keeps with the next
+        # as well; long tables are covered in tests/test_pagination.py.
+        assert len(body) + 1 <= SHORT_TABLE_MAX_ROWS
+        for row in body[:-1]:
+            assert all(p.xpath("./w:pPr/w:keepNext") for p in row.xpath("./w:tc/w:p"))
+        assert not any(p.xpath("./w:pPr/w:keepNext") for p in body[-1].xpath("./w:tc/w:p"))
 
 
 def test_key_value_label_hierarchy_and_content_cells() -> None:

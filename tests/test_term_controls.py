@@ -158,7 +158,7 @@ def test_headings_callouts_lists_and_header_cells_use_carried_runs() -> None:
     [heading_control] = xp(heading._p, "./w:sdt")
     assert xp(heading_control, "./w:sdtContent/w:r/w:rPr/w:b")
     callout = doc.tables[0].cell(0, 0)
-    assert [xml_text(p._p) for p in callout.paragraphs] == ["ℹ 참고", "Amount 500억원"]
+    assert [xml_text(p._p) for p in callout.paragraphs] == ["참고", "Amount 500억원"]
     assert len(xp(callout._tc, ".//w:sdt")) == 1
     bullet = next(p for p in doc.paragraphs if xml_text(p._p) == "Bullet 500억원")
     assert xp(bullet._p, "./w:sdt")
